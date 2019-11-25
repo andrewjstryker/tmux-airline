@@ -14,3 +14,5 @@ set_tmux_option() {
 	local value="$2"
 	tmux set-option -gq "$option" "$value"
 }
+
+# vim: ft=bash
