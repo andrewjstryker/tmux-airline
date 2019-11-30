@@ -61,7 +61,7 @@ tmpl_window_right="${$(tmux show-option tmpl_window_right):-$tmpl_window_right_d
 # replace with tmux plugin project alternative
 tmpl_right_middle_default="#{online_icon} #{sysstat_cpu} #{sysstat_mem} #{sysstat_loadavg} #{battery_icon}"
 tmpl_right_middle="${$(tmux show-option tmpl_right_middle):-$tmpl_right_middle_default}"
-tmpl_right_outer="${tmux show-option tmpl_right_outer:-%Y-%m-%d %H:%M}"
+tmpl_right_outer="${$(tmux show-option tmpl_right_outer):-%Y-%m-%d %H:%M}"
 
 #-----------------------------------------------------------------------------#
 #
