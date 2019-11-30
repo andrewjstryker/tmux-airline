@@ -4,7 +4,7 @@ CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 #-----------------------------------------------------------------------------#
 #
-# Define color palette
+# Assign color palette
 #
 # The script inspects tmux for each of the options below. The options can be
 # set in a user's `tmux.conf` file or via a plugin. The plugin needs to be run
@@ -44,7 +44,7 @@ color_monitor="${$(tmux show-option color_highlight):-orange}"
 
 #-----------------------------------------------------------------------------#
 #
-# Define templates
+# Assign templates
 #
 # The script inspects tmux for each of the options below
 #
@@ -65,7 +65,7 @@ tmpl_right_outer="${$(tmux show-option tmpl_right_outer):-%Y-%m-%d %H:%M}"
 
 #-----------------------------------------------------------------------------#
 #
-# Define section transitions
+# Transition sections
 #
 #-----------------------------------------------------------------------------#
 
