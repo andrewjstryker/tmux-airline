@@ -65,6 +65,29 @@ tmpl_right_outer="${tmux show-option tmpl_right_outer:-%Y-%m-%d %H:%M}"
 
 #-----------------------------------------------------------------------------#
 #
+# Define section transitions
+#
+#-----------------------------------------------------------------------------#
+
+transition () {
+  local left_bg="$1"
+  local right_bg="$2"
+  local right_fg="$3"
+  local chevron="$4"
+
+  echo "#[fg=$right_bg,bg=$left_bg]$chevron[bg=$right_bg]"
+}
+
+trans_in () {
+  transition "$1 $2 $3 "
+}
+
+trans_in () {
+  transition "$1 $2 $3 "
+}
+
+#-----------------------------------------------------------------------------#
+#
 # Define color bars
 #
 #-----------------------------------------------------------------------------#
