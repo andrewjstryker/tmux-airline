@@ -4,7 +4,7 @@ CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 #-----------------------------------------------------------------------------#
 #
-# Define color palette
+# Assign color palette
 #
 # The script inspects tmux for each of the options below. The options can be
 # set in a user's `tmux.conf` file or via a plugin. The plugin needs to be run
@@ -44,7 +44,7 @@ color_monitor="${$(tmux show-option color_highlight):-orange}"
 
 #-----------------------------------------------------------------------------#
 #
-# Define templates
+# Assign templates
 #
 # The script inspects tmux for each of the options below
 #
@@ -61,7 +61,30 @@ tmpl_window_right="${$(tmux show-option tmpl_window_right):-$tmpl_window_right_d
 # replace with tmux plugin project alternative
 tmpl_right_middle_default="#{online_icon} #{sysstat_cpu} #{sysstat_mem} #{sysstat_loadavg} #{battery_icon}"
 tmpl_right_middle="${$(tmux show-option tmpl_right_middle):-$tmpl_right_middle_default}"
-tmpl_right_outer="${tmux show-option tmpl_right_outer:-%Y-%m-%d %H:%M}"
+tmpl_right_outer="${$(tmux show-option tmpl_right_outer):-%Y-%m-%d %H:%M}"
+
+#-----------------------------------------------------------------------------#
+#
+# Transition sections
+#
+#-----------------------------------------------------------------------------#
+
+transition () {
+  local left_bg="$1"
+  local right_bg="$2"
+  local right_fg="$3"
+  local chevron="$4"
+
+  echo "#[fg=$right_bg,bg=$left_bg]$chevron[bg=$right_bg]"
+}
+
+trans_in () {
+  transition "$1 $2 $3 "
+}
+
+trans_in () {
+  transition "$1 $2 $3 "
+}
 
 #-----------------------------------------------------------------------------#
 #
