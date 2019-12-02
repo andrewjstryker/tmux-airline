@@ -1,0 +1,34 @@
+#! /usr/bin/env bash
+
+declare -A theme
+
+theme[outer_fg]="white"
+theme[outer_bg]="grey"
+
+theme[middle_fg]="white"
+theme[middle_bg]="cyan"
+
+theme[inner_fg]="white"
+theme[inner_bg]="blue"
+
+# highlight active elements
+theme[highlight]="yellow"
+
+# accent previously active elements
+theme[accent]="green"
+
+# alert from program triggers
+theme[alert]="cyan"
+
+# widget colors
+theme[warn]="orange"
+theme[stress]="red"
+
+theme[prefix]="magenta"
+theme[zoom]="violet"
+
+# tmux modes
+theme[copy]="blue"
+theme[monitor]="orange"
+
+export theme
