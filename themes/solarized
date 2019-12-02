@@ -1,0 +1,42 @@
+#! /usr/bin/env bash
+
+declare -A theme
+
+# solarized color palette
+base03="colour8"       # background (dark)
+base02="colour0"       # background highlights (dark)
+base01="colour10"      # secondary text (dark) / emphasized text (light)
+base00="colour11"      # primary text (light)
+base0="colour12"       # primary text (dark)
+base1="colour14"       # emphasized text (dark) / secondary text (light)
+base2="colour7"        # background highlights (light)
+base3="colour15"       # background (light)
+yellow="colour3"
+orange="colour9"
+red="colour1"
+magenta="colour5"
+violet="colour13"
+blue="colour4"
+cyan="colour6"
+green="colour2"
+
+# status line colors
+theme[outer_bg]="$base00"
+theme[middle_bg]="$base01"
+theme[inner_bg]="$base02"
+theme[primary_fg]="$base1"
+theme[emphasized_fg]="$base2"
+theme[secondary_fg]="$base0"
+
+# accent colors
+theme[highlight]="$yellow"
+theme[special]="$magenta"
+theme[alert]="$orange"
+theme[stess]="$red"
+
+# tmux modes
+theme[zoom]="$violet"
+theme[copy]="$blue"
+theme[monitor]="$green"
+
+export theme
