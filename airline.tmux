@@ -62,6 +62,16 @@ right_middle () {
 
 	echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg] $template"
 }
+
+right_outer () {
+	local template="$(get_tmux_option airline_tmpl_right_outer %S)"
+	local fg="${theme[outer_fg]}"
+	local bg="${theme[outer_bg]}"
+	local prev_bg="${theme[middle_bg]}"
+
+	echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg] $template"
+}
+
 #-----------------------------------------------------------------------------#
 #
 # Assign templates
