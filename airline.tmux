@@ -6,27 +6,6 @@ source "$CURRENT_DIR/themes/solarized"
 
 #-----------------------------------------------------------------------------#
 #
-# Assign templates
-#
-# The script inspects tmux for each of the options below
-#
-#-----------------------------------------------------------------------------#
-
-tmpl_left_outer="${$(tmux show-option tmpl_left_outer):- $(hostname | cut -d . -f 1)}"
-tmpl_left_middle="${$(tmux show-option tmpl_left_inner):-%S}"
-
-# TODO: capture active zoom
-tmpl_window="${$(tmux show-option tmpl_window_format):-#I:#W}"
-tmpl_window_right_default="#{prefix}"
-tmpl_window_right="${$(tmux show-option tmpl_window_right):-$tmpl_window_right_default}"
-
-# replace with tmux plugin project alternative
-tmpl_right_middle_default="#{online_icon} #{sysstat_cpu} #{sysstat_mem} #{sysstat_loadavg} #{battery_icon}"
-tmpl_right_middle="${$(tmux show-option tmpl_right_middle):-$tmpl_right_middle_default}"
-tmpl_right_outer="${$(tmux show-option tmpl_right_outer):-%Y-%m-%d %H:%M}"
-
-#-----------------------------------------------------------------------------#
-#
 # Transition sections
 #
 #-----------------------------------------------------------------------------#
@@ -47,6 +26,27 @@ trans_in () {
 trans_in () {
   transition "$1 $2 $3 "
 }
+
+#-----------------------------------------------------------------------------#
+#
+# Assign templates
+#
+# The script inspects tmux for each of the options below
+#
+#-----------------------------------------------------------------------------#
+
+tmpl_left_outer="${$(tmux show-option tmpl_left_outer):- $(hostname | cut -d . -f 1)}"
+tmpl_left_middle="${$(tmux show-option tmpl_left_inner):-%S}"
+
+# TODO: capture active zoom
+tmpl_window="${$(tmux show-option tmpl_window_format):-#I:#W}"
+tmpl_window_right_default="#{prefix}"
+tmpl_window_right="${$(tmux show-option tmpl_window_right):-$tmpl_window_right_default}"
+
+# replace with tmux plugin project alternative
+tmpl_right_middle_default="#{online_icon} #{sysstat_cpu} #{sysstat_mem} #{sysstat_loadavg} #{battery_icon}"
+tmpl_right_middle="${$(tmux show-option tmpl_right_middle):-$tmpl_right_middle_default}"
+tmpl_right_outer="${$(tmux show-option tmpl_right_outer):-%Y-%m-%d %H:%M}"
 
 #-----------------------------------------------------------------------------#
 #
