@@ -38,9 +38,9 @@ chev_left () {
 
 left_outer () {
 	local template="$(get_tmux_option airline_tmpl_left_out %H)"
-	local fg="$theme[outer_fg]"
-	local bg="$theme[outer_bg]"
-	local next_bg="$theme[middle_bg]"
+	local fg="${theme[outer_fg]}"
+	local bg="${theme[outer_bg]}"
+	local next_bg="${theme[middle_bg]}"
 
 	echo "#[fg=$fg,bg=$bg]$template$(chev_right $bg $next_bg)"
 }
