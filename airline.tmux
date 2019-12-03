@@ -6,25 +6,28 @@ source "$CURRENT_DIR/themes/solarized"
 
 #-----------------------------------------------------------------------------#
 #
-# Transition sections
+# Chevrons
 #
 #-----------------------------------------------------------------------------#
 
-transition () {
-  local left_bg="$1"
-  local right_bg="$2"
-  local right_fg="$3"
-  local chevron="$4"
+chevron () {
+	local left_bg="$1"
+	local right_bg="$2"
+	local chev="$3"
 
-  echo "#[fg=$right_bg,bg=$left_bg]$chevron[bg=$right_bg]"
+	echo "#[fg=$right_bg,bg=$left_bg]$chev"
 }
 
-trans_in () {
-  transition "$1 $2 $3 "
+chev_right () {
+	local left_bg="$1"
+	local right_bg="$2"
+	chevron "$left_bg $right_bg "
 }
 
-trans_in () {
-  transition "$1 $2 $3 "
+chev_left () {
+	local left_bg="$1"
+	local right_bg="$2"
+	chevron "$left_bg $right_bg "
 }
 
 #-----------------------------------------------------------------------------#
