@@ -42,7 +42,7 @@ left_outer () {
 	local bg="${theme[outer_bg]}"
 	local next_bg="${theme[middle_bg]}"
 
-	echo "#[fg=$fg,bg=$bg]$template$(chev_right $bg $next_bg)"
+	echo "#[fg=$fg,bg=$bg] $template $(chev_right $bg $next_bg)"
 }
 
 left_middle () {
@@ -51,7 +51,7 @@ left_middle () {
 	local bg="${theme[middle_bg]}"
 	local next_bg="${theme[inner_bg]}"
 
-	echo "#[fg=$fg,bg=$bg]$template$(chev_right $bg $next_bg)"
+	echo "#[fg=$fg,bg=$bg] $template $(chev_right $bg $next_bg)"
 }
 
 #-----------------------------------------------------------------------------#
