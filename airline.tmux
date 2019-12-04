@@ -72,33 +72,6 @@ right_outer () {
 	echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg] $template"
 }
 
-#-----------------------------------------------------------------------------#
-#
-# Assign templates
-#
-# The script inspects tmux for each of the options below
-#
-#-----------------------------------------------------------------------------#
-
-tmpl_left_outer="${$(tmux show-option tmpl_left_outer):- $(hostname | cut -d . -f 1)}"
-tmpl_left_middle="${$(tmux show-option tmpl_left_inner):-%S}"
-
-# TODO: capture active zoom
-tmpl_window="${$(tmux show-option tmpl_window_format):-#I:#W}"
-tmpl_window_right_default="#{prefix}"
-tmpl_window_right="${$(tmux show-option tmpl_window_right):-$tmpl_window_right_default}"
-
-# replace with tmux plugin project alternative
-tmpl_right_middle_default="#{online_icon} #{sysstat_cpu} #{sysstat_mem} #{sysstat_loadavg} #{battery_icon}"
-tmpl_right_middle="${$(tmux show-option tmpl_right_middle):-$tmpl_right_middle_default}"
-tmpl_right_outer="${$(tmux show-option tmpl_right_outer):-%Y-%m-%d %H:%M}"
-
-#-----------------------------------------------------------------------------#
-#
-# Define color bars
-#
-#-----------------------------------------------------------------------------#
-
 color_outer="#[fg=$color_outer_fg,bg=$color_outer_bg]"
 seperator_out_mid="#[fg=$color_outer_bg,bg=$color_middle_bg]"
 seperator_mid_out="#[fg=$color_outer_bg,bg=$color_middle_bg]"
