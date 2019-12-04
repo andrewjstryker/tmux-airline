@@ -88,14 +88,6 @@ right_outer () {
 	echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg] $template"
 }
 
-color_outer="#[fg=$color_outer_fg,bg=$color_outer_bg]"
-seperator_out_mid="#[fg=$color_outer_bg,bg=$color_middle_bg]"
-seperator_mid_out="#[fg=$color_outer_bg,bg=$color_middle_bg]"
-
-color_middle="#[fg=$color_middle_fg,bg=$color_middle_bg]"
-seperator_mid_in="#[fg=$color_middle_bg,bg=$color_inner_bg]"
-seperator_in_mid="#[fg=$color_middle_bg,bg=$color_inner_bg]"
-
 #-----------------------------------------------------------------------------#
 #
 # Set status elements
