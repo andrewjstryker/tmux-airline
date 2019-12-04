@@ -22,13 +22,13 @@ chevron () {
 chev_right () {
 	local left_bg="$1"
 	local right_bg="$2"
-	chevron "$left_bg $right_bg "
+	chevron "$left_bg" "$right_bg" ""
 }
 
 chev_left () {
 	local left_bg="$1"
 	local right_bg="$2"
-	chevron "$left_bg $right_bg "
+	chevron "$left_bg" "$right_bg" ""
 }
 
 #-----------------------------------------------------------------------------#
