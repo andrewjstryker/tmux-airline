@@ -33,6 +33,36 @@ chev_left () {
 
 #-----------------------------------------------------------------------------#
 #
+# Create widget template
+#
+# Build a template from installed popular widgets, if the user did not define
+# a left middle template.
+#
+#-----------------------------------------------------------------------------#
+
+installed () {
+	local plugin=$1
+
+	if [[ $(grep $(ls $CURRENT_DIR/..))
+
+create_widget_template () {
+	local template=""
+
+	if [[ cpu_installed ]]
+	then
+		template="$template #{cpu_fg_color}#{cpu_icon}#[bg=${theme[middle_bg]}"
+		template="$template #{gpu_fg_color}#{gpu_icon}#[bg=${theme[middle_bg]}"
+	fi
+
+	if [[ online_installed ]]
+	then
+		template=" #{online_status}"
+	fi
+
+	if [[ battery_install
+
+#-----------------------------------------------------------------------------#
+#
 # Build status line components
 #
 #-----------------------------------------------------------------------------#
