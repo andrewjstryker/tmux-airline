@@ -64,6 +64,8 @@ create_widget_template () {
 	then
 		template="$template #{battery_status}"
 	fi
+
+	echo $template
 }
 
 #-----------------------------------------------------------------------------#
