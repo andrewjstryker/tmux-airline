@@ -125,5 +125,28 @@ right_outer () {
 #
 #-----------------------------------------------------------------------------#
 
-set -g status-left "$color_outer $tmpl_left_outer $seperator_out_mid $color_middle $tmpl_left_inner $seperator_mid_out"
-set -g status-right "$seperator_in_mid $color_middle $tmpl_right_outer $seperator_mid_out $color_outer $tmpl_right_outer $seperator_mid_out"
+main () {
+	tmux set -gq status-style fg=${theme[secondary_fg]} bg=${theme[inner_bg]}
+	tmux set -gq clock-mode-style  fg=${theme[special]} bg=${theme[inner_bg]}
+	# tmux set -g mode-style  fg=${theme[special]} bg=${theme[inner_bg]}
+	# tmux set -g window-status-activity-style  fg=${theme[special]} bg=${theme[inner_bg]}
+	# tmux set -g window-status-bell-style  fg=${theme[special]} bg=${theme[inner_bg]}
+	# tmux set -g window-status-format-string  fg=${theme[special]} bg=${theme[inner_bg]}
+	# tmux set -g mode-style
+
+	tmux set -gq status-left-style fg=${theme[primary_fg]} bg=${theme[outer_bg]}
+	tmux set -gq status-left "$(left_outer) $(left_middle) $(left_inner)"
+
+	tmux set -gq status-right-style fg=${theme[primary_fg]} bg=${theme[outer_bg]}
+	tmux set -gq status-right "$(right_outer) $(right_middle) $(right_inner)"
+
+	tmux set -gq window-style fg=${theme[secondary_fg]} bg=${theme[middle_bg]}
+	tmux set -gq window-last-style fg=${theme[primary_fg]} bg=${theme[middle_bg]}
+	tmux set -gq window-current-style fg=${theme[primary_fg]} bg=${theme[highlight]}
+	tmux set -gq window-active-style fg=${theme[primary_fg]} bg=${theme[altert]}
+
+	tmux set -gq pane-border-style fg=${theme[primary_fg]}
+	tmux set -gq pane-active-border-style fg=${theme[highlight]}
+}
+
+main
