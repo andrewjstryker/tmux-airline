@@ -5,7 +5,17 @@ CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$CURRENT_DIR/scripts/shared.sh"
 source "$CURRENT_DIR/scripts/installed.sh"
 
-source "$CURRENT_DIR/themes/solarized"
+#-----------------------------------------------------------------------------#
+#
+# Load color scheme
+#
+#-----------------------------------------------------------------------------#
+
+load_color_scheme () {
+	local color_scheme=$(tmux_get_option color_scheme default)
+
+	source "$CURRENT_DIR/themes/$color_scheme"
+}
 
 #-----------------------------------------------------------------------------#
 #
@@ -134,6 +144,8 @@ right_outer () {
 #-----------------------------------------------------------------------------#
 
 main () {
+	load_color_scheme
+
 	tmux set -gq status-style fg=${theme[secondary_fg]} bg=${theme[inner_bg]}
 	tmux set -gq clock-mode-style  fg=${theme[special]} bg=${theme[inner_bg]}
 	# tmux set -g mode-style  fg=${theme[special]} bg=${theme[inner_bg]}
