@@ -41,6 +41,7 @@ chev_left () {
 # a left middle template.
 #
 #-----------------------------------------------------------------------------#
+
 create_widget_template () {
 	local template=""
 
