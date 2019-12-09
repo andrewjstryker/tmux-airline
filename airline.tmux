@@ -41,11 +41,10 @@ chev_left () {
 # a left middle template.
 #
 #-----------------------------------------------------------------------------#
-
 create_widget_template () {
 	local template=""
 
-	if [[ cpu_installed ]]
+	if [[ is_cpu_installed ]]
 	then
 		template="$template #{cpu_fg_color}#{cpu_icon}#[bg=${theme[middle_bg]}"
 		template="$template #{gpu_fg_color}#{gpu_icon}#[bg=${theme[middle_bg]}"
@@ -56,7 +55,16 @@ create_widget_template () {
 		template=" #{online_status}"
 	fi
 
-	if [[ battery_install
+	if [[ is_online_installed ]]
+	then
+		template="$template #{online_status}"
+	fi
+
+	if [[ is_battery_install ]]
+	then
+		template="$template #{battery_status}"
+	fi
+}
 
 #-----------------------------------------------------------------------------#
 #
