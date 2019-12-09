@@ -2,103 +2,123 @@
 
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-#-----------------------------------------------------------------------------#
-#
-# Assign color palette
-#
-# The script inspects tmux for each of the options below. The options can be
-# set in a user's `tmux.conf` file or via a plugin. The plugin needs to be run
-# prior to this script.
-#
-# The default values are suitable for terminals with a black background.
-#-----------------------------------------------------------------------------#
+source "$CURRENT_DIR/scripts/shared.sh"
+source "$CURRENT_DIR/scripts/installed.sh"
 
-color_outer_fg="${$(tmux show-option color_outer_fg):-white}"
-color_outer_bg="${$(tmux show-option color_outer_bg):-grey}"
-
-color_middle_fg="${$(tmux show-option color_middle_fg):-white}"
-color_middle_bg="${$(tmux show-option color_middle_bg):-cyan}"
-
-color_inner_fg="${$(tmux show-option color_inner_fg):-white}"
-color_inner_bg="${$(tmux show-option color_inner_bg):-blue}"
-
-# highlight active elements
-color_highlight="${$(tmux show-option color_highlight):-yellow}"
-
-# accent previously active elements
-color_accent="${$(tmux show-option color_accent):-green}"
-
-# alert from program triggers
-color_alert="${$(tmux show-option color_alert):-cyan}"
-
-# widget colors
-color_warn="${$(tmux show-option color_warn):-orange}"
-color_stress="${$(tmux show-option color_stress):-red}"
-
-color_prefix="${$(tmux show-option color_highlight):-magenta}"
-color_zoom="${$(tmux show-option color_highlight):-violet}"
-
-# tmux modes
-color_copy="${$(tmux show-option color_highlight):-blue}"
-color_monitor="${$(tmux show-option color_highlight):-orange}"
+source "$CURRENT_DIR/themes/solarized"
 
 #-----------------------------------------------------------------------------#
 #
-# Assign templates
-#
-# The script inspects tmux for each of the options below
+# Chevrons
 #
 #-----------------------------------------------------------------------------#
 
-tmpl_left_outer="${$(tmux show-option tmpl_left_outer):- $(hostname | cut -d . -f 1)}"
-tmpl_left_middle="${$(tmux show-option tmpl_left_inner):-%S}"
+chevron () {
+	local left_bg="$1"
+	local right_bg="$2"
+	local chev="$3"
 
-# TODO: capture active zoom
-tmpl_window="${$(tmux show-option tmpl_window_format):-#I:#W}"
-tmpl_window_right_default="#{prefix}"
-tmpl_window_right="${$(tmux show-option tmpl_window_right):-$tmpl_window_right_default}"
-
-# replace with tmux plugin project alternative
-tmpl_right_middle_default="#{online_icon} #{sysstat_cpu} #{sysstat_mem} #{sysstat_loadavg} #{battery_icon}"
-tmpl_right_middle="${$(tmux show-option tmpl_right_middle):-$tmpl_right_middle_default}"
-tmpl_right_outer="${$(tmux show-option tmpl_right_outer):-%Y-%m-%d %H:%M}"
-
-#-----------------------------------------------------------------------------#
-#
-# Transition sections
-#
-#-----------------------------------------------------------------------------#
-
-transition () {
-  local left_bg="$1"
-  local right_bg="$2"
-  local right_fg="$3"
-  local chevron="$4"
-
-  echo "#[fg=$right_bg,bg=$left_bg]$chevron[bg=$right_bg]"
+	echo "#[fg=$right_bg,bg=$left_bg]$chev"
 }
 
-trans_in () {
-  transition "$1 $2 $3 "
+chev_right () {
+	local left_bg="$1"
+	local right_bg="$2"
+	chevron "$left_bg" "$right_bg" ""
 }
 
-trans_in () {
-  transition "$1 $2 $3 "
+chev_left () {
+	local left_bg="$1"
+	local right_bg="$2"
+	chevron "$left_bg" "$right_bg" ""
 }
 
 #-----------------------------------------------------------------------------#
 #
-# Define color bars
+# Create widget template
+#
+# Build a template from installed popular widgets, if the user did not define
+# a left middle template.
 #
 #-----------------------------------------------------------------------------#
 
-color_outer="#[fg=$color_outer_fg,bg=$color_outer_bg]"
-seperator_out_mid="#[fg=$color_outer_bg,bg=$color_middle_bg]"
-seperator_mid_out="#[fg=$color_outer_bg,bg=$color_middle_bg]"
+create_widget_template () {
+	local template=""
 
-color_middle="#[fg=$color_middle_fg,bg=$color_middle_bg]"
-seperator_mid_in="#[fg=$color_middle_bg,bg=$color_inner_bg]"
-seperator_in_mid="#[fg=$color_middle_bg,bg=$color_inner_bg]"
+	if [[ is_cpu_installed ]]
+	then
+		template="$template #{cpu_fg_color}#{cpu_icon}#[bg=${theme[middle_bg]}"
+		template="$template #{gpu_fg_color}#{gpu_icon}#[bg=${theme[middle_bg]}"
+	fi
+
+	if [[ is_online_installed ]]
+	then
+		template="$template #{online_status}"
+	fi
+
+	if [[ is_battery_install ]]
+	then
+		template="$template #{battery_status}"
+	fi
+}
+
+#-----------------------------------------------------------------------------#
+#
+# Build status line components
+#
+#-----------------------------------------------------------------------------#
+
+left_outer () {
+	local template="$(get_tmux_option airline_tmpl_left_out %H)"
+	local fg="${theme[outer_fg]}"
+	local bg="${theme[outer_bg]}"
+	local next_bg="${theme[middle_bg]}"
+
+	echo "#[fg=$fg,bg=$bg]${template}$(chev_right $bg $next_bg)"
+}
+
+left_middle () {
+	local template="$(get_tmux_option airline_tmpl_left_middle %S)"
+	local fg="${theme[middle_fg]}"
+	local bg="${theme[middle_bg]}"
+	local next_bg="${theme[inner_bg]}"
+
+	echo "#[fg=$fg,bg=$bg]${template}$(chev_right $bg $next_bg)"
+}
+
+left_inner () {
+	local template="$(get_tmux_option airline_tmpl_left_inner ' ')"
+	local fg="${theme[primary_fg]}"
+	local bg="${theme[inner_bg]}"
+
+	echo "#[fg=$fg,bg=$bg]${template}"
+}
+
+right_inner () {
+	local template="$(get_tmux_option airline_tmpl_right_inner ' ')"
+	local fg="${theme[primary_fg]}"
+	local bg="${theme[inner_bg]}"
+
+	echo "#[fg=$fg,bg=$bg]${template}"
+}
+
+right_middle () {
+	local template="$(get_tmux_option airline_tmpl_right_middle %S)"
+	local fg="${theme[middle_fg]}"
+	local bg="${theme[middle_bg]}"
+	local prev_bg="${theme[inner_bg]}"
+
+	echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg]${template}"
+}
+
+right_outer () {
+	local template="$(get_tmux_option airline_tmpl_right_outer %S)"
+	local fg="${theme[outer_fg]}"
+	local bg="${theme[outer_bg]}"
+	local prev_bg="${theme[middle_bg]}"
+
+	echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg]${template}"
+}
 
 #-----------------------------------------------------------------------------#
 #
