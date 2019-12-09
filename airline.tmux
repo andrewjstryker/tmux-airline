@@ -42,11 +42,6 @@ chev_left () {
 #
 #-----------------------------------------------------------------------------#
 
-installed () {
-	local plugin=$1
-
-	if [[ $(grep $(ls $CURRENT_DIR/..))
-
 create_widget_template () {
 	local template=""
 
