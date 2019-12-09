@@ -60,7 +60,7 @@ create_widget_template () {
 		template="$template #{online_status}"
 	fi
 
-	if [[ is_battery_install ]]
+	if [[ is_battery_installed ]]
 	then
 		template="$template #{battery_status}"
 	fi
