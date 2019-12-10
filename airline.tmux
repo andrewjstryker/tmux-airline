@@ -59,21 +59,47 @@ create_widget_template () {
 	then
 		template="$template #{cpu_fg_color}#{cpu_icon}#[bg=${theme[middle_bg]}"
 		template="$template #{gpu_fg_color}#{gpu_icon}#[bg=${theme[middle_bg]}"
+		set -g @cpu_low_fg_color "$primary_fg" # foreground color when cpu is low
+		set -g @cpu_medium_fg_color "$emphasized_fg" # foreground color when cpu is medium
+		set -g @cpu_high_fg_color "$stress" # foreground color when cpu is high
+
+		set -g @cpu_low_bg_color "$middle_bg" # background color when cpu is low
+		set -g @cpu_medium_bg_color "$middle_bg" # background color when cpu is medium
+		set -g @cpu_high_bg_color "$middle_bg" # background color when cpu is high
+
 	fi
 
 	if [[ online_installed ]]
 	then
 		template=" #{online_status}"
+		set -g @online_icon "#[fg=$color_level_ok]●#[default]"
+		set -g @offline_icon "#[fg=$color_level_stress]●#[default]"
 	fi
 
 	if [[ is_online_installed ]]
 	then
 		template="$template #{online_status}"
+		set -g @online_icon "#[fg=$color_level_ok]●#[default]"
+		set -g @offline_icon "#[fg=$color_level_stress]●#[default]"
 	fi
 
 	if [[ is_battery_installed ]]
 	then
+		set -g @batt_color_full_charge "#[fg=$color_level_ok]"
+		set -g @batt_color_high_charge "#[fg=$color_level_ok]"
+		set -g @batt_color_medium_charge "#[fg=$color_level_warn]"
+		set -g @batt_color_low_charge "#[fg=$color_level_stress]"
 		template="$template #{battery_status}"
+	fi
+
+	if [[ is_prefix_installed ]]
+	then
+		set -g @prefix_highlight_output_prefix '['
+		set -g @prefix_highlight_output_suffix ']'
+		set -g @prefix_highlight_fg "$primary_fg"
+		set -g @prefix_highlight_bg "$magenta"
+		set -g @prefix_highlight_show_copy_mode 'on'
+		set -g @prefix_highlight_copy_mode_attr "fg=$primary_fg,bg=$blue"
 	fi
 
 	echo $template
