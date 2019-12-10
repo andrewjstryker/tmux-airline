@@ -13,3 +13,7 @@ is_cpu_installed () {
 is_battery_installed () {
 	[[ ! $( ls "$CURRENT_DIR/.." | grep -qs "tmux-battery" ) ]]
 }
+
+is_prefix_installed () {
+	[[ ! $( ls "$CURRENT_DIR/.." | grep -qs "tmux-prefix-highlight" ) ]]
+}
