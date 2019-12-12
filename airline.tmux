@@ -15,6 +15,7 @@ load_color_scheme () {
 	local color_scheme=$(get_tmux_option airline_color_scheme solarized)
 
 	source "$CURRENT_DIR/themes/$color_scheme"
+	declare -p theme
 }
 
 #-----------------------------------------------------------------------------#
@@ -170,7 +171,7 @@ right_outer () {
 #-----------------------------------------------------------------------------#
 
 main () {
-	load_color_scheme
+	eval "$(load_color_scheme)"
 
 	tmux set -gq status-style fg=${theme[secondary_fg]} bg=${theme[inner_bg]}
 	tmux set -gq clock-mode-style  fg=${theme[special]} bg=${theme[inner_bg]}
