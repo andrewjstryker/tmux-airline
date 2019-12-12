@@ -12,7 +12,7 @@ source "$CURRENT_DIR/scripts/is_installed.sh"
 #-----------------------------------------------------------------------------#
 
 load_color_scheme () {
-	local color_scheme=$(tmux_get_option airline_color_scheme default)
+	local color_scheme=$(get_tmux_option airline_color_scheme solarized)
 
 	source "$CURRENT_DIR/themes/$color_scheme"
 }
