@@ -130,12 +130,18 @@ left_middle () {
 	echo "#[fg=$fg,bg=$bg]${template}$(chev_right $bg $next_bg)"
 }
 
-left_inner () {
-	local template="$(get_tmux_option airline_tmpl_left_inner ' ')"
-	local fg="${theme[primary_fg]}"
-	local bg="${theme[inner_bg]}"
+window_status () {
+	local template="$(get_tmux_option airline_tmpl_window '#I:#W')"
 
-	echo "#[fg=$fg,bg=$bg]${template}"
+	echo "$template"
+}
+
+window_current () {
+	local template="$(get_tmux_option airline_tmpl_window_current '#I:#W')"
+	local bg="${theme[inner_bg]}"
+	local hi="${theme[highlight]}"
+
+	echo "$(chev_right $bg $hi) $template $(chev_left $hi $bg)"
 }
 
 right_inner () {
