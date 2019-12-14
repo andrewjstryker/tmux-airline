@@ -35,7 +35,7 @@ chevron () {
 chev_right () {
 	local left_bg="$1"
 	local right_bg="$2"
-	chevron "$left_bg" "$right_bg" ""
+	chevron "$right_bg" "$left_bg" ""
 }
 
 chev_left () {
