@@ -179,27 +179,38 @@ right_outer () {
 main () {
 	eval "$(load_color_scheme)"
 
-	tmux set -gq status-style fg=${theme[secondary_fg]} bg=${theme[inner_bg]}
-	tmux set -gq clock-mode-style  fg=${theme[special]} bg=${theme[inner_bg]}
-	# tmux set -g mode-style  fg=${theme[special]} bg=${theme[inner_bg]}
-	# tmux set -g window-status-activity-style  fg=${theme[special]} bg=${theme[inner_bg]}
-	# tmux set -g window-status-bell-style  fg=${theme[special]} bg=${theme[inner_bg]}
-	# tmux set -g window-status-format-string  fg=${theme[special]} bg=${theme[inner_bg]}
-	# tmux set -g mode-style
+	# TODO: is this needed?
+	# tmux set -gq window-style "fg=${theme[primary_fg]} bg=${theme[inner_bg]}"
+	#tmux set -gq window-active-style "fg=${theme[window_fg]} bg=${theme[alert]}"
+	tmux set -gq pane-active-border-style "fg=${theme[highlight]}"
 
-	tmux set -gq status-left-style fg=${theme[primary_fg]} bg=${theme[outer_bg]}
+	tmux set -gq window-status-style "fg=${theme[secondary_fg]} bg=${theme[inner_bg]}"
+	tmux set -gq window-status-last-style "fg=${theme[primary_fg]} bg=${theme[inner_bg]}"
+	tmux set -gq window-status-format "$(window_status)"
+	tmux set -gq window-status-current-format "$(window_current)"
+
+	# Window names
+	tmux set -gq window-status-format "#I:#W"
+	tmux set -gq window-current-style "fg=${theme[primary_fg]} bg=${theme[highlight]}"
+	tmux set -gq window-last-style "fg=${theme[primary_fg]} bg=${theme[middle_bg]}"
+
+	tmux set -gq status-left-style "fg=${theme[primary_fg]} bg=${theme[outer_bg]}"
 	tmux set -gq status-left "$(left_outer) $(left_middle) $(left_inner)"
 
-	tmux set -gq status-right-style fg=${theme[primary_fg]} bg=${theme[outer_bg]}
+	tmux set -gq status-right-style "fg=${theme[primary_fg]} bg=${theme[outer_bg]}"
 	tmux set -gq status-right "$(right_outer) $(right_middle) $(right_inner)"
 
-	tmux set -gq window-style fg=${theme[secondary_fg]} bg=${theme[middle_bg]}
-	tmux set -gq window-last-style fg=${theme[primary_fg]} bg=${theme[middle_bg]}
-	tmux set -gq window-current-style fg=${theme[primary_fg]} bg=${theme[highlight]}
-	tmux set -gq window-active-style fg=${theme[primary_fg]} bg=${theme[altert]}
+	tmux set -gq clock-mode-color "${theme[special]}"
 
-	tmux set -gq pane-border-style fg=${theme[primary_fg]}
-	tmux set -gq pane-active-border-style fg=${theme[highlight]}
+	# TODO: what is mode-style?
+	#tmux set -gq mode-style "fg=${theme[special]} bg=${theme[alert]}"
+	# # tmux set -g window-status-activity-style "fg=${theme[special]} bg=${theme[inner_bg]}"
+	# # tmux set -g window-status-bell-style "fg=${theme[special]} bg=${theme[inner_bg]}"
+	# # tmux set -g window-status-format-string "fg=${theme[special]} bg=${theme[inner_bg]}"
+
+	#tmux set -gq pane-border-style "fg=${theme[primary_fg]}"
+
+	# tmux set -gq message-command-style
 }
 
 main
