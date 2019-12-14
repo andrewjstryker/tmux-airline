@@ -1,5 +1,8 @@
 # tmux airline
 
+**Warning:** this code is still in progress and not yet in as alpha release
+stage.
+
 Builds a status line similar in style to vim-airline.
 
 Abstract tmux status lines into TPM plugin. What makes this compelling?

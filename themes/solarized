@@ -39,4 +39,8 @@ theme[zoom]="$violet"
 theme[copy]="$blue"
 theme[monitor]="$green"
 
+# panes
+theme[window_bg]="$base03"
+theme[window_fg]="$base0"
+
 export theme
