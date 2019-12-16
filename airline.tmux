@@ -93,17 +93,22 @@ create_widget_template () {
 		template="$template #{battery_status}"
 	fi
 
+	echo $template
+}
+
+create_right_inner_template () {
+	local template = ""
+
 	if [[ is_prefix_installed ]]
 	then
-		set -g @prefix_highlight_output_prefix '['
-		set -g @prefix_highlight_output_suffix ']'
-		set -g @prefix_highlight_fg "$primary_fg"
-		set -g @prefix_highlight_bg "$magenta"
-		set -g @prefix_highlight_show_copy_mode 'on'
-		set -g @prefix_highlight_copy_mode_attr "fg=$primary_fg,bg=$blue"
+		tmux set -g @prefix_highlight_output_prefix '['
+		tmux set -g @prefix_highlight_output_suffix ']'
+		tmux set -g @prefix_highlight_fg "${theme[emphasized_fg]}"
+		tmux set -g @prefix_highlight_bg "${theme[special]}"
+		tmux set -g @prefix_highlight_show_copy_mode 'on'
+		tmux set -g @prefix_highlight_copy_mode_attr "fg=${them[emphasized_fg]},bg=${theme[copy]}"
 	fi
 
-	echo $template
 }
 
 #-----------------------------------------------------------------------------#
@@ -113,8 +118,8 @@ create_widget_template () {
 #-----------------------------------------------------------------------------#
 
 left_outer () {
-	local template="$(get_tmux_option airline_tmpl_left_out %H)"
-	local fg="${theme[outer_fg]}"
+	local template="$(get_tmux_option airline_tmpl_left_out '#H')"
+	local fg="${theme[emphasized_fg]}"
 	local bg="${theme[outer_bg]}"
 	local next_bg="${theme[middle_bg]}"
 
@@ -122,8 +127,8 @@ left_outer () {
 }
 
 left_middle () {
-	local template="$(get_tmux_option airline_tmpl_left_middle %S)"
-	local fg="${theme[middle_fg]}"
+	local template="$(get_tmux_option airline_tmpl_left_middle '#S')"
+	local fg="${theme[emphasized_fg]}"
 	local bg="${theme[middle_bg]}"
 	local next_bg="${theme[inner_bg]}"
 
@@ -145,6 +150,7 @@ window_current () {
 }
 
 right_inner () {
+	# explicitly check as we call a function to build the template
 	local template="$(get_tmux_option airline_tmpl_right_inner ' ')"
 	local fg="${theme[primary_fg]}"
 	local bg="${theme[inner_bg]}"
@@ -153,8 +159,9 @@ right_inner () {
 }
 
 right_middle () {
-	local template="$(get_tmux_option airline_tmpl_right_middle %S)"
-	local fg="${theme[middle_fg]}"
+	# explicitly check as we call a function to build the template
+	local template="$(get_tmux_option airline_tmpl_right_middle ' ')"
+	local fg="${theme[emphasized_fg]}"
 	local bg="${theme[middle_bg]}"
 	local prev_bg="${theme[inner_bg]}"
 
@@ -162,8 +169,8 @@ right_middle () {
 }
 
 right_outer () {
-	local template="$(get_tmux_option airline_tmpl_right_outer %S)"
-	local fg="${theme[primary_fg]}"
+	local template="$(get_tmux_option airline_tmpl_right_outer '%Y-%m-%d %H:%M')"
+	local fg="${theme[emphasized_fg]}"
 	local bg="${theme[outer_bg]}"
 	local prev_bg="${theme[middle_bg]}"
 
@@ -195,10 +202,10 @@ main () {
 	tmux set -gq window-last-style "fg=${theme[primary_fg]} bg=${theme[middle_bg]}"
 
 	tmux set -gq status-left-style "fg=${theme[primary_fg]} bg=${theme[outer_bg]}"
-	tmux set -gq status-left "$(left_outer) $(left_middle) $(left_inner)"
+	tmux set -gq status-left "$(left_outer) $(left_middle)"
 
 	tmux set -gq status-right-style "fg=${theme[primary_fg]} bg=${theme[outer_bg]}"
-	tmux set -gq status-right "$(right_outer) $(right_middle) $(right_inner)"
+	tmux set -gq status-right "$(right_inner) $(right_middle) $(right_outer)"
 
 	tmux set -gq clock-mode-color "${theme[special]}"
 
