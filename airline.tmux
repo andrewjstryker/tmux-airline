@@ -160,7 +160,7 @@ right_inner () {
 
 right_middle () {
 	# explicitly check as we call a function to build the template
-	local template="$(get_tmux_option airline_tmpl_right_middle ' ')"
+	local template="$(get_tmux_option airline_tmpl_right_middle '  ')"
 	local fg="${theme[emphasized_fg]}"
 	local bg="${theme[middle_bg]}"
 	local prev_bg="${theme[inner_bg]}"
