@@ -191,6 +191,8 @@ main () {
 	#tmux set -gq window-active-style "fg=${theme[window_fg]} bg=${theme[alert]}"
 	tmux set -gq pane-active-border-style "fg=${theme[highlight]}"
 
+	tmux set -gq status-style "fg=${theme[secondary_fg]} bg=${theme[inner_bg]}"
+
 	tmux set -gq window-status-style "fg=${theme[secondary_fg]} bg=${theme[inner_bg]}"
 	tmux set -gq window-status-last-style "fg=${theme[primary_fg]} bg=${theme[inner_bg]}"
 	tmux set -gq window-status-format "$(window_status)"
