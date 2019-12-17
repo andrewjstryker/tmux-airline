@@ -193,15 +193,14 @@ main () {
 
 	tmux set -gq status-style "fg=${theme[secondary_fg]} bg=${theme[inner_bg]}"
 
+	# Configure window statsu
 	tmux set -gq window-status-style "fg=${theme[secondary_fg]} bg=${theme[inner_bg]}"
 	tmux set -gq window-status-last-style "fg=${theme[primary_fg]} bg=${theme[inner_bg]}"
 	tmux set -gq window-status-format "$(window_status)"
 	tmux set -gq window-status-current-format "$(window_current)"
 
-	# Window names
-	tmux set -gq window-status-format "#I:#W"
-	tmux set -gq window-current-style "fg=${theme[primary_fg]} bg=${theme[highlight]}"
-	tmux set -gq window-last-style "fg=${theme[primary_fg]} bg=${theme[middle_bg]}"
+	#tmux set -gq window-last-style "fg=${theme[primary_fg]} bg=${theme[middle_bg]}"
+	#tmux set -gq window-current-style "fg=${theme[primary_fg]} bg=${theme[highlight]}"
 
 	tmux set -gq status-left-style "fg=${theme[primary_fg]} bg=${theme[outer_bg]}"
 	tmux set -gq status-left "$(left_outer) $(left_middle)"
