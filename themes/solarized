@@ -32,7 +32,7 @@ theme[secondary_fg]="$base0"
 theme[highlight]="$yellow"
 theme[special]="$magenta"
 theme[alert]="$orange"
-theme[stess]="$red"
+theme[stress]="$red"
 
 # tmux modes
 theme[zoom]="$violet"
