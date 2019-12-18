@@ -207,8 +207,8 @@ main () {
 	# Configure window status
 	tmux set -gq window-status-separator-string " "
 	tmux set -gq window-status-format "$(window_status)"
-	tmux set -gq window-status-style "fg=${theme[secondary_fg]} bg=${theme[inner_bg]}"
-	tmux set -gq window-status-last-style "fg=${theme[primary_fg]} bg=${theme[inner_bg]}"
+	tmux set -gq window-status-style "fg=${theme[primary_fg]} bg=${theme[inner_bg]}"
+	tmux set -gq window-status-last-style "fg=${theme[emphasized_fg]} bg=${theme[inner_bg]}"
 	tmux set -gq window-status-current-format "$(window_current)"
 	tmux set -gq window-status-activity-style "fg=${theme[alert]} bg=${theme[inner_bg]}"
 	tmux set -gq window-status-bell-style "fg=${theme[stress]} bg=${theme[inner_bg]}"
