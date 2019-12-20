@@ -53,7 +53,7 @@ chev_left () {
 #
 #-----------------------------------------------------------------------------#
 
-create_widget_template () {
+make_right_middle_template () {
 	local template=""
 
 	if [[ is_cpu_installed ]]
@@ -165,10 +165,16 @@ right_inner () {
 
 right_middle () {
 	# explicitly check as we call a function to build the template
-	local template="$(get_tmux_option airline_tmpl_right_middle '  ')"
 	local fg="${theme[emphasized_fg]}"
 	local bg="${theme[middle_bg]}"
 	local prev_bg="${theme[inner_bg]}"
+	local template
+
+	template="$(tmux show-option -gqv airline_right_middle_template)"
+	if [[ -z "$template" ]]
+	then
+		template="$(make_right_middle_template)"
+	fi
 
 	echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg]${template}"
 }
