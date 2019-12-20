@@ -96,9 +96,7 @@ create_widget_template () {
 	echo $template
 }
 
-create_right_inner_template () {
-	local template = ""
-
+set_right_inner_template () {
 	if [[ is_prefix_installed ]]
 	then
 		tmux set -g @prefix_highlight_output_prefix '['
@@ -109,6 +107,7 @@ create_right_inner_template () {
 		tmux set -g @prefix_highlight_copy_mode_attr "fg=${them[emphasized_fg]},bg=${theme[copy]}"
 	fi
 
+	echo " #{prefix_highlight} "
 }
 
 #-----------------------------------------------------------------------------#
@@ -151,9 +150,15 @@ window_current () {
 
 right_inner () {
 	# explicitly check as we call a function to build the template
-	local template="$(get_tmux_option airline_tmpl_right_inner ' ')"
 	local fg="${theme[primary_fg]}"
 	local bg="${theme[inner_bg]}"
+	local template
+
+	template="$(tmux show-option -gqv templateairline_tmpl_right_inner)"
+	if [[ -z "$template" ]]
+	then
+		template="$(set_right_inner_template)"
+	fi
 
 	echo "#[fg=$fg,bg=$bg]${template}"
 }
