@@ -154,7 +154,7 @@ right_inner () {
 	local bg="${theme[inner_bg]}"
 	local template
 
-	template="$(tmux show-option -gqv templateairline_tmpl_right_inner)"
+	template="$(tmux show-option -gqv airline_tmpl_right_inner)"
 	if [[ -z "$template" ]]
 	then
 		template="$(set_right_inner_template)"
