@@ -82,6 +82,7 @@ make_right_middle_template () {
 		template="$template #{online_status}"
 		set -g @online_icon "#[fg=$color_level_ok]●#[default]"
 		set -g @offline_icon "#[fg=$color_level_stress]●#[default]"
+		template="$template #{online_status}"
 	fi
 
 	if [[ is_battery_installed ]]
