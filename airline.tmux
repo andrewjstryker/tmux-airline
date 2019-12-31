@@ -87,7 +87,7 @@ make_right_middle_template () {
 		template="$template #{battery_status}"
 	fi
 
-	echo $template
+	echo "$template"
 }
 
 set_right_inner_template () {
