@@ -70,13 +70,6 @@ make_right_middle_template () {
 
 	fi
 
-	if [[ online_installed ]]
-	then
-		template=" #{online_status}"
-		tmux set -g @online_icon "#[fg=$color_level_ok]●#[default]"
-		tmux set -g @offline_icon "#[fg=$color_level_stress]●#[default]"
-	fi
-
 	if [[ is_online_installed ]]
 	then
 		template="$template #{online_status}"
