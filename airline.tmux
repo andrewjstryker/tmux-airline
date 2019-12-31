@@ -56,7 +56,7 @@ chev_left () {
 make_right_middle_template () {
 	local template=""
 
-	if [[ is_cpu_installed ]]
+	if [[ $(is_cpu_installed) ]]
 	then
 		template="$template #{cpu_fg_color}#{cpu_icon}#[bg=${theme[middle_bg]}"
 		template="$template #{gpu_fg_color}#{gpu_icon}#[bg=${theme[middle_bg]}"
@@ -70,7 +70,7 @@ make_right_middle_template () {
 
 	fi
 
-	if [[ is_online_installed ]]
+	if [[ $(is_online_installed) ]]
 	then
 		template="$template #{online_status}"
 		tmux set -g @online_icon "#[fg=$color_level_ok]●#[default]"
@@ -78,7 +78,7 @@ make_right_middle_template () {
 		template="$template #{online_status}"
 	fi
 
-	if [[ is_battery_installed ]]
+	if [[ $(is_battery_installed) ]]
 	then
 		tmux set -g @batt_color_full_charge "#[fg=$color_level_ok]"
 		tmux set -g @batt_color_high_charge "#[fg=$color_level_ok]"
@@ -91,7 +91,7 @@ make_right_middle_template () {
 }
 
 set_right_inner_template () {
-	if [[ is_prefix_installed ]]
+	if [[ $(is_prefix_installed) ]]
 	then
 		tmux set -g @prefix_highlight_output_prefix '['
 		tmux set -g @prefix_highlight_output_suffix ']'
