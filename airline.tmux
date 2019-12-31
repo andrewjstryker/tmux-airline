@@ -60,37 +60,37 @@ make_right_middle_template () {
 	then
 		template="$template #{cpu_fg_color}#{cpu_icon}#[bg=${theme[middle_bg]}"
 		template="$template #{gpu_fg_color}#{gpu_icon}#[bg=${theme[middle_bg]}"
-		set -g @cpu_low_fg_color "$primary_fg" # foreground color when cpu is low
-		set -g @cpu_medium_fg_color "$emphasized_fg" # foreground color when cpu is medium
-		set -g @cpu_high_fg_color "$stress" # foreground color when cpu is high
+		tmux set -g @cpu_low_fg_color "$primary_fg" # foreground color when cpu is low
+		tmux set -g @cpu_medium_fg_color "$emphasized_fg" # foreground color when cpu is medium
+		tmux set -g @cpu_high_fg_color "$stress" # foreground color when cpu is high
 
-		set -g @cpu_low_bg_color "$middle_bg" # background color when cpu is low
-		set -g @cpu_medium_bg_color "$middle_bg" # background color when cpu is medium
-		set -g @cpu_high_bg_color "$middle_bg" # background color when cpu is high
+		tmux set -g @cpu_low_bg_color "$middle_bg" # background color when cpu is low
+		tmux set -g @cpu_medium_bg_color "$middle_bg" # background color when cpu is medium
+		tmux set -g @cpu_high_bg_color "$middle_bg" # background color when cpu is high
 
 	fi
 
 	if [[ online_installed ]]
 	then
 		template=" #{online_status}"
-		set -g @online_icon "#[fg=$color_level_ok]●#[default]"
-		set -g @offline_icon "#[fg=$color_level_stress]●#[default]"
+		tmux set -g @online_icon "#[fg=$color_level_ok]●#[default]"
+		tmux set -g @offline_icon "#[fg=$color_level_stress]●#[default]"
 	fi
 
 	if [[ is_online_installed ]]
 	then
 		template="$template #{online_status}"
-		set -g @online_icon "#[fg=$color_level_ok]●#[default]"
-		set -g @offline_icon "#[fg=$color_level_stress]●#[default]"
+		tmux set -g @online_icon "#[fg=$color_level_ok]●#[default]"
+		tmux set -g @offline_icon "#[fg=$color_level_stress]●#[default]"
 		template="$template #{online_status}"
 	fi
 
 	if [[ is_battery_installed ]]
 	then
-		set -g @batt_color_full_charge "#[fg=$color_level_ok]"
-		set -g @batt_color_high_charge "#[fg=$color_level_ok]"
-		set -g @batt_color_medium_charge "#[fg=$color_level_warn]"
-		set -g @batt_color_low_charge "#[fg=$color_level_stress]"
+		tmux set -g @batt_color_full_charge "#[fg=$color_level_ok]"
+		tmux set -g @batt_color_high_charge "#[fg=$color_level_ok]"
+		tmux set -g @batt_color_medium_charge "#[fg=$color_level_warn]"
+		tmux set -g @batt_color_low_charge "#[fg=$color_level_stress]"
 		template="$template #{battery_status}"
 	fi
 
