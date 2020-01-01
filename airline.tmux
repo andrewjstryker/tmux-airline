@@ -98,7 +98,7 @@ set_right_inner_template () {
 		tmux set -g @prefix_highlight_fg "${theme[emphasized_fg]}"
 		tmux set -g @prefix_highlight_bg "${theme[special]}"
 		tmux set -g @prefix_highlight_show_copy_mode 'on'
-		tmux set -g @prefix_highlight_copy_mode_attr "fg=${them[emphasized_fg]},bg=${theme[copy]}"
+		tmux set -g @prefix_highlight_copy_mode_attr "fg=${theme[emphasized_fg]},bg=${theme[copy]}"
 	fi
 
 	echo " #{prefix_highlight} "
