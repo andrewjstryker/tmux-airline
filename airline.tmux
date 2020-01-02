@@ -111,12 +111,21 @@ make_right_inner_template () {
 #-----------------------------------------------------------------------------#
 
 left_outer () {
-	local template="$(get_tmux_option airline_tmpl_left_out '#H')"
+	local template
 	local fg="${theme[emphasized_fg]}"
 	local bg="${theme[outer_bg]}"
 	local next_bg="${theme[middle_bg]}"
 
-	echo "#[fg=$fg,bg=$bg]${template}$(chev_right $bg $next_bg)"
+	template="$(tmux show-options -gpv airline_tmpl_left_outer)"
+	if [[ -z $template ]]
+	then
+		template="#{online_status}#[fg=$fg,bg=$bg] $(hostname | cut -d '.' -f 1)"
+		tmux set -g @online_icon "#[fg=${theme[color_level_ok]}]●#[default]"
+		tmux set -g @offline_icon "#[fg=${theme[color_level_stress]}]●#[default]"
+	fi
+
+	#echo "#[fg=$fg,bg=$bg]${template}$(chev_right $bg $next_bg)"
+	echo "#[fg=$fg,bg=$bg]$template $(chev_right $bg $next_bg)"
 }
 
 left_middle () {
@@ -164,13 +173,28 @@ right_middle () {
 	local prev_bg="${theme[inner_bg]}"
 	local template
 
-	template="$(tmux show-option -gqv airline_right_middle_template)"
+	tmux set -g @cpu_low_fg_color "${theme[primary_fg]}" # foreground color when cpu is low
+	tmux set -g @cpu_medium_fg_color "${theme[emphasized_fg]}" # foreground color when cpu is medium
+	tmux set -g @cpu_high_fg_color "${theme[stress]}" # foreground color when cpu is high
+
+	tmux set -g @cpu_low_bg_color "${theme[middle_bg]}" # background color when cpu is low
+	tmux set -g @cpu_medium_bg_color "${theme[middle_bg]}" # background color when cpu is medium
+	tmux set -g @cpu_high_bg_color "${theme[middle_bg]}" # background color when cpu is high
+
+	tmux set -g @batt_color_full_charge "#[fg=${theme[color_level_ok]}]"
+	tmux set -g @batt_color_high_charge "#[fg=${theme[color_level_ok]}]"
+	tmux set -g @batt_color_medium_charge "#[fg=${theme[color_level_warn]}]"
+	tmux set -g @batt_color_low_charge "#[fg=${theme[color_level_stress]}]"
+
+	#template="$(tmux show-option -gqv airline_right_middle_template)"
+	template="#{cpu_icon} #{gpu_icon} #{battery_icon}"
 	if [[ -z "$template" ]]
 	then
 		template="$(make_right_middle_template)"
 	fi
 
-	echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg]${template}"
+	#echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg]${template}"
+	echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg] $template"
 }
 
 right_outer () {
