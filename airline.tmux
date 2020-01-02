@@ -177,9 +177,9 @@ right_middle () {
 	tmux set -g @cpu_medium_fg_color "${theme[emphasized_fg]}" # foreground color when cpu is medium
 	tmux set -g @cpu_high_fg_color "${theme[stress]}" # foreground color when cpu is high
 
-	tmux set -g @cpu_low_bg_color "${theme[middle_bg]}" # background color when cpu is low
-	tmux set -g @cpu_medium_bg_color "${theme[middle_bg]}" # background color when cpu is medium
-	tmux set -g @cpu_high_bg_color "${theme[middle_bg]}" # background color when cpu is high
+	tmux set -g @gpu_low_bg_color "${theme[middle_bg]}" # background color when cpu is low
+	tmux set -g @gpu_medium_bg_color "${theme[middle_bg]}" # background color when cpu is medium
+	tmux set -g @gpu_high_bg_color "${theme[middle_bg]}" # background color when cpu is high
 
 	tmux set -g @batt_color_full_charge "#[fg=${theme[color_level_ok]}]"
 	tmux set -g @batt_color_high_charge "#[fg=${theme[color_level_ok]}]"
