@@ -90,7 +90,7 @@ make_right_middle_template () {
 	echo "$template"
 }
 
-set_right_inner_template () {
+make_right_inner_template () {
 	if [[ $(is_prefix_installed) ]]
 	then
 		tmux set -g @prefix_highlight_output_prefix '['
@@ -151,7 +151,7 @@ right_inner () {
 	template="$(tmux show-option -gqv airline_tmpl_right_inner)"
 	if [[ -z "$template" ]]
 	then
-		template="$(set_right_inner_template)"
+		template="$(make_right_inner_template)"
 	fi
 
 	echo "#[fg=$fg,bg=$bg]${template}"
