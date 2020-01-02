@@ -189,10 +189,10 @@ right_middle () {
 	tmux set -g @gpu_medium_bg_color "${theme[middle_bg]}" # background color when cpu is medium
 	tmux set -g @gpu_high_bg_color "${theme[middle_bg]}" # background color when cpu is high
 
-	tmux set -g @batt_color_full_charge "#[fg=${theme[color_level_ok]}]"
-	tmux set -g @batt_color_high_charge "#[fg=${theme[color_level_ok]}]"
-	tmux set -g @batt_color_medium_charge "#[fg=${theme[color_level_warn]}]"
-	tmux set -g @batt_color_low_charge "#[fg=${theme[color_level_stress]}]"
+	tmux set -g @batt_color_full_charge "#[fg=${theme[secondary_fg]}]"
+	tmux set -g @batt_color_high_charge "#[fg=${theme[primary_fg]}]"
+	tmux set -g @batt_color_medium_charge "#[fg=${theme[alert]}]"
+	tmux set -g @batt_color_low_charge "#[fg=${theme[stress]}]"
 
 	#template="$(tmux show-option -gqv airline_right_middle_template)"
 	template="#{cpu_icon} #{gpu_icon} #{battery_icon}"
