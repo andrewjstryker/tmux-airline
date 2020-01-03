@@ -119,13 +119,13 @@ left_outer () {
 	template="$(tmux show-options -gpv airline_tmpl_left_outer)"
 	if [[ -z $template ]]
 	then
-		template="#{online_status}#[fg=$fg,bg=$bg] $(hostname | cut -d '.' -f 1)"
-		tmux set -g @online_icon "#[fg=${theme[color_level_ok]}]●#[default]"
-		tmux set -g @offline_icon "#[fg=${theme[color_level_stress]}]●#[default]"
+		template="#{online_status}"
+		tmux set -g @online_icon "#[fg=${theme[monitor]}]●"
+		tmux set -g @offline_icon "#[fg=${theme[stress]}]●"
 	fi
 
 	#echo "#[fg=$fg,bg=$bg]${template}$(chev_right $bg $next_bg)"
-	echo "#[fg=$fg,bg=$bg]$template $(chev_right $bg $next_bg)"
+	echo "#[fg=$fg,bg=$bg] ${template} $(chev_right $bg $next_bg)"
 }
 
 left_middle () {
