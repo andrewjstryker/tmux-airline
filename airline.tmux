@@ -201,13 +201,12 @@ right_middle () {
 	tmux set -g @batt_color_low_charge "#[fg=${theme[stress]}]"
 
 	#template="$(tmux show-option -gqv airline_right_middle_template)"
-	template="#{cpu_icon} #{gpu_icon} #{battery_icon}"
+	template="#[fg=#{cpu_fg_color}]#{cpu_icon} #[fg=#{gpu_fg_color}]#{gpu_icon}"
 	if [[ -z "$template" ]]
 	then
 		template="$(make_right_middle_template)"
 	fi
 
-	#echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg]${template}"
 	echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg] $template"
 }
 
