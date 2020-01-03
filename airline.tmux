@@ -129,12 +129,18 @@ left_outer () {
 }
 
 left_middle () {
-	local template="$(get_tmux_option airline_tmpl_left_middle '#S')"
-	local fg="${theme[emphasized_fg]}"
+	local template
+	local fg="${theme[primary_fg]}"
 	local bg="${theme[middle_bg]}"
 	local next_bg="${theme[inner_bg]}"
 
-	echo "#[fg=$fg,bg=$bg]${template}$(chev_right $bg $next_bg) "
+	template="$(tmux show-options -gpv airline_tmpl_left_middle)"
+	if [[ -z $template ]]
+	then
+		template="$(hostname | cut -d '.' -f 1)"
+	fi
+
+	echo "#[fg=$fg,bg=$bg] ${template} $(chev_right $bg $next_bg) "
 }
 
 window_status () {
