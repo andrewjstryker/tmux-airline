@@ -217,7 +217,41 @@ right_outer () {
 	local bg="${theme[outer_bg]}"
 	local prev_bg="${theme[middle_bg]}"
 
-	echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg]${template}"
+	template="%Y-%m-%d %H:%M #{battery_color_fg}#[bg=$bg]#{battery_icon}"
+
+	tmux set -g @batt_color_full_charge "#[fg=${theme[secondary_fg]}]"
+	tmux set -g @batt_color_high_charge "#[fg=${theme[primary_fg]}]"
+	tmux set -g @batt_color_medium_charge "#[fg=${theme[alert]}]"
+	tmux set -g @batt_color_low_charge "#[fg=${theme[stress]}]"
+
+	# over-riding defaults to match theme
+        tmux set -g @batt_color_charge_primary_tier8 "${theme[monitor]}"
+        tmux set -g @batt_color_charge_primary_tier7 "${theme[monitor]}"
+        tmux set -g @batt_color_charge_primary_tier6 "${theme[monitor]}"
+        tmux set -g @batt_color_charge_primary_tier5 "${theme[monitor]}"
+        tmux set -g @batt_color_charge_primary_tier4 "${theme[altert]}"
+        tmux set -g @batt_color_charge_primary_tier3 "${theme[altert]}"
+        tmux set -g @batt_color_charge_primary_tier2 "${theme[stress]}"
+        tmux set -g @batt_color_charge_primary_tier1 "${theme[stress]}"
+
+        # tmux set -g @batt_icon_charge_tier8 '🌕'
+        # tmux set -g @batt_icon_charge_tier7 '🌖'
+        # tmux set -g @batt_icon_charge_tier6 '🌖'
+        # tmux set -g @batt_icon_charge_tier5 '🌗'
+        # tmux set -g @batt_icon_charge_tier4 '🌗'
+        # tmux set -g @batt_icon_charge_tier3 '🌘'
+        # tmux set -g @batt_icon_charge_tier2 '🌘'
+        # tmux set -g @batt_icon_charge_tier1 '🌑'
+        tmux set -g @batt_icon_status_charged '🔋'
+        tmux set -g @batt_icon_status_charging '⚡'
+
+	tmux set -g @batt_color_status_primary_charged "${theme[emphasized_fg]}"
+	tmux set -g @batt_color_status_primary_charging "${theme[monitor]}"
+	tmux set -g @batt_color_status_primary_discharging "${theme[alert]}"
+	tmux set -g @batt_color_status_primary_attached "${theme[secondary_fg]}"
+	tmux set -g @batt_color_status_primary_unknown "${theme[stress]}"
+
+	echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg] ${template}"
 }
 
 #-----------------------------------------------------------------------------#
