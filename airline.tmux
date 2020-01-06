@@ -116,7 +116,7 @@ left_outer () {
 	local bg="${theme[outer_bg]}"
 	local next_bg="${theme[middle_bg]}"
 
-	template="$(tmux show-options -gpv airline_tmpl_left_outer)"
+	template="$(tmux show-options -gv airline_tmpl_left_outer)"
 	if [[ -z $template ]]
 	then
 		template="#{online_status}"
@@ -134,7 +134,7 @@ left_middle () {
 	local bg="${theme[middle_bg]}"
 	local next_bg="${theme[inner_bg]}"
 
-	template="$(tmux show-options -gpv airline_tmpl_left_middle)"
+	template="$(tmux show-options -gv airline_tmpl_left_middle)"
 	if [[ -z $template ]]
 	then
 		template="$(hostname | cut -d '.' -f 1)"
