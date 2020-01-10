@@ -158,7 +158,6 @@ window_current () {
 }
 
 right_inner () {
-<<<<<<< HEAD
   # explicitly check as we call a function to build the template
   local fg="${theme[primary_fg]}"
   local bg="${theme[inner_bg]}"
