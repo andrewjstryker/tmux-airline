@@ -244,72 +244,72 @@ right_outer () {
 }
 
 right_middle () {
-	# explicitly check as we call a function to build the template
-	local fg="${theme[emphasized_fg]}"
-	local bg="${theme[middle_bg]}"
-	local prev_bg="${theme[inner_bg]}"
-	local template
+  # explicitly check as we call a function to build the template
+  local fg="${theme[emphasized_fg]}"
+  local bg="${theme[middle_bg]}"
+  local prev_bg="${theme[inner_bg]}"
+  local template
 
-	tmux set -g @cpu_low_fg_color "${theme[secondary_fg]}" # foreground color when cpu is low
-	tmux set -g @cpu_medium_fg_color "${theme[alert]}" # foreground color when cpu is medium
-	tmux set -g @cpu_high_fg_color "${theme[stress]}" # foreground color when cpu is high
+  tmux set -g @cpu_low_fg_color "${theme[secondary_fg]}" # foreground color when cpu is low
+  tmux set -g @cpu_medium_fg_color "${theme[alert]}" # foreground color when cpu is medium
+  tmux set -g @cpu_high_fg_color "${theme[stress]}" # foreground color when cpu is high
 
-	tmux set -g @cpu_low_bg_color "${theme[middle_bg]}" # background color when cpu is low
-	tmux set -g @cpu_medium_bg_color "${theme[middle_bg]}" # background color when cpu is medium
-	tmux set -g @cpu_high_bg_color "${theme[middle_bg]}" # background color when cpu is high
+  tmux set -g @cpu_low_bg_color "${theme[middle_bg]}" # background color when cpu is low
+  tmux set -g @cpu_medium_bg_color "${theme[middle_bg]}" # background color when cpu is medium
+  tmux set -g @cpu_high_bg_color "${theme[middle_bg]}" # background color when cpu is high
 
-	#template="$(tmux show-option -gqv airline_right_middle_template)"
-	template="#[fg=#{cpu_fg_color}]#{cpu_icon}"
-	if [[ -z "$template" ]]
-	then
-		template="$(make_right_middle_template)"
-	fi
+  #template="$(tmux show-option -gqv airline_right_middle_template)"
+  template="#[fg=#{cpu_fg_color}]#{cpu_icon}"
+  if [[ -z "$template" ]]
+  then
+    template="$(make_right_middle_template)"
+  fi
 
-	echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg] $template"
+  echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg] $template"
 }
 
 right_outer () {
-	local template
-	local fg="${theme[emphasized_fg]}"
-	local bg="${theme[outer_bg]}"
-	local prev_bg="${theme[middle_bg]}"
+  local template
+  local fg="${theme[emphasized_fg]}"
+  local bg="${theme[outer_bg]}"
+  local prev_bg="${theme[middle_bg]}"
 
-	template="%Y-%m-%d %H:%M #{battery_color_fg}#[bg=$bg]#{battery_icon}"
+  template="%Y-%m-%d %H:%M #{battery_color_fg}#[bg=$bg]#{battery_icon}"
 
-	tmux set -g @batt_color_full_charge "#[fg=${theme[secondary_fg]}]"
-	tmux set -g @batt_color_high_charge "#[fg=${theme[primary_fg]}]"
-	tmux set -g @batt_color_medium_charge "#[fg=${theme[alert]}]"
-	tmux set -g @batt_color_low_charge "#[fg=${theme[stress]}]"
+  tmux set -g @batt_color_full_charge "#[fg=${theme[secondary_fg]}]"
+  tmux set -g @batt_color_high_charge "#[fg=${theme[primary_fg]}]"
+  tmux set -g @batt_color_medium_charge "#[fg=${theme[alert]}]"
+  tmux set -g @batt_color_low_charge "#[fg=${theme[stress]}]"
 
-	# over-riding defaults to match theme
-        tmux set -g @batt_color_charge_primary_tier8 "${theme[emphasized_fg]}"
-        tmux set -g @batt_color_charge_primary_tier7 "${theme[emphasized_fg]}"
-        tmux set -g @batt_color_charge_primary_tier6 "${theme[emphasized_fg]}"
-        tmux set -g @batt_color_charge_primary_tier5 "${theme[emphasized_fg]}"
-        tmux set -g @batt_color_charge_primary_tier4 "${theme[altert]}"
-        tmux set -g @batt_color_charge_primary_tier3 "${theme[altert]}"
-        tmux set -g @batt_color_charge_primary_tier2 "${theme[stress]}"
-        tmux set -g @batt_color_charge_primary_tier1 "${theme[stress]}"
+  # over-riding defaults to match theme
+  tmux set -g @batt_color_charge_primary_tier8 "${theme[emphasized_fg]}"
+  tmux set -g @batt_color_charge_primary_tier7 "${theme[emphasized_fg]}"
+  tmux set -g @batt_color_charge_primary_tier6 "${theme[emphasized_fg]}"
+  tmux set -g @batt_color_charge_primary_tier5 "${theme[emphasized_fg]}"
+  tmux set -g @batt_color_charge_primary_tier4 "${theme[altert]}"
+  tmux set -g @batt_color_charge_primary_tier3 "${theme[altert]}"
+  tmux set -g @batt_color_charge_primary_tier2 "${theme[stress]}"
+  tmux set -g @batt_color_charge_primary_tier1 "${theme[stress]}"
 
-        tmux set -g @batt_icon_charge_tier8 '🌕'
-        tmux set -g @batt_icon_charge_tier7 '🌖'
-        tmux set -g @batt_icon_charge_tier6 '🌖'
-        tmux set -g @batt_icon_charge_tier5 '🌗'
-        tmux set -g @batt_icon_charge_tier4 '🌗'
-        tmux set -g @batt_icon_charge_tier3 '🌘'
-        tmux set -g @batt_icon_charge_tier2 '🌘'
-        tmux set -g @batt_icon_charge_tier1 '🌑'
-        tmux set -g @batt_icon_status_charged '🔋'
-        tmux set -g @batt_icon_status_charging '⚡'
+  tmux set -g @batt_icon_charge_tier8 '🌕'
+  tmux set -g @batt_icon_charge_tier7 '🌖'
+  tmux set -g @batt_icon_charge_tier6 '🌖'
+  tmux set -g @batt_icon_charge_tier5 '🌗'
+  tmux set -g @batt_icon_charge_tier4 '🌗'
+  tmux set -g @batt_icon_charge_tier3 '🌘'
+  tmux set -g @batt_icon_charge_tier2 '🌘'
+  tmux set -g @batt_icon_charge_tier1 '🌑'
+  tmux set -g @batt_icon_status_charged '🔋'
+  tmux set -g @batt_icon_status_charging '⚡'
 
-        tmux set -g @batt_color_status_primary_charged "${theme[emphasized_fg]}"
-        tmux set -g @batt_color_status_primary_charging "${theme[monitor]}"
-        tmux set -g @batt_color_status_primary_discharging "${theme[alert]}"
-        tmux set -g @batt_color_status_primary_attached "${theme[secondary_fg]}"
-        tmux set -g @batt_color_status_primary_unknown "${theme[stress]}"
+  tmux set -g @batt_color_status_primary_charged "${theme[emphasized_fg]}"
+  tmux set -g @batt_color_status_primary_charging "${theme[monitor]}"
+  tmux set -g @batt_color_status_primary_discharging "${theme[alert]}"
+  tmux set -g @batt_color_status_primary_attached "${theme[secondary_fg]}"
+  tmux set -g @batt_color_status_primary_unknown "${theme[stress]}"
 
-        echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg] ${template}"
-      }
+  echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg] ${template}"
+}
 
 #-----------------------------------------------------------------------------#
 #
@@ -318,42 +318,42 @@ right_outer () {
 #-----------------------------------------------------------------------------#
 
 main () {
-	eval "$(load_color_scheme)"
+  eval "$(load_color_scheme)"
 
-	# TODO: is this needed?
-	# TODO: what is mode-style?
-	#tmux set -gq mode-style "fg=${theme[special]} bg=${theme[alert]}"
-	# tmux set -gq message-command-style
-	#tmux set -gq window-last-style "fg=${theme[primary_fg]} bg=${theme[middle_bg]}"
-	#tmux set -gq window-current-style "fg=${theme[primary_fg]} bg=${theme[highlight]}"
-	# tmux set -gq window-style "fg=${theme[primary_fg]} bg=${theme[inner_bg]}"
-	#tmux set -gq window-active-style "fg=${theme[window_fg]} bg=${theme[alert]}"
+  # TODO: is this needed?
+  # TODO: what is mode-style?
+  #tmux set -gq mode-style "fg=${theme[special]} bg=${theme[alert]}"
+  # tmux set -gq message-command-style
+  #tmux set -gq window-last-style "fg=${theme[primary_fg]} bg=${theme[middle_bg]}"
+  #tmux set -gq window-current-style "fg=${theme[primary_fg]} bg=${theme[highlight]}"
+  # tmux set -gq window-style "fg=${theme[primary_fg]} bg=${theme[inner_bg]}"
+  #tmux set -gq window-active-style "fg=${theme[window_fg]} bg=${theme[alert]}"
 
-	# Configure panes, use highlight color for active panes
-	tmux set -gq pane-border-style "fg=${theme[primary_fg]}"
-	tmux set -gq pane-active-border-style "fg=${theme[highlight]}"
-	tmux set -gq display-panes-color "${theme[primary_fg]}"
-	tmux set -gq display-panes-active-color "${theme[highlight]}"
+  # Configure panes, use highlight color for active panes
+  tmux set -gq pane-border-style "fg=${theme[primary_fg]}"
+  tmux set -gq pane-active-border-style "fg=${theme[highlight]}"
+  tmux set -gq display-panes-color "${theme[primary_fg]}"
+  tmux set -gq display-panes-active-color "${theme[highlight]}"
 
-	# Build the status bar
-	tmux set -gq status-style "fg=${theme[secondary_fg]} bg=${theme[inner_bg]}"
+  # Build the status bar
+  tmux set -gq status-style "fg=${theme[secondary_fg]} bg=${theme[inner_bg]}"
 
-	# Configure window status
-	tmux set -gq window-status-separator-string " "
-	tmux set -gq window-status-format "$(window_status)"
-	tmux set -gq window-status-style "fg=${theme[primary_fg]} bg=${theme[inner_bg]}"
-	tmux set -gq window-status-last-style "fg=${theme[emphasized_fg]} bg=${theme[inner_bg]}"
-	tmux set -gq window-status-current-format "$(window_current)"
-	tmux set -gq window-status-activity-style "fg=${theme[alert]} bg=${theme[inner_bg]}"
-	tmux set -gq window-status-bell-style "fg=${theme[stress]} bg=${theme[inner_bg]}"
+  # Configure window status
+  tmux set -gq window-status-separator-string " "
+  tmux set -gq window-status-format "$(window_status)"
+  tmux set -gq window-status-style "fg=${theme[primary_fg]} bg=${theme[inner_bg]}"
+  tmux set -gq window-status-last-style "fg=${theme[emphasized_fg]} bg=${theme[inner_bg]}"
+  tmux set -gq window-status-current-format "$(window_current)"
+  tmux set -gq window-status-activity-style "fg=${theme[alert]} bg=${theme[inner_bg]}"
+  tmux set -gq window-status-bell-style "fg=${theme[stress]} bg=${theme[inner_bg]}"
 
-	tmux set -gq status-left-style "fg=${theme[primary_fg]} bg=${theme[outer_bg]}"
-	tmux set -gq status-left "$(left_outer) $(left_middle)"
+  tmux set -gq status-left-style "fg=${theme[primary_fg]} bg=${theme[outer_bg]}"
+  tmux set -gq status-left "$(left_outer) $(left_middle)"
 
-	tmux set -gq status-right-style "fg=${theme[primary_fg]} bg=${theme[outer_bg]}"
-	tmux set -gq status-right "$(right_inner) $(right_middle) $(right_outer)"
+  tmux set -gq status-right-style "fg=${theme[primary_fg]} bg=${theme[outer_bg]}"
+  tmux set -gq status-right "$(right_inner) $(right_middle) $(right_outer)"
 
-	tmux set -gq clock-mode-color "${theme[special]}"
+  tmux set -gq clock-mode-color "${theme[special]}"
 
 }
 
