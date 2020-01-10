@@ -123,29 +123,29 @@ left_outer () {
     tmux set -g @offline_icon "#[fg=${theme[stress]}]●"
   fi
 
-        #echo "#[fg=$fg,bg=$bg]${template}$(chev_right $bg $next_bg)"
-        echo "#[fg=$fg,bg=$bg] ${template} $(chev_right $bg $next_bg)"
-      }
+  #echo "#[fg=$fg,bg=$bg]${template}$(chev_right $bg $next_bg)"
+  echo "#[fg=$fg,bg=$bg] ${template} $(chev_right $bg $next_bg)"
+}
 
-    left_middle () {
-      local template
-      local fg="${theme[primary_fg]}"
-      local bg="${theme[middle_bg]}"
-      local next_bg="${theme[inner_bg]}"
+left_middle () {
+  local template
+  local fg="${theme[primary_fg]}"
+  local bg="${theme[middle_bg]}"
+  local next_bg="${theme[inner_bg]}"
 
-      if [[ -z $template ]]
-      then
-        template="$(hostname | cut -d '.' -f 1)"
-      fi
+  if [[ -z $template ]]
+  then
+    template="$(hostname | cut -d '.' -f 1)"
+  fi
 
-      echo "#[fg=$fg,bg=$bg] ${template} $(chev_right $bg $next_bg) "
-    }
+  echo "#[fg=$fg,bg=$bg] ${template} $(chev_right $bg $next_bg) "
+}
 
-  window_status () {
-    local template="$(get_tmux_option @airline_tmpl_window '#I:#W')"
+window_status () {
+  local template="$(get_tmux_option @airline_tmpl_window '#I:#W')"
 
-    echo "$template"
-  }
+  echo "$template"
+}
 
 window_current () {
   local template="$(get_tmux_option @airline_tmpl_window_current '#I:#W')"
