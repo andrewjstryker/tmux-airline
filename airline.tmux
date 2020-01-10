@@ -293,7 +293,6 @@ right_outer () {
         tmux set -g @batt_color_charge_primary_tier7 "${theme[emphasized_fg]}"
         tmux set -g @batt_color_charge_primary_tier6 "${theme[emphasized_fg]}"
         tmux set -g @batt_color_charge_primary_tier5 "${theme[emphasized_fg]}"
->>>>>>> Fix icons
         tmux set -g @batt_color_charge_primary_tier4 "${theme[altert]}"
         tmux set -g @batt_color_charge_primary_tier3 "${theme[altert]}"
         tmux set -g @batt_color_charge_primary_tier2 "${theme[stress]}"
