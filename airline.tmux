@@ -297,6 +297,6 @@ main () {
 
 	tmux set -gq clock-mode-color "${theme[special]}"
 
-      }
+}
 
-    main
+main
