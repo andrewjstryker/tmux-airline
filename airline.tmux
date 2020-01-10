@@ -116,7 +116,6 @@ left_outer () {
   local bg="${theme[outer_bg]}"
   local next_bg="${theme[middle_bg]}"
 
-  template="$(tmux show-options -gv airline_tmpl_left_outer)"
   if [[ -z $template ]]
   then
     template="#{online_status}"
@@ -134,7 +133,6 @@ left_outer () {
       local bg="${theme[middle_bg]}"
       local next_bg="${theme[inner_bg]}"
 
-      template="$(tmux show-options -gv airline_tmpl_left_middle)"
       if [[ -z $template ]]
       then
         template="$(hostname | cut -d '.' -f 1)"
@@ -144,13 +142,13 @@ left_outer () {
     }
 
   window_status () {
-    local template="$(get_tmux_option airline_tmpl_window '#I:#W')"
+    local template="$(get_tmux_option @airline_tmpl_window '#I:#W')"
 
     echo "$template"
   }
 
 window_current () {
-  local template="$(get_tmux_option airline_tmpl_window_current '#I:#W')"
+  local template="$(get_tmux_option @airline_tmpl_window_current '#I:#W')"
   local bg="${theme[inner_bg]}"
   local hi="${theme[highlight]}"
 
@@ -163,7 +161,7 @@ right_inner () {
   local bg="${theme[inner_bg]}"
   local template
 
-  template="$(tmux show-option -gqv airline_tmpl_right_inner)"
+  template="$(tmux show-option -gqv @airline_tmpl_right_inner)"
   if [[ -z "$template" ]]
   then
     template="$(make_right_inner_template)"
@@ -206,7 +204,7 @@ right_middle () {
 }
 
 right_outer () {
-  local template="$(get_tmux_option airline_tmpl_right_outer '%Y-%m-%d %H:%M')"
+  local template="$(get_tmux_option @airline_tmpl_right_outer '%Y-%m-%d %H:%M')"
   local fg="${theme[emphasized_fg]}"
   local bg="${theme[outer_bg]}"
   local prev_bg="${theme[middle_bg]}"
