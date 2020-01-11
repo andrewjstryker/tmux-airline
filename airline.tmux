@@ -203,46 +203,6 @@ right_middle () {
   echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg] $template"
 }
 
-right_outer () {
-  local template="$(get_tmux_option @airline_tmpl_right_outer '%Y-%m-%d %H:%M')"
-  local fg="${theme[emphasized_fg]}"
-  local bg="${theme[outer_bg]}"
-  local prev_bg="${theme[middle_bg]}"
-
-  template="%Y-%m-%d %H:%M #{battery_color_fg}#[bg=$bg]#{battery_icon}"
-
-  tmux set -g @batt_color_full_charge "#[fg=${theme[secondary_fg]}]"
-  tmux set -g @batt_color_high_charge "#[fg=${theme[primary_fg]}]"
-  tmux set -g @batt_color_medium_charge "#[fg=${theme[alert]}]"
-  tmux set -g @batt_color_low_charge "#[fg=${theme[stress]}]"
-
-  # over-riding defaults to match theme
-  tmux set -g @batt_color_charge_primary_tier8 "${theme[monitor]}"
-  tmux set -g @batt_color_charge_primary_tier7 "${theme[monitor]}"
-  tmux set -g @batt_color_charge_primary_tier6 "${theme[monitor]}"
-  tmux set -g @batt_color_charge_primary_tier5 "${theme[monitor]}"
-
-  # explicitly check as we call a function to build the template
-  local fg="${theme[primary_fg]}"
-  local bg="${theme[inner_bg]}"
-  local template
-
-  tmux set -g @prefix_highlight_output_prefix '['
-  tmux set -g @prefix_highlight_output_suffix ']'
-  tmux set -g @prefix_highlight_fg "${theme[emphasized_fg]}"
-  tmux set -g @prefix_highlight_bg "${theme[special]}"
-  tmux set -g @prefix_highlight_show_copy_mode 'on'
-  tmux set -g @prefix_highlight_copy_mode_attr "fg=${theme[emphasized_fg]},bg=${theme[copy]}"
-  template="#{prefix_highlight}"
-
-  if [[ -z "$template" ]]
-  then
-          template="$(make_right_inner_template)"
-  fi
-
-  echo "#[fg=$fg,bg=$bg]${template}"
-}
-
 right_middle () {
   # explicitly check as we call a function to build the template
   local fg="${theme[emphasized_fg]}"
