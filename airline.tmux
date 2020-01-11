@@ -129,7 +129,7 @@ left_outer () {
 
 left_middle () {
   local template
-  local fg="${theme[primary_fg]}"
+  local fg="${theme[emphasized_fg]}"
   local bg="${theme[middle_bg]}"
   local next_bg="${theme[inner_bg]}"
 
@@ -236,7 +236,7 @@ right_outer () {
 
   template="%Y-%m-%d %H:%M #{battery_color_fg}#[bg=$bg]#{battery_icon}"
 
-  tmux set -g @batt_color_full_charge "#[fg=${theme[secondary_fg]}]"
+  tmux set -g @batt_color_full_charge "#[fg=${theme[emphasized_fg]}]"
   tmux set -g @batt_color_high_charge "#[fg=${theme[primary_fg]}]"
   tmux set -g @batt_color_medium_charge "#[fg=${theme[alert]}]"
   tmux set -g @batt_color_low_charge "#[fg=${theme[stress]}]"
