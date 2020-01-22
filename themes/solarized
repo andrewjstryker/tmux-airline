@@ -1,6 +1,6 @@
-#! /usr/bin/env bash
-
-declare -A theme
+# Solarized dark colorscheme
+#
+# Assumes a terminal with Solarized color palette
 
 # solarized color palette
 base03="colour8"       # background (dark)
@@ -20,27 +20,32 @@ blue="colour4"
 cyan="colour6"
 green="colour2"
 
-# status line colors
-theme[outer_bg]="$base00"
-theme[middle_bg]="$base01"
-theme[inner_bg]="$base02"
-theme[primary_fg]="$base1"
-theme[emphasized_fg]="$base2"
-theme[secondary_fg]="$base0"
+# status line "normal" background colors
+set-option -g @airline-outer-bg "$base00"
+set-option -g @airline-middle-bg "$base01"
+set-option -g @airline-inner-bg "$base02"
 
-# accent colors
-theme[highlight]="$yellow"
-theme[special]="$magenta"
-theme[alert]="$orange"
-theme[stress]="$red"
+# "normal" content colors
+set-option -g @airline-secondary "$base0"
+set-option -g @airline-primary "$base1"
+set-option -g @airline-emphasized "$base2"
 
+# highlight active elements
+set-option -g @airline-active "$yellow"
+
+# highlight special conditions
+set-option -g @airline-special "$magenta"
+
+# highlight alert/active conditions
+set-option -g @airline-alert "$orange"
+
+# highlight high stress conditions
+set-option -g @airline-stress "$red"
+
+# h 
 # tmux modes
-theme[zoom]="$violet"
-theme[copy]="$blue"
-theme[monitor]="$green"
+# theme[zoom]="$violet"
+# theme[copy]="$blue"
+# theme[monitor]="$green"
 
-# panes
-theme[window_bg]="$base03"
-theme[window_fg]="$base0"
-
-export theme
+# vim: ft=tmux
