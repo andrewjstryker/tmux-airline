@@ -58,14 +58,10 @@ make_right_middle_template () {
   if [[ $(is_cpu_installed) ]]
   then
     template="$template #{cpu_fg_color}#{cpu_icon}#[bg=${theme[middle_bg]}"
-    template="$template #{gpu_fg_color}#{gpu_icon}#[bg=${theme[middle_bg]}"
     tmux set -g @cpu_low_fg_color "${theme[primary_fg]}" # foreground color when cpu is low
     tmux set -g @cpu_medium_fg_color "${theme[emphasized_fg]}" # foreground color when cpu is medium
     tmux set -g @cpu_high_fg_color "${theme[stress]}" # foreground color when cpu is high
 
-    tmux set -g @cpu_low_bg_color "${theme[middle_bg]}" # background color when cpu is low
-    tmux set -g @cpu_medium_bg_color "${theme[middle_bg]}" # background color when cpu is medium
-    tmux set -g @cpu_high_bg_color "${theme[middle_bg]}" # background color when cpu is high
 
   fi
 
