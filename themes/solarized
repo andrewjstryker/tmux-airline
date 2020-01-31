@@ -42,10 +42,9 @@ set-option -g @airline-alert "$orange"
 # highlight high stress conditions
 set-option -g @airline-stress "$red"
 
-# h 
 # tmux modes
-# theme[zoom]="$violet"
-# theme[copy]="$blue"
-# theme[monitor]="$green"
+set-option -g @airline-zoom "$violet"
+set-option -g @airline-copy "$blue"
+set-option -g @airline-monitor "$cyan"
 
 # vim: ft=tmux
