@@ -12,9 +12,40 @@ source "$CURRENT_DIR/scripts/is_installed.sh"
 #-----------------------------------------------------------------------------#
 
 load_color_scheme () {
+  # use an associative array to hold the theme
+  declare -A THEME
   local color_scheme=$(get_tmux_option airline_color_scheme solarized)
 
   tmux source-file "$CURRENT_DIR/themes/$color_scheme"
+
+  # status line colors
+  THEME["outer-bg"]=$(get_tmux_option airline-outer-bg "green")
+  THEME["middle-bg"]=$(get_tmux_option airline-middle-bg "green")
+  THEME["inner-bg"]=$(get_tmux_option airline-inner-bg "green")
+
+  # "normal" content colors
+  THEME["secondary"]=$(get_tmux_option airline-secondary "white")
+  THEME["primary"]=$(get_tmux_option airline-primary "white")
+  THEME["emphasized"]=$(get_tmux_option airline-emphasized "white")
+
+  # highlight active elements
+  THEME["active"]=$(get_tmux_option airline-active "yellow")
+
+  # highlight special conditions
+  THEME["special"]=$(get_tmux_option airline-special "purple")
+
+  # highlight alert/active conditions
+  THEME["alert"]=$(get_tmux_option airline-alert "orange")
+
+  # highlight high stress conditions
+  THEME["stress"]=$(get_tmux_option airline-stress "red")
+
+  # tmux modes
+  THEME["zoom"]=$(get_tmux_option airline-zoom "cyan")
+  THEME["copy"]=$(get_tmux_option airline-copy "blue")
+  THEME["monitor"]=$(get_tmux_option airline-monitor "grey")
+
+  export THEME
 }
 
 #-----------------------------------------------------------------------------#
