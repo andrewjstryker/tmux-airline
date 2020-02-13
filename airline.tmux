@@ -156,7 +156,7 @@ left_outer () {
 
 left_middle () {
   local template
-  local fg="${THEME[emphasized_fg]}"
+  local fg="${THEME[primary]}"
   local bg="${THEME[middle_bg]}"
   local next_bg="${THEME[inner_bg]}"
 
