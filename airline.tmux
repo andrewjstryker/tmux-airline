@@ -168,18 +168,23 @@ left_middle () {
   echo "#[fg=$fg,bg=$bg] ${template} $(chev_right $bg $next_bg) "
 }
 
-window_status () {
+set_window_formats () {
   local template="$(get_tmux_option @airline_tmpl_window '#I:#W')"
-
-  echo "$template"
-}
-
-window_current () {
-  local template="$(get_tmux_option @airline_tmpl_window_current '#I:#W')"
   local bg="${THEME[inner_bg]}"
   local hi="${THEME[highlight]}"
 
-  echo "$(chev_right $bg $hi) $template $(chev_left $hi $bg)"
+  # default window treatments
+  tmux set -gq window-status-separator-string " "
+  tmux set -gq window-status-format "$template"
+
+  # window styles
+  tmux set -gq window-status-style "fg=${THEME[primary]} bg=$bg"
+  tmux set -gq window-status-last-style "fg=${THEME[emphasized_fg]} bg=$bg"
+  tmux set -gq window-status-activity-style "fg=${THEME[alert]} bg=$bg"
+  tmux set -gq window-status-bell-style "fg=${THEME[stress]} bg=$bg"
+
+  # special case for current window
+  tmux set -gq window-status-current-format "$(chev_right $bg $hi) $template $(chev_left $hi $bg)"
 }
 
 right_inner () {
