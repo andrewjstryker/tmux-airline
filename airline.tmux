@@ -11,12 +11,12 @@ source "$CURRENT_DIR/scripts/is_installed.sh"
 #
 #-----------------------------------------------------------------------------#
 
-load_color_scheme () {
+load_color_theme () {
   # use an associative array to hold the theme
   declare -A THEME
-  local color_scheme=$(get_tmux_option airline_color_scheme solarized)
+  local color_theme=$(get_tmux_option airline_color_theme solarized)
 
-  tmux source-file "$CURRENT_DIR/themes/$color_scheme"
+  tmux source-file "$CURRENT_DIR/themes/$color_theme"
 
   # status line colors
   THEME[outer-bg]=$(get_tmux_option airline-outer-bg "green")
@@ -89,28 +89,30 @@ make_right_middle_template () {
   if [[ $(is_cpu_installed) ]]
   then
     template="$template #{cpu_fg_color}#{cpu_icon}#[bg=${THEME[middle_bg]}"
-    tmux set -g @cpu_low_fg_color "${THEME[primary_fg]}" # foreground color when cpu is low
-    tmux set -g @cpu_medium_fg_color "${THEME[emphasized_fg]}" # foreground color when cpu is medium
-    tmux set -g @cpu_high_fg_color "${THEME[stress]}" # foreground color when cpu is high
 
-
+    # foreground color when cpu is low
+    tmux set -g @cpu_low_fg_color "${THEME[secondary]}"
+    # foreground color when cpu is medium
+    tmux set -g @cpu_medium_fg_color "${THEME[alert]}"
+    # foreground color when cpu is high
+    tmux set -g @cpu_high_fg_color "${THEME[stress]}"
   fi
 
   if [[ $(is_online_installed) ]]
   then
     template="$template #{online_status}"
-    tmux set -g @online_icon "#[fg=${THEME[color_level_ok]}]●#[default]"
-    tmux set -g @offline_icon "#[fg=${THEME[color_level_stress]}]●#[default]"
+    tmux set -g @online_icon "#[fg=${THEME[primary]}]●#[default]"
+    tmux set -g @offline_icon "#[fg=${THEME[stress]}]●#[default]"
     template="$template #{online_status}"
   fi
 
   if [[ $(is_battery_installed) ]]
   then
-    tmux set -g @batt_color_full_charge "#[fg=${THEME[color_level_ok]}]"
-    tmux set -g @batt_color_high_charge "#[fg=${THEME[color_level_ok]}]"
-    tmux set -g @batt_color_medium_charge "#[fg=${THEME[color_level_warn]}]"
-    tmux set -g @batt_color_low_charge "#[fg=${THEME[color_level_stress]}]"
     template="$template #{battery_status}"
+    tmux set -g @batt_color_full_charge "#[fg=${THEME[secondary]}]"
+    tmux set -g @batt_color_high_charge "#[fg=${THEME[primary]}]"
+    tmux set -g @batt_color_medium_charge "#[fg=${THEME[alert]}]"
+    tmux set -g @batt_color_low_charge "#[fg=${THEME[stress]}]"
   fi
 
   echo "$template"
@@ -121,8 +123,8 @@ make_right_inner_template () {
   then
     tmux set -g @prefix_highlight_output_prefix '['
     tmux set -g @prefix_highlight_output_suffix ']'
-    tmux set -g @prefix_highlight_fg "${THEME[emphasized_fg]}"
-    tmux set -g @prefix_highlight_bg "${THEME[special]}"
+    tmux set -g @prefix_highlight_fg "${THEME[middle_bg]}"
+    tmux set -g @prefix_highlight_bg "${THEME[active]}"
     tmux set -g @prefix_highlight_show_copy_mode 'on'
     tmux set -g @prefix_highlight_copy_mode_attr "fg=${THEME[emphasized_fg]},bg=${THEME[copy]}"
   fi
@@ -304,7 +306,7 @@ right_outer () {
 #-----------------------------------------------------------------------------#
 
 main () {
-  load_color_scheme
+  load_color_theme
 
   # TODO: is this needed?
   # TODO: what is mode-style?
