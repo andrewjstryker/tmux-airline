@@ -140,18 +140,17 @@ make_right_inner_template () {
 
 left_outer () {
   local template
-  local fg="${THEME[emphasized_fg]}"
+  local fg="${THEME[primary]}"
   local bg="${THEME[outer_bg]}"
   local next_bg="${THEME[middle_bg]}"
 
   if [[ -z $template ]]
   then
     template="#{online_status}"
-    tmux set -g @online_icon "#[fg=${THEME[emphasized_fg]}]●"
+    tmux set -g @online_icon "#[fg=${THEME[primary]}]●"
     tmux set -g @offline_icon "#[fg=${THEME[stress]}]●"
   fi
 
-  #echo "#[fg=$fg,bg=$bg]${template}$(chev_right $bg $next_bg)"
   echo "#[fg=$fg,bg=$bg] ${template} $(chev_right $bg $next_bg)"
 }
 
