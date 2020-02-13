@@ -189,14 +189,28 @@ set_window_formats () {
 
 right_inner () {
   # explicitly check as we call a function to build the template
-  local fg="${THEME[primary_fg]}"
+  local fg="${THEME[inner_bg]}"
   local bg="${THEME[inner_bg]}"
   local template
 
   template="$(tmux show-option -gqv @airline_tmpl_right_inner)"
+
   if [[ -z "$template" ]]
   then
-    template="$(make_right_inner_template)"
+    if [[ $(is_prefix_installed) ]]
+    then
+      tmux set -g @prefix_highlight_output_prefix '['
+      tmux set -g @prefix_highlight_output_suffix ']'
+
+      tmux set -g @prefix_highlight_fg "$fg"
+      tmux set -g @prefix_highlight_bg "${THEME[highlight]}"
+
+      tmux set -g @prefix_highlight_show_copy_mode 'on'
+      tmux set -g @prefix_highlight_copy_mode_attr "fg=$fg,bg=${THEME[copy]}"
+
+      template="$template #{prefix_highlight} "
+    fi
+
   fi
 
   echo "#[fg=$fg,bg=$bg]${template}"
