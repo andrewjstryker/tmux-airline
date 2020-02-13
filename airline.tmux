@@ -18,7 +18,7 @@ load_color_theme () {
 
   tmux source-file "$CURRENT_DIR/themes/$color_theme"
 
-  # status line colors
+  # status line "normal" background colors
   THEME[outer-bg]=$(get_tmux_option airline-outer-bg "green")
   THEME[middle-bg]=$(get_tmux_option airline-middle-bg "green")
   THEME[inner-bg]=$(get_tmux_option airline-inner-bg "green")
