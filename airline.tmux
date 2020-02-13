@@ -275,44 +275,49 @@ right_middle () {
 }
 
 right_outer () {
-  local template
-  local fg="${THEME[emphasized_fg]}"
+  local fg="${THEME[primary]}"
   local bg="${THEME[outer_bg]}"
   local prev_bg="${THEME[middle_bg]}"
+  local template="$(get_tmux_option @airline_tmpl_right_outer '')"
 
-  template="%Y-%m-%d %H:%M #{battery_color_fg}#[bg=$bg]#{battery_icon}"
+  if [[ -z $template ]]
+  then
 
-  tmux set -g @batt_color_full_charge "#[fg=${THEME[emphasized_fg]}]"
-  tmux set -g @batt_color_high_charge "#[fg=${THEME[primary_fg]}]"
-  tmux set -g @batt_color_medium_charge "#[fg=${THEME[alert]}]"
-  tmux set -g @batt_color_low_charge "#[fg=${THEME[stress]}]"
+    template="%Y-%m-%d %H:%M #{battery_color_fg}#[bg=$bg]#{battery_icon}"
 
-  # over-riding defaults to match THEME
-  tmux set -g @batt_color_charge_primary_tier8 "${THEME[emphasized_fg]}"
-  tmux set -g @batt_color_charge_primary_tier7 "${THEME[emphasized_fg]}"
-  tmux set -g @batt_color_charge_primary_tier6 "${THEME[emphasized_fg]}"
-  tmux set -g @batt_color_charge_primary_tier5 "${THEME[emphasized_fg]}"
-  tmux set -g @batt_color_charge_primary_tier4 "${THEME[altert]}"
-  tmux set -g @batt_color_charge_primary_tier3 "${THEME[altert]}"
-  tmux set -g @batt_color_charge_primary_tier2 "${THEME[stress]}"
-  tmux set -g @batt_color_charge_primary_tier1 "${THEME[stress]}"
+    tmux set -g @batt_color_full_charge "#[fg=${THEME[emphasized]}]"
+    tmux set -g @batt_color_high_charge "#[fg=${THEME[primary]}]"
+    tmux set -g @batt_color_medium_charge "#[fg=${THEME[alert]}]"
+    tmux set -g @batt_color_low_charge "#[fg=${THEME[stress]}]"
 
-  tmux set -g @batt_icon_charge_tier8 '🌕'
-  tmux set -g @batt_icon_charge_tier7 '🌖'
-  tmux set -g @batt_icon_charge_tier6 '🌖'
-  tmux set -g @batt_icon_charge_tier5 '🌗'
-  tmux set -g @batt_icon_charge_tier4 '🌗'
-  tmux set -g @batt_icon_charge_tier3 '🌘'
-  tmux set -g @batt_icon_charge_tier2 '🌘'
-  tmux set -g @batt_icon_charge_tier1 '🌑'
-  tmux set -g @batt_icon_status_charged '🔋'
-  tmux set -g @batt_icon_status_charging '⚡'
+    # use theme colors
+    tmux set -g @batt_color_charge_primary_tier8 "${THEME[primary]}"
+    tmux set -g @batt_color_charge_primary_tier7 "${THEME[primary]}"
+    tmux set -g @batt_color_charge_primary_tier6 "${THEME[emphasized]}"
+    tmux set -g @batt_color_charge_primary_tier5 "${THEME[emphasized]}"
+    tmux set -g @batt_color_charge_primary_tier4 "${THEME[altert]}"
+    tmux set -g @batt_color_charge_primary_tier3 "${THEME[altert]}"
+    tmux set -g @batt_color_charge_primary_tier2 "${THEME[stress]}"
+    tmux set -g @batt_color_charge_primary_tier1 "${THEME[stress]}"
 
-  tmux set -g @batt_color_status_primary_charged "${THEME[emphasized_fg]}"
-  tmux set -g @batt_color_status_primary_charging "${THEME[monitor]}"
-  tmux set -g @batt_color_status_primary_discharging "${THEME[alert]}"
-  tmux set -g @batt_color_status_primary_attached "${THEME[secondary_fg]}"
-  tmux set -g @batt_color_status_primary_unknown "${THEME[stress]}"
+    # icons to show when discharging the battery
+    tmux set -g @batt_icon_charge_tier8 '🌕'
+    tmux set -g @batt_icon_charge_tier7 '🌖'
+    tmux set -g @batt_icon_charge_tier6 '🌖'
+    tmux set -g @batt_icon_charge_tier5 '🌗'
+    tmux set -g @batt_icon_charge_tier4 '🌗'
+    tmux set -g @batt_icon_charge_tier3 '🌘'
+    tmux set -g @batt_icon_charge_tier2 '🌘'
+    tmux set -g @batt_icon_charge_tier1 '🌑'
+
+    # icons to show when charging the battery
+    tmux set -g @batt_icon_status_charged '🔋'
+    tmux set -g @batt_icon_status_charging '⚡'
+    tmux set -g @batt_color_status_primary_charged "${THEME[primary]}"
+    tmux set -g @batt_color_status_primary_charging "${THEME[highlight]}"
+    tmux set -g @batt_color_status_primary_unknown "${THEME[stress]}"
+
+  fi
 
   echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg] ${template}"
 }
