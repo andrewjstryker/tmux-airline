@@ -118,19 +118,6 @@ make_right_middle_template () {
   echo "$template"
 }
 
-make_right_inner_template () {
-  if [[ $(is_prefix_installed) ]]
-  then
-    tmux set -g @prefix_highlight_output_prefix '['
-    tmux set -g @prefix_highlight_output_suffix ']'
-    tmux set -g @prefix_highlight_fg "${THEME[middle_bg]}"
-    tmux set -g @prefix_highlight_bg "${THEME[active]}"
-    tmux set -g @prefix_highlight_show_copy_mode 'on'
-    tmux set -g @prefix_highlight_copy_mode_attr "fg=${THEME[emphasized_fg]},bg=${THEME[copy]}"
-  fi
-
-  echo " #{prefix_highlight} "
-}
 
 #-----------------------------------------------------------------------------#
 #
@@ -309,10 +296,6 @@ main () {
   # TODO: what is mode-style?
   #tmux set -gq mode-style "fg=${THEME[special]} bg=${THEME[alert]}"
   # tmux set -gq message-command-style
-  #tmux set -gq window-last-style "fg=${THEME[primary_fg]} bg=${THEME[middle_bg]}"
-  #tmux set -gq window-current-style "fg=${THEME[primary_fg]} bg=${THEME[highlight]}"
-  # tmux set -gq window-style "fg=${THEME[primary_fg]} bg=${THEME[inner_bg]}"
-  #tmux set -gq window-active-style "fg=${THEME[window_fg]} bg=${THEME[alert]}"
 
   # Configure panes, use highlight color for active panes
   tmux set -gq pane-border-style "fg=${THEME[primary_fg]}"
@@ -324,13 +307,7 @@ main () {
   tmux set -gq status-style "fg=${THEME[secondary_fg]} bg=${THEME[inner_bg]}"
 
   # Configure window status
-  tmux set -gq window-status-separator-string " "
   tmux set -gq window-status-format "$(window_status)"
-  tmux set -gq window-status-style "fg=${THEME[primary_fg]} bg=${THEME[inner_bg]}"
-  tmux set -gq window-status-last-style "fg=${THEME[emphasized_fg]} bg=${THEME[inner_bg]}"
-  tmux set -gq window-status-current-format "$(window_current)"
-  tmux set -gq window-status-activity-style "fg=${THEME[alert]} bg=${THEME[inner_bg]}"
-  tmux set -gq window-status-bell-style "fg=${THEME[stress]} bg=${THEME[inner_bg]}"
 
   tmux set -gq status-left-style "fg=${THEME[primary_fg]} bg=${THEME[outer_bg]}"
   tmux set -gq status-left "$(left_outer) $(left_middle)"
