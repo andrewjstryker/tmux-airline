@@ -221,54 +221,28 @@ right_middle () {
   local fg="${THEME[emphasized_fg]}"
   local bg="${THEME[middle_bg]}"
   local prev_bg="${THEME[inner_bg]}"
-  local template
+  local template="$(get_tmux_option @airline_tmpl_right_middle '')"
 
-  tmux set -g @cpu_low_fg_color "${THEME[secondary_fg]}" # foreground color when cpu is low
-  tmux set -g @cpu_medium_fg_color "${THEME[alert]}" # foreground color when cpu is medium
-  tmux set -g @cpu_high_fg_color "${THEME[stress]}" # foreground color when cpu is high
-
-  tmux set -g @cpu_low_bg_color "${THEME[middle_bg]}" # background color when cpu is low
-  tmux set -g @cpu_medium_bg_color "${THEME[middle_bg]}" # background color when cpu is medium
-  tmux set -g @cpu_high_bg_color "${THEME[middle_bg]}" # background color when cpu is high
-
-  tmux set -g @gpu_low_fg_color "${THEME[secondary_fg]}" # foreground color when cpu is low
-  tmux set -g @gpu_medium_fg_color "${THEME[alert]}" # foreground color when cpu is medium
-  tmux set -g @gpu_high_fg_color "${THEME[stress]}" # foreground color when cpu is high
-
-  tmux set -g @gpu_low_bg_color "${THEME[middle_bg]}" # background color when cpu is low
-  tmux set -g @gpu_medium_bg_color "${THEME[middle_bg]}" # background color when cpu is medium
-  tmux set -g @gpu_high_bg_color "${THEME[middle_bg]}" # background color when cpu is high
-
-  #template="$(tmux show-option -gqv airline_right_middle_template)"
-  template="#[fg=#{cpu_fg_color}]#{cpu_icon} #[fg=#{gpu_fg_color}]#{gpu_icon}"
-  if [[ -z "$template" ]]
+  if [[ -z $template ]]
   then
-    template="$(make_right_middle_template)"
-  fi
 
-  echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg] $template"
-}
+    if [[ $(is_cpu_installed) ]]
+    then
+      template="$template #{cpu_fg_color}#{cpu_icon}#[fg=$fg,bg=$bg]"
 
-right_middle () {
-  # explicitly check as we call a function to build the template
-  local fg="${THEME[emphasized_fg]}"
-  local bg="${THEME[middle_bg]}"
-  local prev_bg="${THEME[inner_bg]}"
-  local template
+      # cpu low
+      tmux set -g @cpu_low_fg_color "${THEME[secondary]}"
+      tmux set -g @cpu_low_bg_color "$bg"
 
-  tmux set -g @cpu_low_fg_color "${THEME[secondary_fg]}" # foreground color when cpu is low
-  tmux set -g @cpu_medium_fg_color "${THEME[alert]}" # foreground color when cpu is medium
-  tmux set -g @cpu_high_fg_color "${THEME[stress]}" # foreground color when cpu is high
+      # cpu medium
+      tmux set -g @cpu_medium_fg_color "${THEME[alert]}"
+      tmux set -g @cpu_medium_bg_color "$bg"
 
-  tmux set -g @cpu_low_bg_color "${THEME[middle_bg]}" # background color when cpu is low
-  tmux set -g @cpu_medium_bg_color "${THEME[middle_bg]}" # background color when cpu is medium
-  tmux set -g @cpu_high_bg_color "${THEME[middle_bg]}" # background color when cpu is high
+      # cpu high
+      tmux set -g @cpu_high_fg_color "${THEME[stress]}"
+      tmux set -g @cpu_high_bg_color "$bg"
+    fi
 
-  #template="$(tmux show-option -gqv airline_right_middle_template)"
-  template="#[fg=#{cpu_fg_color}]#{cpu_icon}"
-  if [[ -z "$template" ]]
-  then
-    template="$(make_right_middle_template)"
   fi
 
   echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg] $template"
