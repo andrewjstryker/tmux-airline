@@ -5,6 +5,39 @@ CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$CURRENT_DIR/scripts/shared.sh"
 source "$CURRENT_DIR/scripts/is_installed.sh"
 
+# use an associative array to hold the theme
+declare -A THEME
+
+tmux source-file "$CURRENT_DIR/themes/solarized"
+
+# status line "normal" background colors
+THEME[outer-bg]=$(get_tmux_option airline-outer-bg "green")
+THEME[middle-bg]=$(get_tmux_option airline-middle-bg "green")
+THEME[inner-bg]=$(get_tmux_option airline-inner-bg "green")
+
+# "normal" content colors
+THEME[secondary]=$(get_tmux_option airline-secondary "white")
+THEME[primary]=$(get_tmux_option airline-primary "white")
+THEME[emphasized]=$(get_tmux_option airline-emphasized "white")
+
+# highlight active elements
+THEME[active]=$(get_tmux_option airline-active "yellow")
+
+# highlight special conditions
+THEME[special]=$(get_tmux_option airline-special "purple")
+
+# highlight alert/active conditions
+THEME[alert]=$(get_tmux_option airline-alert "orange")
+
+# highlight high stress conditions
+THEME[stress]=$(get_tmux_option airline-stress "red")
+
+# tmux modes
+THEME[zoom]=$(get_tmux_option airline-zoom "cyan")
+THEME[copy]=$(get_tmux_option airline-copy "blue")
+THEME[monitor]=$(get_tmux_option airline-monitor "grey")
+
+export THEME
 #-----------------------------------------------------------------------------#
 #
 # Load color scheme
@@ -307,7 +340,7 @@ main () {
   tmux set -gq status-style "fg=${THEME[secondary_fg]} bg=${THEME[inner_bg]}"
 
   # Configure window status
-  tmux set -gq window-status-format "$(window_status)"
+  tmux set -gq window-status-format "${window_status}"
 
   tmux set -gq status-left-style "fg=${THEME[primary_fg]} bg=${THEME[outer_bg]}"
   tmux set -gq status-left "$(left_outer) $(left_middle)"
