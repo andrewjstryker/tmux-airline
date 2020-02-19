@@ -121,7 +121,7 @@ make_right_middle_template () {
 
   if [[ $(is_cpu_installed) ]]
   then
-    template="$template #{cpu_fg_color}#{cpu_icon}#[bg=${THEME[middle_bg]}"
+    template="$template #{cpu_fg_color}#{cpu_icon}#[bg=${THEME[middle-bg]}"
 
     # foreground color when cpu is low
     tmux set -g @cpu_low_fg_color "${THEME[secondary]}"
@@ -161,8 +161,8 @@ make_right_middle_template () {
 left_outer () {
   local template
   local fg="${THEME[primary]}"
-  local bg="${THEME[outer_bg]}"
-  local next_bg="${THEME[middle_bg]}"
+  local bg="${THEME[outer-bg]}"
+  local next_bg="${THEME[middle-bg]}"
 
   if [[ -z $template ]]
   then
@@ -177,8 +177,8 @@ left_outer () {
 left_middle () {
   local template
   local fg="${THEME[primary]}"
-  local bg="${THEME[middle_bg]}"
-  local next_bg="${THEME[inner_bg]}"
+  local bg="${THEME[middle-bg]}"
+  local next_bg="${THEME[inner-bg]}"
 
   if [[ -z $template ]]
   then
@@ -190,8 +190,8 @@ left_middle () {
 
 set_window_formats () {
   local template="$(get_tmux_option @airline_tmpl_window '#I:#W')"
-  local bg="${THEME[inner_bg]}"
-  local hi="${THEME[highlight]}"
+  local bg="${THEME[inner-bg]}"
+  local hi="${THEME[active]}"
 
   # default window treatments
   tmux set -gq window-status-separator-string " "
@@ -199,7 +199,7 @@ set_window_formats () {
 
   # window styles
   tmux set -gq window-status-style "fg=${THEME[primary]} bg=$bg"
-  tmux set -gq window-status-last-style "fg=${THEME[emphasized_fg]} bg=$bg"
+  tmux set -gq window-status-last-style "fg=${THEME[emphasized]} bg=$bg"
   tmux set -gq window-status-activity-style "fg=${THEME[alert]} bg=$bg"
   tmux set -gq window-status-bell-style "fg=${THEME[stress]} bg=$bg"
 
@@ -209,8 +209,8 @@ set_window_formats () {
 
 right_inner () {
   # explicitly check as we call a function to build the template
-  local fg="${THEME[inner_bg]}"
-  local bg="${THEME[inner_bg]}"
+  local fg="${THEME[inner-bg]}"
+  local bg="${THEME[inner-bg]}"
   local template
 
   template="$(tmux show-option -gqv @airline_tmpl_right_inner)"
@@ -223,7 +223,7 @@ right_inner () {
       tmux set -g @prefix_highlight_output_suffix ']'
 
       tmux set -g @prefix_highlight_fg "$fg"
-      tmux set -g @prefix_highlight_bg "${THEME[highlight]}"
+      tmux set -g @prefix_highlight_bg "${THEME[active]}"
 
       tmux set -g @prefix_highlight_show_copy_mode 'on'
       tmux set -g @prefix_highlight_copy_mode_attr "fg=$fg,bg=${THEME[copy]}"
@@ -238,9 +238,9 @@ right_inner () {
 
 right_middle () {
   # explicitly check as we call a function to build the template
-  local fg="${THEME[emphasized_fg]}"
-  local bg="${THEME[middle_bg]}"
-  local prev_bg="${THEME[inner_bg]}"
+  local fg="${THEME[emphasized]}"
+  local bg="${THEME[middle-bg]}"
+  local prev_bg="${THEME[inner-bg]}"
   local template="$(get_tmux_option @airline_tmpl_right_middle '')"
 
   if [[ -z $template ]]
@@ -270,8 +270,8 @@ right_middle () {
 
 right_outer () {
   local fg="${THEME[primary]}"
-  local bg="${THEME[outer_bg]}"
-  local prev_bg="${THEME[middle_bg]}"
+  local bg="${THEME[outer-bg]}"
+  local prev_bg="${THEME[middle-bg]}"
   local template="$(get_tmux_option @airline_tmpl_right_outer '')"
 
   if [[ -z $template ]]
@@ -308,7 +308,7 @@ right_outer () {
     tmux set -g @batt_icon_status_charged '🔋'
     tmux set -g @batt_icon_status_charging '⚡'
     tmux set -g @batt_color_status_primary_charged "${THEME[primary]}"
-    tmux set -g @batt_color_status_primary_charging "${THEME[highlight]}"
+    tmux set -g @batt_color_status_primary_charging "${THEME[active]}"
     tmux set -g @batt_color_status_primary_unknown "${THEME[stress]}"
 
   fi
@@ -323,7 +323,7 @@ right_outer () {
 #-----------------------------------------------------------------------------#
 
 main () {
-  load_color_theme
+  #load_color_theme
 
   # TODO: is this needed?
   # TODO: what is mode-style?
@@ -331,21 +331,21 @@ main () {
   # tmux set -gq message-command-style
 
   # Configure panes, use highlight color for active panes
-  tmux set -gq pane-border-style "fg=${THEME[primary_fg]}"
-  tmux set -gq pane-active-border-style "fg=${THEME[highlight]}"
-  tmux set -gq display-panes-color "${THEME[primary_fg]}"
-  tmux set -gq display-panes-active-color "${THEME[highlight]}"
+  tmux set -gq pane-border-style "fg=${THEME[primary]}"
+  tmux set -gq pane-active-border-style "fg=${THEME[active]}"
+  tmux set -gq display-panes-color "${THEME[primary]}"
+  tmux set -gq display-panes-active-color "${THEME[active]}"
 
   # Build the status bar
-  tmux set -gq status-style "fg=${THEME[secondary_fg]} bg=${THEME[inner_bg]}"
+  tmux set -gq status-style "fg=${THEME[secondary]} bg=${THEME[inner-bg]}"
 
   # Configure window status
   tmux set -gq window-status-format "${window_status}"
 
-  tmux set -gq status-left-style "fg=${THEME[primary_fg]} bg=${THEME[outer_bg]}"
+  tmux set -gq status-left-style "fg=${THEME[primary]} bg=${THEME[outer-bg]}"
   tmux set -gq status-left "$(left_outer) $(left_middle)"
 
-  tmux set -gq status-right-style "fg=${THEME[primary_fg]} bg=${THEME[outer_bg]}"
+  tmux set -gq status-right-style "fg=${THEME[primary]} bg=${THEME[outer-bg]}"
   tmux set -gq status-right "$(right_inner) $(right_middle) $(right_outer)"
 
   tmux set -gq clock-mode-color "${THEME[special]}"
