@@ -159,7 +159,7 @@ make_right_middle_template () {
 
 left_outer () {
   local template
-  local fg="${THEME[primary]}"
+  local fg="${THEME[emphasized]}"
   local bg="${THEME[outer-bg]}"
   local next_bg="${THEME[middle-bg]}"
 
@@ -175,7 +175,7 @@ left_outer () {
 
 left_middle () {
   local template
-  local fg="${THEME[primary]}"
+  local fg="${THEME[emphasized]}"
   local bg="${THEME[middle-bg]}"
   local next_bg="${THEME[inner-bg]}"
 
@@ -268,7 +268,7 @@ right_middle () {
 }
 
 right_outer () {
-  local fg="${THEME[primary]}"
+  local fg="${THEME[emphasized]}"
   local bg="${THEME[outer-bg]}"
   local prev_bg="${THEME[middle-bg]}"
   local template="$(get_tmux_option @airline_tmpl_right_outer '')"
