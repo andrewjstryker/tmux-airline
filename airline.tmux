@@ -339,7 +339,7 @@ main () {
   tmux set -gq status-style "fg=${THEME[secondary]} bg=${THEME[inner-bg]}"
 
   # Configure window status
-  tmux set -gq window-status-format "${window_status}"
+  set_window_formats
 
   tmux set -gq status-left-style "fg=${THEME[primary]} bg=${THEME[outer-bg]}"
   tmux set -gq status-left "$(left_outer) $(left_middle)"
