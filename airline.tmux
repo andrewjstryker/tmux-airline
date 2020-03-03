@@ -141,7 +141,7 @@ set_left_outer () {
 
   status="$status %S"
 
-  tmux set-options -g @airline-status-left-out "$status"
+  set_tmux_option @airline-status-left-out "$status"
 }
 
 # default: $(hostname | cut -d '.' -f 1)
@@ -156,7 +156,7 @@ set_left_middle () {
     return
   fi
 
-  tmux set-options -g @airline-status-left-middle "$status"
+  set_tmux_option @airline-status-left-middle "$status"
 }
 
 # empty is the default for left inner
@@ -171,7 +171,7 @@ set_left_inner () {
     return
   fi
 
-  tmux set-options -g @airline-status-left-inner "$status"
+  set_tmux_option @airline-status-left-inner "$status"
 }
 
 # default: copy widget
@@ -191,7 +191,7 @@ set_right_inner () {
     status="#(prefix_highlight) "
   fi
 
-  tmux set-options -g @airline-status-right-inner "$status"
+  set_tmux_option @airline-status-right-inner "$status"
 }
 
 # default: usage widgets
@@ -206,7 +206,7 @@ set_right_middle () {
     return
   fi
 
-  tmux set-options -g @airline-status-right-middle "$status"
+  set_tmux_option @airline-status-right-middle "$status"
 }
 
 # default: time and battery
@@ -228,7 +228,7 @@ set_right_outer () {
     status="$status #(battery_color_fg)#(battery_icon)"
   fi
 
-  tmux set-options -g @airline-status-right-middle "$status"
+  set_tmux_option @airline-status-right-middle "$status"
 }
 
 #-----------------------------------------------------------------------------#
