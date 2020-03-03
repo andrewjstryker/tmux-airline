@@ -66,9 +66,41 @@ set_window_status () {
     "$(chev_right $bg $current) $format $(chev_left $current $bg)"
 }
 
+#-----------------------------------------------------------------------------#
+#
+# Left status line
+#
+#-----------------------------------------------------------------------------#
+
+left_outer () {
+  local fg="$(get_tmux_option @airline-theme-primary)"
+  local bg="$(get_tmux_option @airline-theme-outer-bg)"
+  local next_bg="$(get_tmux_option @airline-theme-middle-bg)"
+  local format="$(get_tmux_option @airline-status-left-outer)"
+
+  echo "#[fg=$fg,bg=$bg] $format $(chev_right $bg $next_bg)"
+}
+
+left_middle () {
+  local fg="$(get_tmux_option @airline-theme-emphasized)"
+  local bg="$(get_tmux_option @airline-theme-middle-bg)"
+  local next_bg="$(get_tmux_option @airline-theme-inner-bg)"
+  local format="$(get_tmux_option @airline-status-left-middle)"
+
+  echo "#[fg=$fg,bg=$bg] $format $(chev_right $bg $next_bg)"
+}
+
+left_inner () {
+  local fg="$(get_tmux_option @airline-theme-primary)"
+  local bg="$(get_tmux_option @airline-theme-inner-bg)"
+  local format="$(get_tmux_option @airline-status-left-inner)"
+
+  echo "#[fg=$fg,bg=$bg] $format"
+}
 
 main () {
   set_window_status
+  set_tmux_option status-left "$(left_outer)$(left_middle)$(left_inner)"
 }
 
 # vim: sts=2 sw=2 et
