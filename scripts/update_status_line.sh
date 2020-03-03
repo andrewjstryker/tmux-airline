@@ -121,6 +121,7 @@ right_middle () {
 
   echo "#[fg=$fg,bg=$bg] $format $(chev_right $bg $next_bg)"
 }
+
 right_outer () {
   local fg="$(get_tmux_option @airline-theme-primary)"
   local bg="$(get_tmux_option @airline-theme-outer-bg)"
