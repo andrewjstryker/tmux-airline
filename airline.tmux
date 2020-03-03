@@ -25,6 +25,7 @@
 #       - @airline-theme-primary
 #       - @airline-theme-emphasized
 #       - @airline-theme-active
+#       - @airline-theme-alert
 #       - @airline-theme-special
 #       - @airline-theme-stress
 #       - @airline-theme-copy
@@ -155,11 +156,26 @@ set_left_middle () {
     return
   fi
 
-  tmux set-options -g @airline-status-left-out "$status"
+  tmux set-options -g @airline-status-left-middle "$status"
 }
 
 # empty is the default for left inner
-set_left_middle () {
+set_left_inner () {
+  local status
+
+  status="$(tmux show-option -g @airline-status-left-inner)"
+
+  # using existing value if defined
+  if [[ -n "$status" ]]
+  then
+    return
+  fi
+
+  tmux set-options -g @airline-status-left-inner ""
+}
+
+# default: copy widget
+set_right_middle () {
   local status
 
   status="$(tmux show-option -g @airline-status-left-middle)"
