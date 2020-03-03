@@ -130,11 +130,30 @@ right_outer () {
   echo "#[fg=$fg,bg=$bg] $format "
 }
 
+#-----------------------------------------------------------------------------#
+#
+# Panes
+#
+#-----------------------------------------------------------------------------#
+
+set_panes () {
+  local primary="$(get_tmux_option @airline-theme-primary)"
+  local current="$(get_tmux_option @airline-theme-current)"
+
+  # pane borders
+  set_tmux_option pane-border-style "fg=$primary"
+  set_tmux_option pane-current-border-style "fg=$current"
+
+  # display-panes command
+  set_tmux_option display-panes-color "$primary"
+  set_tmux_option display-panes-active-color "$current"
+}
 
 main () {
   set_window_status
   set_tmux_option status-left "$(left_outer)$(left_middle)$(left_inner)"
   set_tmux_option status-right "$(right_inner)$(right_middle)$(right_outer)"
+  set_panes
 }
 
 # vim: sts=2 sw=2 et
