@@ -63,7 +63,7 @@ set_window_status () {
 
   # special case for current window
   set_tmux_option window-status-current-format \
-    "$(chev_right $bg $hi) $format $(chev_left $hi $bg)"
+    "$(chev_right $bg $active) $format $(chev_left $active $bg)"
 }
 
 
