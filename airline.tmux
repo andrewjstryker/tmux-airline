@@ -143,6 +143,21 @@ set_left_outer () {
   tmux set-options -g @airline-status-left-out "$status"
 }
 
+# default: $(hostname | cut -d '.' -f 1)
+set_left_middle () {
+  local status
+
+  status="$(tmux show-option -g @airline-status-left-middle)"
+
+  # using existing value if defined
+  if [[ -n "$status" ]]
+  then
+    return
+  fi
+
+  tmux set-options -g @airline-status-left-out "$status"
+}
+
 #-----------------------------------------------------------------------------#
 #
 # Chevrons
