@@ -158,6 +158,21 @@ set_left_middle () {
   tmux set-options -g @airline-status-left-out "$status"
 }
 
+# empty is the default for left inner
+set_left_middle () {
+  local status
+
+  status="$(tmux show-option -g @airline-status-left-middle)"
+
+  # using existing value if defined
+  if [[ -n "$status" ]]
+  then
+    return
+  fi
+
+  tmux set-options -g @airline-status-left-out ""
+}
+
 #-----------------------------------------------------------------------------#
 #
 # Chevrons
