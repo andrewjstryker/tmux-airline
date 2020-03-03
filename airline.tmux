@@ -259,51 +259,6 @@ chev_left () {
 
 #-----------------------------------------------------------------------------#
 #
-# Create widget template
-#
-# Build a template from installed popular widgets, if the user did not define
-# a left middle template.
-#
-#-----------------------------------------------------------------------------#
-
-make_right_middle_template () {
-  local template=""
-
-  if [[ $(is_cpu_installed) ]]
-  then
-    template="$template #{cpu_fg_color}#{cpu_icon}#[bg=${THEME[middle-bg]}"
-
-    # foreground color when cpu is low
-    tmux set -g @cpu_low_fg_color "${THEME[secondary]}"
-    # foreground color when cpu is medium
-    tmux set -g @cpu_medium_fg_color "${THEME[alert]}"
-    # foreground color when cpu is high
-    tmux set -g @cpu_high_fg_color "${THEME[stress]}"
-  fi
-
-  if [[ $(is_online_installed) ]]
-  then
-    template="$template #{online_status}"
-    tmux set -g @online_icon "#[fg=${THEME[primary]}]●#[default]"
-    tmux set -g @offline_icon "#[fg=${THEME[stress]}]●#[default]"
-    template="$template #{online_status}"
-  fi
-
-  if [[ $(is_battery_installed) ]]
-  then
-    template="$template #{battery_status}"
-    tmux set -g @batt_color_full_charge "#[fg=${THEME[secondary]}]"
-    tmux set -g @batt_color_high_charge "#[fg=${THEME[primary]}]"
-    tmux set -g @batt_color_medium_charge "#[fg=${THEME[alert]}]"
-    tmux set -g @batt_color_low_charge "#[fg=${THEME[stress]}]"
-  fi
-
-  echo "$template"
-}
-
-
-#-----------------------------------------------------------------------------#
-#
 # Build status line components
 #
 #-----------------------------------------------------------------------------#
