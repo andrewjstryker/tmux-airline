@@ -30,13 +30,13 @@ set-option -g @airline-secondary "$base0"
 set-option -g @airline-primary "$base1"
 set-option -g @airline-emphasized "$base2"
 
-# highlight active elements
-set-option -g @airline-active "$yellow"
+# highlight current elements
+set-option -g @airline-current "$yellow"
 
 # highlight special conditions
 set-option -g @airline-special "$magenta"
 
-# highlight alert/active conditions
+# highlight alert/current conditions
 set-option -g @airline-alert "$orange"
 
 # highlight high stress conditions

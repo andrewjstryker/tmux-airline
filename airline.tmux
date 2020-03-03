@@ -24,7 +24,7 @@
 #       - @airline-theme-secondary
 #       - @airline-theme-primary
 #       - @airline-theme-emphasized
-#       - @airline-theme-active
+#       - @airline-theme-current
 #       - @airline-theme-alert
 #       - @airline-theme-special
 #       - @airline-theme-stress
@@ -54,13 +54,13 @@ THEME[secondary]=$(get_tmux_option @airline-secondary "white")
 THEME[primary]=$(get_tmux_option @airline-primary "white")
 THEME[emphasized]=$(get_tmux_option @airline-emphasized "white")
 
-# highlight active elements
-THEME[active]=$(get_tmux_option @airline-active "yellow")
+# highlight current elements
+THEME[current]=$(get_tmux_option @airline-current "yellow")
 
 # highlight special conditions
 THEME[special]=$(get_tmux_option @airline-special "purple")
 
-# highlight alert/active conditions
+# highlight alert/current conditions
 THEME[alert]=$(get_tmux_option @airline-alert "orange")
 
 # highlight high stress conditions
@@ -94,13 +94,13 @@ load_color_theme () {
   THEME[primary]=$(get_tmux_option airline-primary "white")
   THEME[emphasized]=$(get_tmux_option airline-emphasized "white")
 
-  # highlight active elements
-  THEME[active]=$(get_tmux_option airline-active "yellow")
+  # highlight current elements
+  THEME[current]=$(get_tmux_option airline-current "yellow")
 
   # highlight special conditions
   THEME[special]=$(get_tmux_option airline-special "purple")
 
-  # highlight alert/active conditions
+  # highlight alert/current conditions
   THEME[alert]=$(get_tmux_option airline-alert "orange")
 
   # highlight high stress conditions
@@ -296,7 +296,7 @@ left_middle () {
 set_window_formats () {
   local template="$(get_tmux_option @airline_tmpl_window '#I:#W')"
   local bg="${THEME[inner-bg]}"
-  local hi="${THEME[active]}"
+  local hi="${THEME[current]}"
 
   # default window treatments
   tmux set -gq window-status-separator-string " "
@@ -328,7 +328,7 @@ right_inner () {
       tmux set -g @prefix_highlight_output_suffix ']'
 
       tmux set -g @prefix_highlight_fg "$fg"
-      tmux set -g @prefix_highlight_bg "${THEME[active]}"
+      tmux set -g @prefix_highlight_bg "${THEME[current]}"
 
       tmux set -g @prefix_highlight_show_copy_mode 'on'
       tmux set -g @prefix_highlight_copy_mode_attr "fg=$fg,bg=${THEME[copy]}"
@@ -413,7 +413,7 @@ right_outer () {
     tmux set -g @batt_icon_status_charged '🔋'
     tmux set -g @batt_icon_status_charging '⚡'
     tmux set -g @batt_color_status_primary_charged "${THEME[primary]}"
-    tmux set -g @batt_color_status_primary_charging "${THEME[active]}"
+    tmux set -g @batt_color_status_primary_charging "${THEME[current]}"
     tmux set -g @batt_color_status_primary_unknown "${THEME[stress]}"
 
   fi
@@ -435,11 +435,11 @@ main () {
   #tmux set -gq mode-style "fg=${THEME[special]} bg=${THEME[alert]}"
   # tmux set -gq message-command-style
 
-  # Configure panes, use highlight color for active panes
+  # Configure panes, use highlight color for current panes
   tmux set -gq pane-border-style "fg=${THEME[primary]}"
-  tmux set -gq pane-active-border-style "fg=${THEME[active]}"
+  tmux set -gq pane-current-border-style "fg=${THEME[current]}"
   tmux set -gq display-panes-color "${THEME[primary]}"
-  tmux set -gq display-panes-active-color "${THEME[active]}"
+  tmux set -gq display-panes-current-color "${THEME[current]}"
 
   # Build the status bar
   tmux set -gq status-style "fg=${THEME[secondary]} bg=${THEME[inner-bg]}"

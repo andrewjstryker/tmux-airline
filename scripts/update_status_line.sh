@@ -46,7 +46,7 @@ set_window_status () {
   local bg="$(get_tmux_option @airline-theme-inner-bg)"
   local primary="$(get_tmux_option @airline-theme-primary)"
   local emphasized="$(get_tmux_option @airline-theme-emphasized)"
-  local active="$(get_tmux_option @airline-theme-active)"
+  local current="$(get_tmux_option @airline-theme-current)"
   local special="$(get_tmux_option @airline-theme-special)"
   local alert="$(get_tmux_option @airline-theme-alert)"
   local format="$(get_tmux_option @airline-window-format)"
@@ -63,7 +63,7 @@ set_window_status () {
 
   # special case for current window
   set_tmux_option window-status-current-format \
-    "$(chev_right $bg $active) $format $(chev_left $active $bg)"
+    "$(chev_right $bg $current) $format $(chev_left $current $bg)"
 }
 
 
