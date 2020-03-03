@@ -115,6 +115,36 @@ load_color_theme () {
 
 #-----------------------------------------------------------------------------#
 #
+# Build default status lines
+#
+#-----------------------------------------------------------------------------#
+
+# default: #(online_status) %S
+set_left_outer () {
+  local status
+
+  status="$(tmux show-option -g @airline-status-left-outer)"
+
+  # using existing value if defined
+  if [[ -n "$status" ]]
+  then
+    return
+  fi
+
+  status="#($CURRENT_DIR/scripts/build_status/line)"
+
+  if [[ $(is_online_installed) ]]
+  then
+    status="$status #(online_status)"
+  fi
+
+  status="$status %S"
+
+  tmux set-options -g @airline-status-left-out "$status"
+}
+
+#-----------------------------------------------------------------------------#
+#
 # Chevrons
 #
 #-----------------------------------------------------------------------------#
