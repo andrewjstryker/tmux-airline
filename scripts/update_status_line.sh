@@ -149,11 +149,19 @@ set_panes () {
   set_tmux_option display-panes-active-color "$current"
 }
 
+#-----------------------------------------------------------------------------#
+#
+# Script entry point
+#
+#-----------------------------------------------------------------------------#
+
 main () {
   set_window_status
   set_tmux_option status-left "$(left_outer)$(left_middle)$(left_inner)"
   set_tmux_option status-right "$(right_inner)$(right_middle)$(right_outer)"
   set_panes
 }
+
+main
 
 # vim: sts=2 sw=2 et
