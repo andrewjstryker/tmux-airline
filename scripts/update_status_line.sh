@@ -186,12 +186,18 @@ set_clock () {
 #-----------------------------------------------------------------------------#
 
 main () {
-  set_window_status
-  set_tmux_option status-left "$(left_outer)$(left_middle)$(left_inner)"
-  set_tmux_option status-right "$(right_inner)$(right_middle)$(right_outer)"
-  set_panes
-  set_messages
-  set_clock
+  # only apply theme when needed
+  if [[ "$(get_tmux_option @airline-interal-theme-refresh 1)" ]]
+  then
+    set_window_status
+    set_tmux_option status-left "$(left_outer)$(left_middle)$(left_inner)"
+    set_tmux_option status-right "$(right_inner)$(right_middle)$(right_outer)"
+    set_panes
+    set_messages
+    set_clock
+
+    set_tmux_option @airline-internal-theme-refresh 0
+  fi
 }
 
 main

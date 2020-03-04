@@ -455,6 +455,8 @@ main () {
 
   tmux set -gq clock-mode-color "${THEME[special]}"
 
+  set_tmux_option @airline-internal-theme-resfresh 1
+
 }
 
 main
