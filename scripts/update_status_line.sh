@@ -4,6 +4,11 @@
 #
 # Sets the status-{left,right} and window-status-* using the current theme.
 #
+# TODO:
+#   - Discover the effects of
+#     * mode-style
+#     * message-style
+#     * message-command-style
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
 
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -151,6 +156,31 @@ set_panes () {
 
 #-----------------------------------------------------------------------------#
 #
+# Message
+#
+#-----------------------------------------------------------------------------#
+
+set_messages () {
+  local alert="$(get_tmux_option @airline-theme-alert)"
+  local primary="$(get_tmux_option @airline-theme-primary)"
+
+  set_tmux_option message-command-style "fg=$primary bg=$alert"
+}
+
+#-----------------------------------------------------------------------------#
+#
+# Clock
+#
+#-----------------------------------------------------------------------------#
+
+set_clock () {
+  local special="$(get_tmux_option @airline-theme-special)"
+
+  set_tmux_option clock-mode-color "$special"
+}
+
+#-----------------------------------------------------------------------------#
+#
 # Script entry point
 #
 #-----------------------------------------------------------------------------#
@@ -160,6 +190,8 @@ main () {
   set_tmux_option status-left "$(left_outer)$(left_middle)$(left_inner)"
   set_tmux_option status-right "$(right_inner)$(right_middle)$(right_outer)"
   set_panes
+  set_messages
+  set_clock
 }
 
 main
