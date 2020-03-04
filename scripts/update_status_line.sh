@@ -187,7 +187,7 @@ set_clock () {
 
 main () {
   # only apply theme when needed
-  if [[ "$(get_tmux_option @airline-interal-theme-refresh 1)" ]]
+  if (( "$(get_tmux_option @airline-interal-theme-refresh 1)" ))
   then
     set_window_status
     set_tmux_option status-left "$(left_outer)$(left_middle)$(left_inner)"
