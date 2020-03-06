@@ -124,7 +124,7 @@ load_color_theme () {
 set_left_outer () {
   local status
 
-  status="$(tmux show-option -g @airline-status-left-outer)"
+  status="$(get_tmux_option @airline-status-left-outer "")"
 
   # using existing value if defined
   if [[ -n "$status" ]]
@@ -454,6 +454,14 @@ main () {
   tmux set -gq status-right "$(right_inner) $(right_middle) $(right_outer)"
 
   tmux set -gq clock-mode-color "${THEME[special]}"
+
+  set_left_outer
+  set_left_middle
+  set_left_inner
+
+  set_right_inner
+  set_right_middle
+  set_right_outer
 
   set_tmux_option @airline-internal-theme-resfresh 1
 
