@@ -27,7 +27,7 @@ _set_theme_element () {
   local element="$1"
   local value="$2"
 
-  set_tmux_option "${REFRESH_FLAG}"
+  set_tmux_option "${REFRESH_FLAG}" 1
   set_tmux_option "${THEME_PREFIX}-$element" "$value"
 }
 
