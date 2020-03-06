@@ -35,7 +35,7 @@ _get_theme_element () {
   local element="$1"
   local default="$2"
 
-  echo "$(get_tmux_option "${THEME_PREFIX}-$element" "$default")"
+  get_tmux_option "${THEME_PREFIX}-$element" "$default"
 }
 
 #-----------------------------------------------------------------------------#
