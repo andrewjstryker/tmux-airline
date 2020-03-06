@@ -9,6 +9,7 @@
 #     * mode-style
 #     * message-style
 #     * message-command-style
+#   - Make chevron characters parameters
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
 
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
