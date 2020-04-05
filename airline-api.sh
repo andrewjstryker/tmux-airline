@@ -14,8 +14,8 @@ CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 source "$CURRENT_DIR/scripts/shared.sh"
 
-THEME_PREFIX="@_airline-theme"
-REFRESH_FLAG="${THEME_PREFIX}-refresh"
+AIRLINE_PAIRLINE_REFIX="@airline"
+AIRLINE_REFRESH_FLAG="${AIRLINE_PAIRLINE_REFIX}-refresh"
 
 #-----------------------------------------------------------------------------#
 #
@@ -27,15 +27,15 @@ _set_theme_element () {
   local element="$1"
   local value="$2"
 
-  set_tmux_option "${REFRESH_FLAG}" 1
-  set_tmux_option "${THEME_PREFIX}-$element" "$value"
+  set_tmux_option "${AIRLINE_REFRESH_FLAG}" 1
+  set_tmux_option "${AIRLINE_PAIRLINE_REFIX}-$element" "$value"
 }
 
 _get_theme_element () {
   local element="$1"
   local default="$2"
 
-  get_tmux_option "${THEME_PREFIX}-$element" "$default"
+  get_tmux_option "${AIRLINE_PAIRLINE_REFIX}-$element" "$default"
 }
 
 #-----------------------------------------------------------------------------#
@@ -46,7 +46,7 @@ _get_theme_element () {
 
 theme_refresh_needed () {
   # note numerical testing
-  if (( "$(get_tmux_option "${REFRESH_FLAG}" "1" )" ))
+  if (( "$(get_tmux_option "${AIRLINE_REFRESH_FLAG}" "1" )" ))
   then
     return 1
   fi
@@ -55,7 +55,7 @@ theme_refresh_needed () {
 }
 
 theme_refresh_clear () {
-  set_tmux_option "${REFRESH_FLAG}" 0
+  set_tmux_option "${AIRLINE_REFRESH_FLAG}" 0
 }
 
 theme_load () {
