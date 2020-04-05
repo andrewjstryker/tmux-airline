@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
-# theme-api.sh
+# airline-api.sh
 #
-# Provide an API to setting and getting themes elements.
+# Provide an API to status line elements.
 #
 # This API hides the implementation details of managing themes. The biggest
 # benefit is that the API records when theme elements changed. This allows API
