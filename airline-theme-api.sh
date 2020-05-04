@@ -73,7 +73,7 @@ airline_refresh_clear () {
   set_tmux_option "${AIRLINE_REFRESH_FLAG}" 0
 }
 
-airline_load () {
+airline_load_theme () {
   local theme="$1"
 
   # theme a readable file?
@@ -102,92 +102,92 @@ airline_load () {
 #-----------------------------------------------------------------------------#
 
 # primary text color (foreground)
-set_primary () {
+set_theme_primary () {
   _set_theme_element primary "$1"
 }
 
-get_primary () {
+get_theme_primary () {
   _get_theme_element primary white
 }
 
 # secondary text color (foreground)
-set_secondary () {
+set_theme_secondary () {
   _set_theme_element secondary "$1"
 }
 
-get_secondary () {
+get_theme_secondary () {
   _get_theme_element secondary white
 }
 
 # emphasized text color (foreground)
-set_emphasized () {
+set_theme_emphasized () {
   _set_theme_element emphasized "$1"
 }
 
-get_emphasized () {
+get_theme_emphasized () {
   _get_theme_element emphasized brightwhite
 }
 
 # outer background
-set_outer () {
+set_theme_outer () {
   _set_theme_element outer "$1"
 }
 
-get_outer () {
+get_theme_outer () {
   _get_theme_element outer brightgreen
 }
 
 # middle background
-set_middle () {
+set_theme_middle () {
   _set_theme_element middle "$1"
 }
 
-get_middle () {
+get_theme_middle () {
   _get_theme_element middle green
 }
 
 # inner background
-set_inner () {
+set_theme_inner () {
   _set_theme_element inner "$1"
 }
 
-get_inner () {
+get_theme_inner () {
   _get_theme_element inner black
 }
 
 # current/active elements (highlight)
-set_current () {
+set_theme_current () {
   _set_theme_element current "$1"
 }
 
-get_current () {
+get_theme_current () {
   _get_theme_element current brightyellow
 }
 
 # alert to get user's attention
-set_alert () {
+set_theme_alert () {
   _set_theme_element alert "$1"
 }
 
-get_alert () {
+get_theme_alert () {
   _get_theme_element alert yellow
 }
 
 # stress, draw attention to high loads/resources nearing limits
-set_stress () {
+set_theme_stress () {
   _set_theme_element stress "$1"
 }
 
-get_stress () {
+get_theme_stress () {
   _get_theme_element stress red
 }
 
 # copy mode
-set_copy () {
+set_theme_copy () {
   _set_theme_element copy "$1"
 }
 
-get_copy () {
+get_theme_copy () {
   _get_theme_element copy blue
 }
 
@@ -210,11 +210,11 @@ get_theme_monitor () {
 }
 
 # "special" state (e.g., prefix key active)
-set_special () {
+set_theme_special () {
   _set_theme_element special "$1"
 }
 
-get_special () {
+get_theme_special () {
   _get_theme_element special magenta
 }
 

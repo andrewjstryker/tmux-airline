@@ -21,30 +21,30 @@ cyan="colour6"
 green="colour2"
 
 # status line "normal" background colors
-set-option -g @airline-outer-bg "$base00"
-set-option -g @airline-middle-bg "$base01"
-set-option -g @airline-inner-bg "$base02"
+set_theme_outer "$base00"
+set_theme_middle "$base01"
+set_theme_inner "$base02"
 
 # "normal" content colors
-set-option -g @airline-secondary "$base0"
-set-option -g @airline-primary "$base1"
-set-option -g @airline-emphasized "$base2"
+set_theme_secondary "$base0"
+set_theme_primary "$base1"
+set_theme_emphasized "$base2"
 
 # highlight current elements
-set-option -g @airline-current "$yellow"
+set_theme_current "$yellow"
 
 # highlight special conditions
-set-option -g @airline-special "$magenta"
+set_theme_special "$magenta"
 
 # highlight alert/current conditions
-set-option -g @airline-alert "$orange"
+set_theme_alert "$orange"
 
 # highlight high stress conditions
-set-option -g @airline-stress "$red"
+set_theme_stress "$red"
 
 # tmux modes
-set-option -g @airline-zoom "$violet"
-set-option -g @airline-copy "$blue"
-set-option -g @airline-monitor "$cyan"
+set_theme_zoom "$violet"
+set_theme_copy "$blue"
+set_theme_monitor "$cyan"
 
-# vim: ft=tmux
+# vim: ft=sh
