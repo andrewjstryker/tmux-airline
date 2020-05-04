@@ -14,8 +14,8 @@ CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 source "$CURRENT_DIR/scripts/shared.sh"
 
-AIRLINE_PAIRLINE_REFIX="@airline"
-AIRLINE_REFRESH_FLAG="${AIRLINE_PAIRLINE_REFIX}-refresh"
+AIRLINE_PREFIX="@airline"
+AIRLINE_REFRESH_FLAG="${AIRLINE_PREFIX}-refresh"
 
 #-----------------------------------------------------------------------------#
 #
@@ -28,14 +28,29 @@ _set_theme_element () {
   local value="$2"
 
   set_tmux_option "${AIRLINE_REFRESH_FLAG}" 1
-  set_tmux_option "${AIRLINE_PAIRLINE_REFIX}-$element" "$value"
+  _set_airline "${AIRLINE_PREFIX}-theme-$element" "$value"
 }
 
 _get_theme_element () {
   local element="$1"
   local default="$2"
 
-  get_tmux_option "${AIRLINE_PAIRLINE_REFIX}-$element" "$default"
+  get_tmux_option "${AIRLINE_PREFIX}-theme-$element" "$default"
+}
+
+_set_status_element () {
+  local element="$1"
+  local value="$2"
+
+  set_tmux_option "${AIRLINE_REFRESH_FLAG}" 1
+  _set_airline "${AIRLINE_PREFIX}-status-$element" "$value"
+}
+
+_get_status_element () {
+  local element="$1"
+
+  # clients need to test for empty strings
+  tmux show-option -gqv "${AIRLINE_PREFIX}-status-$element"
 }
 
 #-----------------------------------------------------------------------------#
@@ -44,7 +59,7 @@ _get_theme_element () {
 #
 #-----------------------------------------------------------------------------#
 
-theme_refresh_needed () {
+airline_refresh_needed () {
   # note numerical testing
   if (( "$(get_tmux_option "${AIRLINE_REFRESH_FLAG}" "1" )" ))
   then
@@ -54,11 +69,11 @@ theme_refresh_needed () {
   return 0
 }
 
-theme_refresh_clear () {
+airline_refresh_clear () {
   set_tmux_option "${AIRLINE_REFRESH_FLAG}" 0
 }
 
-theme_load () {
+airline_load () {
   local theme="$1"
 
   # theme a readable file?
@@ -185,5 +200,123 @@ get_special () {
   _get_theme_element special magenta
 }
 
+#-----------------------------------------------------------------------------#
+#
+# Status line components
+#
+#-----------------------------------------------------------------------------#
+
+set_status_left_outer () {
+  _set_status_element "left-outer" "$1"
+}
+
+get_status_left_outer () {
+  local status
+
+  status=$(_get_status_element "left-outer")
+
+  if [[ -z $status ]]
+  then
+    if [[ $(is_online_installed) ]]
+    then
+      status="$status #(online_status)"
+    fi
+    set_status_left_outer "$status"
+  fi
+
+  echo "$status"
+}
+
+set_status_left_middle () {
+  _set_status_element "left-middle" "$1"
+}
+
+get_status_left_middle () {
+  local status
+
+  status=$(_get_status_element "left-middle")
+
+  if [[ -z $status ]]
+  then
+    status="$(_get_status_element "left-inner") > #S"
+    set_status_left_middle "$status"
+  fi
+
+  echo "$status"
+}
+
+set_status_left_inner () {
+  _set_status_element "left-inner" "$1"
+}
+
+get_status_left_inner () {
+  local status
+
+  _get_status_element "left-inner"
+
+  if [[ -z $status ]]
+  then
+    status=" "
+    set_status_left_inner "$status"
+  fi
+
+  echo "$status"
+}
+
+set_status_right_inner () {
+  _set_status_element "right-inner" "$1"
+}
+
+get_status_right_inner () {
+  local status
+
+  _get_status_element "right-inner"
+
+  if [[ -z $status ]]
+  then
+    if [[ $(is_prefix_installed) ]]
+    then
+      status="#(prefix_highlight)"
+    fi
+  fi
+
+  echo "$status"
+}
+
+set_status_right_middle () {
+  _set_status_element "right-middle" "$1"
+}
+
+get_status_right_middle () {
+  local status
+
+  _get_status_element "right-middle"
+
+  if [[ -z $status ]]
+  then
+    status=" "
+    set_status_right_middle "$status"
+  fi
+
+  echo "$status"
+}
+
+set_status_right_outer () {
+  _set_status_element "right-outer" "$1"
+}
+
+get_status_right_outer () {
+  local status
+
+  _get_status_element "right-outer"
+
+  if [[ -z $status ]]
+  then
+    status=" "
+    set_status_right_outer "$status"
+  fi
+
+  echo "$status"
+}
 
 # vim: sts=2 sw=2 et
