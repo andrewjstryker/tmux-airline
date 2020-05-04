@@ -191,6 +191,24 @@ get_copy () {
   _get_theme_element copy blue
 }
 
+# window zoomed
+set_theme_zoom () {
+  _set_theme_element zoom "$1"
+}
+
+get_theme_zoom () {
+  _get_theme_element zoom blue
+}
+
+# window monitoring
+set_theme_monitor () {
+  _set_theme_element monitor "$1"
+}
+
+get_theme_monitor () {
+  _get_theme_element monitor blue
+}
+
 # "special" state (e.g., prefix key active)
 set_special () {
   _set_theme_element special "$1"
