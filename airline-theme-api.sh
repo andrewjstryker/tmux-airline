@@ -23,6 +23,12 @@ AIRLINE_REFRESH_FLAG="${AIRLINE_PREFIX}-refresh"
 #
 #-----------------------------------------------------------------------------#
 
+_set_airline () {
+  set_tmux_option "$1" "$2"
+  set_tmux_option "$AIRLINE_REFRESH_FLAG" 1
+}
+
+
 _set_theme_element () {
   local element="$1"
   local value="$2"
