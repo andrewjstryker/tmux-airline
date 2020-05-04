@@ -61,48 +61,6 @@ _get_status_element () {
 
 #-----------------------------------------------------------------------------#
 #
-# User functions
-#
-#-----------------------------------------------------------------------------#
-
-airline_refresh_needed () {
-  # note numerical testing
-  if (( "$(get_tmux_option "${AIRLINE_REFRESH_FLAG}" "1" )" ))
-  then
-    return 1
-  fi
-
-  return 0
-}
-
-airline_refresh_clear () {
-  set_tmux_option "${AIRLINE_REFRESH_FLAG}" 0
-}
-
-airline_load_theme () {
-  local theme="$1"
-
-  # theme a readable file?
-  if [[ -r "$theme" && -f "$theme" ]]
-  then
-    source "$theme"
-    return
-  fi
-
-  # theme part of airline's default themes?
-  local target="$CURRENT_DIR/themes/$theme"
-  if [[ -r "$target" && -f "$target" ]]
-  then
-    source "$target"
-    return
-  fi
-
-  # could not load theme
-  return 1
-}
-
-#-----------------------------------------------------------------------------#
-#
 # Theme elements
 #
 #-----------------------------------------------------------------------------#
@@ -341,6 +299,48 @@ get_status_right_outer () {
   fi
 
   echo "$status"
+}
+
+#-----------------------------------------------------------------------------#
+#
+# User functions
+#
+#-----------------------------------------------------------------------------#
+
+airline_refresh_needed () {
+  # note numerical testing
+  if (( "$(get_tmux_option "${AIRLINE_REFRESH_FLAG}" "1" )" ))
+  then
+    return 1
+  fi
+
+  return 0
+}
+
+airline_refresh_clear () {
+  set_tmux_option "${AIRLINE_REFRESH_FLAG}" 0
+}
+
+airline_load_theme () {
+  local theme="$1"
+
+  # theme a readable file?
+  if [[ -r "$theme" && -f "$theme" ]]
+  then
+    source "$theme"
+    return
+  fi
+
+  # theme part of airline's default themes?
+  local target="$CURRENT_DIR/themes/$theme"
+  if [[ -r "$target" && -f "$target" ]]
+  then
+    source "$target"
+    return
+  fi
+
+  # could not load theme
+  return 1
 }
 
 # vim: sts=2 sw=2 et
