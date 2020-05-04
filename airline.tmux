@@ -464,8 +464,6 @@ main () {
   set_right_middle
   set_right_outer
 
-  set_tmux_option @airline-internal-theme-resfresh 1
-
 }
 
 main
