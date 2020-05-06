@@ -18,9 +18,9 @@
 #
 #   - Sets the following tmux user variables for theming, if not already
 #     defined:
-#       - @airline-theme-outer-bg
-#       - @airline-theme-middle-bg
-#       - @airline-theme-inner-bg
+#       - @airline-theme-outer
+#       - @airline-theme-middle
+#       - @airline-theme-inner
 #       - @airline-theme-secondary
 #       - @airline-theme-primary
 #       - @airline-theme-emphasized
@@ -39,81 +39,6 @@ CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$CURRENT_DIR/airline-theme-api.sh"
 source "$CURRENT_DIR/scripts/shared.sh"
 source "$CURRENT_DIR/scripts/is_installed.sh"
-
-# use an associative array to hold the theme
-declare -A THEME
-
-tmux source-file "$CURRENT_DIR/themes/solarized"
-
-# status line "normal" background colors
-THEME[outer-bg]=$(get_tmux_option @airline-outer-bg "green")
-THEME[middle-bg]=$(get_tmux_option @airline-middle-bg "green")
-THEME[inner-bg]=$(get_tmux_option @airline-inner-bg "green")
-
-# "normal" content colors
-THEME[secondary]=$(get_tmux_option @airline-secondary "white")
-THEME[primary]=$(get_tmux_option @airline-primary "white")
-THEME[emphasized]=$(get_tmux_option @airline-emphasized "white")
-
-# highlight current elements
-THEME[current]=$(get_tmux_option @airline-current "yellow")
-
-# highlight special conditions
-THEME[special]=$(get_tmux_option @airline-special "purple")
-
-# highlight alert/current conditions
-THEME[alert]=$(get_tmux_option @airline-alert "orange")
-
-# highlight high stress conditions
-THEME[stress]=$(get_tmux_option @airline-stress "red")
-
-# tmux modes
-THEME[zoom]=$(get_tmux_option @airline-zoom "cyan")
-THEME[copy]=$(get_tmux_option @airline-copy "blue")
-THEME[monitor]=$(get_tmux_option @airline-monitor "grey")
-
-#-----------------------------------------------------------------------------#
-#
-# Load color scheme
-#
-#-----------------------------------------------------------------------------#
-
-load_color_theme () {
-  # use an associative array to hold the theme
-  declare -A THEME
-  local color_theme=$(get_tmux_option airline_color_theme solarized)
-
-  tmux source-file "$CURRENT_DIR/themes/$color_theme"
-
-  # status line "normal" background colors
-  THEME[outer-bg]=$(get_tmux_option airline-outer-bg "green")
-  THEME[middle-bg]=$(get_tmux_option airline-middle-bg "green")
-  THEME[inner-bg]=$(get_tmux_option airline-inner-bg "green")
-
-  # "normal" content colors
-  THEME[secondary]=$(get_tmux_option airline-secondary "white")
-  THEME[primary]=$(get_tmux_option airline-primary "white")
-  THEME[emphasized]=$(get_tmux_option airline-emphasized "white")
-
-  # highlight current elements
-  THEME[current]=$(get_tmux_option airline-current "yellow")
-
-  # highlight special conditions
-  THEME[special]=$(get_tmux_option airline-special "purple")
-
-  # highlight alert/current conditions
-  THEME[alert]=$(get_tmux_option airline-alert "orange")
-
-  # highlight high stress conditions
-  THEME[stress]=$(get_tmux_option airline-stress "red")
-
-  # tmux modes
-  THEME[zoom]=$(get_tmux_option airline-zoom "cyan")
-  THEME[copy]=$(get_tmux_option airline-copy "blue")
-  THEME[monitor]=$(get_tmux_option airline-monitor "grey")
-
-  export THEME
-}
 
 #-----------------------------------------------------------------------------#
 #
@@ -266,15 +191,19 @@ chev_left () {
 
 left_outer () {
   local template
-  local fg="${THEME[emphasized]}"
-  local bg="${THEME[outer-bg]}"
-  local next_bg="${THEME[middle-bg]}"
+  local fg
+  local bg
+  local next_bg
+
+  fg="$(get_theme_emphasized)"
+  bg="$(get_theme_outer)"
+  next_bg="$(get_theme_middle)"
 
   if [[ -z $template ]]
   then
-    template="#{online_status}"
-    tmux set -g @online_icon "#[fg=${THEME[primary]}]●"
-    tmux set -g @offline_icon "#[fg=${THEME[stress]}]●"
+    template="#{online_status} %S"
+    tmux set -g @online_icon "#[fg=$(get_theme_primary)]●"
+    tmux set -g @offline_icon "#[fg=$(get_theme_stress)]●"
   fi
 
   echo "#[fg=$fg,bg=$bg] ${template} $(chev_right $bg $next_bg)"
@@ -282,9 +211,9 @@ left_outer () {
 
 left_middle () {
   local template
-  local fg="${THEME[emphasized]}"
-  local bg="${THEME[middle-bg]}"
-  local next_bg="${THEME[inner-bg]}"
+  local fg="$(set_theme_emphasized)"
+  local bg="$(set_theme_middle)"
+  local next_bg="$(set_theme_inner)"
 
   if [[ -z $template ]]
   then
@@ -296,18 +225,18 @@ left_middle () {
 
 set_window_formats () {
   local template="$(get_tmux_option @airline_tmpl_window '#I:#W')"
-  local bg="${THEME[inner-bg]}"
-  local hi="${THEME[current]}"
+  local bg="$(set_theme_inner)"
+  local hi="$(set_theme_current)"
 
   # default window treatments
   tmux set -gq window-status-separator-string " "
   tmux set -gq window-status-format "$template"
 
   # window styles
-  tmux set -gq window-status-style "fg=${THEME[primary]} bg=$bg"
-  tmux set -gq window-status-last-style "fg=${THEME[emphasized]} bg=$bg"
-  tmux set -gq window-status-activity-style "fg=${THEME[alert]} bg=$bg"
-  tmux set -gq window-status-bell-style "fg=${THEME[stress]} bg=$bg"
+  tmux set -gq window-status-style "fg=$(set_theme_primary) bg=$bg"
+  tmux set -gq window-status-last-style "fg=$(set_theme_emphasized) bg=$bg"
+  tmux set -gq window-status-activity-style "fg=$(set_theme_alert) bg=$bg"
+  tmux set -gq window-status-bell-style "fg=$(set_theme_stress) bg=$bg"
 
   # special case for current window
   tmux set -gq window-status-current-format "$(chev_right $bg $hi) $template $(chev_left $hi $bg)"
@@ -315,8 +244,8 @@ set_window_formats () {
 
 right_inner () {
   # explicitly check as we call a function to build the template
-  local fg="${THEME[inner-bg]}"
-  local bg="${THEME[inner-bg]}"
+  local fg="$(set_theme_inner)"
+  local bg="$(set_theme_inner)"
   local template
 
   template="$(tmux show-option -gqv @airline_tmpl_right_inner)"
@@ -329,10 +258,10 @@ right_inner () {
       tmux set -g @prefix_highlight_output_suffix ']'
 
       tmux set -g @prefix_highlight_fg "$fg"
-      tmux set -g @prefix_highlight_bg "${THEME[current]}"
+      tmux set -g @prefix_highlight_bg "$(set_theme_current)"
 
       tmux set -g @prefix_highlight_show_copy_mode 'on'
-      tmux set -g @prefix_highlight_copy_mode_attr "fg=$fg,bg=${THEME[copy]}"
+      tmux set -g @prefix_highlight_copy_mode_attr "fg=$fg,bg=$(set_theme_copy)"
 
       template="$template #{prefix_highlight} "
     fi
@@ -344,9 +273,9 @@ right_inner () {
 
 right_middle () {
   # explicitly check as we call a function to build the template
-  local fg="${THEME[emphasized]}"
-  local bg="${THEME[middle-bg]}"
-  local prev_bg="${THEME[inner-bg]}"
+  local fg="$(set_theme_emphasized)"
+  local bg="$(set_theme_middle)"
+  local prev_bg="$(set_theme_inner)"
   local template="$(get_tmux_option @airline_tmpl_right_middle '')"
 
   if [[ -z $template ]]
@@ -357,15 +286,15 @@ right_middle () {
       template="$template #{cpu_fg_color}#{cpu_icon}#[fg=$fg,bg=$bg]"
 
       # cpu low
-      tmux set -g @cpu_low_fg_color "${THEME[secondary]}"
+      tmux set -g @cpu_low_fg_color "$(set_theme_secondary)"
       tmux set -g @cpu_low_bg_color "$bg"
 
       # cpu medium
-      tmux set -g @cpu_medium_fg_color "${THEME[alert]}"
+      tmux set -g @cpu_medium_fg_color "$(set_theme_alert)"
       tmux set -g @cpu_medium_bg_color "$bg"
 
       # cpu high
-      tmux set -g @cpu_high_fg_color "${THEME[stress]}"
+      tmux set -g @cpu_high_fg_color "$(set_theme_stress)"
       tmux set -g @cpu_high_bg_color "$bg"
     fi
 
@@ -375,9 +304,9 @@ right_middle () {
 }
 
 right_outer () {
-  local fg="${THEME[emphasized]}"
-  local bg="${THEME[outer-bg]}"
-  local prev_bg="${THEME[middle-bg]}"
+  local fg="$(set_theme_emphasized)"
+  local bg="$(set_theme_outer)"
+  local prev_bg="$(set_theme_middle)"
   local template="$(get_tmux_option @airline_tmpl_right_outer '')"
 
   if [[ -z $template ]]
@@ -385,20 +314,20 @@ right_outer () {
 
     template="%Y-%m-%d %H:%M #{battery_color_fg}#[bg=$bg]#{battery_icon}"
 
-    tmux set -g @batt_color_full_charge "#[fg=${THEME[emphasized]}]"
-    tmux set -g @batt_color_high_charge "#[fg=${THEME[primary]}]"
-    tmux set -g @batt_color_medium_charge "#[fg=${THEME[alert]}]"
-    tmux set -g @batt_color_low_charge "#[fg=${THEME[stress]}]"
+    tmux set -g @batt_color_full_charge "#[fg=$(set_theme_emphasized)]"
+    tmux set -g @batt_color_high_charge "#[fg=$(set_theme_primary)]"
+    tmux set -g @batt_color_medium_charge "#[fg=$(set_theme_alert)]"
+    tmux set -g @batt_color_low_charge "#[fg=$(set_theme_stress)]"
 
     # use theme colors
-    tmux set -g @batt_color_charge_primary_tier8 "${THEME[primary]}"
-    tmux set -g @batt_color_charge_primary_tier7 "${THEME[primary]}"
-    tmux set -g @batt_color_charge_primary_tier6 "${THEME[emphasized]}"
-    tmux set -g @batt_color_charge_primary_tier5 "${THEME[emphasized]}"
-    tmux set -g @batt_color_charge_primary_tier4 "${THEME[altert]}"
-    tmux set -g @batt_color_charge_primary_tier3 "${THEME[altert]}"
-    tmux set -g @batt_color_charge_primary_tier2 "${THEME[stress]}"
-    tmux set -g @batt_color_charge_primary_tier1 "${THEME[stress]}"
+    tmux set -g @batt_color_charge_primary_tier8 "$(set_theme_primary)"
+    tmux set -g @batt_color_charge_primary_tier7 "$(set_theme_primary)"
+    tmux set -g @batt_color_charge_primary_tier6 "$(set_theme_emphasized)"
+    tmux set -g @batt_color_charge_primary_tier5 "$(set_theme_emphasized)"
+    tmux set -g @batt_color_charge_primary_tier4 "$(set_theme_altert)"
+    tmux set -g @batt_color_charge_primary_tier3 "$(set_theme_altert)"
+    tmux set -g @batt_color_charge_primary_tier2 "$(set_theme_stress)"
+    tmux set -g @batt_color_charge_primary_tier1 "$(set_theme_stress)"
 
     # icons to show when discharging the battery
     tmux set -g @batt_icon_charge_tier8 '🌕'
@@ -413,9 +342,9 @@ right_outer () {
     # icons to show when charging the battery
     tmux set -g @batt_icon_status_charged '🔋'
     tmux set -g @batt_icon_status_charging '⚡'
-    tmux set -g @batt_color_status_primary_charged "${THEME[primary]}"
-    tmux set -g @batt_color_status_primary_charging "${THEME[current]}"
-    tmux set -g @batt_color_status_primary_unknown "${THEME[stress]}"
+    tmux set -g @batt_color_status_primary_charged "$(set_theme_primary)"
+    tmux set -g @batt_color_status_primary_charging "$(set_theme_current)"
+    tmux set -g @batt_color_status_primary_unknown "$(set_theme_stress)"
 
   fi
 
@@ -429,32 +358,32 @@ right_outer () {
 #-----------------------------------------------------------------------------#
 
 main () {
-  #load_color_theme
+  airline_load_theme solarized
 
   # TODO: is this needed?
   # TODO: what is mode-style?
-  #tmux set -gq mode-style "fg=${THEME[special]} bg=${THEME[alert]}"
+  #tmux set -gq mode-style "fg=$(set_theme_special) bg=$(set_theme_alert)"
   # tmux set -gq message-command-style
 
   # Configure panes, use highlight color for current panes
-  tmux set -gq pane-border-style "fg=${THEME[primary]}"
-  tmux set -gq pane-current-border-style "fg=${THEME[current]}"
-  tmux set -gq display-panes-color "${THEME[primary]}"
-  tmux set -gq display-panes-current-color "${THEME[current]}"
+  tmux set -gq pane-border-style "fg=$(set_theme_primary)"
+  tmux set -gq pane-current-border-style "fg=$(set_theme_current)"
+  tmux set -gq display-panes-color "$(set_theme_primary)"
+  tmux set -gq display-panes-current-color "$(set_theme_current)"
 
   # Build the status bar
-  tmux set -gq status-style "fg=${THEME[secondary]} bg=${THEME[inner-bg]}"
+  tmux set -gq status-style "fg=$(set_theme_secondary) bg=$(set_theme_inner)"
 
   # Configure window status
   set_window_formats
 
-  tmux set -gq status-left-style "fg=${THEME[primary]} bg=${THEME[outer-bg]}"
+  tmux set -gq status-left-style "fg=$(set_theme_primary) bg=$(set_theme_outer)"
   tmux set -gq status-left "$(left_outer) $(left_middle)"
 
-  tmux set -gq status-right-style "fg=${THEME[primary]} bg=${THEME[outer-bg]}"
+  tmux set -gq status-right-style "fg=$(set_theme_primary) bg=$(set_theme_outer)"
   tmux set -gq status-right "$(right_inner) $(right_middle) $(right_outer)"
 
-  tmux set -gq clock-mode-color "${THEME[special]}"
+  tmux set -gq clock-mode-color "$(set_theme_special)"
 
   set_left_outer
   set_left_middle
