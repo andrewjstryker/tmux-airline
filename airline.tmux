@@ -46,7 +46,7 @@ source "$CURRENT_DIR/scripts/is_installed.sh"
 #
 #-----------------------------------------------------------------------------#
 
-# default: #(online_status) %S
+# default: #(online_status) #S
 set_left_outer () {
   local status
 
@@ -65,7 +65,7 @@ set_left_outer () {
     status="$status #(online_status)"
   fi
 
-  status="$status %S"
+  status="$status #S"
 
   set_tmux_option @airline-status-left-out "$status"
 }
