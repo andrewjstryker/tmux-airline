@@ -324,8 +324,8 @@ right_outer () {
     tmux set -g @batt_color_charge_primary_tier7 "$(set_theme_primary)"
     tmux set -g @batt_color_charge_primary_tier6 "$(set_theme_emphasized)"
     tmux set -g @batt_color_charge_primary_tier5 "$(set_theme_emphasized)"
-    tmux set -g @batt_color_charge_primary_tier4 "$(set_theme_altert)"
-    tmux set -g @batt_color_charge_primary_tier3 "$(set_theme_altert)"
+    tmux set -g @batt_color_charge_primary_tier4 "$(set_theme_alert)"
+    tmux set -g @batt_color_charge_primary_tier3 "$(set_theme_alert)"
     tmux set -g @batt_color_charge_primary_tier2 "$(set_theme_stress)"
     tmux set -g @batt_color_charge_primary_tier1 "$(set_theme_stress)"
 
