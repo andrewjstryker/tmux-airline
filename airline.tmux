@@ -201,7 +201,7 @@ left_outer () {
 
   if [[ -z $template ]]
   then
-    template="#{online_status} %S"
+    template="#{online_status} #S"
     tmux set -g @online_icon "#[fg=$(get_theme_primary)]●"
     tmux set -g @offline_icon "#[fg=$(get_theme_stress)]●"
   fi
