@@ -276,7 +276,22 @@ get_status_right_middle () {
 
   if [[ -z $status ]]
   then
-    status=" "
+    if [[ $(is_cpu_installed) ]]
+    then
+      status="#{cpu_fg_color}#{cpu_icon}"
+
+      # cpu low
+      tmux set -g @cpu_low_fg_color "$(get_theme_secondary)"
+      tmux set -g @cpu_low_bg_color "$(get_theme_middle)"
+
+      # cpu medium
+      tmux set -g @cpu_medium_fg_color "$(get_theme_alert)"
+      tmux set -g @cpu_medium_bg_color "$(get_theme_middle)"
+
+      # cpu high
+      tmux set -g @cpu_high_fg_color "$(get_theme_stress)"
+      tmux set -g @cpu_high_bg_color "$(get_theme_middle)"
+    fi
     set_status_right_middle "$status"
   fi
 
