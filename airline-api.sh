@@ -203,7 +203,7 @@ get_status_left_outer () {
     then
       status="$status #(online_status)"
     fi
-    set_status_left_outer "$status"
+    set_status_left_outer "$status #S"
   fi
 
   echo "$status"
