@@ -294,7 +294,42 @@ get_status_right_outer () {
 
   if [[ -z $status ]]
   then
-    status=" "
+    if [[ $(is_battery_installed) ]]
+    then
+      status="#{battery_color_fg}#{battery_icon}"
+
+      tmux set -g @batt_color_full_charge "#[fg=$(get_theme_primary)]"
+      tmux set -g @batt_color_high_charge "#[fg=$(get_theme_emphasized)]"
+      tmux set -g @batt_color_medium_charge "#[fg=$(get_theme_alert)]"
+      tmux set -g @batt_color_low_charge "#[fg=$(get_theme_stress)]"
+
+      tmux set -g @batt_color_charge_primary_tier8 "$(get_theme_primary)"
+      tmux set -g @batt_color_charge_primary_tier7 "$(get_theme_primary)"
+      tmux set -g @batt_color_charge_primary_tier6 "$(get_theme_emphasized)"
+      tmux set -g @batt_color_charge_primary_tier5 "$(get_theme_emphasized)"
+      tmux set -g @batt_color_charge_primary_tier4 "$(get_theme_alert)"
+      tmux set -g @batt_color_charge_primary_tier3 "$(get_theme_alert)"
+      tmux set -g @batt_color_charge_primary_tier2 "$(get_theme_stress)"
+      tmux set -g @batt_color_charge_primary_tier1 "$(get_theme_stress)"
+
+      # icons to show when discharging the battery
+      tmux set -g @batt_icon_charge_tier8 '🌑'
+      tmux set -g @batt_icon_charge_tier7 '🌘'
+      tmux set -g @batt_icon_charge_tier6 '🌘'
+      tmux set -g @batt_icon_charge_tier5 '🌗'
+      tmux set -g @batt_icon_charge_tier4 '🌗'
+      tmux set -g @batt_icon_charge_tier3 '🌖'
+      tmux set -g @batt_icon_charge_tier2 '🌖'
+      tmux set -g @batt_icon_charge_tier1 '🌕'
+
+      # icons to show when charging the battery
+      tmux set -g @batt_icon_status_charged '🔋'
+      tmux set -g @batt_icon_status_charging '⚡'
+      tmux set -g @batt_color_status_primary_charged "$(get_theme_primary)"
+      tmux set -g @batt_color_status_primary_charging "$(get_theme_current)"
+      tmux set -g @batt_color_status_primary_unknown "$(get_theme_stress)"
+    fi
+    status="%b %d %H:%M $status"
     set_status_right_outer "$status"
   fi
 
