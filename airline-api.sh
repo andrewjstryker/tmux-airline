@@ -357,6 +357,8 @@ get_status_right_outer () {
 #
 #-----------------------------------------------------------------------------#
 
+# TODO: acquire and release lock functions
+
 airline_refresh_needed () {
   # note numerical testing
   if (( "$(get_tmux_option "${AIRLINE_REFRESH_FLAG}" "1" )" ))
