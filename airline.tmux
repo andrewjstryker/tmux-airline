@@ -63,15 +63,10 @@ EOF
 #-----------------------------------------------------------------------------#
 
 airline () {
-  local subcmd="$1"
+  local subcmd="${1:-update}"
   local init_needed
 
   init_needed="$(1)"
-
-  # TODO: detect default
-  if [[ -z $subcmd ]]
-    subcmd="update"
-  fi
 
 
 }
