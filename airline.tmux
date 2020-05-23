@@ -64,11 +64,11 @@ EOF
 
 #-----------------------------------------------------------------------------#
 #
-# Set status elements
+# Main CLI
 #
 #-----------------------------------------------------------------------------#
 
-airline () {
+main () {
   local subcmd="${1:-update}"
   local init_needed
 
@@ -98,6 +98,6 @@ airline () {
   esac
 }
 
-main
+main "$@"
 
 # vim: sts=2 sw=2 et
