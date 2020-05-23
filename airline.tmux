@@ -78,17 +78,32 @@ main () {
   case "$subcmd" in
     "help" )
       usage
+      exit 0
       ;;
-    "init" )
+    version ) #CLIHELP Show version information
+      cat "$CURRENT_DIR/version"
+      exit 0
+      ;;
+  esac
+
+  # tmux running required below
+  if ! is-tmux-running
+  then
+    # tmux error message
+    exit 1
+  fi
+
+  case "$subcmd" in
+    init ) #CLIHELP Initialize status line values
       init "$@"
       ;;
-    "load" )
+    load ) #CLIHELP Load a theme
       load "$@"
       ;;
-    "set" )
+    set )  #CLIHELP Set an airline value
       set-option "$@"
       ;;
-    "show" )
+    show ) #CLIHELP Show an airline value
       show-option "$@"
       ;;
     * )
