@@ -69,6 +69,27 @@ airline () {
   init_needed="$(1)"
 
 
+  case "$subcmd" in
+    "help" )
+      usage
+      ;;
+    "init" )
+      init "$@"
+      ;;
+    "load" )
+      load "$@"
+      ;;
+    "set" )
+      set-option "$@"
+      ;;
+    "show" )
+      show-option "$@"
+      ;;
+    * )
+      usage
+      exit 1
+      ;;
+  esac
 }
 
 main
