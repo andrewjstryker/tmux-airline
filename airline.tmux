@@ -100,7 +100,7 @@ main () {
   # tmux running required below
   if ! is-tmux-running
   then
-    echo "tmux must be installed and on the search path" > /dev/stderr
+    echo "tmux must be installed and on the search path"
     exit 1
   fi
 
