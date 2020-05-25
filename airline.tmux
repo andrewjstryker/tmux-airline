@@ -64,6 +64,17 @@ EOF
 
 #-----------------------------------------------------------------------------#
 #
+# Helper functions
+#
+#-----------------------------------------------------------------------------#
+
+is-tmux-running () {
+  source "$CURRENT_DIR/scripts/verify-tmux.sh"
+  verify
+}
+
+#-----------------------------------------------------------------------------#
+#
 # Main CLI
 #
 #-----------------------------------------------------------------------------#
@@ -89,7 +100,7 @@ main () {
   # tmux running required below
   if ! is-tmux-running
   then
-    # tmux error message
+    echo "tmux must be installed and on the search path" > /dev/stderr
     exit 1
   fi
 
