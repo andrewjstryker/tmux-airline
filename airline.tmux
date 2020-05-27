@@ -68,6 +68,10 @@ EOF
 #
 #-----------------------------------------------------------------------------#
 
+die () {
+  echo "$@" > /dev/stderr
+}
+
 is-tmux-running () {
   source "$CURRENT_DIR/scripts/verify-tmux.sh"
   verify
