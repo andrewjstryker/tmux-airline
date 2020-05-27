@@ -70,6 +70,7 @@ EOF
 
 die () {
   echo "$@" > /dev/stderr
+  exit 1
 }
 
 is-tmux-running () {
