@@ -12,7 +12,7 @@ source "$CURRENT_DIR/is-installed.sh"
 #-----------------------------------------------------------------------------#
 
 init_left_outer () {
-  if [[ is_online_installed ]]
+  if is_online_installed
   then
     status="$status #(online_status)"
   fi
@@ -29,7 +29,7 @@ init_left_inner () {
 }
 
 init_right_inner () {
-  if [[ is_prefix_installed ]]
+  if is_prefix_installed
   then
     status="#(prefix_highlight)"
   fi
@@ -38,7 +38,7 @@ init_right_inner () {
 }
 
 init_right_middle () {
-  if [[ is_cpu_installed ]]
+  if is_cpu_installed
   then
     status="#{cpu_fg_color}#{cpu_icon}"
 
@@ -59,7 +59,7 @@ init_right_middle () {
 }
 
 init_right_outer () {
-  if [[ is_battery_installed ]]
+  if is_battery_installed
   then
     status=" #{battery_color_fg}#{battery_icon}"
 
