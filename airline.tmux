@@ -36,9 +36,6 @@
 
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-source "$CURRENT_DIR/airline-api.sh"
-source "$CURRENT_DIR/scripts/shared.sh"
-
 #-----------------------------------------------------------------------------#
 #
 # Helper functions
@@ -52,7 +49,7 @@ die () {
 
 #-----------------------------------------------------------------------------#
 #
-# Helper functions
+# Subcommands
 #
 #-----------------------------------------------------------------------------#
 
@@ -76,14 +73,11 @@ EOF
 #-----------------------------------------------------------------------------#
 
 main () {
-  local subcmd="${1:-update}"
-  local init_needed
-
-  init_needed="$(1)"
-
+  local subcmd="${1:-init}"
+  shift
 
   case "$subcmd" in
-    "help" )
+    help|--help|-h ) #CLIHELP Show this help message
       usage
       exit 0
       ;;
@@ -94,23 +88,23 @@ main () {
   esac
 
   # verify that tmux is available and running
-  [[ -x tmux ]] || die "tmux not on search path"
-  tmux list-sessions | grep windows > /dev/null || die "Start a tmux session prior to running this script"
-
-  exit 0
+  [[ ! -x tmux ]] || die "tmux not on search path"
+  tmux list-sessions | grep windows > /dev/null || \
+    die "Start a tmux session prior to running this script"
 
   case "$subcmd" in
     init ) #CLIHELP Initialize status line values
-      init "$@"
+      "$CURRENT_DIR/scripts/initialization.sh $@"
       ;;
     load ) #CLIHELP Load a theme
       load "$@"
+      "$CURRENT_DIR/scripts/api.sh load theme $@"
       ;;
     set )  #CLIHELP Set an airline value
-      set-option "$@"
+      "$CURRENT_DIR/scripts/api.sh set $@"
       ;;
     show ) #CLIHELP Show an airline value
-      show-option "$@"
+      "$CURRENT_DIR/scripts/api.sh show $@"
       ;;
     * )
       usage
