@@ -41,25 +41,13 @@ source "$CURRENT_DIR/scripts/shared.sh"
 
 #-----------------------------------------------------------------------------#
 #
-# Subcommands
+# Helper functions
 #
 #-----------------------------------------------------------------------------#
 
-load () {
-  echo "loading $#"
-}
-
-usage () {
-  cat << EOF
-$0 [subcommand] [subcommand options]...
-
-  help
-  init
-  load
-  set
-  show
-  update
-EOF
+die () {
+  echo "$@" > /dev/stderr
+  exit 1
 }
 
 #-----------------------------------------------------------------------------#
