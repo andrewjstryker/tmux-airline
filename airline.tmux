@@ -68,14 +68,17 @@ EOF
 #
 #-----------------------------------------------------------------------------#
 
-die () {
-  echo "$@" > /dev/stderr
-  exit 1
-}
+usage () {
+  cat << EOF
+$0 [subcommand] [subcommand options]...
 
-is-tmux-running () {
-  source "$CURRENT_DIR/scripts/verify-tmux.sh"
-  verify
+  help     Show this help command
+  init     Initialize Airline's environment (default)
+  load     Load configuration from a file
+  set      Set Airline configuration variables
+  show     Show Airline configuration values
+  update   Update Tmux to match Airline configuration values
+EOF
 }
 
 #-----------------------------------------------------------------------------#
