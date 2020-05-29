@@ -102,12 +102,11 @@ main () {
       ;;
   esac
 
-  # tmux running required below
-  if ! is-tmux-running
-  then
-    echo "tmux must be installed and on the search path"
-    exit 1
-  fi
+  # verify that tmux is available and running
+  [[ -x tmux ]] || die "tmux not on search path"
+  tmux list-sessions | grep windows > /dev/null || die "Start a tmux session prior to running this script"
+
+  exit 0
 
   case "$subcmd" in
     init ) #CLIHELP Initialize status line values
