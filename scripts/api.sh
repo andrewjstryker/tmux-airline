@@ -395,4 +395,28 @@ airline_load_theme () {
   return 1
 }
 
+#-----------------------------------------------------------------------------#
+#
+# Provide minimal CLI
+#
+#-----------------------------------------------------------------------------#
+
+airline-api () {
+  local subcmd="$1:-help"
+  shift
+
+  case "$subcmd" in
+    set )
+      ;;
+    show )
+      ;;
+    help )
+      ;;
+    * )
+      ;;
+  esac
+}
+
+airline-api "$@"
+
 # vim: sts=2 sw=2 et
