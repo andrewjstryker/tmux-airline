@@ -40,8 +40,17 @@ _set_theme_element () {
 _get_theme_element () {
   local element="$1"
   local default="$2"
+  local value
 
-  get_tmux_option "${AIRLINE_PREFIX}-theme-$element" "$default"
+  value="$(get_tmux_option "${AIRLINE_PREFIX}-theme-$element" "$default")"
+
+  if [[ -z $value ]]
+  then
+    tmux show-message "Airline element not set: $element"
+    return 1
+  fi
+
+  echo "$value"
 }
 
 _set_status_element () {
