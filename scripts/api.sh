@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
-# airline-api.sh
+# api.sh
 #
 # Provide an API to status line elements.
 #
