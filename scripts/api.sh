@@ -17,6 +17,24 @@ source "$CURRENT_DIR/scripts/shared.sh"
 AIRLINE_PREFIX="@airline"
 AIRLINE_REFRESH_FLAG="${AIRLINE_PREFIX}-refresh"
 
+# store theme elements in an array
+declare -g -A AIRLINE_THEME_ELEMENTS
+AIRLINE_THEME_ELEMENTS=([primary]=1
+                        [secondary]=1
+                        [emphasized]=1
+                        [background]=1
+                        [outer]=1
+                        [middle]=1
+                        [inner]=1
+                        [current]=1
+                        [alert]=1
+                        [stress]=1
+                        [copy]=1
+                        [zoom]=1
+                        [monitor]=1
+                        [special]=1
+                      )
+
 #-----------------------------------------------------------------------------#
 #
 # Internal functions
@@ -265,7 +283,7 @@ get_status_right_inner () {
 
   if [[ -z $status ]]
   then
-    if [[ $(is_prefix_installed) ]]
+    if is_prefix_installed
     then
       status="#(prefix_highlight)"
     fi
