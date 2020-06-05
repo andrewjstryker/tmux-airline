@@ -58,11 +58,11 @@ usage () {
 $0 [subcommand] [subcommand options]...
 
   help     Show this help command
-  init     Initialize Airline's environment (default)
+  init     Initialize Airline's environment
   load     Load configuration from a file
   set      Set Airline configuration variables
   show     Show Airline configuration values
-  update   Update Tmux to match Airline configuration values
+  update   Update Tmux to match Airline configuration values (default)
 EOF
 }
 
@@ -73,7 +73,7 @@ EOF
 #-----------------------------------------------------------------------------#
 
 main () {
-  local subcmd="${1:-init}"
+  local subcmd="${1:-update}"
   shift
 
   case "$subcmd" in
