@@ -98,13 +98,13 @@ main () {
       ;;
     load ) #CLIHELP Load a theme
       load "$@"
-      "$CURRENT_DIR/scripts/api.sh load theme" "$@"
+      "$CURRENT_DIR/scripts/api.sh" load theme "$@"
       ;;
     set )  #CLIHELP Set an airline value
-      "$CURRENT_DIR/scripts/api.sh set" "$@"
+      "$CURRENT_DIR/scripts/api.sh" set "$@"
       ;;
     show ) #CLIHELP Show an airline value
-      "$CURRENT_DIR/scripts/api.sh show" "$@"
+      "$CURRENT_DIR/scripts/api.sh" show "$@"
       ;;
     * )
       usage
