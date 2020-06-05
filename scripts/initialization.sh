@@ -7,7 +7,7 @@
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 source "$CURRENT_DIR/api.sh"
-source "$CURRENT_DIR/is-installed.sh"
+source "$CURRENT_DIR/tpm-integrations.sh"
 
 #-----------------------------------------------------------------------------#
 
