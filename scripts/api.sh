@@ -60,7 +60,6 @@ _set_theme_element () {
   local element="$1"
   local value="$2"
 
-  set_tmux_option "${AIRLINE_REFRESH_FLAG}" 1
   _set_airline "${AIRLINE_PREFIX}-theme-$element" "$value"
 }
 
@@ -84,7 +83,6 @@ _set_status_element () {
   local element="$1"
   local value="$2"
 
-  set_tmux_option "${AIRLINE_REFRESH_FLAG}" 1
   _set_airline "${AIRLINE_PREFIX}-status-$element" "$value"
 }
 
