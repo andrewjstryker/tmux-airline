@@ -89,7 +89,7 @@ main () {
 
   # verify that tmux is available and running
   [[ ! -x tmux ]] || die "tmux not on search path"
-  tmux list-sessions | grep windows > /dev/null || \
+  tmux list-sessions | grep windows > /dev/null ||
     die "Start a tmux session prior to running this script"
 
   case "$subcmd" in
