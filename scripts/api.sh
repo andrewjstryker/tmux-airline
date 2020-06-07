@@ -426,6 +426,31 @@ airline_load_theme () {
 
 #-----------------------------------------------------------------------------#
 #
+# Helper functions
+#
+#-----------------------------------------------------------------------------#
+
+die () {
+  echo "$1" > /dev/stderr
+  exit 1
+}
+
+verify_theme_element () {
+  local element="$1"
+
+  [[ -v "AIRLINE_THEME_ELEMENTS[$element]" ]] \
+    || die "Unsupported theme element type: $element"
+}
+
+verify_status_element () {
+  local element="$1"
+
+  [[ -v "AIRLINE_STATUS_ELEMENTS[$element]" ]] \
+    || die "Unsupported status element type: $element"
+}
+
+#-----------------------------------------------------------------------------#
+#
 # Provide minimal CLI
 #
 #-----------------------------------------------------------------------------#
