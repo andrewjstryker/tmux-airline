@@ -10,8 +10,95 @@ source "$CURRENT_DIR/api.sh"
 source "$CURRENT_DIR/tpm-integration.sh"
 
 #-----------------------------------------------------------------------------#
+#
+# Set the default theme
+#
+#-----------------------------------------------------------------------------#
 
-init_left_outer () {
+default_theme () {
+  local element="$1"
+
+  case "$element" in
+    primary )
+      airline set theme primary black
+      ;;
+    secondary )
+      airline set theme primary grey
+      ;;
+    emphasized )
+      airline set theme emphasized grey
+      ;;
+    outer )
+      airline set theme outer grey
+      ;;
+    middle )
+      airline set theme middle grey
+      ;;
+    inner )
+      airline set theme inner grey
+      ;;
+    current )
+      airline set theme current yellow
+      ;;
+    alert )
+      airline set theme alert red
+      ;;
+    stress )
+      airline set theme stress orange
+      ;;
+    copy )
+      airline set theme copy cyan
+      ;;
+    zoom )
+      airline set theme zoom green
+      ;;
+    monitor )
+      airline set theme monitor blue
+      ;;
+    special )
+      airline set theme special green
+      ;;
+    * )
+      # handle error
+      ;;
+  esac
+}
+
+#-----------------------------------------------------------------------------#
+#
+# Set the default status elements
+#
+#-----------------------------------------------------------------------------#
+
+default_status () {
+  local element="$1"
+
+  case "$element" in
+    left-outer )
+      airline set status left-outer "$(default_status_left_outer)"
+      ;;
+    left-middle )
+      airline set status left-middle "$(default_status_left_middle)"
+      ;;
+    left-inner )
+      airline set status left-inner "$(default_status_left_inner)"
+      ;;
+    right-outer )
+      airline set status right-outer "$(default_status_right_outer)"
+      ;;
+    right-middle )
+      airline set status right-middle "$(default_status_right_middle)"
+      ;;
+    right-inner )
+      airline set status right-inner "$(default_status_right_inner)"
+      ;;
+    * )
+      # handle error
+      ;;
+  esac
+}
+
+default_status_left_outer () {
   if is_online_installed
   then
     status="$status #(online_status)"
@@ -20,15 +107,15 @@ init_left_outer () {
   echo "$status"
 }
 
-init_left_middle () {
-  echo "$(hostname | cut -d . -f 1)"
+default_status_left_middle () {
+  hostname | cut -d . -f 1
 }
 
-init_left_inner () {
+default_status_left_inner () {
   echo "#S"
 }
 
-init_right_inner () {
+default_status_right_inner () {
   if is_prefix_installed
   then
     status="#(prefix_highlight)"
@@ -37,7 +124,7 @@ init_right_inner () {
   echo "$status"
 }
 
-init_right_middle () {
+default_status_right_middle () {
   if is_cpu_installed
   then
     status="#{cpu_fg_color}#{cpu_icon}"
@@ -58,7 +145,7 @@ init_right_middle () {
   echo "$status"
 }
 
-init_right_outer () {
+default_status_right_outer () {
   if is_battery_installed
   then
     status=" #{battery_color_fg}#{battery_icon}"
@@ -98,56 +185,75 @@ init_right_outer () {
   echo "%b %d %H:%M $status"
 }
 
-set_window_formats () {
-  local template="$(get_tmux_option @airline_tmpl_window '#I:#W')"
-  local bg="$(get_theme_inner)"
-  local hi="$(get_theme_current)"
+#-----------------------------------------------------------------------------#
+#
+# Helper functions
+#
+#-----------------------------------------------------------------------------#
 
-  # default window treatments
-  tmux set -gq window-status-separator-string " "
-  tmux set -gq window-status-format "$template"
+check_status_element () {
+  local element="$1"
+  local override="$2"
 
-  # window styles
-  tmux set -gq window-status-style "fg=$(get_theme_primary) bg=$bg"
-  tmux set -gq window-status-last-style "fg=$(get_theme_emphasized) bg=$bg"
-  tmux set -gq window-status-activity-style "fg=$(get_theme_alert) bg=$bg"
-  tmux set -gq window-status-bell-style "fg=$(get_theme_stress) bg=$bg"
-
-  # special case for current window
-  tmux set -gq window-status-current-format "$(chev_right $bg $hi) $template $(chev_left $hi $bg)"
+  verify_status_element "$element" &&
+    [[ -n "$(airline show status "$element")" ||
+       -n "$override" ]]
 }
+
+#-----------------------------------------------------------------------------#
+#
+# CLI/API entry point
+#
+#-----------------------------------------------------------------------------#
 
 init () {
-  airline_load_theme solarized
+  local override
+  local subcmd
+  local element
 
-  set_status_left_outer $(init_status_left_outer)
-  set_status_left_middle $(init_status_left_middle)
-  set_status_left_inner $(init_status_left_inner)
+  # process global options
+  if [[ $1 == "--force" || $1 == "-f" ]]
+  then
+    echo "Forcing override"
+    override="--force"
+    shift
+  fi
 
-  set_status_right_outer $(init_status_right_outer)
-  set_status_right_middle $(init_status_right_middle)
-  set_status_right_inner $(init_status_right_inner)
+  subcmd="${1:-all}"
+  shift
 
-  # TODO: is this needed?
-  # TODO: what is mode-style?
-  #tmux set -gq mode-style "fg=$(get_theme_special) bg=$(get_theme_alert)"
-  # tmux set -gq message-command-style
-
-  # Configure panes, use highlight color for current panes
-  tmux set -gq pane-border-style "fg=$(get_theme_primary)"
-  tmux set -gq pane-current-border-style "fg=$(get_theme_current)"
-  tmux set -gq display-panes-color "$(get_theme_primary)"
-  tmux set -gq display-panes-current-color "$(get_theme_current)"
-
-  # Configure window status
-  
-  tmux set -gq status-left "$(left_outer) $(left_middle) $(left_inner)"
-  set_window_formats
-  tmux set -gq status-right "$(right_inner) $(right_middle) $(right_outer)"
-
-  tmux set -gq clock-mode-color "$(get_theme_special)"
-
-
+  case "$subcmd" in
+    theme )
+      element="$1"
+      check theme "$element" "$override" &&
+        default_theme "$override" "$element"
+      ;;
+    status )
+      element="$1"
+      check status "$element" "$override" &&
+        default_status "$override" "$element"
+      ;;
+    all )
+      for element in "${!AIRLINE_THEME_ELEMENTS[@]}"
+      do
+        init "$override" theme "$element" &
+      done
+      for element in "${!AIRLINE_STATUS_ELEMENTS[@]}"
+      do
+        init "$override" status "$element" &
+      done
+      wait
+      ;;
+    help | --help | -h )
+      echo "Help message"
+      ;;
+    * )
+      init help
+      exit 2
+      ;;
+  esac
 }
- 
-init
+
+init "$@"
+
+# vim: sts=2 sw=2 et
