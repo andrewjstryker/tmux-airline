@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
-# update_status_line.sh
+# update.sh
 #
-# Sets the status-{left,right} and window-status-* using the current theme.
+# Set the status-{left,right} and window-status-* from status and theme
+# elements.
 #
 # TODO:
 #   - Discover the effects of
