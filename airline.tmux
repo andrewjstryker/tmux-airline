@@ -106,6 +106,9 @@ main () {
     show ) #CLIHELP Show an airline value
       "$CURRENT_DIR/scripts/api.sh" show "$@"
       ;;
+    update ) #CLIHELP Update status line
+      "$CURRENT_DIR/scripts/update.sh" "$@"
+      ;;
     * )
       usage
       exit 1
