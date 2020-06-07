@@ -35,6 +35,15 @@ AIRLINE_THEME_ELEMENTS=([primary]=1
                         [special]=1
                       )
 
+declare -g -A AIRLINE_STATUS_ELEMENTS
+AIRLINE_STATUS_ELEMENTS=([left-outer]=1
+                         [left-middle]=1
+                         [left-inner]=1
+                         [right-inner]=1
+                         [right-middle]=1
+                         [right-outer]=1
+                       )
+
 #-----------------------------------------------------------------------------#
 #
 # Internal functions
