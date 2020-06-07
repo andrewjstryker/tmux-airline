@@ -444,6 +444,4 @@ airline-api () {
   esac
 }
 
-airline-api "$@"
-
 # vim: sts=2 sw=2 et
