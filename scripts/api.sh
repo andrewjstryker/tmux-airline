@@ -395,12 +395,7 @@ get_status_right_outer () {
 
 airline_refresh_needed () {
   # note numerical testing
-  if (( "$(get_tmux_option "${AIRLINE_REFRESH_FLAG}" "1" )" ))
-  then
-    return 1
-  fi
-
-  return 0
+  (( "$(get_tmux_option "${AIRLINE_REFRESH_FLAG}" "1" )" ))
 }
 
 airline_refresh_clear () {
