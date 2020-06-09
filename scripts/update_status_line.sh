@@ -16,7 +16,6 @@
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 source "$CURRENT_DIR/api.sh"
-source "$CURRENT_DIR/shared.sh"
 
 #-----------------------------------------------------------------------------#
 #
@@ -27,51 +26,26 @@ source "$CURRENT_DIR/shared.sh"
 chevron () {
   local left_bg="$1"
   local right_bg="$2"
-  local chev="$3"
+  local right_fg="$3"
+  local chev="$4"
 
-  echo "#[fg=$right_bg,bg=$left_bg]$chev"
+  echo "#[fg=$right_bg,bg=$left_bg]$chev[fg=$right_fg,bg=$right_bg]"
 }
 
 chev_right () {
   local left_bg="$1"
   local right_bg="$2"
-  chevron "$right_bg" "$left_bg" ""
+  local right_fg="$3"
+
+  chevron "$left_bg" "$right_bg" "$right_fg" ""
 }
 
 chev_left () {
   local left_bg="$1"
   local right_bg="$2"
-  chevron "$left_bg" "$right_bg" ""
-}
+  local right_fg="$3"
 
-#-----------------------------------------------------------------------------#
-#
-# Window status
-#
-#-----------------------------------------------------------------------------#
-
-set_window_status () {
-  local bg="$(get_tmux_option @airline-theme-inner-bg)"
-  local primary="$(get_tmux_option @airline-theme-primary)"
-  local emphasized="$(get_tmux_option @airline-theme-emphasized)"
-  local current="$(get_tmux_option @airline-theme-current)"
-  local special="$(get_tmux_option @airline-theme-special)"
-  local alert="$(get_tmux_option @airline-theme-alert)"
-  local format="$(get_tmux_option @airline-window-format)"
-
-  # default window treatments
-  set_tmux_option window-status-separator-string " "
-  set_tmux_option window-status-format "$format"
-
-  # window styles
-  set_tmux_option window-status-style "fg=$primary bg=$bg"
-  set_tmux_option window-status-last-style "fg=$emphasized bg=$bg"
-  set_tmux_option window-status-bell-style "fg=$alert bg=$bg"
-  set_tmux_option window-status-activity-style "fg=$special bg=$bg"
-
-  # special case for current window
-  set_tmux_option window-status-current-format \
-    "$(chev_right $bg $current) $format $(chev_left $current $bg)"
+  chevron "$left_bg" "$right_bg" "$right_fg" ""
 }
 
 #-----------------------------------------------------------------------------#
@@ -81,29 +55,30 @@ set_window_status () {
 #-----------------------------------------------------------------------------#
 
 left_outer () {
-  local fg="$(get_tmux_option @airline-theme-primary)"
-  local bg="$(get_tmux_option @airline-theme-outer-bg)"
-  local next_bg="$(get_tmux_option @airline-theme-middle-bg)"
-  local format="$(get_tmux_option @airline-status-left-outer)"
+  local fg="$(airline_show theme emphasized)"
+  local outer="$(airline_show theme outer)"
+  local status="$(airline_show status left-outer)"
+  local hook="#($CURRENT_DIR/../airline.tmux update)"
 
-  echo "#[fg=$fg,bg=$bg] $format $(chev_right $bg $next_bg)"
+  echo "$hook#[fg=$fg,bg=$outer]$status"
 }
 
 left_middle () {
-  local fg="$(get_tmux_option @airline-theme-emphasized)"
-  local bg="$(get_tmux_option @airline-theme-middle-bg)"
-  local next_bg="$(get_tmux_option @airline-theme-inner-bg)"
-  local format="$(get_tmux_option @airline-status-left-middle)"
+  local fg="$(airline_show theme emphasized)"
+  local middle="$(airline_show theme middle)"
+  local outer="$(airline_show theme outer)"
+  local status="$(airline_show status left-middle)"
 
-  echo "#[fg=$fg,bg=$bg] $format $(chev_right $bg $next_bg)"
+  echo "$(chev_right $outer $middle $fg)$status"
 }
 
 left_inner () {
-  local fg="$(get_tmux_option @airline-theme-primary)"
-  local bg="$(get_tmux_option @airline-theme-inner-bg)"
-  local format="$(get_tmux_option @airline-status-left-inner)"
+  local fg="$(airline_show theme primary)"
+  local inner="$(airline_show theme inner)"
+  local middle="$(airline_show theme middle)"
+  local status="$(airline_show status left-inner)"
 
-  echo "#[fg=$fg,bg=$bg] $format"
+  echo "$(chev_right $middle $inner $fg)$status"
 }
 
 #-----------------------------------------------------------------------------#
@@ -113,29 +88,29 @@ left_inner () {
 #-----------------------------------------------------------------------------#
 
 right_inner () {
-  local fg="$(get_tmux_option @airline-theme-primary)"
-  local bg="$(get_tmux_option @airline-theme-inner-bg)"
-  local next_bg="$(get_tmux_option @airline-theme-middle-bg)"
-  local format="$(get_tmux_option @airline-status-right-inner)"
+  local fg="$(airline_show theme primary)"
+  local inner="$(airline_show theme inner)"
+  local status="$(airline_show status right-inner)"
 
-  echo "#[fg=$fg,bg=$bg]$format $(chev_right $bg $next_bg)"
+  echo "#[fg=$get_theme_primary),bg=$(get_theme_inner)]$status"
 }
 
 right_middle () {
-  local fg="$(get_tmux_option @airline-theme-emphasized)"
-  local bg="$(get_tmux_option @airline-theme-middle-bg)"
-  local next_bg="$(get_tmux_option @airline-theme-outer-bg)"
-  local format="$(get_tmux_option @airline-status-right-middle)"
+  local fg="$(airline_show theme emphasized)"
+  local inner="$(airline_show theme inner)"
+  local middle="$(airline_show theme middle)"
+  local status="$(airline_show status right-middle)"
 
-  echo "#[fg=$fg,bg=$bg] $format $(chev_right $bg $next_bg)"
+  echo "$(chev_right $inner $middle $fg)$status"
 }
 
 right_outer () {
-  local fg="$(get_tmux_option @airline-theme-primary)"
-  local bg="$(get_tmux_option @airline-theme-outer-bg)"
-  local format="$(get_tmux_option @airline-status-right-outer)"
+  local fg="$(airline_show theme emphasized)"
+  local middle="$(airline_show theme middle)"
+  local outer="$(airline_show theme outer)"
+  local status="$(airline_show status right-outer)"
 
-  echo "#[fg=$fg,bg=$bg] $format "
+  echo "$(chev_right $middle $outer $fg)$status"
 }
 
 #-----------------------------------------------------------------------------#
@@ -145,8 +120,8 @@ right_outer () {
 #-----------------------------------------------------------------------------#
 
 set_panes () {
-  local primary="$(get_tmux_option @airline-theme-primary)"
-  local current="$(get_tmux_option @airline-theme-current)"
+  local primary="$(airline_show theme primary)"
+  local current="$(airline_show theme current)"
 
   # pane borders
   set_tmux_option pane-border-style "fg=$primary"
@@ -164,8 +139,8 @@ set_panes () {
 #-----------------------------------------------------------------------------#
 
 set_messages () {
-  local alert="$(get_tmux_option @airline-theme-alert)"
-  local primary="$(get_tmux_option @airline-theme-primary)"
+  local alert="$(airline_show theme alert)"
+  local primary="$(airline_show theme primary)"
 
   set_tmux_option message-command-style "fg=$primary bg=$alert"
 }
@@ -177,7 +152,7 @@ set_messages () {
 #-----------------------------------------------------------------------------#
 
 set_clock () {
-  local special="$(get_tmux_option @airline-theme-special)"
+  local special="$(airline_show theme special)"
 
   set_tmux_option clock-mode-color "$special"
 }
@@ -188,21 +163,53 @@ set_clock () {
 #
 #-----------------------------------------------------------------------------#
 
-main () {
+update () {
   # only apply theme when needed
-  if (( "$(get_tmux_option @airline-interal-theme-refresh 1)" ))
+  if [[ ! theme_refresh_needed ]]
   then
-    set_window_status
-    set_tmux_option status-left "$(left_outer)$(left_middle)$(left_inner)"
-    set_tmux_option status-right "$(right_inner)$(right_middle)$(right_outer)"
-    set_panes
-    set_messages
-    set_clock
-
-    set_tmux_option @airline-internal-theme-refresh 0
+    return 0
   fi
-}
 
-main
+  #
+  # status line
+  #
+  set_tmux_option status-style "fg=$(get_theme_primary) bg=$(get_theme_inner)"
+  set_tmux_option status-left "$(left_outer)$(left_middle)$(left_inner)"
+  set_tmux_option status-right "$(right_inner)$(right_middle)$(right_outer)"
+
+  #
+  # windows
+  #
+
+  # window names
+  set_tmux_option window-status-format "$(get_status_window)"
+  set_tmux_option window-status-current-format \
+    "$(chev_right $(get_theme_inner) $(get_theme_current) $(get_theme_inner)) "\
+    "$(get_status_window) "\
+    "$(chev_left $(get_theme_current) $(get_theme_inner) $(get_theme_inner))"
+  set_tmux_option window-status-separator-string " "
+
+  # window styles
+  set_tmux_option window-status-style "fg=$(get_primary) bg=$(get_inner)"
+  set_tmux_option window-status-last-style "fg=$(get_emphasized) bg=$(get_inner)"
+  set_tmux_option window-status-bell-style "fg=$(get_alert) bg=$(get_inner)"
+  set_tmux_option window-status-activity-style "fg=$(get_special) bg=$(get_inner)"
+
+  #
+  # panes
+  #
+  set_tmux_option pane-border-style "fg=$(get_primary)"
+  set_tmux_option pane-current-border-style "fg=$current"
+
+  # display-panes command
+  set_tmux_option display-panes-color "$(get_primary)"
+  set_tmux_option display-panes-active-color "$current"
+  set_tmux_option w
+  set_panes
+  set_messages
+  set_clock
+
+  theme_refresh_clear
+}
 
 # vim: sts=2 sw=2 et
