@@ -113,6 +113,44 @@ right_outer () {
   echo "$(chev_right $middle $outer $fg)$status"
 }
 
+set_status () {
+  local primary="$(airline_show theme primary)"
+  local current="$(airline_show theme current)"
+  local inner="$(airline_show theme inner)"
+
+  set_tmux_option status-style "fg=$primary bg=$inner"
+  set_tmux_option status-left "$(left_outer)$(left_middle)$(left_inner)"
+  set_tmux_option status-right "$(right_inner)$(right_middle)$(right_outer)"
+}
+
+#-----------------------------------------------------------------------------#
+#
+# Windows
+#
+#-----------------------------------------------------------------------------#
+
+set_window () {
+  local inner="$(airline_show theme inner)"
+  local current="$(airline_show theme current)"
+  local primary="$(airline_show theme primary)"
+  local emphasized="$(airline_show theme emphasized)"
+  local alert="$(airline_show theme alert)"
+  local special="$(airline_show theme special)"
+
+  set_tmux_option window-status-format "$(get_status_window)"
+
+  set_tmux_option window-status-current-format \
+    "$(chev_right $inner $current $inner) $(get_status_window) $(chev_left $current $inner $inner)"
+
+  set_tmux_option window-status-separator-string " "
+
+  # window styles
+  set_tmux_option window-status-style "fg=$primary bg=$inner"
+  set_tmux_option window-status-last-style "fg=$emphasized bg=$inner"
+  set_tmux_option window-status-bell-style "fg=$alert bg=$inner"
+  set_tmux_option window-status-activity-style "fg=$special bg=$inner"
+}
+
 #-----------------------------------------------------------------------------#
 #
 # Panes
@@ -165,51 +203,18 @@ set_clock () {
 
 update () {
   # only apply theme when needed
-  if [[ ! theme_refresh_needed ]]
+  if [[ ! _airline_refresh_needed ]]
   then
-    return 0
+    exit 0
   fi
 
-  #
-  # status line
-  #
-  set_tmux_option status-style "fg=$(get_theme_primary) bg=$(get_theme_inner)"
-  set_tmux_option status-left "$(left_outer)$(left_middle)$(left_inner)"
-  set_tmux_option status-right "$(right_inner)$(right_middle)$(right_outer)"
-
-  #
-  # windows
-  #
-
-  # window names
-  set_tmux_option window-status-format "$(get_status_window)"
-  set_tmux_option window-status-current-format \
-    "$(chev_right $(get_theme_inner) $(get_theme_current) $(get_theme_inner)) "\
-    "$(get_status_window) "\
-    "$(chev_left $(get_theme_current) $(get_theme_inner) $(get_theme_inner))"
-  set_tmux_option window-status-separator-string " "
-
-  # window styles
-  set_tmux_option window-status-style "fg=$(get_primary) bg=$(get_inner)"
-  set_tmux_option window-status-last-style "fg=$(get_emphasized) bg=$(get_inner)"
-  set_tmux_option window-status-bell-style "fg=$(get_alert) bg=$(get_inner)"
-  set_tmux_option window-status-activity-style "fg=$(get_special) bg=$(get_inner)"
-
-  #
-  # panes
-  #
-  set_tmux_option pane-border-style "fg=$(get_primary)"
-  set_tmux_option pane-current-border-style "fg=$current"
-
-  # display-panes command
-  set_tmux_option display-panes-color "$(get_primary)"
-  set_tmux_option display-panes-active-color "$current"
-  set_tmux_option w
+  set_status
+  set_windows
   set_panes
   set_messages
   set_clock
 
-  theme_refresh_clear
+  _airline_refresh_clear
 }
 
 # vim: sts=2 sw=2 et
