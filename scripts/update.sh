@@ -217,4 +217,13 @@ update () {
   _airline_refresh_clear
 }
 
+
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]
+then
+  init "$@"
+  exit "$?"
+fi
+
+export -f update
+
 # vim: sts=2 sw=2 et
