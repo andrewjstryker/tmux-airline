@@ -72,7 +72,7 @@ EOF
 #
 #-----------------------------------------------------------------------------#
 
-main () {
+airline () {
   local subcmd="${1:-update}"
   shift
 
@@ -116,6 +116,12 @@ main () {
   esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]
+then
+  airline "$@"
+  exit "$?"
+fi
+
+export -f airline
 
 # vim: sts=2 sw=2 et
