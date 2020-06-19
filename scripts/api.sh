@@ -82,28 +82,36 @@ function notice ()    { [[ "${LOG_LEVEL:-0}" -ge 5 ]] && __b3bp_log notice "${@}
 function info ()      { [[ "${LOG_LEVEL:-0}" -ge 6 ]] && __b3bp_log info "${@}"; true; }
 function debug ()     { [[ "${LOG_LEVEL:-0}" -ge 7 ]] && __b3bp_log debug "${@}"; true; }
 
+#-----------------------------------------------------------------------------#
+#
+# Define global variables
+#
+#-----------------------------------------------------------------------------#
 
-source "$CURRENT_DIR/scripts/shared.sh"
+AIRLINE_API_LOADED=1
 
 AIRLINE_PREFIX="@airline"
 AIRLINE_REFRESH_FLAG="${AIRLINE_PREFIX}-refresh"
 
-# store theme elements in an array
+# store default theme elements in an array:
+#   - keys are the set of recognized elements
+#   - values are the default value
+#
+# this default theme works in 16 color palette environment
 declare -g -A AIRLINE_THEME_ELEMENTS
-AIRLINE_THEME_ELEMENTS=([primary]=1
-                        [secondary]=1
-                        [emphasized]=1
-                        [background]=1
-                        [outer]=1
-                        [middle]=1
-                        [inner]=1
-                        [current]=1
-                        [alert]=1
-                        [stress]=1
-                        [copy]=1
-                        [zoom]=1
-                        [monitor]=1
-                        [special]=1
+AIRLINE_THEME_ELEMENTS=([primary]="white"
+                        [secondary]="grey"
+                        [emphasized]="white"
+                        [outer]="white"
+                        [middle]="grey"
+                        [inner]="black"
+                        [current]="yellow"
+                        [alert]="orange"
+                        [stress]="red"
+                        [copy]="blue"
+                        [zoom]="purple"
+                        [monitor]="green"
+                        [special]="cyan"
                       )
 
 declare -g -A AIRLINE_STATUS_ELEMENTS
