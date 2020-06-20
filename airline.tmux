@@ -92,22 +92,24 @@ airline () {
   tmux list-sessions | grep windows > /dev/null ||
     die "Start a tmux session prior to running this script"
 
+  source "$CURRENT_DIR/scripts/api.sh"
+
   case "$subcmd" in
     init ) #CLIHELP Initialize status line values
-      "$CURRENT_DIR/scripts/initialization.sh" "$@"
+      source "$CURRENT_DIR/scripts/initialization.sh"
+      init "$@"
       ;;
-    load ) #CLIHELP Load a theme
-      load "$@"
-      "$CURRENT_DIR/scripts/api.sh" load theme "$@"
+    load ) #CLIHELP Load configuation
+      airline_load "$@"
       ;;
     set )  #CLIHELP Set an airline value
-      "$CURRENT_DIR/scripts/api.sh" set "$@"
+      airline_set "$@"
       ;;
     show ) #CLIHELP Show an airline value
-      "$CURRENT_DIR/scripts/api.sh" show "$@"
+      airline_show "$@"
       ;;
     update ) #CLIHELP Update status line
-      "$CURRENT_DIR/scripts/update.sh" "$@"
+      update "$@"
       ;;
     * )
       usage
