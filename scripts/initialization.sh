@@ -7,10 +7,9 @@
 #
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
 
-CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# TODO: be smart about loading api?
 
-source "$CURRENT_DIR/api.sh"
-source "$CURRENT_DIR/tpm-integration.sh"
+source "$CURRENT_DIR/scripts/tpm-integration.sh"
 
 #-----------------------------------------------------------------------------#
 #
@@ -21,50 +20,10 @@ source "$CURRENT_DIR/tpm-integration.sh"
 default_theme () {
   local element="$1"
 
-  case "$element" in
-    primary )
-      airline_set theme primary black
-      ;;
-    secondary )
-      airline_set theme primary grey
-      ;;
-    emphasized )
-      airline_set theme emphasized grey
-      ;;
-    outer )
-      airline_set theme outer grey
-      ;;
-    middle )
-      airline_set theme middle grey
-      ;;
-    inner )
-      airline_set theme inner grey
-      ;;
-    current )
-      airline_set theme current yellow
-      ;;
-    alert )
-      airline_set theme alert red
-      ;;
-    stress )
-      airline_set theme stress orange
-      ;;
-    copy )
-      airline_set theme copy cyan
-      ;;
-    zoom )
-      airline_set theme zoom green
-      ;;
-    monitor )
-      airline_set theme monitor blue
-      ;;
-    special )
-      airline_set theme special green
-      ;;
-    * )
-      # handle error
-      ;;
-  esac
+  if [[ -z "$(airline show theme "${element}")" ]]
+  then
+    airline set theme "${element}" "${AIRLINE_THEME_ELEMENTS[$element]}"
+  fi
 }
 
 #-----------------------------------------------------------------------------#
@@ -76,7 +35,7 @@ default_theme () {
 default_status () {
   local element="$1"
 
-  echo "Setting defaults for element: $element"
+  debug "Setting defaults for element: $element"
 
   case "$element" in
     left-outer )
@@ -233,30 +192,37 @@ check_status_element () {
 #-----------------------------------------------------------------------------#
 
 init () {
-  local subcmd="${1:-all}"
-  local element="${2:- }"
+  local group="${1:-all}"
+  local element="${2:-}"
 
-  case "$subcmd" in
+  debug "Call init for ${group}: $*"
+
+  case "$group" in
     theme )
-      default_theme "$element"
+      if [[ -z "${element}" ]]
+      then
+        for element in "${!AIRLINE_THEME_ELEMENTS[@]}"
+        do
+          init theme "$element"
+        done
+      fi
+      default_theme "${element}"
       ;;
 
     status )
-      default_status "$element"
+      if [[ -z "${element}" ]]
+      then 
+        for element in "${!AIRLINE_STATUS_ELEMENTS[@]}"
+        do
+          init "status" "$element"
+        done
+      fi
+      default_status "${element}"
       ;;
 
     all )
-      for element in "${!AIRLINE_THEME_ELEMENTS[@]}"
-      do
-        init theme "$element" &
-      done
-
-      for element in "${!AIRLINE_STATUS_ELEMENTS[@]}"
-      do
-        init status "$element" &
-      done
-
-      wait
+      init "theme"
+      init "status"
       ;;
 
     help | --help | -h )
@@ -272,6 +238,7 @@ init () {
 
 if [[ "${BASH_SOURCE[0]}" = "${0}" ]]
 then
+  echo "init: $*"
   init "$@"
   exit "$?"
 fi
