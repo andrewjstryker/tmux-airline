@@ -19,8 +19,11 @@ source "$CURRENT_DIR/scripts/tpm-integration.sh"
 
 default_theme () {
   local element="$1"
+  local value
 
-  if [[ -z "$(_airline_get_theme "${element}")" ]]
+  value="$(_airline_get_theme_element "${element}")"
+
+  if [[ -z "${value}" ]]
   then
     airline set theme "${element}" "${AIRLINE_THEME_ELEMENTS[$element]}"
   else
