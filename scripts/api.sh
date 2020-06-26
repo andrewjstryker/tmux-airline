@@ -143,17 +143,21 @@ airline_set_theme_element () {
   _set_airline "${element}" "${value}"
 }
 
-airline_get_theme_element () {
+# Use when caller wants to handle unset values
+_airline_get_theme_element () {
   local element="${AIRLINE_PREFIX}-theme-${1}"
+
+  tmux show-option -gqv "${element}"
+}
+
+airline_get_theme_element () {
+  local element="${1}"
   local value
 
-  value="$(tmux show-option -gqv "${element}")"
-
-  debug "Showing theme $element: $value"
+  value="$(_airline_get_theme_element "${element}")"
 
   if [[ -z $value ]]
   then
-    #tmux show-messages "Airline theme element not set: $element"
     warning "Airline theme element not set: $element"
   fi
 
@@ -169,13 +173,18 @@ airline_set_status_element () {
   _set_airline "${element}" "${value}"
 }
 
-airline_get_status_element () {
+# Use when caller wants to handle unset values
+_airline_get_status_element () {
   local element="${AIRLINE_PREFIX}-status-${1}"
+
+  tmux show-option -gqv "${element}"
+}
+
+airline_get_status_element () {
+  local element="${1}"
   local value
 
-  value="$(tmux show-option -gqv "${element}")"
-
-  debug "Showing status $element: $value"
+  value="$(_airline_get_status_element "${element}")"
 
   if [[ -z $value ]]
   then
