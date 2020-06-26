@@ -199,7 +199,7 @@ set_clock () {
 
 update () {
 
-  if [[ ! airline_refresh_needed ]]
+  if ! airline_refresh_needed
   then
     exit 0
   fi
