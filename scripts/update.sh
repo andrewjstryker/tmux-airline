@@ -25,7 +25,7 @@ chevron () {
   local right_fg="$3"
   local chev="$4"
 
-  echo "#[fg=$right_bg,bg=$left_bg]$chev[fg=$right_fg,bg=$right_bg]"
+  echo "#[fg=${right_bg},bg=${left_bg}]${chev}[fg=${right_fg},bg=${right_bg}]"
 }
 
 chev_right () {
@@ -210,7 +210,7 @@ update () {
   set_messages
   set_clock
 
-  _airline_refresh_clear
+  airline_refresh_clear
 }
 
 

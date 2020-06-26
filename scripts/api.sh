@@ -215,7 +215,7 @@ airline_refresh_needed () {
   [[ ${refresh} = 1 ]]
 }
 
-_airline_refresh_clear () {
+airline_refresh_clear () {
   tmux set-option -gq "${__airline_refresh_flag}" "0"
 }
 
