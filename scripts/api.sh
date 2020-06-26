@@ -134,7 +134,7 @@ _set_airline () {
   tmux set-option -gq "${AIRLINE_REFRESH_FLAG}" "1"
 }
 
-_set_theme_element () {
+airline_set_theme_element () {
   local element="${AIRLINE_PREFIX}-theme-$1"
   local value="$2"
 
@@ -143,7 +143,7 @@ _set_theme_element () {
   _set_airline "${element}" "${value}"
 }
 
-_get_theme_element () {
+airline_get_theme_element () {
   local element="${AIRLINE_PREFIX}-theme-${1}"
   local value
 
@@ -160,7 +160,7 @@ _get_theme_element () {
   echo "$value"
 }
 
-_set_status_element () {
+airline_set_status_element () {
   local element="${AIRLINE_PREFIX}-status-${1}"
   local value="${2}"
 
@@ -169,7 +169,7 @@ _set_status_element () {
   _set_airline "${element}" "${value}"
 }
 
-_get_status_element () {
+airline_get_status_element () {
   local element="${AIRLINE_PREFIX}-status-${1}"
   local value
 
@@ -267,11 +267,11 @@ airline_show () {
   case "$group" in
     theme )
       verify_theme_element "$element" &&
-        _get_theme_element "$element"
+        airline_get_theme_element "$element"
       ;;
     status )
       verify_status_element "$element" &&
-        _get_status_element "$element"
+        airline_get_status_element "$element"
       ;;
     all )
       for element in "${!AIRLINE_THEME_ELEMENTS[@]}"
@@ -309,11 +309,11 @@ airline_set () {
   case "$group" in
     theme )
       # verify element name
-      _set_theme_element "$element" "$value"
+      airline_set_theme_element "$element" "$value"
       ;;
     status )
       # verify element name
-      _set_status_element "$element" "$value"
+      airline_set_status_element "$element" "$value"
       ;;
     help | --help | -h )
       cat << EOF
