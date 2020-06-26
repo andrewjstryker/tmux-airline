@@ -91,7 +91,7 @@ function debug ()     { [[ "${LOG_LEVEL:-0}" -ge 7 ]] && __b3bp_log debug "${@}"
 AIRLINE_API_LOADED=1
 
 AIRLINE_PREFIX="@airline"
-AIRLINE_REFRESH_FLAG="${AIRLINE_PREFIX}-refresh"
+__airline_refresh_flag="${AIRLINE_PREFIX}-refresh"
 
 # store default theme elements in an array:
 #   - keys are the set of recognized elements
@@ -131,7 +131,7 @@ AIRLINE_STATUS_ELEMENTS=([left-outer]=1
 
 _set_airline () {
   tmux set-option -gq "${1}" "${2}"
-  tmux set-option -gq "${AIRLINE_REFRESH_FLAG}" "1"
+  tmux set-option -gq "${__airline_refresh_flag}" "1"
 }
 
 airline_set_theme_element () {
