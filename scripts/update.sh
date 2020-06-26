@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
 # update.sh
 #
 # Set the status-{left,right} and window-status-* from status and theme
@@ -11,11 +11,7 @@
 #     * message-style
 #     * message-command-style
 #   - Make chevron characters parameters
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
-
-CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-
-source "$CURRENT_DIR/api.sh"
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
 
 #-----------------------------------------------------------------------------#
 #
@@ -202,8 +198,8 @@ set_clock () {
 #-----------------------------------------------------------------------------#
 
 update () {
-  # only apply theme when needed
-  if [[ ! _airline_refresh_needed ]]
+
+  if [[ ! airline_refresh_needed ]]
   then
     exit 0
   fi
@@ -227,3 +223,4 @@ fi
 export -f update
 
 # vim: sts=2 sw=2 et
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
