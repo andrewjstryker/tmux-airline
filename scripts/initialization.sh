@@ -34,8 +34,17 @@ default_theme () {
 
 default_status () {
   local element="$1"
+  local value
 
   debug "Setting defaults for element: $element"
+
+  value="$(_airline_get_status_element "${element}")"
+
+  if [[ -n ${value} ]]
+  then
+    debug "Skipping status element ${element}: ${value}"
+    return
+  fi
 
   case "$element" in
     left-outer )
