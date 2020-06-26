@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
 # api.sh
 #
 # Provide an API to theme elements and templates.
@@ -8,7 +8,7 @@
 # benefit is that the API records when theme elements changed. Thus, the airline
 # plugin only recomputes status-(left,right) when needed.
 #
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
 
 #-----------------------------------------------------------------------------#
 #
@@ -205,18 +205,18 @@ airline_get_status_element () {
 airline_refresh_needed () {
   local refresh
 
-  refresh="$(tmux show-option -gqv "${AIRLINE_REFRESH_FLAG}")"
+  refresh="$(tmux show-option -gqv "${__airline_refresh_flag}")"
 
   if [[ -z ${refresh} ]]
   then
-    AIRLINE_REFRESH_FLAG=1
+    __airline_refresh_flag=1
   fi
 
   [[ ${refresh} = 1 ]]
 }
 
 _airline_refresh_clear () {
-  tmux set-option -gq "${AIRLINE_REFRESH_FLAG}" "0"
+  tmux set-option -gq "${__airline_refresh_flag}" "0"
 }
 
 #-----------------------------------------------------------------------------#
@@ -338,3 +338,4 @@ EOF
 }
 
 # vim: sts=2 sw=2 et
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
