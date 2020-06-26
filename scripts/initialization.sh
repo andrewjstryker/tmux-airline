@@ -250,13 +250,4 @@ init () {
   esac
 }
 
-if [[ "${BASH_SOURCE[0]}" = "${0}" ]]
-then
-  echo "init: $*"
-  init "$@"
-  exit "$?"
-fi
-
-export -f init
-
 # vim: sts=2 sw=2 et
