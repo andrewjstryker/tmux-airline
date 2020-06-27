@@ -285,12 +285,12 @@ airline_show () {
     all )
       for element in "${!AIRLINE_THEME_ELEMENTS[@]}"
       do
-        echo "airline set theme $element $(airlow_show status $element)"
+        echo "airline set theme ${element} $(airlow_show status "${element}")"
       done
 
       for element in "${!AIRLINE_STATUS_ELEMENTS[@]}"
       do
-        echo "airline set status $element $(airlow_show status $element)"
+        echo "airline set status ${element} $(airlow_show status "${element}")"
       done
       ;;
 
