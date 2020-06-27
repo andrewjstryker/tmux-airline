@@ -109,6 +109,12 @@ airline () {
       airline_show "$@"
       ;;
     update ) #CLIHELP Update status line
+      if [[ airline_init_status = "1" ]]
+      then
+        airline init
+      fi
+
+      source "$CURRENT_DIR/scripts/update.sh"
       update "$@"
       ;;
     * )
