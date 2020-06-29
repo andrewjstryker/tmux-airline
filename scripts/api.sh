@@ -129,7 +129,7 @@ AIRLINE_STATUS_ELEMENTS=([left-outer]=1
 #
 #-----------------------------------------------------------------------------#
 
-_set_airline () {
+_airline_set () {
   tmux set-option -gq "${1}" "${2}"
   tmux set-option -gq "${__airline_refresh_flag}" "1"
 }
@@ -140,7 +140,7 @@ airline_set_theme_element () {
 
   debug "Setting theme ${element} to ${value}"
 
-  _set_airline "${element}" "${value}"
+  _airline_set "${element}" "${value}"
 }
 
 # Use when caller wants to handle unset values
@@ -170,7 +170,7 @@ airline_set_status_element () {
 
   debug "Setting status ${element} to ${value}"
 
-  _set_airline "${element}" "${value}"
+  _airline_set "${element}" "${value}"
 }
 
 # Use when caller wants to handle unset values
@@ -194,6 +194,13 @@ airline_get_status_element () {
   echo "$value"
 }
 
+_airline_get_interpolations () {
+  local element="${AIRLINE_PREFIX}-interpolations"
+
+  tmux show-option -gqv "${element}"
+}
+  
+
 #-----------------------------------------------------------------------------#
 #
 # Refresh and lock flags
@@ -215,7 +222,7 @@ airline_refresh_needed () {
   [[ ${refresh} = 1 ]]
 }
 
-airline_refresh_clear () {
+_airline_refresh_clear () {
   tmux set-option -gq "${__airline_refresh_flag}" "0"
 }
 
@@ -279,8 +286,8 @@ airline_register () {
 
   debug "Registering widget ${widget} to ${path}"
 
-  _set_airline "${AIRLINE_PREFIX}-${widget}" "${path}"
-  _set_airline "${AIRLINE_PREFIX}-interpolations" \
+  _airline_set "${AIRLINE_PREFIX}-${widget}" "${path}"
+  _airline_set "${AIRLINE_PREFIX}-interpolations" \
     "$(_airline_get_interpolations) ${widget}"
 }
 
@@ -321,7 +328,13 @@ airline_show () {
       done
       ;;
     widget )
-      airline_get_widget_mapping "${element}"
+      if [[ -n "${element}" ]]
+      then
+        airline_get_widget_mapping "${element}"
+        return
+      fi
+
+      for element in 
       ;;
     all )
       airline_show prefix
