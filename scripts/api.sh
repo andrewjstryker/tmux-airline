@@ -12,7 +12,9 @@
 
 #-----------------------------------------------------------------------------#
 #
-# Bash 3 Boilerplate
+# Use defensive BASH settings
+#
+# From the Bash 3 Boilerplate project
 #
 #-----------------------------------------------------------------------------#
 
@@ -29,8 +31,13 @@ set -o pipefail
 LOG_LEVEL="${LOG_LEVEL:-6}" # 7 = debug -> 0 = emergency
 NO_COLOR="${NO_COLOR:-}"    # true = disable color. otherwise autodetected
 
-
-# Logging
+#-----------------------------------------------------------------------------#
+#
+# Define logging functions
+#
+# TODO: Modified from the Bash 3 Boilerplate project for Tmux logging
+#
+#-----------------------------------------------------------------------------#
 
 function __b3bp_log () {
   local log_level="${1}"
