@@ -136,9 +136,20 @@ AIRLINE_STATUS_ELEMENTS=([left-outer]=1
 #
 #-----------------------------------------------------------------------------#
 
+# We assume that any change to an airline managed value will require
+# re-applying all settings. Thus, we record that 
 _airline_set () {
-  tmux set-option -gq "${1}" "${2}"
+  local key="${1}"
+  local value="${2}"
+
+  tmux set-option -gq "${key}" "${value}"
   tmux set-option -gq "${__airline_refresh_flag}" "1"
+}
+
+_airline_get () {
+  local key="${1}"
+
+  tmux show-option -gqv "${key}"
 }
 
 airline_set_theme_element () {
