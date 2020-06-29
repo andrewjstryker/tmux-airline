@@ -267,6 +267,23 @@ airline_load () {
   exit 1
 }
 
+_airline_get_interpolations () {
+  local element="${AIRLINE_PREFIX}-interpolations"
+
+  tmux show-option -gqv "${element}"
+}
+
+airline_register () {
+  local widget="${1}"
+  local path="${2}"
+
+  debug "Registering widget ${widget} to ${path}"
+
+  _set_airline "${AIRLINE_PREFIX}-${widget}" "${path}"
+  _set_airline "${AIRLINE_PREFIX}-interpolations" \
+    "$(_airline_get_interpolations) ${widget}"
+}
+
 airline_show () {
   local group="${1:-all}"
   local element="${2:-}"
@@ -277,7 +294,14 @@ airline_show () {
     prefix )
       echo "${AIRLINE_PREFIX}"
       ;;
-    all )
+    theme )
+      if [[ -n "${element}" ]]
+      then
+        verify_theme_element "$element" &&
+          airline_get_theme_element "$element"
+        return
+      fi
+
       for element in "${!AIRLINE_THEME_ELEMENTS[@]}"
       do
         airline_show theme "${element}"
