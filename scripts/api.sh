@@ -274,24 +274,36 @@ airline_show () {
   debug "Showing $group $element"
 
   case "$group" in
-    theme )
-      verify_theme_element "$element" &&
-        airline_get_theme_element "$element"
-      ;;
-    status )
-      verify_status_element "$element" &&
-        airline_get_status_element "$element"
+    prefix )
+      echo "${AIRLINE_PREFIX}"
       ;;
     all )
       for element in "${!AIRLINE_THEME_ELEMENTS[@]}"
       do
-        echo "airline set theme ${element} $(airlow_show status "${element}")"
+        airline_show theme "${element}"
       done
+      ;;
+    status )
+      if [[ -n "${element}" ]]
+      then
+        verify_status_element "$element" &&
+          airline_get_status_element "$element"
+        return
+      fi
 
       for element in "${!AIRLINE_STATUS_ELEMENTS[@]}"
       do
-        echo "airline set status ${element} $(airlow_show status "${element}")"
+        airline_show status "${element}"
       done
+      ;;
+    widget )
+      airline_get_widget_mapping "${element}"
+      ;;
+    all )
+      airline_show prefix
+      airline_show status
+      airline_show theme
+      airline_show widget
       ;;
 
     help | --help | -h )
