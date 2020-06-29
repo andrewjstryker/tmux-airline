@@ -137,7 +137,8 @@ AIRLINE_STATUS_ELEMENTS=([left-outer]=1
 #-----------------------------------------------------------------------------#
 
 # We assume that any change to an airline managed value will require
-# re-applying all settings. Thus, we record that 
+# re-applying all settings. Thus, we record that we will need to refresh Tmux
+# options.
 _airline_set () {
   local key="${1}"
   local value="${2}"
