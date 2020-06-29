@@ -132,7 +132,11 @@ AIRLINE_STATUS_ELEMENTS=([left-outer]=1
 
 #-----------------------------------------------------------------------------#
 #
-# Internal functions
+# Handle I/O to Tmux's user level options
+#
+# Tmux Airline relies on Tmux's user level options as a key-value storage
+# system. The functions defined here are primatives. Users should never need
+# to interact with these functions directly.
 #
 #-----------------------------------------------------------------------------#
 
