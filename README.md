@@ -27,7 +27,7 @@ This plugin does not have external dependencies other than Bash.
 Add plugin to the list of TPM plugins in `.tmux.conf`:
 
 ```tmux
-set -g @plugin 'andrewjstryker/tmux-airline
+set -g @plugin 'andrewjstryker/tmux-airline'
 ```
 
 Hit `<prefix> + I` to fetch the plugin and source it.
