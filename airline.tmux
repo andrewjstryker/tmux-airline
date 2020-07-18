@@ -98,23 +98,31 @@ airline () {
     load ) #CLIHELP Load configuation
       airline_load "$@"
       ;;
-    set )  #CLIHELP Set an airline value
+
+    set ) #CLIHELP Set an airline value
       airline_set "$@"
       ;;
+
     show ) #CLIHELP Show an airline value
       airline_show "$@"
       ;;
+
     register ) # CLIHELP Register a widget
       airline_register "$@"
       ;;
+
     update ) #CLIHELP Update status line
       _init
-
       source "$CURRENT_DIR/scripts/update.sh"
       update "$@"
       ;;
-    * )
+
+    help | --help | -h ) #CLIHELP Display this help message
       usage
+      ;;
+
+    * )
+      airline help
       exit 1
       ;;
   esac
