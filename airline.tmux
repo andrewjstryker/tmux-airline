@@ -104,6 +104,9 @@ airline () {
     show ) #CLIHELP Show an airline value
       airline_show "$@"
       ;;
+    register ) # CLIHELP Register a widget
+      airline_register "$@"
+      ;;
     update ) #CLIHELP Update status line
       if [[ airline_init_status = "1" ]]
       then
