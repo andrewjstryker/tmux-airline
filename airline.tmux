@@ -108,10 +108,7 @@ airline () {
       airline_register "$@"
       ;;
     update ) #CLIHELP Update status line
-      if [[ airline_init_status = "1" ]]
-      then
-        airline init
-      fi
+      _init
 
       source "$CURRENT_DIR/scripts/update.sh"
       update "$@"
