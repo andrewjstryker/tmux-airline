@@ -95,10 +95,6 @@ airline () {
   source "$CURRENT_DIR/scripts/api.sh"
 
   case "$subcmd" in
-    init ) #CLIHELP Initialize status line values
-      source "$CURRENT_DIR/scripts/initialization.sh"
-      init "$@"
-      ;;
     load ) #CLIHELP Load configuation
       airline_load "$@"
       ;;
