@@ -409,5 +409,20 @@ EOF
 
 }
 
-# vim: sts=2 sw=2 et
+#-----------------------------------------------------------------------------#
+#
+# Control the update job
+#
+#-----------------------------------------------------------------------------#
+
+airline_start () {
+  something &
+  airline_set update "$!"
+}
+
+airline_stop () {
+  kill "$(airline_show update)" || error "Could not kill update process"
+}
+
+# vim: sts=2 sw=2 et tw=78
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
