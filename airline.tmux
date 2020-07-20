@@ -73,7 +73,7 @@ EOF
 #-----------------------------------------------------------------------------#
 
 airline () {
-  local subcmd="${1:-update}"
+  local subcmd="${1:-start}"
   shift
 
   case "$subcmd" in
