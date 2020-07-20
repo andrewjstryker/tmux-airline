@@ -416,8 +416,13 @@ EOF
 #-----------------------------------------------------------------------------#
 
 airline_start () {
-  something &
-  airline_set update "$!"
+  if [[ -z "$(airline_show update)" ]]
+  then
+    warn "Update script already started"
+  else
+    "${CURRENT_DIR}/scripts/update.sh" &
+    airline_set update "$!"
+  fi
 }
 
 airline_stop () {
