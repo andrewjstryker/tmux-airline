@@ -3,34 +3,10 @@
 #
 # airline.tmux
 #
-# Initialize tmux-airline
+# tmux-airline CLI
 #
-# This script does the following:
-#
-#   - Sets the following tmux user variables for building the status line,
-#     if not already defined:
-#       - @airline-status-left-outer
-#       - @airline-status-left-middle
-#       - @airline-status-left-inner
-#       - @airline-status-right-inner
-#       - @airline-status-right-middle
-#       - @airline-status-right-outer
-#
-#   - Sets the following tmux user variables for theming, if not already
-#     defined:
-#       - @airline-theme-outer
-#       - @airline-theme-middle
-#       - @airline-theme-inner
-#       - @airline-theme-secondary
-#       - @airline-theme-primary
-#       - @airline-theme-emphasized
-#       - @airline-theme-current
-#       - @airline-theme-alert
-#       - @airline-theme-special
-#       - @airline-theme-stress
-#       - @airline-theme-copy
-#       - @airline-theme-zoom
-#       - @airline-theme-monitor
+# This script is a stable command line interface for manipulating
+# tmux-airline
 #
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
 
