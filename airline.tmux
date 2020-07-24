@@ -68,10 +68,14 @@ airline () {
       airline_register "$@"
       ;;
 
-    update ) #CLIHELP Update status line
-      _init
-      source "$CURRENT_DIR/scripts/update.sh"
-      update "$@"
+    start ) #CLIHELP Update status line
+      local pid="$(airline show update)"
+      [[ -z "${pid}" ]] && "$CURRENT_DIR/scripts/update.sh" &
+      ;;
+
+    stop )
+      local pid="$(airline show update)"
+      [[ -z "${pid}" ]] || kill "${pid}"
       ;;
 
     help | --help | -h ) #CLIHELP Display this help message
