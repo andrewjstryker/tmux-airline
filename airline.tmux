@@ -103,8 +103,8 @@ if [[ "${BASH_SOURCE[0]}" = "${0}" ]]
 then
   airline "$@"
   exit "$?"
+else
+  export -f airline
 fi
-
-export -f airline
 
 # vim: sts=2 sw=2 et
