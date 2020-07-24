@@ -416,17 +416,25 @@ EOF
 #-----------------------------------------------------------------------------#
 
 airline_start () {
-  if [[ -z "$(airline_show update)" ]]
+  local pid="$(airline show update pid)"
+
+  if [[ -n "${pid}" ]]
   then
-    warn "Update script already started"
+    notice "Airline already running"
   else
-    "${CURRENT_DIR}/scripts/update.sh" &
-    airline_set update "$!"
+    "$CURRENT_DIR/scripts/update.sh" &
+    airline_set update pid "$!"
   fi
 }
 
 airline_stop () {
-  kill "$(airline_show update)" || error "Could not kill update process"
+  local pid="$(airline_show update pid)"
+  if [[ -z "${pid}" ]]
+  then
+    notice "Airline not running"
+  else
+    kill "${pid}" || error "Could not stop update process"
+  fi
 }
 
 # vim: sts=2 sw=2 et tw=78
