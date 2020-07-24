@@ -70,12 +70,22 @@ airline () {
 
     start ) #CLIHELP Update status line
       local pid="$(airline show update)"
-      [[ -z "${pid}" ]] && "$CURRENT_DIR/scripts/update.sh" &
+      if [[ -n "${pid}" ]]
+      then
+        notice "Airline already running"
+      else
+        "$CURRENT_DIR/scripts/update.sh" &
+      fi
       ;;
 
     stop )
       local pid="$(airline show update)"
-      [[ -z "${pid}" ]] || kill "${pid}"
+      if [[ -z "${pid}" ]]
+      then
+        notice "Airline not running"
+      else
+        kill "${pid}"
+      fi
       ;;
 
     help | --help | -h ) #CLIHELP Display this help message
