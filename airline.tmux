@@ -49,25 +49,6 @@ die () {
 
 #-----------------------------------------------------------------------------#
 #
-# Subcommands
-#
-#-----------------------------------------------------------------------------#
-
-usage () {
-  cat << EOF
-$0 [subcommand] [subcommand options]...
-
-  help     Show this help command
-  init     Initialize Airline's environment
-  load     Load configuration from a file
-  set      Set Airline configuration variables
-  show     Show Airline configuration values
-  update   Update Tmux to match Airline configuration values (default)
-EOF
-}
-
-#-----------------------------------------------------------------------------#
-#
 # Main CLI
 #
 #-----------------------------------------------------------------------------#
