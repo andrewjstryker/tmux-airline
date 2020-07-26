@@ -54,9 +54,8 @@ left_outer () {
   local fg="$(airline_show theme emphasized)"
   local outer="$(airline_show theme outer)"
   local status="$(airline_show status left-outer)"
-  local hook="#($CURRENT_DIR/../airline.tmux update)"
 
-  echo "$hook#[fg=$fg,bg=$outer]$status"
+  echo "[fg=$fg,bg=$outer]$status"
 }
 
 left_middle () {
