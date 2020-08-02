@@ -52,6 +52,11 @@ airline () {
   source "$CURRENT_DIR/scripts/api.sh"
 
   case "$subcmd" in
+    apply ) #CLIHELP Apply theme to status configuration
+      source "${CURRENT_DIR}/scripts/update.sh"
+      airline_apply
+      ;;
+
     load ) #CLIHELP Load configuation
       airline_load "$@"
       ;;
