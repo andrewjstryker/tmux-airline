@@ -73,14 +73,6 @@ airline () {
       airline_register "$@"
       ;;
 
-    start ) #CLIHELP Update status line
-      airline_start
-      ;;
-
-    stop )
-      airline_stop
-      ;;
-
     help | --help | -h ) #CLIHELP Display this help message
       usage
       ;;
