@@ -74,7 +74,7 @@ airline () {
       ;;
 
     help | --help | -h ) #CLIHELP Display this help message
-      usage
+      echo "Help message"
       ;;
 
     * )
