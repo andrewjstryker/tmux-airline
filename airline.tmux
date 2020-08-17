@@ -30,7 +30,7 @@ die () {
 #-----------------------------------------------------------------------------#
 
 airline () {
-  local subcmd="${1:-start}"
+  local subcmd="${1:-apply}"
   shift
 
   case "$subcmd" in
