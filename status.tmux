@@ -1,16 +1,25 @@
 #!/usr/bin/env bash
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
 #
-# airline.tmux
+# status.tmux
 #
-# tmux-airline CLI
+# tmux-status CLI
 #
 # This script is a stable command line interface for manipulating
-# tmux-airline
+# tmux-status
 #
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
 
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Exit on error. Append "|| true" if you expect an error.
+set -o errexit
+# Exit on error inside any functions or subshells.
+set -o errtrace
+# Do not allow use of undefined vars. Use ${VAR:-} to use an undefined VAR
+set -o nounset
+# Catch the error in case mysqldump fails (but gzip succeeds) in `mysqldump |gzip`
+set -o pipefail
 
 #-----------------------------------------------------------------------------#
 #
@@ -19,7 +28,7 @@ CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 #-----------------------------------------------------------------------------#
 
 die () {
-  echo "$@" > /dev/stderr
+  echo "$@"
   exit 1
 }
 
@@ -29,9 +38,9 @@ die () {
 #
 #-----------------------------------------------------------------------------#
 
-airline () {
+status () {
   local subcmd="${1:-apply}"
-  shift
+  [[ "$#" -gt 1 ]] && shift
 
   case "$subcmd" in
     help|--help|-h ) #CLIHELP Show this help message
@@ -45,7 +54,7 @@ airline () {
   esac
 
   # verify that tmux is available and running
-  [[ ! -x tmux ]] || die "tmux not on search path"
+  [[ -x tmux ]] || die "tmux not on search path"
   tmux list-sessions | grep windows > /dev/null ||
     die "Start a tmux session prior to running this script"
 
@@ -54,23 +63,23 @@ airline () {
   case "$subcmd" in
     apply ) #CLIHELP Apply theme to status configuration
       source "${CURRENT_DIR}/scripts/update.sh"
-      airline_apply
+      status_apply
       ;;
 
     load ) #CLIHELP Load configuation
-      airline_load "$@"
+      status_load "$@"
       ;;
 
-    set ) #CLIHELP Set an airline value
-      airline_set "$@"
+    set ) #CLIHELP Set an status value
+      status_set "$@"
       ;;
 
-    show ) #CLIHELP Show an airline value
-      airline_show "$@"
+    show ) #CLIHELP Show an status value
+      status_show "$@"
       ;;
 
     register ) # CLIHELP Register a widget
-      airline_register "$@"
+      status_register "$@"
       ;;
 
     help | --help | -h ) #CLIHELP Display this help message
@@ -78,7 +87,7 @@ airline () {
       ;;
 
     * )
-      airline help
+      status help
       exit 1
       ;;
   esac
@@ -86,10 +95,10 @@ airline () {
 
 if [[ "${BASH_SOURCE[0]}" = "${0}" ]]
 then
-  airline "$@"
+  status "$@"
   exit "$?"
 else
-  export -f airline
+  export -f status
 fi
 
 # vim: sts=2 sw=2 et
