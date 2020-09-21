@@ -1,4 +1,4 @@
-#! /bin/usr/env bats
+#! /usr/bin/env bats
 
 @test "bail immediately without tmux" {
   if [[ -x tmux ]]
