@@ -55,7 +55,7 @@ status () {
 
   # verify that tmux is available and running
   if ! hash tmux 2>/dev/null
-  then 
+  then
     die "tmux not on search path"
   fi
 
