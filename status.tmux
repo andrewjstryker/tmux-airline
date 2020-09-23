@@ -54,7 +54,11 @@ status () {
   esac
 
   # verify that tmux is available and running
-  [[ -x tmux ]] || die "tmux not on search path"
+  if ! hash tmux 2>/dev/null
+  then 
+    die "tmux not on search path"
+  fi
+
   tmux list-sessions | grep windows > /dev/null ||
     die "Start a tmux session prior to running this script"
 
