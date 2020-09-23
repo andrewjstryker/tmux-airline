@@ -40,7 +40,7 @@ die () {
 
 status () {
   local subcmd="${1:-apply}"
-  [[ "$#" -gt 1 ]] && shift
+  shift || true
 
   case "$subcmd" in
     help|--help|-h ) #CLIHELP Show this help message
