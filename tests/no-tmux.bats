@@ -11,4 +11,4 @@
   [[ "$status" -eq 1 ]]
 }
 
-# vim: ft=sh sts=2 sw=2 et
+# vim: ft=bash sts=2 sw=2 et
