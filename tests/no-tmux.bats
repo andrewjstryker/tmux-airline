@@ -1,7 +1,7 @@
 #! /usr/bin/env bats
 
 @test "bail immediately without tmux" {
-  if ! hash tmux 2>/dev/null
+  if hash tmux 2>/dev/null
   then
     skip "tmux installed"
   fi
