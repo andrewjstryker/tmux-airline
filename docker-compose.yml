@@ -1,0 +1,14 @@
+version: "3.8"
+services:
+  no-tmux:
+    image: bats/bats:latest
+    environment:
+      BASE_DIR: /code
+    volumes:
+      - "$PWD:/code/"
+    command: /code/tests/no-tmux.bats
+  tmux:
+    image: andrewjstryker/testing-base:latest
+    build:
+      context: .
+      dockerfile: tests/base.dockerfile
