@@ -25,3 +25,8 @@ tags
 
 # End of https://www.toptal.com/developers/gitignore/api/vim
 
+# We won't need these in testing environment
+.git
+.circleci
+.dockerfile
+*.dockerfile
