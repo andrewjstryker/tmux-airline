@@ -8,7 +8,12 @@ services:
       - "$PWD:/code/"
     command: /code/tests/no-tmux.bats
   tmux:
-    image: andrewjstryker/testing-base:latest
+    image: andrewjstryker/tmux-ci-testing:1.0.0
     build:
       context: .
-      dockerfile: tests/base.dockerfile
+      dockerfile: tests/tmux-ci-testing.dockerfile
+    environment:
+      PLUGIN_HOME: /home/status/.tmux/plugins/tmux-status
+    volumes:
+      - "$PWD:/home/status/.tmux/plugins/tmux-status"
+    command: bats "/home/status/.tmux/plugins/tmux-status/tests"
