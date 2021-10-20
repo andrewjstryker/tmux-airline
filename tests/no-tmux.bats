@@ -3,7 +3,7 @@
 BASE_DIR="${BASE_DIR:-${PWD}}"
 
 @test "bail immediately without tmux" {
-  if hash tmux 2>/dev/null
+  if hash tmux 2> /dev/null
   then
     skip "tmux installed"
   fi
