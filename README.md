@@ -13,10 +13,10 @@ Abstract tmux status lines into TPM plugin. What makes this compelling?
 - [ ] Toggles between dark and light variants
 - [ ] Accepts user-defined palettes
 - [ ] Follows powerline look and feel
-- [ ] Integrates with the following widgets
-  - [ ] Battery
-  - [ ] Online
-  - [ ] System stats
+- [X] Integrates with the following widgets
+  - [X] Battery
+  - [X] Online
+  - [X] System stats
 
 ## Installation
 
