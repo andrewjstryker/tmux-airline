@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
 #
-# status.tmux
+# airline.tmux
 #
-# tmux-status CLI
+# tmux-airline CLI
 #
 # This script is a stable command line interface for manipulating
-# tmux-status
+# tmux-airline
 #
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-#
 
@@ -38,7 +38,7 @@ die () {
 #
 #-----------------------------------------------------------------------------#
 
-status () {
+airline () {
   local subcmd="${1:-apply}"
   shift || true
 
@@ -65,25 +65,25 @@ status () {
   source "$CURRENT_DIR/scripts/api.sh"
 
   case "$subcmd" in
-    apply ) #CLIHELP Apply theme to status configuration
+    apply ) #CLIHELP Apply theme to airline configuration
       source "${CURRENT_DIR}/scripts/update.sh"
-      status_apply
+      airline_apply
       ;;
 
     load ) #CLIHELP Load configuation
-      status_load "$@"
+      airline_load "$@"
       ;;
 
-    set ) #CLIHELP Set an status value
-      status_set "$@"
+    set ) #CLIHELP Set an airline value
+      airline_set "$@"
       ;;
 
-    show ) #CLIHELP Show an status value
-      status_show "$@"
+    show ) #CLIHELP Show an airline value
+      airline_show "$@"
       ;;
 
     register ) # CLIHELP Register a widget
-      status_register "$@"
+      airline_register "$@"
       ;;
 
     help | --help | -h ) #CLIHELP Display this help message
@@ -91,7 +91,7 @@ status () {
       ;;
 
     * )
-      status help
+      airline help
       exit 1
       ;;
   esac
@@ -99,10 +99,10 @@ status () {
 
 if [[ "${BASH_SOURCE[0]}" = "${0}" ]]
 then
-  status "$@"
+  airline "$@"
   exit "$?"
 else
-  export -f status
+  export -f airline
 fi
 
 # vim: sts=2 sw=2 et
