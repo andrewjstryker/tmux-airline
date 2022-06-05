@@ -13,7 +13,7 @@ services:
       context: .
       dockerfile: tests/tmux-ci-testing.dockerfile
     environment:
-      PLUGIN_HOME: /home/status/.tmux/plugins/tmux-status
+      PLUGIN_HOME: /home/airline/.tmux/plugins/tmux-airline
     volumes:
-      - "$PWD:/home/status/.tmux/plugins/tmux-status"
-    command: bats "/home/status/.tmux/plugins/tmux-status/tests"
+      - "$PWD:/home/airline/.tmux/plugins/tmux-airline"
+    command: bats "/home/airline/.tmux/plugins/tmux-airline/tests"

@@ -11,14 +11,14 @@
 
 FROM debian:stable-slim
 
-ARG TEST_USER="status"
+ARG TEST_USER="airline"
 ARG TEST_UID="1000"
 ARG TEST_GID="100"
 
 LABEL maintainer="Andrew Stryker <axs@sdf.org>"
 
 ENV HOME=/home/$TEST_USER
-ENV PLUGIN_HOME=$HOME/.tmux/plugins/tmux-status
+ENV PLUGIN_HOME=$HOME/.tmux/plugins/tmux-airline
 
 # We need additional packages:
 #   - tmux, obviously
