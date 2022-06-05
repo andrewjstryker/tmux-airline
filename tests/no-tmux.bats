@@ -8,7 +8,7 @@ BASE_DIR="${BASE_DIR:-${PWD}}"
     skip "tmux installed"
   fi
 
-  run "${BASE_DIR}/status.tmux"
+  run "${BASE_DIR}/airline.tmux"
   [[ "$output" = "tmux not on search path" ]]
   [[ "$status" -eq 1 ]]
 }
