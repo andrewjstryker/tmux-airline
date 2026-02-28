@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 
-CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+CURRENT_DIR="${AIRLINE_DIR:-$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )}"
 
 source "$CURRENT_DIR/scripts/shared.sh"
 source "$CURRENT_DIR/scripts/is_installed.sh"
 
 # use an associative array to hold the theme
 declare -A THEME
+
+if [[ "${AIRLINE_TESTING:-}" != "1" ]]; then
 
 tmux source-file "$CURRENT_DIR/themes/solarized"
 
@@ -36,6 +38,8 @@ THEME[stress]=$(get_tmux_option @airline-stress "red")
 THEME[zoom]=$(get_tmux_option @airline-zoom "cyan")
 THEME[copy]=$(get_tmux_option @airline-copy "blue")
 THEME[monitor]=$(get_tmux_option @airline-monitor "grey")
+
+fi
 
 #-----------------------------------------------------------------------------#
 #
@@ -265,4 +269,6 @@ main () {
 
 }
 
-main
+if [[ "${AIRLINE_TESTING:-}" != "1" ]]; then
+  main
+fi
