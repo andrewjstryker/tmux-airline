@@ -39,49 +39,6 @@ THEME[monitor]=$(get_tmux_option @airline-monitor "grey")
 
 #-----------------------------------------------------------------------------#
 #
-# Load color scheme
-#
-#-----------------------------------------------------------------------------#
-
-load_color_theme () {
-  # use an associative array to hold the theme
-  declare -A THEME
-  local color_theme=$(get_tmux_option airline_color_theme solarized)
-
-  tmux source-file "$CURRENT_DIR/themes/$color_theme"
-
-  # status line "normal" background colors
-  THEME[outer-bg]=$(get_tmux_option airline-outer-bg "green")
-  THEME[middle-bg]=$(get_tmux_option airline-middle-bg "green")
-  THEME[inner-bg]=$(get_tmux_option airline-inner-bg "green")
-
-  # "normal" content colors
-  THEME[secondary]=$(get_tmux_option airline-secondary "white")
-  THEME[primary]=$(get_tmux_option airline-primary "white")
-  THEME[emphasized]=$(get_tmux_option airline-emphasized "white")
-
-  # highlight active elements
-  THEME[active]=$(get_tmux_option airline-active "yellow")
-
-  # highlight special conditions
-  THEME[special]=$(get_tmux_option airline-special "purple")
-
-  # highlight alert/active conditions
-  THEME[alert]=$(get_tmux_option airline-alert "orange")
-
-  # highlight high stress conditions
-  THEME[stress]=$(get_tmux_option airline-stress "red")
-
-  # tmux modes
-  THEME[zoom]=$(get_tmux_option airline-zoom "cyan")
-  THEME[copy]=$(get_tmux_option airline-copy "blue")
-  THEME[monitor]=$(get_tmux_option airline-monitor "grey")
-
-  export THEME
-}
-
-#-----------------------------------------------------------------------------#
-#
 # Chevrons
 #
 #-----------------------------------------------------------------------------#
@@ -108,83 +65,38 @@ chev_left () {
 
 #-----------------------------------------------------------------------------#
 #
-# Create widget template
-#
-# Build a template from installed popular widgets, if the user did not define
-# a left middle template.
-#
-#-----------------------------------------------------------------------------#
-
-make_right_middle_template () {
-  local template=""
-
-  if [[ $(is_cpu_installed) ]]
-  then
-    template="$template #{cpu_fg_color}#{cpu_icon}#[bg=${THEME[middle-bg]}"
-
-    # foreground color when cpu is low
-    tmux set -g @cpu_low_fg_color "${THEME[secondary]}"
-    # foreground color when cpu is medium
-    tmux set -g @cpu_medium_fg_color "${THEME[alert]}"
-    # foreground color when cpu is high
-    tmux set -g @cpu_high_fg_color "${THEME[stress]}"
-  fi
-
-  if [[ $(is_online_installed) ]]
-  then
-    template="$template #{online_status}"
-    tmux set -g @online_icon "#[fg=${THEME[primary]}]●#[default]"
-    tmux set -g @offline_icon "#[fg=${THEME[stress]}]●#[default]"
-    template="$template #{online_status}"
-  fi
-
-  if [[ $(is_battery_installed) ]]
-  then
-    template="$template #{battery_status}"
-    tmux set -g @batt_color_full_charge "#[fg=${THEME[secondary]}]"
-    tmux set -g @batt_color_high_charge "#[fg=${THEME[primary]}]"
-    tmux set -g @batt_color_medium_charge "#[fg=${THEME[alert]}]"
-    tmux set -g @batt_color_low_charge "#[fg=${THEME[stress]}]"
-  fi
-
-  echo "$template"
-}
-
-
-#-----------------------------------------------------------------------------#
-#
 # Build status line components
 #
 #-----------------------------------------------------------------------------#
 
 left_outer () {
-  local template
   local fg="${THEME[emphasized]}"
   local bg="${THEME[outer-bg]}"
   local next_bg="${THEME[middle-bg]}"
+  local template="$(get_tmux_option @airline_tmpl_left_outer '')"
 
-  if [[ -z $template ]]
+  if [[ -z "$template" ]]
   then
     template="#{online_status}"
     tmux set -g @online_icon "#[fg=${THEME[primary]}]●"
     tmux set -g @offline_icon "#[fg=${THEME[stress]}]●"
   fi
 
-  echo "#[fg=$fg,bg=$bg] ${template} $(chev_right $bg $next_bg)"
+  echo "#[fg=$fg,bg=$bg] ${template} $(chev_right "$bg" "$next_bg")"
 }
 
 left_middle () {
-  local template
   local fg="${THEME[emphasized]}"
   local bg="${THEME[middle-bg]}"
   local next_bg="${THEME[inner-bg]}"
+  local template="$(get_tmux_option @airline_tmpl_left_middle '')"
 
-  if [[ -z $template ]]
+  if [[ -z "$template" ]]
   then
     template="$(hostname | cut -d '.' -f 1)"
   fi
 
-  echo "#[fg=$fg,bg=$bg] ${template} $(chev_right $bg $next_bg) "
+  echo "#[fg=$fg,bg=$bg] ${template} $(chev_right "$bg" "$next_bg") "
 }
 
 set_window_formats () {
@@ -216,7 +128,7 @@ right_inner () {
 
   if [[ -z "$template" ]]
   then
-    if [[ $(is_prefix_installed) ]]
+    if is_prefix_installed
     then
       tmux set -g @prefix_highlight_output_prefix '['
       tmux set -g @prefix_highlight_output_suffix ']'
@@ -245,7 +157,7 @@ right_middle () {
   if [[ -z $template ]]
   then
 
-    if [[ $(is_cpu_installed) ]]
+    if is_cpu_installed
     then
       template="$template #{cpu_fg_color}#{cpu_icon}#[fg=$fg,bg=$bg]"
 
@@ -273,42 +185,46 @@ right_outer () {
   local prev_bg="${THEME[middle-bg]}"
   local template="$(get_tmux_option @airline_tmpl_right_outer '')"
 
-  if [[ -z $template ]]
+  if [[ -z "$template" ]]
   then
+    template="%Y-%m-%d %H:%M"
 
-    template="%Y-%m-%d %H:%M #{battery_color_fg}#[bg=$bg]#{battery_icon}"
+    if is_battery_installed
+    then
+      template="$template #{battery_color_fg}#[bg=$bg]#{battery_icon}"
 
-    tmux set -g @batt_color_full_charge "#[fg=${THEME[emphasized]}]"
-    tmux set -g @batt_color_high_charge "#[fg=${THEME[primary]}]"
-    tmux set -g @batt_color_medium_charge "#[fg=${THEME[alert]}]"
-    tmux set -g @batt_color_low_charge "#[fg=${THEME[stress]}]"
+      tmux set -g @batt_color_full_charge "#[fg=${THEME[emphasized]}]"
+      tmux set -g @batt_color_high_charge "#[fg=${THEME[primary]}]"
+      tmux set -g @batt_color_medium_charge "#[fg=${THEME[alert]}]"
+      tmux set -g @batt_color_low_charge "#[fg=${THEME[stress]}]"
 
-    # use theme colors
-    tmux set -g @batt_color_charge_primary_tier8 "${THEME[primary]}"
-    tmux set -g @batt_color_charge_primary_tier7 "${THEME[primary]}"
-    tmux set -g @batt_color_charge_primary_tier6 "${THEME[emphasized]}"
-    tmux set -g @batt_color_charge_primary_tier5 "${THEME[emphasized]}"
-    tmux set -g @batt_color_charge_primary_tier4 "${THEME[altert]}"
-    tmux set -g @batt_color_charge_primary_tier3 "${THEME[altert]}"
-    tmux set -g @batt_color_charge_primary_tier2 "${THEME[stress]}"
-    tmux set -g @batt_color_charge_primary_tier1 "${THEME[stress]}"
+      # use theme colors
+      tmux set -g @batt_color_charge_primary_tier8 "${THEME[primary]}"
+      tmux set -g @batt_color_charge_primary_tier7 "${THEME[primary]}"
+      tmux set -g @batt_color_charge_primary_tier6 "${THEME[emphasized]}"
+      tmux set -g @batt_color_charge_primary_tier5 "${THEME[emphasized]}"
+      tmux set -g @batt_color_charge_primary_tier4 "${THEME[alert]}"
+      tmux set -g @batt_color_charge_primary_tier3 "${THEME[alert]}"
+      tmux set -g @batt_color_charge_primary_tier2 "${THEME[stress]}"
+      tmux set -g @batt_color_charge_primary_tier1 "${THEME[stress]}"
 
-    # icons to show when discharging the battery
-    tmux set -g @batt_icon_charge_tier8 '🌕'
-    tmux set -g @batt_icon_charge_tier7 '🌖'
-    tmux set -g @batt_icon_charge_tier6 '🌖'
-    tmux set -g @batt_icon_charge_tier5 '🌗'
-    tmux set -g @batt_icon_charge_tier4 '🌗'
-    tmux set -g @batt_icon_charge_tier3 '🌘'
-    tmux set -g @batt_icon_charge_tier2 '🌘'
-    tmux set -g @batt_icon_charge_tier1 '🌑'
+      # icons to show when discharging the battery
+      tmux set -g @batt_icon_charge_tier8 '🌕'
+      tmux set -g @batt_icon_charge_tier7 '🌖'
+      tmux set -g @batt_icon_charge_tier6 '🌖'
+      tmux set -g @batt_icon_charge_tier5 '🌗'
+      tmux set -g @batt_icon_charge_tier4 '🌗'
+      tmux set -g @batt_icon_charge_tier3 '🌘'
+      tmux set -g @batt_icon_charge_tier2 '🌘'
+      tmux set -g @batt_icon_charge_tier1 '🌑'
 
-    # icons to show when charging the battery
-    tmux set -g @batt_icon_status_charged '🔋'
-    tmux set -g @batt_icon_status_charging '⚡'
-    tmux set -g @batt_color_status_primary_charged "${THEME[primary]}"
-    tmux set -g @batt_color_status_primary_charging "${THEME[active]}"
-    tmux set -g @batt_color_status_primary_unknown "${THEME[stress]}"
+      # icons to show when charging the battery
+      tmux set -g @batt_icon_status_charged '🔋'
+      tmux set -g @batt_icon_status_charging '⚡'
+      tmux set -g @batt_color_status_primary_charged "${THEME[primary]}"
+      tmux set -g @batt_color_status_primary_charging "${THEME[active]}"
+      tmux set -g @batt_color_status_primary_unknown "${THEME[stress]}"
+    fi
 
   fi
 
@@ -322,8 +238,6 @@ right_outer () {
 #-----------------------------------------------------------------------------#
 
 main () {
-  #load_color_theme
-
   # TODO: is this needed?
   # TODO: what is mode-style?
   #tmux set -gq mode-style "fg=${THEME[special]} bg=${THEME[alert]}"

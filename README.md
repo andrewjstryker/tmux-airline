@@ -27,7 +27,7 @@ This plugin does not have external dependencies other than Bash.
 Add plugin to the list of TPM plugins in `.tmux.conf`:
 
 ```tmux
-set -g @plugin 'andrewjstryker/tmux-airline
+set -g @plugin 'andrewjstryker/tmux-airline'
 ```
 
 Hit `<prefix> + I` to fetch the plugin and source it.
@@ -39,13 +39,13 @@ If format strings are added to `status-right`, they should now be visible.
 Clone the repo:
 
 ```shell
-git clone https://github.com/tmux-plugins/tmux-battery ~/clone/path
+git clone https://github.com/andrewjstryker/tmux-airline ~/clone/path
 ```
 
 Add this line to the bottom of `.tmux.conf`:
 
 ```tmux
-run-shell ~/clone/path/battery.tmux
+run-shell ~/clone/path/airline.tmux
 ```
 
 From the terminal, reload TMUX environment:

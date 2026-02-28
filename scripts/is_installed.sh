@@ -5,7 +5,7 @@
 _is_installed () {
 	local package="$1"
 
-	[[ ! $( ls "$CURRENT_DIR/.." | grep -qs "$package" ) ]]
+	ls "$CURRENT_DIR/.." | grep -qs "$package"
 }
 
 is_online_installed () {
