@@ -1,0 +1,27 @@
+# Default dark colorscheme
+#
+# Uses explicit 256-color codes; works on any 256-color terminal without
+# special palette configuration.
+
+# Backgrounds — three greys stepping from medium-dark to near-black
+set-option -g @airline-outer-bg "colour238"    # #444444
+set-option -g @airline-middle-bg "colour236"   # #303030
+set-option -g @airline-inner-bg "colour234"    # #1c1c1c
+
+# Content colors — light greys with increasing brightness
+set-option -g @airline-secondary "colour246"   # #949494
+set-option -g @airline-primary "colour250"     # #bcbcbc
+set-option -g @airline-emphasized "colour255"  # #eeeeee
+
+# Semantic highlights
+set-option -g @airline-active "colour214"      # warm amber
+set-option -g @airline-special "colour134"     # purple
+set-option -g @airline-alert "colour208"       # orange
+set-option -g @airline-stress "colour196"      # red
+
+# tmux modes
+set-option -g @airline-zoom "colour81"         # sky blue
+set-option -g @airline-copy "colour75"         # steel blue
+set-option -g @airline-monitor "colour109"     # muted teal
+
+# vim: ft=tmux
