@@ -1,0 +1,50 @@
+# Solarized light colorscheme
+#
+# Assumes a terminal with Solarized color palette
+
+# solarized color palette
+base03="colour8"       # background (dark)
+base02="colour0"       # background highlights (dark)
+base01="colour10"      # emphasized text (light) / secondary text (dark)
+base00="colour11"      # primary text (light)
+base0="colour12"       # primary text (dark)
+base1="colour14"       # secondary text (light) / emphasized text (dark)
+base2="colour7"        # background highlights (light)
+base3="colour15"       # background (light)
+yellow="colour3"
+orange="colour9"
+red="colour1"
+magenta="colour5"
+violet="colour13"
+blue="colour4"
+cyan="colour6"
+green="colour2"
+
+# status line "normal" background colors
+set-option -g @airline-outer-bg "$base1"
+set-option -g @airline-middle-bg "$base2"
+set-option -g @airline-inner-bg "$base3"
+
+# "normal" content colors
+set-option -g @airline-secondary "$base00"
+set-option -g @airline-primary "$base01"
+set-option -g @airline-emphasized "$base02"
+
+# highlight active elements
+set-option -g @airline-active "$yellow"
+
+# highlight special conditions
+set-option -g @airline-special "$magenta"
+
+# highlight alert/active conditions
+set-option -g @airline-alert "$orange"
+
+# highlight high stress conditions
+set-option -g @airline-stress "$red"
+
+# tmux modes
+set-option -g @airline-zoom "$violet"
+set-option -g @airline-copy "$blue"
+set-option -g @airline-monitor "$cyan"
+
+# vim: ft=tmux
