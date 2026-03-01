@@ -31,25 +31,27 @@ load_airline() {
   declare -gA THEME
 }
 
-# Load the solarized theme into the isolated tmux server, then
-# populate the THEME associative array from the resulting options.
+# Load a theme into the isolated tmux server, then populate the THEME
+# associative array from the resulting options.
+# Usage: init_theme [theme_name]   (defaults to "solarized-dark")
 init_theme() {
+  local theme="${1:-solarized-dark}"
   load_airline
-  $TMUX -L "$_bats_socket" source-file "$PROJECT_ROOT/themes/solarized"
+  $TMUX -L "$_bats_socket" source-file "$PROJECT_ROOT/themes/$theme"
 
-  THEME[outer-bg]=$(get_tmux_option @airline-outer-bg "green")
-  THEME[middle-bg]=$(get_tmux_option @airline-middle-bg "green")
-  THEME[inner-bg]=$(get_tmux_option @airline-inner-bg "green")
-  THEME[secondary]=$(get_tmux_option @airline-secondary "white")
-  THEME[primary]=$(get_tmux_option @airline-primary "white")
-  THEME[emphasized]=$(get_tmux_option @airline-emphasized "white")
-  THEME[active]=$(get_tmux_option @airline-active "yellow")
-  THEME[special]=$(get_tmux_option @airline-special "purple")
-  THEME[alert]=$(get_tmux_option @airline-alert "orange")
-  THEME[stress]=$(get_tmux_option @airline-stress "red")
-  THEME[zoom]=$(get_tmux_option @airline-zoom "cyan")
-  THEME[copy]=$(get_tmux_option @airline-copy "blue")
-  THEME[monitor]=$(get_tmux_option @airline-monitor "grey")
+  THEME[outer-bg]=$(get_tmux_option @airline-outer-bg)
+  THEME[middle-bg]=$(get_tmux_option @airline-middle-bg)
+  THEME[inner-bg]=$(get_tmux_option @airline-inner-bg)
+  THEME[secondary]=$(get_tmux_option @airline-secondary)
+  THEME[primary]=$(get_tmux_option @airline-primary)
+  THEME[emphasized]=$(get_tmux_option @airline-emphasized)
+  THEME[active]=$(get_tmux_option @airline-active)
+  THEME[special]=$(get_tmux_option @airline-special)
+  THEME[alert]=$(get_tmux_option @airline-alert)
+  THEME[stress]=$(get_tmux_option @airline-stress)
+  THEME[zoom]=$(get_tmux_option @airline-zoom)
+  THEME[copy]=$(get_tmux_option @airline-copy)
+  THEME[monitor]=$(get_tmux_option @airline-monitor)
 }
 
 # Read a global tmux option value from the isolated server

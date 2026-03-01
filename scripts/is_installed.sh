@@ -1,15 +1,20 @@
 #! /usr/bin/env bash
 
 # Functions that check if other plugins are installed
+#
+# Checks two locations:
+# 1. Sibling directory (standard TPM layout)
+# 2. XDG tmux plugin directory (~/.config/tmux/plugins)
 
 _is_installed () {
 	local package="$1"
 
-	ls "$CURRENT_DIR/.." | grep -qs "$package"
+	[[ -d "$CURRENT_DIR/../$package" ]] ||
+	[[ -d "${XDG_CONFIG_HOME:-$HOME/.config}/tmux/plugins/$package" ]]
 }
 
 is_online_installed () {
-	_is_installed "tmux-online"
+	_is_installed "tmux-online-status"
 }
 
 is_cpu_installed () {

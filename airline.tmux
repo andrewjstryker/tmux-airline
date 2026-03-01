@@ -4,40 +4,50 @@ CURRENT_DIR="${AIRLINE_DIR:-$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )}"
 
 source "$CURRENT_DIR/scripts/shared.sh"
 source "$CURRENT_DIR/scripts/is_installed.sh"
+source "$CURRENT_DIR/scripts/plugins/online.sh"
+source "$CURRENT_DIR/scripts/plugins/prefix_highlight.sh"
+source "$CURRENT_DIR/scripts/plugins/cpu.sh"
+source "$CURRENT_DIR/scripts/plugins/battery.sh"
 
 # use an associative array to hold the theme
 declare -A THEME
 
+apply_suspended_overrides () {
+  THEME[outer-bg]="${THEME[inner-bg]}"
+  THEME[middle-bg]="${THEME[inner-bg]}"
+  THEME[emphasized]="${THEME[secondary]}"
+  THEME[primary]="${THEME[secondary]}"
+  THEME[active]="${THEME[secondary]}"
+  THEME[special]="${THEME[secondary]}"
+  THEME[zoom]="${THEME[secondary]}"
+  THEME[copy]="${THEME[secondary]}"
+  THEME[monitor]="${THEME[secondary]}"
+}
+
 if [[ "${AIRLINE_TESTING:-}" != "1" ]]; then
 
-tmux source-file "$CURRENT_DIR/themes/solarized"
+local theme
+theme=$(get_tmux_option @airline-theme "dark")
+tmux source-file "$CURRENT_DIR/themes/$theme"
 
-# status line "normal" background colors
-THEME[outer-bg]=$(get_tmux_option @airline-outer-bg "green")
-THEME[middle-bg]=$(get_tmux_option @airline-middle-bg "green")
-THEME[inner-bg]=$(get_tmux_option @airline-inner-bg "green")
+# Populate THEME from tmux options (set by the theme file above)
+THEME[outer-bg]=$(get_tmux_option @airline-outer-bg)
+THEME[middle-bg]=$(get_tmux_option @airline-middle-bg)
+THEME[inner-bg]=$(get_tmux_option @airline-inner-bg)
+THEME[secondary]=$(get_tmux_option @airline-secondary)
+THEME[primary]=$(get_tmux_option @airline-primary)
+THEME[emphasized]=$(get_tmux_option @airline-emphasized)
+THEME[active]=$(get_tmux_option @airline-active)
+THEME[special]=$(get_tmux_option @airline-special)
+THEME[alert]=$(get_tmux_option @airline-alert)
+THEME[stress]=$(get_tmux_option @airline-stress)
+THEME[zoom]=$(get_tmux_option @airline-zoom)
+THEME[copy]=$(get_tmux_option @airline-copy)
+THEME[monitor]=$(get_tmux_option @airline-monitor)
 
-# "normal" content colors
-THEME[secondary]=$(get_tmux_option @airline-secondary "white")
-THEME[primary]=$(get_tmux_option @airline-primary "white")
-THEME[emphasized]=$(get_tmux_option @airline-emphasized "white")
-
-# highlight active elements
-THEME[active]=$(get_tmux_option @airline-active "yellow")
-
-# highlight special conditions
-THEME[special]=$(get_tmux_option @airline-special "purple")
-
-# highlight alert/active conditions
-THEME[alert]=$(get_tmux_option @airline-alert "orange")
-
-# highlight high stress conditions
-THEME[stress]=$(get_tmux_option @airline-stress "red")
-
-# tmux modes
-THEME[zoom]=$(get_tmux_option @airline-zoom "cyan")
-THEME[copy]=$(get_tmux_option @airline-copy "blue")
-THEME[monitor]=$(get_tmux_option @airline-monitor "grey")
+if [[ "$(get_tmux_option @airline-suspended 0)" == "1" ]]; then
+  apply_suspended_overrides
+fi
 
 fi
 
@@ -78,13 +88,7 @@ left_outer () {
   local bg="${THEME[outer-bg]}"
   local next_bg="${THEME[middle-bg]}"
   local template="$(get_tmux_option @airline_tmpl_left_outer '')"
-
-  if [[ -z "$template" ]]
-  then
-    template="#{online_status}"
-    tmux set -g @online_icon "#[fg=${THEME[primary]}]●"
-    tmux set -g @offline_icon "#[fg=${THEME[stress]}]●"
-  fi
+  [[ -z "$template" ]] && template="$(configure_online)"
 
   echo "#[fg=$fg,bg=$bg] ${template} $(chev_right "$bg" "$next_bg")"
 }
@@ -123,62 +127,20 @@ set_window_formats () {
 }
 
 right_inner () {
-  # explicitly check as we call a function to build the template
   local fg="${THEME[inner-bg]}"
   local bg="${THEME[inner-bg]}"
-  local template
-
-  template="$(tmux show-option -gqv @airline_tmpl_right_inner)"
-
-  if [[ -z "$template" ]]
-  then
-    if is_prefix_installed
-    then
-      tmux set -g @prefix_highlight_output_prefix '['
-      tmux set -g @prefix_highlight_output_suffix ']'
-
-      tmux set -g @prefix_highlight_fg "$fg"
-      tmux set -g @prefix_highlight_bg "${THEME[active]}"
-
-      tmux set -g @prefix_highlight_show_copy_mode 'on'
-      tmux set -g @prefix_highlight_copy_mode_attr "fg=$fg,bg=${THEME[copy]}"
-
-      template="$template #{prefix_highlight} "
-    fi
-
-  fi
+  local template="$(tmux show-option -gqv @airline_tmpl_right_inner)"
+  [[ -z "$template" ]] && template="$(configure_prefix_highlight)"
 
   echo "#[fg=$fg,bg=$bg]${template}"
 }
 
 right_middle () {
-  # explicitly check as we call a function to build the template
   local fg="${THEME[emphasized]}"
   local bg="${THEME[middle-bg]}"
   local prev_bg="${THEME[inner-bg]}"
   local template="$(get_tmux_option @airline_tmpl_right_middle '')"
-
-  if [[ -z $template ]]
-  then
-
-    if is_cpu_installed
-    then
-      template="$template #{cpu_fg_color}#{cpu_icon}#[fg=$fg,bg=$bg]"
-
-      # cpu low
-      tmux set -g @cpu_low_fg_color "${THEME[secondary]}"
-      tmux set -g @cpu_low_bg_color "$bg"
-
-      # cpu medium
-      tmux set -g @cpu_medium_fg_color "${THEME[alert]}"
-      tmux set -g @cpu_medium_bg_color "$bg"
-
-      # cpu high
-      tmux set -g @cpu_high_fg_color "${THEME[stress]}"
-      tmux set -g @cpu_high_bg_color "$bg"
-    fi
-
-  fi
+  [[ -z "$template" ]] && template="$(configure_cpu)"
 
   echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg] $template"
 }
@@ -189,47 +151,10 @@ right_outer () {
   local prev_bg="${THEME[middle-bg]}"
   local template="$(get_tmux_option @airline_tmpl_right_outer '')"
 
-  if [[ -z "$template" ]]
-  then
+  if [[ -z "$template" ]]; then
     template="%Y-%m-%d %H:%M"
-
-    if is_battery_installed
-    then
-      template="$template #{battery_color_fg}#[bg=$bg]#{battery_icon}"
-
-      tmux set -g @batt_color_full_charge "#[fg=${THEME[emphasized]}]"
-      tmux set -g @batt_color_high_charge "#[fg=${THEME[primary]}]"
-      tmux set -g @batt_color_medium_charge "#[fg=${THEME[alert]}]"
-      tmux set -g @batt_color_low_charge "#[fg=${THEME[stress]}]"
-
-      # use theme colors
-      tmux set -g @batt_color_charge_primary_tier8 "${THEME[primary]}"
-      tmux set -g @batt_color_charge_primary_tier7 "${THEME[primary]}"
-      tmux set -g @batt_color_charge_primary_tier6 "${THEME[emphasized]}"
-      tmux set -g @batt_color_charge_primary_tier5 "${THEME[emphasized]}"
-      tmux set -g @batt_color_charge_primary_tier4 "${THEME[alert]}"
-      tmux set -g @batt_color_charge_primary_tier3 "${THEME[alert]}"
-      tmux set -g @batt_color_charge_primary_tier2 "${THEME[stress]}"
-      tmux set -g @batt_color_charge_primary_tier1 "${THEME[stress]}"
-
-      # icons to show when discharging the battery
-      tmux set -g @batt_icon_charge_tier8 '🌕'
-      tmux set -g @batt_icon_charge_tier7 '🌖'
-      tmux set -g @batt_icon_charge_tier6 '🌖'
-      tmux set -g @batt_icon_charge_tier5 '🌗'
-      tmux set -g @batt_icon_charge_tier4 '🌗'
-      tmux set -g @batt_icon_charge_tier3 '🌘'
-      tmux set -g @batt_icon_charge_tier2 '🌘'
-      tmux set -g @batt_icon_charge_tier1 '🌑'
-
-      # icons to show when charging the battery
-      tmux set -g @batt_icon_status_charged '🔋'
-      tmux set -g @batt_icon_status_charging '⚡'
-      tmux set -g @batt_color_status_primary_charged "${THEME[primary]}"
-      tmux set -g @batt_color_status_primary_charging "${THEME[active]}"
-      tmux set -g @batt_color_status_primary_unknown "${THEME[stress]}"
-    fi
-
+    local battery="$(configure_battery)"
+    [[ -n "$battery" ]] && template="$template $battery"
   fi
 
   echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg] ${template}"
@@ -266,6 +191,9 @@ main () {
   tmux set -gq status-right "$(right_inner) $(right_middle) $(right_outer)"
 
   tmux set -gq clock-mode-color "${THEME[special]}"
+
+  tmux bind -T root F12 run-shell "$CURRENT_DIR/scripts/suspend.sh"
+  tmux bind -T off  F12 run-shell "$CURRENT_DIR/scripts/resume.sh"
 
 }
 
