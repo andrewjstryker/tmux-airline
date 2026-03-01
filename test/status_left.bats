@@ -28,9 +28,17 @@ load helper
 
 @test "left_outer sets online/offline icons by default" {
   init_theme
+  local fake_plugins
+  fake_plugins="$(mktemp -d)"
+  CURRENT_DIR="$fake_plugins/tmux-airline"
+  mkdir -p "$fake_plugins/tmux-online-status" "$CURRENT_DIR"
+  export XDG_CONFIG_HOME="$fake_plugins"
+
   left_outer >/dev/null
   run get_option @online_icon
   assert_output --partial "${THEME[primary]}"
+
+  rm -rf "$fake_plugins"
 }
 
 @test "left_middle includes fg and bg colors" {
