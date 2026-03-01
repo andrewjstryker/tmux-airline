@@ -1,12 +1,16 @@
 # tmux-airline
 
 A tmux status line inspired by vim-airline. Uses powerline-style chevrons and
-a layered color hierarchy built on the Solarized palette.
+a layered color hierarchy with multiple theme options.
+
+<p align="center">
+  <img src="airline-screenshot.png" alt="tmux-airline screenshot" width="800">
+</p>
 
 Features:
 
 - Three-tier status bar with powerline chevrons
-- Solarized dark color palette (user-replaceable)
+- Dark, light, and Solarized themes included
 - Suspend/resume for nested tmux sessions
 - Optional integration with tmux-online-status, tmux-cpu, tmux-battery, and
   tmux-prefix-highlight
@@ -69,35 +73,35 @@ configuration: backgrounds, content colors, and semantic highlights.
 
 Three tiers that create the chevron depth effect:
 
-| Key         | Role                           | Solarized dark |
-|-------------|--------------------------------|----------------|
-| `outer-bg`  | Left/right edge sections       | `base00`       |
-| `middle-bg` | Hostname / CPU sections        | `base01`       |
-| `inner-bg`  | Window list / center           | `base02`       |
+| Key         | Role                           |
+|-------------|--------------------------------|
+| `outer-bg`  | Left/right edge sections       |
+| `middle-bg` | Hostname / CPU sections        |
+| `inner-bg`  | Window list / center           |
 
 ### Content colors
 
 Text colors ordered by visual weight:
 
-| Key          | Role                          | Solarized dark |
-|--------------|-------------------------------|----------------|
-| `secondary`  | Default / low-priority text   | `base0`        |
-| `primary`    | Normal text                   | `base1`        |
-| `emphasized` | Section labels, active text   | `base2`        |
+| Key          | Role                          |
+|--------------|-------------------------------|
+| `secondary`  | Default / low-priority text   |
+| `primary`    | Normal text                   |
+| `emphasized` | Section labels, active text   |
 
 ### Semantic highlights
 
 Colors assigned by meaning rather than position:
 
-| Key        | Meaning                        | Solarized dark |
-|------------|--------------------------------|----------------|
-| `active`   | Current window, active pane    | yellow         |
-| `special`  | Clock, special modes           | magenta        |
-| `alert`    | Activity, medium battery       | orange         |
-| `stress`   | Bell, low battery, high CPU    | red            |
-| `zoom`     | Zoomed pane indicator          | violet         |
-| `copy`     | Copy mode indicator            | blue           |
-| `monitor`  | Monitor mode indicator         | cyan           |
+| Key        | Meaning                        |
+|------------|--------------------------------|
+| `active`   | Current window, active pane    |
+| `special`  | Clock, special modes           |
+| `alert`    | Activity, medium battery       |
+| `stress`   | Bell, low battery, high CPU    |
+| `zoom`     | Zoomed pane indicator          |
+| `copy`     | Copy mode indicator            |
+| `monitor`  | Monitor mode indicator         |
 
 ### Overriding colors
 
