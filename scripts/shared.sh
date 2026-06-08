@@ -15,6 +15,10 @@ get_tmux_option() {
 # by name rather than snapshotted, the option may be set before OR after airline
 # loads — there is no load-order dependency. Commas in the default are escaped
 # so they don't split the surrounding #{?,,} conditional.
+#
+# Note: #{?...} treats an empty value or the literal "0" as unset, so a template
+# set to "0" resolves to the default. Not worth defending against — no real
+# section value is "0".
 tmpl_ref() {
 	local option=$1
 	local default=$2

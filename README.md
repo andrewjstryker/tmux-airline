@@ -178,6 +178,20 @@ set -g @airline_tmpl_left_middle '#S'   # session name instead of hostname
 set -g @airline_tmpl_window '#W'        # window name only, no index
 ```
 
+### How templates resolve
+
+Sections **reference** their `@airline_tmpl_*` option rather than snapshotting
+it at load. Internally each section emits
+`#{?@airline_tmpl_X,#{E:@airline_tmpl_X},<default>}`, which tmux re-evaluates on
+every status redraw. Two consequences:
+
+- You can set a template **any time** — before or after airline loads, or at
+  runtime — and it takes effect on the next redraw. Plugins that register a
+  segment by setting one of these options therefore don't depend on load order.
+- Because tmux's `#{?…}` treats an **empty value or the literal `0`** as unset,
+  a section explicitly set to `0` shows its default rather than `0`. (Any real
+  template — a format string or text — behaves as written.)
+
 ## Plugin integrations
 
 Default widgets are used when the corresponding plugin is installed alongside
