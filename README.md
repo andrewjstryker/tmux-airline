@@ -17,8 +17,14 @@ Features:
 
 ## Installation
 
-This plugin requires Bash 4+ (for associative arrays) and has no other
-external dependencies.
+This plugin requires **tmux 3.0+** and Bash 4+ (for associative arrays), and
+has no other external dependencies.
+
+> **tmux 3.0** is needed because section templates are resolved live in the
+> status line via `#{E:...}` expansion of `@airline_tmpl_*` user options (both
+> added in tmux 3.0). This is what lets a template be set at any time — before
+> or after airline loads, or at runtime — and take effect on the next redraw.
+> On older tmux the status line will not render correctly.
 
 ### With [Tmux Plugin Manager](https://github.com/tmux-plugins/tpm) (recommended)
 
