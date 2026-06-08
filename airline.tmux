@@ -79,6 +79,29 @@ chev_left () {
 
 #-----------------------------------------------------------------------------#
 #
+# Per-window color override
+#
+#-----------------------------------------------------------------------------#
+
+# Resolve the per-window @airline-window-color option to a theme color. The
+# option holds one of airline's palette tokens (active, alert, stress, …); this
+# returns a tmux format expression, evaluated per window at render time, that
+# maps the token to its color and falls back to $1 when the option is empty or
+# an unknown token. airline neither knows nor cares what sets the option — it
+# just colors a window the requested palette color. Used as fg on inactive
+# windows and as bg on the active window.
+window_color_expr () {
+  local fallback="$1"
+  local expr="$fallback"
+  local tok
+  for tok in active alert stress special monitor copy zoom; do
+    expr="#{?#{==:#{@airline-window-color},$tok},${THEME[$tok]},$expr}"
+  done
+  printf '%s' "$expr"
+}
+
+#-----------------------------------------------------------------------------#
+#
 # Build status line components
 #
 #-----------------------------------------------------------------------------#
@@ -106,9 +129,15 @@ set_window_formats () {
   local bg="${THEME[inner-bg]}"
   local hi="${THEME[active]}"
 
+  # Per-window color override (see window_color_expr): when a window sets
+  # @airline-window-color to a palette token, inactive windows take the color
+  # as fg here; the active window takes it as bg below. Unset → unchanged, so
+  # the normal/last/activity/bell styles still apply.
+  local fg_override="#{?@airline-window-color,#[fg=$(window_color_expr "${THEME[primary]}")],}"
+
   # default window treatments
   tmux set -gq window-status-separator-string " "
-  tmux set -gq window-status-format "$template"
+  tmux set -gq window-status-format "${fg_override}${template}"
 
   # window styles
   tmux set -gq window-status-style "fg=${THEME[primary]} bg=$bg"
@@ -116,8 +145,10 @@ set_window_formats () {
   tmux set -gq window-status-activity-style "fg=${THEME[alert]} bg=$bg"
   tmux set -gq window-status-bell-style "fg=${THEME[stress]} bg=$bg"
 
-  # special case for current window
-  tmux set -gq window-status-current-format "$(chev_right $bg $hi) $template $(chev_left $hi $bg)"
+  # special case for current window: the highlight bg becomes the override
+  # color when set (chevrons follow it), else the normal active highlight.
+  local hi_expr="$(window_color_expr "$hi")"
+  tmux set -gq window-status-current-format "$(chev_right "$bg" "$hi_expr") $template $(chev_left "$hi_expr" "$bg")"
 }
 
 right_inner () {

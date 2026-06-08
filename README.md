@@ -192,6 +192,24 @@ every status redraw. Two consequences:
   a section explicitly set to `0` shows its default rather than `0`. (Any real
   template — a format string or text — behaves as written.)
 
+### Per-window color (`@airline-window-color`)
+
+A window can be recolored by setting the **window-scoped** option
+`@airline-window-color` to one of airline's palette tokens — `active`, `alert`,
+`stress`, `special`, `monitor`, `copy`, `zoom`:
+
+```tmux
+tmux set -w -t <window> @airline-window-color alert   # flag a window
+tmux set -wu -t <window> @airline-window-color         # clear it
+```
+
+airline maps the token to the theme color and renders it as **foreground** on
+inactive windows and as the **background** (chevrons included) on the active
+window. Unset → the window renders normally. airline neither knows nor cares
+*what* sets the option — it just colors the window — so any tool can drive it
+(e.g. flagging a window whose long-running job, agent, or build wants
+attention). It's evaluated per window on every redraw, so changes show up live.
+
 ## Plugin integrations
 
 Default widgets are used when the corresponding plugin is installed alongside

@@ -8,7 +8,7 @@ load helper
   init_theme
   set_window_formats
   run get_option window-status-format
-  assert_output "#I:#W"
+  assert_output --partial "#I:#W"
 }
 
 @test "set_window_formats sets window-status-style" {
@@ -53,5 +53,63 @@ load helper
   $TMUX -L "$_bats_socket" set -g @airline_tmpl_window '#W'
   set_window_formats
   run get_option window-status-format
-  assert_output "#W"
+  assert_output --partial "#W"
+}
+
+# --- per-window color override (@airline-window-color) ---
+
+@test "window-status-format embeds the window-color override" {
+  init_theme
+  set_window_formats
+  run get_option window-status-format
+  assert_output --partial "@airline-window-color"
+  assert_output --partial "${THEME[alert]}"   # token->color baked into the expr
+}
+
+@test "window-status-current-format embeds the override on the highlight" {
+  init_theme
+  set_window_formats
+  run get_option window-status-current-format
+  assert_output --partial "@airline-window-color"
+  assert_output --partial "${THEME[active]}"   # fallback (normal) highlight
+  assert_output --partial "${THEME[alert]}"    # an override token color
+}
+
+@test "inactive window: a token sets the foreground to that palette color" {
+  init_theme
+  set_window_formats
+  $TMUX -L "$_bats_socket" set -w @airline-window-color alert
+  run tmux display-message -p "$(get_option window-status-format)"
+  assert_output --partial "fg=${THEME[alert]}"
+}
+
+@test "inactive window: unset leaves the base style alone" {
+  init_theme
+  set_window_formats
+  run tmux display-message -p "$(get_option window-status-format)"
+  refute_output --partial "fg=${THEME[alert]}"
+}
+
+@test "inactive window: an unknown token falls back to primary" {
+  init_theme
+  set_window_formats
+  $TMUX -L "$_bats_socket" set -w @airline-window-color bogus
+  run tmux display-message -p "$(get_option window-status-format)"
+  assert_output --partial "fg=${THEME[primary]}"
+}
+
+@test "active window: a token sets the background to that palette color" {
+  init_theme
+  set_window_formats
+  $TMUX -L "$_bats_socket" set -w @airline-window-color alert
+  run tmux display-message -p "$(get_option window-status-current-format)"
+  assert_output --partial "bg=${THEME[alert]}"
+}
+
+@test "active window: unset uses the normal active highlight background" {
+  init_theme
+  set_window_formats
+  run tmux display-message -p "$(get_option window-status-current-format)"
+  assert_output --partial "bg=${THEME[active]}"
+  refute_output --partial "bg=${THEME[alert]}"
 }
