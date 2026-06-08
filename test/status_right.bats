@@ -26,7 +26,7 @@ _fake_plugin_dir() {
 @test "right_inner uses custom template when set" {
   init_theme
   $TMUX -L "$_bats_socket" set -g @airline_tmpl_right_inner 'CUSTOM_INNER'
-  run right_inner
+  run resolve "$(right_inner)"
   assert_output --partial "CUSTOM_INNER"
 }
 
@@ -62,8 +62,16 @@ _fake_plugin_dir() {
 @test "right_middle uses custom template when set" {
   init_theme
   $TMUX -L "$_bats_socket" set -g @airline_tmpl_right_middle 'CUSTOM_MID'
-  run right_middle
+  run resolve "$(right_middle)"
   assert_output --partial "CUSTOM_MID"
+}
+
+@test "right_middle resolves an option set AFTER the build (order-independent)" {
+  init_theme
+  local built; built="$(right_middle)"
+  $TMUX -L "$_bats_socket" set -g @airline_tmpl_right_middle 'LATE_MID'
+  run resolve "$built"
+  assert_output --partial "LATE_MID"
 }
 
 @test "right_middle with cpu plugin installed" {
@@ -101,7 +109,7 @@ _fake_plugin_dir() {
 @test "right_outer uses custom template when set" {
   init_theme
   $TMUX -L "$_bats_socket" set -g @airline_tmpl_right_outer 'CUSTOM_OUTER'
-  run right_outer
+  run resolve "$(right_outer)"
   assert_output --partial "CUSTOM_OUTER"
 }
 

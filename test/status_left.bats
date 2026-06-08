@@ -22,7 +22,7 @@ load helper
 @test "left_outer uses custom template when set" {
   init_theme
   $TMUX -L "$_bats_socket" set -g @airline_tmpl_left_outer 'CUSTOM'
-  run left_outer
+  run resolve "$(left_outer)"
   assert_output --partial "CUSTOM"
 }
 
@@ -58,6 +58,14 @@ load helper
 @test "left_middle uses custom template when set" {
   init_theme
   $TMUX -L "$_bats_socket" set -g @airline_tmpl_left_middle 'MY_HOST'
-  run left_middle
+  run resolve "$(left_middle)"
   assert_output --partial "MY_HOST"
+}
+
+@test "left_middle resolves an option set AFTER the build (order-independent)" {
+  init_theme
+  local built; built="$(left_middle)"
+  $TMUX -L "$_bats_socket" set -g @airline_tmpl_left_middle 'LATE_HOST'
+  run resolve "$built"
+  assert_output --partial "LATE_HOST"
 }

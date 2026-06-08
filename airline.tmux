@@ -87,8 +87,7 @@ left_outer () {
   local fg="${THEME[emphasized]}"
   local bg="${THEME[outer-bg]}"
   local next_bg="${THEME[middle-bg]}"
-  local template="$(get_tmux_option @airline_tmpl_left_outer '')"
-  [[ -z "$template" ]] && template="$(configure_online)"
+  local template="$(tmpl_ref @airline_tmpl_left_outer "$(configure_online)")"
 
   echo "#[fg=$fg,bg=$bg] ${template} $(chev_right "$bg" "$next_bg")"
 }
@@ -97,12 +96,7 @@ left_middle () {
   local fg="${THEME[emphasized]}"
   local bg="${THEME[middle-bg]}"
   local next_bg="${THEME[inner-bg]}"
-  local template="$(get_tmux_option @airline_tmpl_left_middle '')"
-
-  if [[ -z "$template" ]]
-  then
-    template="$(hostname | cut -d '.' -f 1)"
-  fi
+  local template="$(tmpl_ref @airline_tmpl_left_middle "$(hostname | cut -d '.' -f 1)")"
 
   echo "#[fg=$fg,bg=$bg] ${template} $(chev_right "$bg" "$next_bg") "
 }
@@ -129,8 +123,7 @@ set_window_formats () {
 right_inner () {
   local fg="${THEME[inner-bg]}"
   local bg="${THEME[inner-bg]}"
-  local template="$(tmux show-option -gqv @airline_tmpl_right_inner)"
-  [[ -z "$template" ]] && template="$(configure_prefix_highlight)"
+  local template="$(tmpl_ref @airline_tmpl_right_inner "$(configure_prefix_highlight)")"
 
   echo "#[fg=$fg,bg=$bg]${template}"
 }
@@ -139,8 +132,7 @@ right_middle () {
   local fg="${THEME[emphasized]}"
   local bg="${THEME[middle-bg]}"
   local prev_bg="${THEME[inner-bg]}"
-  local template="$(get_tmux_option @airline_tmpl_right_middle '')"
-  [[ -z "$template" ]] && template="$(configure_cpu)"
+  local template="$(tmpl_ref @airline_tmpl_right_middle "$(configure_cpu)")"
 
   echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg] $template"
 }
@@ -149,13 +141,10 @@ right_outer () {
   local fg="${THEME[emphasized]}"
   local bg="${THEME[outer-bg]}"
   local prev_bg="${THEME[middle-bg]}"
-  local template="$(get_tmux_option @airline_tmpl_right_outer '')"
-
-  if [[ -z "$template" ]]; then
-    template="%Y-%m-%d %H:%M"
-    local battery="$(configure_battery)"
-    [[ -n "$battery" ]] && template="$template $battery"
-  fi
+  local default="%Y-%m-%d %H:%M"
+  local battery="$(configure_battery)"
+  [[ -n "$battery" ]] && default="$default $battery"
+  local template="$(tmpl_ref @airline_tmpl_right_outer "$default")"
 
   echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg] ${template}"
 }

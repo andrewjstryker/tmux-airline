@@ -59,4 +59,11 @@ get_option() {
   $TMUX -L "$_bats_socket" show-option -gqv "$1"
 }
 
+# Resolve a built section through the isolated tmux server. Section templates
+# are now live #{?...} references, so tests assert on what tmux actually renders
+# rather than on the pre-expansion format string.
+resolve() {
+  $TMUX -L "$_bats_socket" display-message -p "$1"
+}
+
 # vim: ft=bash
