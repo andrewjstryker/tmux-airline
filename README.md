@@ -234,6 +234,29 @@ one focus hook — registered once by airline so plugins don't each add competin
 ones. It requires `focus-events on` (enable it yourself, or let the plugin that
 sets transient colors enable it).
 
+### Per-window badge (`@airline-window-badge`)
+
+A less intrusive alternative to recoloring the whole entry: set the
+**window-scoped** option `@airline-window-badge` to one of the same palette
+tokens to append a small colored **glyph after the window name**, leaving the
+entry's normal styling intact:
+
+```tmux
+tmux set -w -t <window> @airline-window-badge alert    # ● in orange after the name
+tmux set -wu -t <window> @airline-window-badge          # clear it
+```
+
+The glyph is `●` by default; override it with `@airline-window-badge-glyph`
+(e.g. `tmux set -g @airline-window-badge-glyph '◆'`). It's evaluated per window
+on every redraw, so changes show up live, and it's independent of
+`@airline-window-color` — a window can carry either, both, or neither.
+
+**Clearing** works exactly like the window color: the setter owns clearing by
+default, and the companion flag `@airline-window-badge-transient` opts a badge
+into the same consume-on-view behavior (cleared on `pane-focus-out` once you've
+viewed the window and moved on). It uses its own appended focus hook, so badge
+and color transience are independent. Requires `focus-events on`.
+
 ## Plugin integrations
 
 Default widgets are used when the corresponding plugin is installed alongside

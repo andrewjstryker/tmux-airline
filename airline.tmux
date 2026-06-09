@@ -102,6 +102,25 @@ window_color_expr () {
   printf '%s' "$expr"
 }
 
+# Per-window notification badge (@airline-window-badge). Where window_color_expr
+# repaints the whole entry, the badge appends a small colored glyph *after* the
+# window name and leaves the entry's normal styling intact — a less intrusive
+# "this window wants attention" marker. It carries the same palette tokens and
+# is driven the same way: set the window-scoped option to a token, unset to
+# clear. Returns a tmux format expression, evaluated per window at render time,
+# that emits the glyph in the token's color when the option is set (falling back
+# to the primary color on an unknown token) and nothing when it's empty. The
+# glyph is configurable via @airline-window-badge-glyph (default ●).
+window_badge () {
+  local glyph expr tok
+  glyph=$(get_tmux_option @airline-window-badge-glyph "●")
+  expr="${THEME[primary]}"
+  for tok in active alert stress ok special monitor copy zoom; do
+    expr="#{?#{==:#{@airline-window-badge},$tok},${THEME[$tok]},$expr}"
+  done
+  printf '%s' "#{?@airline-window-badge, #[fg=$expr]$glyph,}"
+}
+
 # Clear a window's color when it loses focus — but only if the setter marked it
 # transient via @airline-window-color-transient. This is the "consume-on-view"
 # lifecycle: a setter that cannot observe when its color has been seen (e.g. an
@@ -112,6 +131,16 @@ window_color_expr () {
 register_window_color_clear () {
   tmux set-hook -ga pane-focus-out \
     "if-shell -F '#{@airline-window-color-transient}' 'set -wu @airline-window-color ; set -wu @airline-window-color-transient ; refresh-client -S'"
+}
+
+# Same consume-on-view lifecycle as register_window_color_clear, for the badge:
+# clear @airline-window-badge on unfocus when @airline-window-badge-transient is
+# set. Appended as a separate hook so the badge and color lifecycles stay
+# independent (a window's badge can be transient while its color isn't, or vice
+# versa). Like the color hook, requires `focus-events on`.
+register_window_badge_clear () {
+  tmux set-hook -ga pane-focus-out \
+    "if-shell -F '#{@airline-window-badge-transient}' 'set -wu @airline-window-badge ; set -wu @airline-window-badge-transient ; refresh-client -S'"
 }
 
 #-----------------------------------------------------------------------------#
@@ -149,9 +178,14 @@ set_window_formats () {
   # the normal/last/activity/bell styles still apply.
   local fg_override="#{?@airline-window-color,#[fg=$(window_color_expr "${THEME[primary]}")],}"
 
+  # Per-window notification badge (see window_badge): a colored glyph appended
+  # after the name when @airline-window-badge is set. Independent of the color
+  # override above — a window can carry either, both, or neither.
+  local badge="$(window_badge)"
+
   # default window treatments
   tmux set -gq window-status-separator-string " "
-  tmux set -gq window-status-format "${fg_override}${template}"
+  tmux set -gq window-status-format "${fg_override}${template}${badge}"
 
   # window styles
   tmux set -gq window-status-style "fg=${THEME[primary]} bg=$bg"
@@ -162,7 +196,7 @@ set_window_formats () {
   # special case for current window: the highlight bg becomes the override
   # color when set (chevrons follow it), else the normal active highlight.
   local hi_expr="$(window_color_expr "$hi")"
-  tmux set -gq window-status-current-format "$(chev_right "$bg" "$hi_expr") $template $(chev_left "$hi_expr" "$bg")"
+  tmux set -gq window-status-current-format "$(chev_right "$bg" "$hi_expr") $template${badge} $(chev_left "$hi_expr" "$bg")"
 }
 
 right_inner () {
@@ -218,6 +252,7 @@ main () {
   # Configure window status
   set_window_formats
   register_window_color_clear
+  register_window_badge_clear
 
   tmux set -gq status-left-style "fg=${THEME[primary]} bg=${THEME[outer-bg]}"
   tmux set -gq status-left "$(left_outer) $(left_middle)"

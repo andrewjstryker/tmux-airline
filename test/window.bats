@@ -153,3 +153,92 @@ load helper
   run tmux show -wqv @airline-window-color
   assert_output "monitor"
 }
+
+# --- per-window notification badge (@airline-window-badge) ---
+
+@test "window-status-format embeds the badge expression" {
+  init_theme
+  set_window_formats
+  run get_option window-status-format
+  assert_output --partial "@airline-window-badge"
+  assert_output --partial "${THEME[alert]}"   # token->color baked into the expr
+}
+
+@test "window-status-current-format embeds the badge expression" {
+  init_theme
+  set_window_formats
+  run get_option window-status-current-format
+  assert_output --partial "@airline-window-badge"
+}
+
+@test "inactive window: a token renders the badge glyph in that palette color" {
+  init_theme
+  set_window_formats
+  $TMUX -L "$_bats_socket" set -w @airline-window-badge alert
+  run tmux display-message -p "$(get_option window-status-format)"
+  assert_output --partial "fg=${THEME[alert]}"
+  assert_output --partial "●"
+}
+
+@test "inactive window: no badge option leaves the entry without a glyph" {
+  init_theme
+  set_window_formats
+  run tmux display-message -p "$(get_option window-status-format)"
+  refute_output --partial "●"
+}
+
+@test "active window: a token renders the badge glyph on the highlight" {
+  init_theme
+  set_window_formats
+  $TMUX -L "$_bats_socket" set -w @airline-window-badge monitor
+  run tmux display-message -p "$(get_option window-status-current-format)"
+  assert_output --partial "fg=${THEME[monitor]}"
+  assert_output --partial "●"
+}
+
+@test "badge: an unknown token falls back to primary" {
+  init_theme
+  set_window_formats
+  $TMUX -L "$_bats_socket" set -w @airline-window-badge bogus
+  run tmux display-message -p "$(get_option window-status-format)"
+  assert_output --partial "fg=${THEME[primary]}"
+  assert_output --partial "●"
+}
+
+@test "badge: the glyph is configurable via @airline-window-badge-glyph" {
+  init_theme
+  $TMUX -L "$_bats_socket" set -g @airline-window-badge-glyph "◆"
+  set_window_formats
+  $TMUX -L "$_bats_socket" set -w @airline-window-badge ok
+  run tmux display-message -p "$(get_option window-status-format)"
+  assert_output --partial "◆"
+}
+
+@test "register_window_badge_clear adds a pane-focus-out hook keyed on the badge transient flag" {
+  init_theme
+  register_window_badge_clear
+  run tmux show-hooks -g pane-focus-out
+  assert_output --partial "@airline-window-badge-transient"
+  assert_output --partial "@airline-window-badge"
+}
+
+@test "focus-out logic clears a window badge marked transient" {
+  init_theme
+  tmux set -w @airline-window-badge alert
+  tmux set -w @airline-window-badge-transient 1
+  tmux if-shell -F "#{@airline-window-badge-transient}" \
+    "set -wu @airline-window-badge ; set -wu @airline-window-badge-transient"
+  run tmux show -wqv @airline-window-badge
+  assert_output ""
+  run tmux show -wqv @airline-window-badge-transient
+  assert_output ""
+}
+
+@test "focus-out logic leaves a non-transient badge alone" {
+  init_theme
+  tmux set -w @airline-window-badge monitor
+  tmux if-shell -F "#{@airline-window-badge-transient}" \
+    "set -wu @airline-window-badge ; set -wu @airline-window-badge-transient"
+  run tmux show -wqv @airline-window-badge
+  assert_output "monitor"
+}
