@@ -26,6 +26,7 @@ load helper
   apply_suspended_overrides
   [[ "${THEME[active]}" == "$sec" ]]
   [[ "${THEME[special]}" == "$sec" ]]
+  [[ "${THEME[ok]}" == "$sec" ]]
   [[ "${THEME[zoom]}" == "$sec" ]]
   [[ "${THEME[copy]}" == "$sec" ]]
   [[ "${THEME[monitor]}" == "$sec" ]]

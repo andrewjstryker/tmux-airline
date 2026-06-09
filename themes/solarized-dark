@@ -42,6 +42,9 @@ set-option -g @airline-alert "$orange"
 # highlight high stress conditions
 set-option -g @airline-stress "$red"
 
+# highlight success / completion conditions
+set-option -g @airline-ok "$green"
+
 # tmux modes
 set-option -g @airline-zoom "$violet"
 set-option -g @airline-copy "$blue"

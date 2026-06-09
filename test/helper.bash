@@ -47,6 +47,7 @@ init_theme() {
   THEME[emphasized]=$(get_tmux_option @airline-emphasized)
   THEME[active]=$(get_tmux_option @airline-active)
   THEME[special]=$(get_tmux_option @airline-special)
+  THEME[ok]=$(get_tmux_option @airline-ok)
   THEME[alert]=$(get_tmux_option @airline-alert)
   THEME[stress]=$(get_tmux_option @airline-stress)
   THEME[zoom]=$(get_tmux_option @airline-zoom)

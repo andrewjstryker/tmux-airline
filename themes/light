@@ -18,6 +18,7 @@ set-option -g @airline-active "colour136"      # dark amber
 set-option -g @airline-special "colour128"     # dark purple
 set-option -g @airline-alert "colour166"       # dark orange
 set-option -g @airline-stress "colour160"      # dark red
+set-option -g @airline-ok "colour28"           # dark green (success)
 
 # tmux modes
 set-option -g @airline-zoom "colour31"         # dark sky blue

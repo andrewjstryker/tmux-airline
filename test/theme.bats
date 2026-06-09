@@ -64,6 +64,12 @@ load helper
   assert_output "colour1"
 }
 
+@test "solarized-dark theme sets @airline-ok" {
+  init_theme
+  run get_option @airline-ok
+  assert_output "colour2"
+}
+
 @test "solarized-dark theme sets @airline-zoom" {
   init_theme
   run get_option @airline-zoom
@@ -101,6 +107,7 @@ REQUIRED_KEYS=(
   @airline-emphasized
   @airline-active
   @airline-special
+  @airline-ok
   @airline-alert
   @airline-stress
   @airline-zoom

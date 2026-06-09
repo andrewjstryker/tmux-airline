@@ -90,6 +90,14 @@ load helper
   refute_output --partial "fg=${THEME[alert]}"
 }
 
+@test "inactive window: the ok (success) token resolves to green" {
+  init_theme
+  set_window_formats
+  tmux set -w @airline-window-color ok
+  run tmux display-message -p "$(get_option window-status-format)"
+  assert_output --partial "fg=${THEME[ok]}"
+}
+
 @test "inactive window: an unknown token falls back to primary" {
   init_theme
   set_window_formats

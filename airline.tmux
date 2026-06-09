@@ -19,6 +19,7 @@ apply_suspended_overrides () {
   THEME[primary]="${THEME[secondary]}"
   THEME[active]="${THEME[secondary]}"
   THEME[special]="${THEME[secondary]}"
+  THEME[ok]="${THEME[secondary]}"
   THEME[zoom]="${THEME[secondary]}"
   THEME[copy]="${THEME[secondary]}"
   THEME[monitor]="${THEME[secondary]}"
@@ -39,6 +40,7 @@ THEME[primary]=$(get_tmux_option @airline-primary)
 THEME[emphasized]=$(get_tmux_option @airline-emphasized)
 THEME[active]=$(get_tmux_option @airline-active)
 THEME[special]=$(get_tmux_option @airline-special)
+THEME[ok]=$(get_tmux_option @airline-ok)
 THEME[alert]=$(get_tmux_option @airline-alert)
 THEME[stress]=$(get_tmux_option @airline-stress)
 THEME[zoom]=$(get_tmux_option @airline-zoom)
@@ -94,7 +96,7 @@ window_color_expr () {
   local fallback="$1"
   local expr="$fallback"
   local tok
-  for tok in active alert stress special monitor copy zoom; do
+  for tok in active alert stress ok special monitor copy zoom; do
     expr="#{?#{==:#{@airline-window-color},$tok},${THEME[$tok]},$expr}"
   done
   printf '%s' "$expr"

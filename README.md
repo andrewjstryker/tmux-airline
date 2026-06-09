@@ -103,11 +103,18 @@ Colors assigned by meaning rather than position:
 |------------|--------------------------------|
 | `active`   | Current window, active pane    |
 | `special`  | Clock, special modes           |
+| `ok`       | Success / completion (green)   |
 | `alert`    | Activity, medium battery       |
 | `stress`   | Bell, low battery, high CPU    |
 | `zoom`     | Zoomed pane indicator          |
 | `copy`     | Copy mode indicator            |
 | `monitor`  | Monitor mode indicator         |
+
+`ok`/`alert`/`stress` form a green/orange/red status triad. `ok` is for
+**discrete success** (a job or agent that *finished well*) — note the original
+meter widgets (cpu/battery) never needed it, since a meter's "good" state is
+just the normal/uncolored baseline; only event-based signals have a distinct
+"succeeded" state to paint green.
 
 ### Overriding colors
 
