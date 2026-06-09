@@ -210,6 +210,23 @@ window. Unset → the window renders normally. airline neither knows nor cares
 (e.g. flagging a window whose long-running job, agent, or build wants
 attention). It's evaluated per window on every redraw, so changes show up live.
 
+**Clearing.** By default the *setter* owns clearing — airline shows the color
+until something unsets the option. For a state the setter can't observe being
+"seen" (e.g. a finished job you'd glance at and move on from), set the companion
+flag `@airline-window-color-transient`:
+
+```tmux
+tmux set -w -t <window> @airline-window-color special
+tmux set -w -t <window> @airline-window-color-transient 1   # clear on unfocus
+```
+
+airline registers a single `pane-focus-out` hook that clears a transient
+window's color once you've **viewed it and moved on** (so it stays lit while you
+read it, then resets). Non-transient colors are never auto-cleared. This is the
+one focus hook — registered once by airline so plugins don't each add competing
+ones. It requires `focus-events on` (enable it yourself, or let the plugin that
+sets transient colors enable it).
+
 ## Plugin integrations
 
 Default widgets are used when the corresponding plugin is installed alongside

@@ -113,3 +113,35 @@ load helper
   assert_output --partial "bg=${THEME[active]}"
   refute_output --partial "bg=${THEME[alert]}"
 }
+
+# --- consume-on-view: clear a transient window color on unfocus ---
+
+@test "register_window_color_clear adds a pane-focus-out hook keyed on the transient flag" {
+  init_theme
+  register_window_color_clear
+  run tmux show-hooks -g pane-focus-out
+  assert_output --partial "@airline-window-color-transient"
+  assert_output --partial "@airline-window-color"
+}
+
+@test "focus-out logic clears a window marked transient" {
+  init_theme
+  tmux set -w @airline-window-color special
+  tmux set -w @airline-window-color-transient 1
+  # Run the same conditional the hook runs:
+  tmux if-shell -F "#{@airline-window-color-transient}" \
+    "set -wu @airline-window-color ; set -wu @airline-window-color-transient"
+  run tmux show -wqv @airline-window-color
+  assert_output ""
+  run tmux show -wqv @airline-window-color-transient
+  assert_output ""
+}
+
+@test "focus-out logic leaves a non-transient color alone" {
+  init_theme
+  tmux set -w @airline-window-color monitor          # working: no transient flag
+  tmux if-shell -F "#{@airline-window-color-transient}" \
+    "set -wu @airline-window-color ; set -wu @airline-window-color-transient"
+  run tmux show -wqv @airline-window-color
+  assert_output "monitor"
+}

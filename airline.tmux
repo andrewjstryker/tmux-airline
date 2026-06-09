@@ -100,6 +100,18 @@ window_color_expr () {
   printf '%s' "$expr"
 }
 
+# Clear a window's color when it loses focus — but only if the setter marked it
+# transient via @airline-window-color-transient. This is the "consume-on-view"
+# lifecycle: a setter that cannot observe when its color has been seen (e.g. an
+# agent's finished state) marks it transient, and airline clears it once you've
+# viewed the window and moved on. Colors without the flag are left alone — their
+# setter owns clearing. Registered once, here, so plugins don't each add a focus
+# hook (which would collide on the shared option). Requires `focus-events on`.
+register_window_color_clear () {
+  tmux set-hook -ga pane-focus-out \
+    "if-shell -F '#{@airline-window-color-transient}' 'set -wu @airline-window-color ; set -wu @airline-window-color-transient ; refresh-client -S'"
+}
+
 #-----------------------------------------------------------------------------#
 #
 # Build status line components
@@ -203,6 +215,7 @@ main () {
 
   # Configure window status
   set_window_formats
+  register_window_color_clear
 
   tmux set -gq status-left-style "fg=${THEME[primary]} bg=${THEME[outer-bg]}"
   tmux set -gq status-left "$(left_outer) $(left_middle)"
