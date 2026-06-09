@@ -9,8 +9,15 @@ source "$CURRENT_DIR/scripts/plugins/prefix_highlight.sh"
 source "$CURRENT_DIR/scripts/plugins/cpu.sh"
 source "$CURRENT_DIR/scripts/plugins/battery.sh"
 
-# use an associative array to hold the theme
-declare -A THEME
+# Theme palette, keyed by role (primary, alert, ok, …). -gA so it stays global
+# even when airline.tmux is sourced from inside a function (the test harness),
+# which would otherwise scope it locally.
+declare -gA THEME
+
+# The palette tokens a per-window signal option may hold, in render-precedence
+# order. Single source of truth for palette_token_expr and window_badge. -ga
+# for the same sourced-in-a-function reason as THEME above.
+declare -ga AIRLINE_PALETTE_TOKENS=(active alert stress ok special monitor copy zoom)
 
 apply_suspended_overrides () {
   THEME[outer-bg]="${THEME[inner-bg]}"
@@ -25,33 +32,24 @@ apply_suspended_overrides () {
   THEME[monitor]="${THEME[secondary]}"
 }
 
-if [[ "${AIRLINE_TESTING:-}" != "1" ]]; then
+# Source a theme file and populate THEME from the @airline-* options it sets.
+# The single theme-population path: airline's startup and the test harness both
+# call this, so the option list lives in exactly one place. Defaults to the
+# @airline-theme option (or "dark") but accepts an explicit theme name, which
+# the tests use. Applies the suspended dimming overrides when in that mode.
+load_theme () {
+  local theme="${1:-$(get_tmux_option @airline-theme "dark")}" key
+  tmux source-file "$CURRENT_DIR/themes/$theme"
 
-local theme
-theme=$(get_tmux_option @airline-theme "dark")
-tmux source-file "$CURRENT_DIR/themes/$theme"
+  for key in outer-bg middle-bg inner-bg secondary primary emphasized \
+             active special ok alert stress zoom copy monitor; do
+    THEME[$key]=$(get_tmux_option "@airline-$key")
+  done
 
-# Populate THEME from tmux options (set by the theme file above)
-THEME[outer-bg]=$(get_tmux_option @airline-outer-bg)
-THEME[middle-bg]=$(get_tmux_option @airline-middle-bg)
-THEME[inner-bg]=$(get_tmux_option @airline-inner-bg)
-THEME[secondary]=$(get_tmux_option @airline-secondary)
-THEME[primary]=$(get_tmux_option @airline-primary)
-THEME[emphasized]=$(get_tmux_option @airline-emphasized)
-THEME[active]=$(get_tmux_option @airline-active)
-THEME[special]=$(get_tmux_option @airline-special)
-THEME[ok]=$(get_tmux_option @airline-ok)
-THEME[alert]=$(get_tmux_option @airline-alert)
-THEME[stress]=$(get_tmux_option @airline-stress)
-THEME[zoom]=$(get_tmux_option @airline-zoom)
-THEME[copy]=$(get_tmux_option @airline-copy)
-THEME[monitor]=$(get_tmux_option @airline-monitor)
-
-if [[ "$(get_tmux_option @airline-suspended 0)" == "1" ]]; then
-  apply_suspended_overrides
-fi
-
-fi
+  if [[ "$(get_tmux_option @airline-suspended 0)" == "1" ]]; then
+    apply_suspended_overrides
+  fi
+}
 
 #-----------------------------------------------------------------------------#
 #
@@ -85,21 +83,26 @@ chev_left () {
 #
 #-----------------------------------------------------------------------------#
 
-# Resolve the per-window @airline-window-color option to a theme color. The
-# option holds one of airline's palette tokens (active, alert, stress, …); this
-# returns a tmux format expression, evaluated per window at render time, that
-# maps the token to its color and falls back to $1 when the option is empty or
-# an unknown token. airline neither knows nor cares what sets the option — it
-# just colors a window the requested palette color. Used as fg on inactive
-# windows and as bg on the active window.
-window_color_expr () {
-  local fallback="$1"
-  local expr="$fallback"
-  local tok
-  for tok in active alert stress ok special monitor copy zoom; do
-    expr="#{?#{==:#{@airline-window-color},$tok},${THEME[$tok]},$expr}"
+# Build a tmux format expression that maps a window-scoped option holding a
+# palette token (active, alert, stress, …) to its theme color, falling back to
+# $fallback when the option is empty or holds an unknown token. Evaluated per
+# window at render time. The token list (AIRLINE_PALETTE_TOKENS) lives in one
+# place, so per-window color and badge resolve identically.
+palette_token_expr () {
+  local option="$1" fallback="$2"
+  local expr="$fallback" tok
+  for tok in "${AIRLINE_PALETTE_TOKENS[@]}"; do
+    expr="#{?#{==:#{$option},$tok},${THEME[$tok]},$expr}"
   done
   printf '%s' "$expr"
+}
+
+# Resolve the per-window @airline-window-color override to a theme color.
+# airline neither knows nor cares what sets the option — it just colors a window
+# the requested palette color. Used as fg on inactive windows and as bg on the
+# active window.
+window_color_expr () {
+  palette_token_expr @airline-window-color "$1"
 }
 
 # Per-window notification badge (@airline-window-badge). Where window_color_expr
@@ -112,13 +115,9 @@ window_color_expr () {
 # to the primary color on an unknown token) and nothing when it's empty. The
 # glyph is configurable via @airline-window-badge-glyph (default ●).
 window_badge () {
-  local glyph expr tok
+  local glyph
   glyph=$(get_tmux_option @airline-window-badge-glyph "●")
-  expr="${THEME[primary]}"
-  for tok in active alert stress ok special monitor copy zoom; do
-    expr="#{?#{==:#{@airline-window-badge},$tok},${THEME[$tok]},$expr}"
-  done
-  printf '%s' "#{?@airline-window-badge, #[fg=$expr]$glyph,}"
+  printf '%s' "#{?@airline-window-badge, #[fg=$(palette_token_expr @airline-window-badge "${THEME[primary]}")]$glyph,}"
 }
 
 # Clear a window's color when it loses focus — but only if the setter marked it
@@ -195,6 +194,9 @@ set_window_formats () {
 
   # special case for current window: the highlight bg becomes the override
   # color when set (chevrons follow it), else the normal active highlight.
+  # The active window reads as one filled block — dark text on the highlight bg
+  # — so both flanking chevrons take fg=inner-bg (their leading edge matches the
+  # neighbouring window's bg, the trailing edge fills with the highlight).
   local hi_expr="$(window_color_expr "$hi")"
   tmux set -gq window-status-current-format "$(chev_right "$bg" "$hi_expr") $template${badge} $(chev_left "$hi_expr" "$bg")"
 }
@@ -268,5 +270,6 @@ main () {
 }
 
 if [[ "${AIRLINE_TESTING:-}" != "1" ]]; then
+  load_theme
   main
 fi
