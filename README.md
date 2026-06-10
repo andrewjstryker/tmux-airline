@@ -199,63 +199,57 @@ every status redraw. Two consequences:
   a section explicitly set to `0` shows its default rather than `0`. (Any real
   template — a format string or text — behaves as written.)
 
-### Per-window color (`@airline-window-color`)
+### Per-window signal (`@airline-window-signal`)
 
-A window can be recolored by setting the **window-scoped** option
-`@airline-window-color` to one of airline's palette tokens — `active`, `alert`,
+A window can be flagged by setting the **window-scoped** option
+`@airline-window-signal` to one of airline's palette tokens — `active`, `alert`,
 `stress`, `special`, `monitor`, `copy`, `zoom`:
 
 ```tmux
-tmux set -w -t <window> @airline-window-color alert   # flag a window
-tmux set -wu -t <window> @airline-window-color         # clear it
+tmux set -w -t <window> @airline-window-signal alert   # flag a window
+tmux set -wu -t <window> @airline-window-signal         # clear it
 ```
 
-airline maps the token to the theme color and renders it as **foreground** on
-inactive windows and as the **background** (chevrons included) on the active
-window. Unset → the window renders normally. airline neither knows nor cares
-*what* sets the option — it just colors the window — so any tool can drive it
-(e.g. flagging a window whose long-running job, agent, or build wants
+airline maps the token to the theme color. Unset → the window renders normally.
+airline neither knows nor cares *what* sets the option — so any tool can drive
+it (e.g. flagging a window whose long-running job, agent, or build wants
 attention). It's evaluated per window on every redraw, so changes show up live.
 
-**Clearing.** By default the *setter* owns clearing — airline shows the color
-until something unsets the option. For a state the setter can't observe being
-"seen" (e.g. a finished job you'd glance at and move on from), set the companion
-flag `@airline-window-color-transient`:
+**Presentation** is a separate, also window-scoped option,
+`@airline-window-style`:
+
+| `@airline-window-style` | How the signal renders                                  |
+|-------------------------|---------------------------------------------------------|
+| `color` (default)       | recolors the entry — fg on inactive windows, bg (chevrons included) on the active one |
+| `badge`                 | appends a colored glyph after the name; the entry keeps its normal styling |
+| `both`                  | recolor **and** glyph                                   |
 
 ```tmux
-tmux set -w -t <window> @airline-window-color special
-tmux set -w -t <window> @airline-window-color-transient 1   # clear on unfocus
+set -g @airline-window-style badge          # all signals as badges
+set -w -t <window> @airline-window-style both   # or per window
+```
+
+The badge glyph is `●` by default; override it with
+`@airline-window-signal-glyph` (e.g. `set -g @airline-window-signal-glyph '◆'`).
+Style is resolved per window on every redraw too, so a window can carry the
+signal and choose its presentation independently.
+
+**Clearing.** By default the *setter* owns clearing — airline shows the signal
+until something unsets the option. For a state the setter can't observe being
+"seen" (e.g. a finished job you'd glance at and move on from), set the companion
+flag `@airline-window-signal-transient`:
+
+```tmux
+tmux set -w -t <window> @airline-window-signal special
+tmux set -w -t <window> @airline-window-signal-transient 1   # clear on unfocus
 ```
 
 airline registers a single `pane-focus-out` hook that clears a transient
-window's color once you've **viewed it and moved on** (so it stays lit while you
-read it, then resets). Non-transient colors are never auto-cleared. This is the
-one focus hook — registered once by airline so plugins don't each add competing
-ones. It requires `focus-events on` (enable it yourself, or let the plugin that
-sets transient colors enable it).
-
-### Per-window badge (`@airline-window-badge`)
-
-A less intrusive alternative to recoloring the whole entry: set the
-**window-scoped** option `@airline-window-badge` to one of the same palette
-tokens to append a small colored **glyph after the window name**, leaving the
-entry's normal styling intact:
-
-```tmux
-tmux set -w -t <window> @airline-window-badge alert    # ● in orange after the name
-tmux set -wu -t <window> @airline-window-badge          # clear it
-```
-
-The glyph is `●` by default; override it with `@airline-window-badge-glyph`
-(e.g. `tmux set -g @airline-window-badge-glyph '◆'`). It's evaluated per window
-on every redraw, so changes show up live, and it's independent of
-`@airline-window-color` — a window can carry either, both, or neither.
-
-**Clearing** works exactly like the window color: the setter owns clearing by
-default, and the companion flag `@airline-window-badge-transient` opts a badge
-into the same consume-on-view behavior (cleared on `pane-focus-out` once you've
-viewed the window and moved on). It uses its own appended focus hook, so badge
-and color transience are independent. Requires `focus-events on`.
+window's signal once you've **viewed it and moved on** (so it stays lit while
+you read it, then resets). The lifecycle is about the signal, not its
+presentation, so the one hook covers every style. Non-transient signals are
+never auto-cleared. It requires `focus-events on` (enable it yourself, or let
+the plugin that sets transient signals enable it).
 
 ## Plugin integrations
 
