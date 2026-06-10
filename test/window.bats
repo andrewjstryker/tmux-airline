@@ -56,68 +56,65 @@ load helper
   assert_output --partial "#W"
 }
 
-# --- per-window signal (@airline-window-signal) ---
+# --- per-window color (@airline-window-color) ---
 
-@test "window-status-format embeds the signal expression" {
+@test "window-status-format embeds the window-color override" {
   init_theme
   set_window_formats
   run get_option window-status-format
-  assert_output --partial "@airline-window-signal"
+  assert_output --partial "@airline-window-color"
   assert_output --partial "${THEME[alert]}"   # token->color baked into the expr
 }
 
-@test "window-status-current-format embeds the signal on the highlight" {
+@test "window-status-current-format embeds the override on the highlight" {
   init_theme
   set_window_formats
   run get_option window-status-current-format
-  assert_output --partial "@airline-window-signal"
+  assert_output --partial "@airline-window-color"
   assert_output --partial "${THEME[active]}"   # fallback (normal) highlight
-  assert_output --partial "${THEME[alert]}"    # a signal token color
+  assert_output --partial "${THEME[alert]}"    # an override token color
 }
 
-# default style: color (recolor the entry)
-
-@test "color style (default): a token sets the inactive foreground to that color" {
+@test "inactive window: a token sets the foreground to that palette color" {
   init_theme
   set_window_formats
-  $TMUX -L "$_bats_socket" set -w @airline-window-signal alert
+  $TMUX -L "$_bats_socket" set -w @airline-window-color alert
   run tmux display-message -p "$(get_option window-status-format)"
   assert_output --partial "fg=${THEME[alert]}"
-  refute_output --partial "●"                  # color style: no glyph
 }
 
-@test "color style: unset signal leaves the base style alone" {
+@test "inactive window: unset leaves the base style alone" {
   init_theme
   set_window_formats
   run tmux display-message -p "$(get_option window-status-format)"
   refute_output --partial "fg=${THEME[alert]}"
 }
 
-@test "color style: the ok (success) token resolves to green" {
+@test "inactive window: the ok (success) token resolves to green" {
   init_theme
   set_window_formats
-  tmux set -w @airline-window-signal ok
+  tmux set -w @airline-window-color ok
   run tmux display-message -p "$(get_option window-status-format)"
   assert_output --partial "fg=${THEME[ok]}"
 }
 
-@test "color style: an unknown token falls back to primary" {
+@test "inactive window: an unknown token falls back to primary" {
   init_theme
   set_window_formats
-  $TMUX -L "$_bats_socket" set -w @airline-window-signal bogus
+  $TMUX -L "$_bats_socket" set -w @airline-window-color bogus
   run tmux display-message -p "$(get_option window-status-format)"
   assert_output --partial "fg=${THEME[primary]}"
 }
 
-@test "color style: a token sets the active background to that color" {
+@test "active window: a token sets the background to that palette color" {
   init_theme
   set_window_formats
-  $TMUX -L "$_bats_socket" set -w @airline-window-signal alert
+  $TMUX -L "$_bats_socket" set -w @airline-window-color alert
   run tmux display-message -p "$(get_option window-status-current-format)"
   assert_output --partial "bg=${THEME[alert]}"
 }
 
-@test "color style: unset signal uses the normal active highlight background" {
+@test "active window: unset uses the normal active highlight background" {
   init_theme
   set_window_formats
   run tmux display-message -p "$(get_option window-status-current-format)"
@@ -125,108 +122,151 @@ load helper
   refute_output --partial "bg=${THEME[alert]}"
 }
 
-# badge style: a glyph after the name, no recolor
+# --- consume-on-view: clear a transient window color on unfocus ---
 
-@test "badge style: a token renders the glyph in that color, no recolor" {
+@test "register_window_color_clear adds a pane-focus-out hook keyed on the transient flag" {
+  init_theme
+  register_window_color_clear
+  run tmux show-hooks -g pane-focus-out
+  assert_output --partial "@airline-window-color-transient"
+  assert_output --partial "@airline-window-color"
+}
+
+@test "register_window_color_clear is idempotent (re-running does not stack hooks)" {
+  init_theme
+  register_window_color_clear
+  register_window_color_clear
+  register_window_color_clear
+  run tmux show-hooks -g pane-focus-out
+  # One entry for the color hook regardless of how many times main() re-runs
+  # (config reload / F12 suspend-resume), not N accumulated duplicates.
+  assert_equal "$(echo "$output" | grep -c "@airline-window-color-transient")" "1"
+}
+
+@test "focus-out logic clears a window marked transient" {
+  init_theme
+  tmux set -w @airline-window-color special
+  tmux set -w @airline-window-color-transient 1
+  # Run the same conditional the hook runs:
+  tmux if-shell -F "#{@airline-window-color-transient}" \
+    "set -wu @airline-window-color ; set -wu @airline-window-color-transient"
+  run tmux show -wqv @airline-window-color
+  assert_output ""
+  run tmux show -wqv @airline-window-color-transient
+  assert_output ""
+}
+
+@test "focus-out logic leaves a non-transient color alone" {
+  init_theme
+  tmux set -w @airline-window-color monitor          # working: no transient flag
+  tmux if-shell -F "#{@airline-window-color-transient}" \
+    "set -wu @airline-window-color ; set -wu @airline-window-color-transient"
+  run tmux show -wqv @airline-window-color
+  assert_output "monitor"
+}
+
+# --- per-window badge (@airline-window-badge) ---
+
+@test "window-status-format embeds the badge expression" {
   init_theme
   set_window_formats
-  $TMUX -L "$_bats_socket" set -w @airline-window-signal alert
-  $TMUX -L "$_bats_socket" set -w @airline-window-style badge
+  run get_option window-status-format
+  assert_output --partial "@airline-window-badge"
+  assert_output --partial "${THEME[alert]}"   # token->color baked into the expr
+}
+
+@test "window-status-current-format embeds the badge expression" {
+  init_theme
+  set_window_formats
+  run get_option window-status-current-format
+  assert_output --partial "@airline-window-badge"
+}
+
+@test "inactive window: a token renders the badge glyph in that palette color" {
+  init_theme
+  set_window_formats
+  $TMUX -L "$_bats_socket" set -w @airline-window-badge alert
   run tmux display-message -p "$(get_option window-status-format)"
   assert_output --partial "fg=${THEME[alert]}"
   assert_output --partial "●"
 }
 
-@test "badge style: unset signal renders no glyph" {
+@test "inactive window: no badge option leaves the entry without a glyph" {
   init_theme
   set_window_formats
-  $TMUX -L "$_bats_socket" set -w @airline-window-style badge
   run tmux display-message -p "$(get_option window-status-format)"
   refute_output --partial "●"
 }
 
-@test "badge style: the active window keeps the normal highlight, plus a glyph" {
+@test "active window: a token renders the badge glyph on the highlight" {
   init_theme
   set_window_formats
-  $TMUX -L "$_bats_socket" set -w @airline-window-signal monitor
-  $TMUX -L "$_bats_socket" set -w @airline-window-style badge
+  $TMUX -L "$_bats_socket" set -w @airline-window-badge monitor
   run tmux display-message -p "$(get_option window-status-current-format)"
-  assert_output --partial "bg=${THEME[active]}"          # not recolored
-  refute_output --partial "bg=${THEME[monitor]}"
+  assert_output --partial "fg=${THEME[monitor]}"
   assert_output --partial "●"
 }
 
-@test "badge style: the glyph is configurable via @airline-window-signal-glyph" {
+@test "badge: an unknown token falls back to primary" {
   init_theme
-  $TMUX -L "$_bats_socket" set -g @airline-window-signal-glyph "◆"
   set_window_formats
-  $TMUX -L "$_bats_socket" set -w @airline-window-signal ok
-  $TMUX -L "$_bats_socket" set -w @airline-window-style badge
+  $TMUX -L "$_bats_socket" set -w @airline-window-badge bogus
+  run tmux display-message -p "$(get_option window-status-format)"
+  assert_output --partial "fg=${THEME[primary]}"
+  assert_output --partial "●"
+}
+
+@test "badge: the glyph is configurable via @airline-window-badge-glyph" {
+  init_theme
+  $TMUX -L "$_bats_socket" set -g @airline-window-badge-glyph "◆"
+  set_window_formats
+  $TMUX -L "$_bats_socket" set -w @airline-window-badge ok
   run tmux display-message -p "$(get_option window-status-format)"
   assert_output --partial "◆"
 }
 
-# both style: recolor AND glyph
-
-@test "both style: inactive window recolors AND shows a glyph" {
+@test "register_window_badge_clear adds a pane-focus-out hook keyed on the badge transient flag" {
   init_theme
-  set_window_formats
-  $TMUX -L "$_bats_socket" set -w @airline-window-signal alert
-  $TMUX -L "$_bats_socket" set -w @airline-window-style both
-  run tmux display-message -p "$(get_option window-status-format)"
-  assert_output --partial "fg=${THEME[alert]}"
-  assert_output --partial "●"
-}
-
-@test "both style: active window recolors the background AND shows a glyph" {
-  init_theme
-  set_window_formats
-  $TMUX -L "$_bats_socket" set -w @airline-window-signal alert
-  $TMUX -L "$_bats_socket" set -w @airline-window-style both
-  run tmux display-message -p "$(get_option window-status-current-format)"
-  assert_output --partial "bg=${THEME[alert]}"
-  assert_output --partial "●"
-}
-
-# --- consume-on-view: clear a transient signal on unfocus ---
-
-@test "register_window_signal_clear adds a pane-focus-out hook keyed on the transient flag" {
-  init_theme
-  register_window_signal_clear
+  register_window_badge_clear
   run tmux show-hooks -g pane-focus-out
-  assert_output --partial "@airline-window-signal-transient"
-  assert_output --partial "@airline-window-signal"
+  assert_output --partial "@airline-window-badge-transient"
+  assert_output --partial "@airline-window-badge"
 }
 
-@test "register_window_signal_clear is idempotent (re-running does not stack hooks)" {
+@test "register_window_badge_clear is idempotent (re-running does not stack hooks)" {
   init_theme
-  register_window_signal_clear
-  register_window_signal_clear
-  register_window_signal_clear
+  register_window_badge_clear
+  register_window_badge_clear
   run tmux show-hooks -g pane-focus-out
-  # One entry regardless of how many times main() re-runs (config reload / F12
-  # suspend-resume), not N accumulated duplicates.
-  assert_equal "$(echo "$output" | grep -c "@airline-window-signal-transient")" "1"
+  assert_equal "$(echo "$output" | grep -c "@airline-window-badge-transient")" "1"
 }
 
-@test "focus-out logic clears a window signal marked transient" {
+@test "color and badge hooks coexist at distinct indices" {
   init_theme
-  tmux set -w @airline-window-signal special
-  tmux set -w @airline-window-signal-transient 1
-  # Run the same conditional the hook runs:
-  tmux if-shell -F "#{@airline-window-signal-transient}" \
-    "set -wu @airline-window-signal ; set -wu @airline-window-signal-transient"
-  run tmux show -wqv @airline-window-signal
+  register_window_color_clear
+  register_window_badge_clear
+  run tmux show-hooks -g pane-focus-out
+  assert_output --partial "@airline-window-color-transient"
+  assert_output --partial "@airline-window-badge-transient"
+}
+
+@test "focus-out logic clears a window badge marked transient" {
+  init_theme
+  tmux set -w @airline-window-badge alert
+  tmux set -w @airline-window-badge-transient 1
+  tmux if-shell -F "#{@airline-window-badge-transient}" \
+    "set -wu @airline-window-badge ; set -wu @airline-window-badge-transient"
+  run tmux show -wqv @airline-window-badge
   assert_output ""
-  run tmux show -wqv @airline-window-signal-transient
+  run tmux show -wqv @airline-window-badge-transient
   assert_output ""
 }
 
-@test "focus-out logic leaves a non-transient signal alone" {
+@test "focus-out logic leaves a non-transient badge alone" {
   init_theme
-  tmux set -w @airline-window-signal monitor          # working: no transient flag
-  tmux if-shell -F "#{@airline-window-signal-transient}" \
-    "set -wu @airline-window-signal ; set -wu @airline-window-signal-transient"
-  run tmux show -wqv @airline-window-signal
+  tmux set -w @airline-window-badge monitor
+  tmux if-shell -F "#{@airline-window-badge-transient}" \
+    "set -wu @airline-window-badge ; set -wu @airline-window-badge-transient"
+  run tmux show -wqv @airline-window-badge
   assert_output "monitor"
 }

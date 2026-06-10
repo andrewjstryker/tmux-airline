@@ -15,8 +15,9 @@ source "$CURRENT_DIR/scripts/plugins/battery.sh"
 declare -gA THEME
 
 # The palette tokens a per-window signal option may hold, in render-precedence
-# order. Single source of truth for palette_token_expr. -ga for the same
-# sourced-in-a-function reason as THEME above.
+# order. Single source of truth for palette_token_expr, used by both per-window
+# channels (color and badge). -ga for the same sourced-in-a-function reason as
+# THEME above.
 declare -ga AIRLINE_PALETTE_TOKENS=(active alert stress ok special monitor copy zoom)
 
 apply_suspended_overrides () {
@@ -79,7 +80,7 @@ chev_left () {
 
 #-----------------------------------------------------------------------------#
 #
-# Per-window signal
+# Per-window color and badge
 #
 #-----------------------------------------------------------------------------#
 
@@ -87,7 +88,7 @@ chev_left () {
 # palette token (active, alert, stress, …) to its theme color, falling back to
 # $fallback when the option is empty or holds an unknown token. Evaluated per
 # window at render time. The token list (AIRLINE_PALETTE_TOKENS) lives in one
-# place, so every presentation of the signal resolves the color identically.
+# place, so per-window color and badge resolve identically.
 palette_token_expr () {
   local option="$1" fallback="$2"
   local expr="$fallback" tok
@@ -97,28 +98,65 @@ palette_token_expr () {
   printf '%s' "$expr"
 }
 
-# Fixed pane-focus-out hook index for airline's consume-on-view hook. Assigning
-# the hook to an explicit array index makes registration idempotent: main()
-# re-runs on every config reload and on each F12 suspend/resume (both re-source
-# this file), and `set-hook -ga` *appends*, so re-running would stack duplicate
-# copies and they'd fire N times per unfocus. A specific index replaces in place
-# instead. A high index keeps airline clear of any hooks a user or other plugin
-# appends with `-ga` (those auto-fill from 0).
-AIRLINE_HOOK_IDX_SIGNAL=90
+# Resolve the per-window @airline-window-color override to a theme color.
+# airline neither knows nor cares what sets the option — it just colors a window
+# the requested palette color. Used as fg on inactive windows and as bg on the
+# active window. This is the meter-style channel: a sustained condition shown by
+# recoloring the entry (e.g. a resource — like a context window — under pressure).
+window_color_expr () {
+  palette_token_expr @airline-window-color "$1"
+}
 
-# Clear a window's signal when it loses focus — but only if the setter marked it
-# transient via @airline-window-signal-transient. This is the "consume-on-view"
-# lifecycle: a setter that cannot observe when its signal has been seen (e.g. an
+# Per-window badge (@airline-window-badge). Where window_color_expr repaints the
+# whole entry, the badge appends a small colored glyph *after* the window name
+# and leaves the entry's normal styling intact — the event-style channel (a
+# discrete state worth a glance, e.g. an agent that's working/waiting/done). It
+# carries the same palette tokens and is driven the same way: set the
+# window-scoped option to a token, unset to clear. Returns a tmux format
+# expression, evaluated per window at render time, that emits the glyph in the
+# token's color when set (falling back to primary on an unknown token) and
+# nothing when empty. The glyph is configurable via @airline-window-badge-glyph
+# (default ●). Independent of the color channel — a window can carry either,
+# both, or neither.
+window_badge () {
+  local glyph
+  glyph=$(get_tmux_option @airline-window-badge-glyph "●")
+  printf '%s' "#{?@airline-window-badge, #[fg=$(palette_token_expr @airline-window-badge "${THEME[primary]}")]$glyph,}"
+}
+
+# Fixed pane-focus-out hook indices for airline's two consume-on-view hooks.
+# Assigning a hook to an explicit array index makes registration idempotent:
+# main() re-runs on every config reload and on each F12 suspend/resume (both
+# re-source this file), and `set-hook -ga` *appends*, so re-running would stack
+# duplicate copies of these hooks and they'd fire N times per unfocus. Setting a
+# specific index replaces in place instead. High indices keep airline clear of
+# any hooks a user or other plugin appends with `-ga` (those auto-fill from 0).
+AIRLINE_HOOK_IDX_COLOR=90
+AIRLINE_HOOK_IDX_BADGE=91
+
+# Clear a window's color when it loses focus — but only if the setter marked it
+# transient via @airline-window-color-transient. This is the "consume-on-view"
+# lifecycle: a setter that cannot observe when its color has been seen (e.g. an
 # agent's finished state) marks it transient, and airline clears it once you've
-# viewed the window and moved on. Signals without the flag are left alone — their
-# setter owns clearing. The lifecycle is about the signal, not its presentation,
-# so one hook covers every style. Registered once, here, so plugins don't each
-# add a focus hook (which would collide on the shared option). Pinned to a fixed
-# index so re-running main() replaces rather than stacks. Requires
-# `focus-events on`.
-register_window_signal_clear () {
-  tmux set-hook -g "pane-focus-out[$AIRLINE_HOOK_IDX_SIGNAL]" \
-    "if-shell -F '#{@airline-window-signal-transient}' 'set -wu @airline-window-signal ; set -wu @airline-window-signal-transient ; refresh-client -S'"
+# viewed the window and moved on. Colors without the flag are left alone — their
+# setter owns clearing. Registered once, here, so plugins don't each add a focus
+# hook (which would collide on the shared option). Pinned to a fixed index so
+# re-running main() replaces rather than stacks (see AIRLINE_HOOK_IDX_COLOR).
+# Requires `focus-events on`.
+register_window_color_clear () {
+  tmux set-hook -g "pane-focus-out[$AIRLINE_HOOK_IDX_COLOR]" \
+    "if-shell -F '#{@airline-window-color-transient}' 'set -wu @airline-window-color ; set -wu @airline-window-color-transient ; refresh-client -S'"
+}
+
+# Same consume-on-view lifecycle as register_window_color_clear, for the badge:
+# clear @airline-window-badge on unfocus when @airline-window-badge-transient is
+# set. A separate hook (its own fixed index) so the badge and color lifecycles
+# stay independent (a window's badge can be transient while its color isn't, or
+# vice versa). Idempotent for the same reason as the color hook. Like it,
+# requires `focus-events on`.
+register_window_badge_clear () {
+  tmux set-hook -g "pane-focus-out[$AIRLINE_HOOK_IDX_BADGE]" \
+    "if-shell -F '#{@airline-window-badge-transient}' 'set -wu @airline-window-badge ; set -wu @airline-window-badge-transient ; refresh-client -S'"
 }
 
 #-----------------------------------------------------------------------------#
@@ -149,24 +187,17 @@ set_window_formats () {
   local template="$(get_tmux_option @airline_tmpl_window '#I:#W')"
   local bg="${THEME[inner-bg]}"
   local hi="${THEME[active]}"
-  local glyph="$(get_tmux_option @airline-window-signal-glyph "●")"
 
-  # Per-window signal (@airline-window-signal): a palette token airline renders
-  # on a window. How it renders is the per-window option @airline-window-style:
-  #   color (default) recolors the entry; badge appends a glyph after the name;
-  #   both does each. Resolved per window on every redraw, so changes show live.
-  # airline neither knows nor cares what sets the signal — any tool can drive it.
-  local sig="@airline-window-signal"
-  local color="$(palette_token_expr "$sig" "${THEME[primary]}")"
-  local is_badge="#{==:#{@airline-window-style},badge}"   # style suppresses recolor
-  # glyph shown for style 'badge' OR 'both':
-  local is_glyph="#{?#{==:#{@airline-window-style},badge},1,#{==:#{@airline-window-style},both}}"
+  # Per-window color channel (see window_color_expr): when a window sets
+  # @airline-window-color to a palette token, inactive windows take the color
+  # as fg here; the active window takes it as bg below. Unset → unchanged, so
+  # the normal/last/activity/bell styles still apply.
+  local fg_override="#{?@airline-window-color,#[fg=$(window_color_expr "${THEME[primary]}")],}"
 
-  # color/both: recolor — fg on inactive windows, bg on the active one (below).
-  # badge: no recolor. Unset signal → empty, so normal/last/activity/bell apply.
-  local fg_override="#{?$sig,#{?$is_badge,,#[fg=$color]},}"
-  # badge/both: a colored glyph appended after the name.
-  local badge="#{?$sig,#{?$is_glyph, #[fg=$color]$glyph,},}"
+  # Per-window badge channel (see window_badge): a colored glyph appended after
+  # the name when @airline-window-badge is set. Independent of the color channel
+  # above — a window can carry either, both, or neither.
+  local badge="$(window_badge)"
 
   # default window treatments
   tmux set -gq window-status-separator-string " "
@@ -178,11 +209,12 @@ set_window_formats () {
   tmux set -gq window-status-activity-style "fg=${THEME[alert]} bg=$bg"
   tmux set -gq window-status-bell-style "fg=${THEME[stress]} bg=$bg"
 
-  # current window: under color/both the highlight bg becomes the signal color
-  # (chevrons follow it); under badge — or with no signal — it stays the normal
-  # active highlight. Both flanking chevrons take fg=inner-bg so the active entry
-  # reads as one filled block (dark text on the highlight bg).
-  local hi_expr="#{?$is_badge,$hi,$(palette_token_expr "$sig" "$hi")}"
+  # special case for current window: the highlight bg becomes the color-channel
+  # token when set (chevrons follow it), else the normal active highlight.
+  # The active window reads as one filled block — dark text on the highlight bg
+  # — so both flanking chevrons take fg=inner-bg (their leading edge matches the
+  # neighbouring window's bg, the trailing edge fills with the highlight).
+  local hi_expr="$(window_color_expr "$hi")"
   tmux set -gq window-status-current-format "$(chev_right "$bg" "$hi_expr") $template${badge} $(chev_left "$hi_expr" "$bg")"
 }
 
@@ -238,7 +270,8 @@ main () {
 
   # Configure window status
   set_window_formats
-  register_window_signal_clear
+  register_window_color_clear
+  register_window_badge_clear
 
   tmux set -gq status-left-style "fg=${THEME[primary]} bg=${THEME[outer-bg]}"
   tmux set -gq status-left "$(left_outer) $(left_middle)"
