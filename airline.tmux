@@ -180,6 +180,13 @@ _is_lane_name () { [[ "$1" =~ ^[A-Za-z0-9_-]+$ ]]; }
 # (the bare `return` propagates _err's status 2 out of the calling function).
 _err () { echo "airline: $*" >&2; return 2; }
 
+# Force a status-line redraw. Setting a status/health option changes a value the
+# window-status-format references live, but tmux only re-evaluates the bar on
+# status-interval or incidental events — so without this a badge would lag by up
+# to status-interval seconds. The roster-changing ops redraw via _airline_rebuild
+# instead; the per-window set/clear (and the unfocus hook) call this directly.
+_redraw () { tmux refresh-client -S 2>/dev/null || true; }   # no client → harmless
+
 # --- status lanes (a "status" record store) ---------------------------------
 # glyph + priority live globally (the registry); the lit token and its transient
 # flag live per window. Option names are unchanged, so the render exprs in
@@ -235,6 +242,7 @@ airline_status_set () {
   else
     rec_unset "$ws" status "$lane" transient
   fi
+  _redraw
 }
 
 # clear <lane> [-t target]
@@ -243,6 +251,7 @@ airline_status_clear () {
   local ws; ws="$(_wscope "$@")"
   rec_unset "$ws" status "$lane" ""
   rec_unset "$ws" status "$lane" transient
+  _redraw
 }
 
 # list   lanes by priority: name, priority, glyph, current value on the window.
@@ -298,6 +307,7 @@ airline_health_set () {
     rec_unset "$ws" health "$key" transient
   fi
   _health_reduce "$ws"
+  _redraw
 }
 
 # clear <key> [-t target]
@@ -306,6 +316,7 @@ airline_health_clear () {
   local ws; ws="$(_wscope "$@")"
   rec_del "$ws" health "$key" transient
   _health_reduce "$ws"
+  _redraw
 }
 
 # list   each contributor's severity + the reduced result on the window.
@@ -369,7 +380,7 @@ airline_unfocus () {
   done
   if (( changed )); then
     _health_reduce "$ws"
-    tmux refresh-client -S 2>/dev/null || true   # no attached client → harmless
+    _redraw
   fi
   return 0
 }
