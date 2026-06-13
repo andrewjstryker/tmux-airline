@@ -20,11 +20,10 @@ Features:
 This plugin requires **tmux 3.0+** and Bash 4+ (for associative arrays), and
 has no other external dependencies.
 
-> **tmux 3.0** is needed because section templates are resolved live in the
-> status line via `#{E:...}` expansion of `@airline_tmpl_*` user options (both
-> added in tmux 3.0). This is what lets a template be set at any time — before
-> or after airline loads, or at runtime — and take effect on the next redraw.
-> On older tmux the status line will not render correctly.
+> **tmux 3.0** is needed for the format comparison operators (`#{==:…}`,
+> `#{?…}` over user options) that drive the per-window entry color and the
+> badge/segment rendering. On older tmux the status line will not render
+> correctly.
 
 ### With [Tmux Plugin Manager](https://github.com/tmux-plugins/tpm) (recommended)
 
@@ -157,127 +156,172 @@ set -g @plugin 'andrewjstryker/tmux-airline'
 
 ## Status bar layout
 
-The status bar has six sections, each backed by a function:
+The bar is the **window list** in the centre, flanked by a left and a right
+**segment stack**. A segment is a powerline block; airline draws the chevrons:
 
 ```
-┌────────────┬──────────┬─────────────────────┬─────────────┬────────────┬──────────────┐
-│ left_outer │ left_mid │    window list      │ right_inner │ right_mid  │ right_outer  │
-│  (online)  │ (host)   │                     │  (prefix)   │   (cpu)    │ (date, batt) │
-└────────────┴──────────┴─────────────────────┴─────────────┴────────────┴──────────────┘
+┌─────────┬────────┬──────────────────┬──────────┬───────┬──────────────┐
+│ online  │ host   │   window list    │ prefix   │ cpu   │ date, battery │
+│ (outer) │(middle)│    (inner-bg)    │ (inner)  │(middle)│   (outer)    │
+└─────────┴────────┴──────────────────┴──────────┴───────┴──────────────┘
+   ← left stack →                          ← right stack →
 ```
 
-Each section has a default widget but accepts a custom tmux format string via
-`@airline_tmpl_*` options:
+Segments are a registered, ordered stack managed by the **`airline` CLI** — the
+same model as status badges. Each has a **side** (`left`/`right`), a **priority**
+(ascending = closer to the window list), a **tier** (`outer`/`middle`/`inner`,
+which picks the background and drives the powerline depth), and **content** (a
+tmux format string). airline ships these defaults:
 
-| Option                        | Default content         |
-|-------------------------------|-------------------------|
-| `@airline_tmpl_left_outer`    | Online status indicator |
-| `@airline_tmpl_left_middle`   | Hostname                |
-| `@airline_tmpl_window`        | `#I:#W`                 |
-| `@airline_tmpl_right_inner`   | Prefix highlight        |
-| `@airline_tmpl_right_middle`  | CPU usage               |
-| `@airline_tmpl_right_outer`   | Date/time + battery     |
+| Segment  | Side  | Tier   | Default content          |
+|----------|-------|--------|--------------------------|
+| `online` | left  | outer  | Online status indicator  |
+| `host`   | left  | middle | Hostname                 |
+| `prefix` | right | inner  | Prefix highlight         |
+| `cpu`    | right | middle | CPU usage                |
+| `date`   | right | outer  | Date/time + battery      |
 
-Example:
+Add, reorder, or replace segments at runtime:
 
 ```tmux
-set -g @airline_tmpl_left_middle '#S'   # session name instead of hostname
-set -g @airline_tmpl_window '#W'        # window name only, no index
+# add a segment between cpu (priority 20) and date (30)
+airline segment register k8s --side right --priority 25 --tier middle \
+  --format '#[fg=colour39]⎈ #(kubectl config current-context)'
+
+# override a default by re-registering its name
+airline segment register host --side left --tier middle --format '#S'
+
+# remove one, or inspect the stack
+airline segment unregister cpu
+airline segment list
 ```
 
-### How templates resolve
+You own ordering (`--priority`) and content (`--format`); airline owns the
+chevrons and tier backgrounds. The content is a normal tmux format, so dynamic
+parts (`#{...}`, `#(...)`, `strftime`) stay live; changing the *roster* rebuilds
+the bar. (Registering the defaults happens once per server, so a config reload
+won't undo your customizations.)
 
-Sections **reference** their `@airline_tmpl_*` option rather than snapshotting
-it at load. Internally each section emits
-`#{?@airline_tmpl_X,#{E:@airline_tmpl_X},<default>}`, which tmux re-evaluates on
-every status redraw. Two consequences:
-
-- You can set a template **any time** — before or after airline loads, or at
-  runtime — and it takes effect on the next redraw. Plugins that register a
-  segment by setting one of these options therefore don't depend on load order.
-- Because tmux's `#{?…}` treats an **empty value or the literal `0`** as unset,
-  a section explicitly set to `0` shows its default rather than `0`. (Any real
-  template — a format string or text — behaves as written.)
-
-airline offers two **independent** per-window channels — recolor the entry, or
-append a glyph after the name. They're orthogonal: a window can carry either,
-both, or neither. Think of them as *meter* vs *event* — a sustained condition
-shown by color (e.g. a resource under pressure) vs a discrete state worth a
-glance shown by a badge (e.g. a job that just finished).
-
-### Per-window color (`@airline-window-color`)
-
-A window can be recolored by setting the **window-scoped** option
-`@airline-window-color` to one of airline's palette tokens — `active`, `alert`,
-`stress`, `special`, `monitor`, `copy`, `zoom`:
+The **window-list entry** itself is templated by the `@airline-tmpl-window`
+option (default `#I:#W`):
 
 ```tmux
-tmux set -w -t <window> @airline-window-color alert   # flag a window
-tmux set -wu -t <window> @airline-window-color         # clear it
+set -g @airline-tmpl-window '#W'        # window name only, no index
 ```
 
-airline maps the token to the theme color and renders it as **foreground** on
-inactive windows and as the **background** (chevrons included) on the active
-window. Unset → the window renders normally. airline neither knows nor cares
-*what* sets the option — it just colors the window — so any tool can drive it
-(e.g. flagging a window whose long-running job, agent, or build wants
-attention). It's evaluated per window on every redraw, so changes show up live.
+## Window list signals
 
-**Clearing.** By default the *setter* owns clearing — airline shows the color
-until something unsets the option. For a state the setter can't observe being
-"seen" (e.g. a finished job you'd glance at and move on from), set the companion
-flag `@airline-window-color-transient`:
+A window entry has three layers, owned by two parties. **airline** owns the
+entry's *color* (foreground/background); **plugins** speak through *badges* that
+flank the name. They never collide.
+
+```
+ ⚠ 1:vim        2:zsh ⟳        3:build ⚙
+ │  └name        └name └status   └name └status
+ └health gutter (left)           status stack (right)
+   entry color (the name itself) = airline only
+```
+
+### Entry color (airline-owned): tmux modes
+
+The window name's color is airline's alone — no plugin API. It reflects, in
+order, **tmux modes** (a zoomed pane, copy mode, a monitored window) over the
+**baseline** (focused / last / normal):
+
+| State                              | Color     |
+|------------------------------------|-----------|
+| A pane in the window is **zoomed** | `zoom`    |
+| The active pane is in **copy mode**| `copy`    |
+| `monitor-activity` is **on**       | `monitor` |
+
+Because the focused window is drawn *reverse-video* (its background is the
+highlight; the flat background becomes the knockout foreground), this single
+"signal color" is rendered as the **name foreground** on inactive windows and as
+the **highlight background** on the focused window — the chevrons follow it, so
+focus is never lost. Precedence is **zoom > copy > monitor**; with no mode, the
+normal/last/activity/bell styling applies.
+
+### Badges (plugin-owned): the `airline` CLI
+
+Plugins drive badges through the **`airline` command** — the supported API.
+It owns the underlying tmux options and validates input, so plugins never depend
+on option-name conventions. Two channels flank the name:
+
+> **Finding the CLI.** airline publishes its own path in the `@airline-cli`
+> tmux option on load, so a cooperating plugin never has to guess the install
+> location:
+>
+> ```shell
+> airline="$(tmux show -gqv @airline-cli)"
+> [ -n "$airline" ] && "$airline" status set agent active
+> ```
+>
+> The empty check doubles as a "is airline installed?" probe.
+
+**Status** — a durable, ordered stack of named lanes on the **right**. Register a
+lane once (glyph + priority); light it on a window with a palette token; clear it
+when done. Many lanes can show at once, left→right by ascending priority:
 
 ```tmux
-tmux set -w -t <window> @airline-window-color special
-tmux set -w -t <window> @airline-window-color-transient 1   # clear on unfocus
+airline status register agent ⟳ 20      # declare a lane: glyph ⟳, priority 20
+airline status register ci ⚙ 10         # lower priority renders further left
+airline status set agent active         # light 'agent' on the current window
+airline status clear agent              # clear it
+airline status list                     # show lanes + current values
 ```
 
-airline registers a single `pane-focus-out` hook that clears a transient
-window's color once you've **viewed it and moved on** (so it stays lit while you
-read it, then resets). Non-transient colors are never auto-cleared. This is the
-one focus hook — registered once by airline so plugins don't each add competing
-ones. It requires `focus-events on` (enable it yourself, or let the plugin that
-sets transient colors enable it).
+You own ordering (via `priority`) and glyphs — airline renders exactly the lanes
+you register, in that order, and never auto-deconflicts.
 
-### Per-window badge (`@airline-window-badge`)
-
-A less intrusive alternative to recoloring the whole entry: set the
-**window-scoped** option `@airline-window-badge` to one of the same palette
-tokens to append a small colored **glyph after the window name**, leaving the
-entry's normal styling intact:
+**Health** — a single severity glyph in the **left gutter**, reduced from any
+number of contributors. Each contributor reports under its own key; airline shows
+the **worst** severity. `ok` (or no contributor) shows **nothing** — a clean
+gutter means healthy:
 
 ```tmux
-tmux set -w -t <window> @airline-window-badge alert    # ● in orange after the name
-tmux set -wu -t <window> @airline-window-badge          # clear it
+airline health set ctx stress           # this window's context is critical
+airline health set build alert          # …and a build is degraded
+# gutter now shows one glyph at the max severity (stress)
+airline health clear ctx                # drops to alert
+airline health list                     # contributors + reduced result
 ```
 
-The glyph is `●` by default; override it with `@airline-window-badge-glyph`
-(e.g. `tmux set -g @airline-window-badge-glyph '◆'`). It's evaluated per window
-on every redraw, so changes show up live, and it's independent of
-`@airline-window-color` — a window can carry either, both, or neither.
+Severities are `ok` / `alert` / `stress` (green / amber / red). The glyph is `●`
+by default; override with `@airline-health-glyph`. All badge commands accept
+`-t <target>` to act on a window other than the current one.
 
-**Clearing** works exactly like the window color: the setter owns clearing by
-default, and the companion flag `@airline-window-badge-transient` opts a badge
-into the same consume-on-view behavior (cleared on `pane-focus-out` once you've
-viewed the window and moved on). It uses its own focus hook (a distinct fixed
-index), so badge and color transience are independent. Requires
-`focus-events on`.
+**Consume-on-view (`--transient`).** By default the setter owns clearing — a
+badge stays until something clears it. For a state whose setter can't observe
+that you've *seen* it (a job that finished, an agent waiting for input), set it
+`--transient` and airline clears it once you've viewed the window and moved on:
+
+```tmux
+airline status set agent ok --transient    # clears when you leave the window
+airline health set build stress --transient
+```
+
+airline registers a single `pane-focus-out` hook that clears that window's
+transient signals (sticky ones are untouched) and enables `focus-events` — so
+the feature works without extra setup. The hook is registered idempotently, so
+reloads and repeated use never stack duplicates.
+
+Because color and badges live on different layers, a window can show a mode
+color, a health glyph, and several status badges all at once without contention.
 
 ## Plugin integrations
 
 Default widgets are used when the corresponding plugin is installed alongside
 tmux-airline (detected by directory name in the plugin folder):
 
-| Plugin                 | Section      | What it shows            |
-|------------------------|--------------|--------------------------|
-| tmux-online-status     | left outer   | Online/offline dot       |
-| tmux-prefix-highlight  | right inner  | Prefix/copy/zoom state   |
-| tmux-cpu               | right middle | CPU load with color      |
-| tmux-battery           | right outer  | Battery level and source |
+| Plugin                 | Segment  | What it shows            |
+|------------------------|----------|--------------------------|
+| tmux-online-status     | `online` | Online/offline dot       |
+| tmux-prefix-highlight  | `prefix` | Prefix/copy/zoom state   |
+| tmux-cpu               | `cpu`    | CPU load with color      |
+| tmux-battery           | `date`   | Battery level and source |
 
-If a plugin is not installed, its section falls back to empty or the default
-template.
+If a plugin is not installed, its segment renders empty (the powerline block
+collapses to just its background).
 
 ## Testing
 
