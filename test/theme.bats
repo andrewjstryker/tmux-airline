@@ -96,24 +96,8 @@ load helper
 }
 
 # --- Theme contract tests ---
-# Every theme file must define all required @airline-* keys.
-
-REQUIRED_KEYS=(
-  @airline-outer-bg
-  @airline-middle-bg
-  @airline-inner-bg
-  @airline-secondary
-  @airline-primary
-  @airline-emphasized
-  @airline-active
-  @airline-special
-  @airline-ok
-  @airline-alert
-  @airline-stress
-  @airline-zoom
-  @airline-copy
-  @airline-monitor
-)
+# Every theme file must define all required @airline-* keys. The required set is
+# AIRLINE_THEME_KEYS itself (loaded with airline), so this can't drift from it.
 
 @test "all themes define every required key" {
   load_airline
@@ -121,10 +105,10 @@ REQUIRED_KEYS=(
   for theme_file in "$PROJECT_ROOT"/themes/*; do
     local name="$(basename "$theme_file")"
     $TMUX -L "$_bats_socket" source-file "$theme_file"
-    for key in "${REQUIRED_KEYS[@]}"; do
-      local val="$(get_option "$key")"
+    for key in "${AIRLINE_THEME_KEYS[@]}"; do
+      local val="$(get_option "@airline-$key")"
       if [[ -z "$val" ]]; then
-        missing+="  $name: $key"$'\n'
+        missing+="  $name: @airline-$key"$'\n'
       fi
     done
   done

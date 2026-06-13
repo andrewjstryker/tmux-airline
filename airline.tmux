@@ -3,6 +3,7 @@
 CURRENT_DIR="${AIRLINE_DIR:-$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )}"
 
 source "$CURRENT_DIR/scripts/shared.sh"
+source "$CURRENT_DIR/scripts/record.sh"
 source "$CURRENT_DIR/scripts/is_installed.sh"
 source "$CURRENT_DIR/scripts/plugins/online.sh"
 source "$CURRENT_DIR/scripts/plugins/prefix_highlight.sh"
@@ -14,10 +15,20 @@ source "$CURRENT_DIR/scripts/plugins/battery.sh"
 # which would otherwise scope it locally.
 declare -gA THEME
 
-# The palette tokens a per-window signal option may hold, in render-precedence
-# order. Single source of truth for palette_token_expr, used by both per-window
-# channels (color and badge). -ga for the same sourced-in-a-function reason as
-# THEME above.
+# Every theme key (the @airline-<key> options a theme file sets, and the THEME
+# keys airline reads). Single source of truth: load_theme populates THEME from
+# this, and the theme contract test checks every theme defines all of them.
+declare -ga AIRLINE_THEME_KEYS=(
+  outer-bg middle-bg inner-bg
+  secondary primary emphasized
+  active special ok alert stress zoom copy monitor
+)
+
+# The subset of theme keys a palette token may name (the semantic colors, not
+# the positional backgrounds or text weights), in render-precedence order.
+# Single source of truth for palette_token_expr, used by the entry color, the
+# status badges, and the health glyph. -ga for the same sourced-in-a-function
+# reason as THEME above.
 declare -ga AIRLINE_PALETTE_TOKENS=(active alert stress ok special monitor copy zoom)
 
 apply_suspended_overrides () {
@@ -42,8 +53,7 @@ load_theme () {
   local theme="${1:-$(get_tmux_option @airline-theme "dark")}" key
   tmux source-file "$CURRENT_DIR/themes/$theme"
 
-  for key in outer-bg middle-bg inner-bg secondary primary emphasized \
-             active special ok alert stress zoom copy monitor; do
+  for key in "${AIRLINE_THEME_KEYS[@]}"; do
     THEME[$key]=$(get_tmux_option "@airline-$key")
   done
 
@@ -80,15 +90,15 @@ chev_left () {
 
 #-----------------------------------------------------------------------------#
 #
-# Per-window color and badge
+# Palette token resolution
 #
 #-----------------------------------------------------------------------------#
 
-# Build a tmux format expression that maps a window-scoped option holding a
-# palette token (active, alert, stress, …) to its theme color, falling back to
-# $fallback when the option is empty or holds an unknown token. Evaluated per
-# window at render time. The token list (AIRLINE_PALETTE_TOKENS) lives in one
-# place, so per-window color and badge resolve identically.
+# Build a tmux format expression that maps an option holding a palette token
+# (active, alert, stress, …) to its theme color, falling back to $fallback when
+# the option is empty or holds an unknown token. Evaluated per window at render
+# time. The token list (AIRLINE_PALETTE_TOKENS) lives in one place, so the entry
+# color, the status badges, and the health glyph all resolve colors identically.
 palette_token_expr () {
   local option="$1" fallback="$2"
   local expr="$fallback" tok
@@ -98,65 +108,270 @@ palette_token_expr () {
   printf '%s' "$expr"
 }
 
-# Resolve the per-window @airline-window-color override to a theme color.
-# airline neither knows nor cares what sets the option — it just colors a window
-# the requested palette color. Used as fg on inactive windows and as bg on the
-# active window. This is the meter-style channel: a sustained condition shown by
-# recoloring the entry (e.g. a resource — like a context window — under pressure).
-window_color_expr () {
-  palette_token_expr @airline-window-color "$1"
+#-----------------------------------------------------------------------------#
+#
+# Window entry color — internal only (tmux modes > airline baseline)
+#
+#-----------------------------------------------------------------------------#
+# A window entry has a single "signal color" slot. Because the focused window is
+# drawn reverse-video — its background is the highlight, and the flat background
+# color becomes the knockout foreground — that slot is rendered as the *fore-
+# ground* on inactive windows and as the *highlight background* on the focused
+# window. Only airline writes it, from two internal sources, in order:
+#
+#   tmux modes (zoom > copy > monitor)  >  baseline (focus / last / normal)
+#
+# Plugins never touch the entry color; they speak through badges instead. zoom
+# and monitor-activity read as 1/0 in a format (truthiness-safe); pane_in_mode
+# marks copy/view mode on the window's active pane.
+
+# The zoom > copy > monitor precedence, in one place. `fmt` is a printf template
+# applied to each mode's color; `fallback` is emitted when no mode is active.
+_mode_expr () {
+  local fmt="$1" fallback="$2"
+  printf '#{?#{window_zoomed_flag},%s,#{?#{pane_in_mode},%s,#{?monitor-activity,%s,%s}}}' \
+    "$(printf "$fmt" "${THEME[zoom]}")" \
+    "$(printf "$fmt" "${THEME[copy]}")" \
+    "$(printf "$fmt" "${THEME[monitor]}")" \
+    "$fallback"
 }
 
-# Per-window badge (@airline-window-badge). Where window_color_expr repaints the
-# whole entry, the badge appends a small colored glyph *after* the window name
-# and leaves the entry's normal styling intact — the event-style channel (a
-# discrete state worth a glance, e.g. an agent that's working/waiting/done). It
-# carries the same palette tokens and is driven the same way: set the
-# window-scoped option to a token, unset to clear. Returns a tmux format
-# expression, evaluated per window at render time, that emits the glyph in the
-# token's color when set (falling back to primary on an unknown token) and
-# nothing when empty. The glyph is configurable via @airline-window-badge-glyph
-# (default ●). Independent of the color channel — a window can carry either,
-# both, or neither.
-window_badge () {
-  local glyph
-  glyph=$(get_tmux_option @airline-window-badge-glyph "●")
-  printf '%s' "#{?@airline-window-badge, #[fg=$(palette_token_expr @airline-window-badge "${THEME[primary]}")]$glyph,}"
+# Highlight background for the focused window: the active mode's color (as a bare
+# color), else the active highlight. Chevrons follow this so the focus block
+# stays one filled unit.
+window_mode_hi () { _mode_expr '%s' "${THEME[active]}"; }
+
+# Foreground override for inactive windows: a mode recolors the name (as an
+# #[fg=…] directive); empty when no mode is active, so the normal/last/activity/
+# bell styles apply unchanged.
+window_mode_fg () { _mode_expr '#[fg=%s]' ''; }
+
+#-----------------------------------------------------------------------------#
+#
+# Badges — the plugin-facing API (driven by the `airline` CLI)
+#
+#-----------------------------------------------------------------------------#
+# Two badge channels flank the window name. Plugins never set the backing
+# options by hand — the `airline` CLI owns the layout and validates input; the
+# @airline-status-* / @airline-health-* options below are private.
+#
+#   status : a durable, ordered stack of named lanes. A lane is registered once
+#            (glyph + priority); a plugin then lights it on a window with a
+#            palette token, or clears it. Many lanes can show at once; they
+#            render left→right by ascending priority, to the RIGHT of the name.
+#   health : a map keyed by contributor. Each writes a severity (ok|alert|
+#            stress) under its own key; airline reduces to the max and shows ONE
+#            glyph in that severity's color in the LEFT gutter. ok / none → no
+#            glyph, so a clean gutter means healthy.
+
+AIRLINE_SEVERITIES="ok alert stress"
+
+# --- validation -------------------------------------------------------------
+
+_is_palette_token () {
+  local t
+  for t in "${AIRLINE_PALETTE_TOKENS[@]}"; do [[ "$t" == "$1" ]] && return 0; done
+  return 1
+}
+_is_severity ()  { [[ " $AIRLINE_SEVERITIES " == *" $1 "* ]]; }
+_is_lane_name () { [[ "$1" =~ ^[A-Za-z0-9_-]+$ ]]; }
+
+# Print a CLI error and return 2. Use as: <check> || { _err "msg"; return; }
+# (the bare `return` propagates _err's status 2 out of the calling function).
+_err () { echo "airline: $*" >&2; return 2; }
+
+# --- status lanes (a "status" record store) ---------------------------------
+# glyph + priority live globally (the registry); the lit token and its transient
+# flag live per window. Option names are unchanged, so the render exprs in
+# set_window_formats still reference @airline-status-<lane> directly.
+
+_status_sorted_lanes () { rec_sorted -g status prio; }
+_lane_registered ()     { rec_has   -g status "$1"; }
+
+# Window scope string from trailing target args ("" → current window).
+_wscope () { printf -- '-w%s' "${*:+ $*}"; }
+
+# Parse the trailing args shared by `status set` / `health set`: an optional
+# --transient flag (anywhere) plus an optional `-t <target>`. Sets two globals
+# for the caller — _SIG_TRANSIENT (0/1) and _SIG_WSCOPE (the window scope
+# string). Returns via globals rather than echo so it can be called directly,
+# not in a $( ) subshell that would discard the flag.
+_parse_signal_args () {
+  _SIG_TRANSIENT=0
+  local args=()
+  while [[ $# -gt 0 ]]; do
+    if [[ "$1" == "--transient" ]]; then _SIG_TRANSIENT=1; shift; else args+=("$1"); shift; fi
+  done
+  _SIG_WSCOPE="$(_wscope "${args[@]}")"
 }
 
-# Fixed pane-focus-out hook indices for airline's two consume-on-view hooks.
-# Assigning a hook to an explicit array index makes registration idempotent:
-# main() re-runs on every config reload and on each F12 suspend/resume (both
-# re-source this file), and `set-hook -ga` *appends*, so re-running would stack
-# duplicate copies of these hooks and they'd fire N times per unfocus. Setting a
-# specific index replaces in place instead. High indices keep airline clear of
-# any hooks a user or other plugin appends with `-ga` (those auto-fill from 0).
-AIRLINE_HOOK_IDX_COLOR=90
-AIRLINE_HOOK_IDX_BADGE=91
-
-# Clear a window's color when it loses focus — but only if the setter marked it
-# transient via @airline-window-color-transient. This is the "consume-on-view"
-# lifecycle: a setter that cannot observe when its color has been seen (e.g. an
-# agent's finished state) marks it transient, and airline clears it once you've
-# viewed the window and moved on. Colors without the flag are left alone — their
-# setter owns clearing. Registered once, here, so plugins don't each add a focus
-# hook (which would collide on the shared option). Pinned to a fixed index so
-# re-running main() replaces rather than stacks (see AIRLINE_HOOK_IDX_COLOR).
-# Requires `focus-events on`.
-register_window_color_clear () {
-  tmux set-hook -g "pane-focus-out[$AIRLINE_HOOK_IDX_COLOR]" \
-    "if-shell -F '#{@airline-window-color-transient}' 'set -wu @airline-window-color ; set -wu @airline-window-color-transient ; refresh-client -S'"
+# register <lane> [glyph] [priority]   idempotent; rebuilds the bar.
+airline_status_register () {
+  local lane="$1" glyph="${2:-●}" prio="${3:-50}"
+  _is_lane_name "$lane"     || { _err "invalid lane name: $lane"; return; }
+  [[ "$prio" =~ ^[0-9]+$ ]] || { _err "priority must be an integer: $prio"; return; }
+  rec_set -g status "$lane" glyph "$glyph"
+  rec_set -g status "$lane" prio  "$prio"
+  rec_add -g status "$lane"
+  _airline_rebuild
 }
 
-# Same consume-on-view lifecycle as register_window_color_clear, for the badge:
-# clear @airline-window-badge on unfocus when @airline-window-badge-transient is
-# set. A separate hook (its own fixed index) so the badge and color lifecycles
-# stay independent (a window's badge can be transient while its color isn't, or
-# vice versa). Idempotent for the same reason as the color hook. Like it,
-# requires `focus-events on`.
-register_window_badge_clear () {
-  tmux set-hook -g "pane-focus-out[$AIRLINE_HOOK_IDX_BADGE]" \
-    "if-shell -F '#{@airline-window-badge-transient}' 'set -wu @airline-window-badge ; set -wu @airline-window-badge-transient ; refresh-client -S'"
+# unregister <lane>   drop the lane; rebuilds the bar.
+airline_status_unregister () {
+  rec_del -g status "$1" glyph prio
+  _airline_rebuild
+}
+
+# set <lane> <token> [--transient] [-t target]   light the lane on a window.
+airline_status_set () {
+  local lane="$1" token="$2"; shift 2
+  _parse_signal_args "$@"; local ws="$_SIG_WSCOPE"
+  _lane_registered "$lane"   || { _err "lane not registered: $lane"; return; }
+  _is_palette_token "$token" || { _err "invalid token: $token"; return; }
+  rec_set "$ws" status "$lane" "" "$token"
+  if (( _SIG_TRANSIENT )); then
+    rec_set "$ws" status "$lane" transient 1
+    _ensure_unfocus_hook
+  else
+    rec_unset "$ws" status "$lane" transient
+  fi
+}
+
+# clear <lane> [-t target]
+airline_status_clear () {
+  local lane="$1"; shift
+  local ws; ws="$(_wscope "$@")"
+  rec_unset "$ws" status "$lane" ""
+  rec_unset "$ws" status "$lane" transient
+}
+
+# list   lanes by priority: name, priority, glyph, current value on the window.
+airline_status_list () {
+  local lane
+  while IFS= read -r lane; do
+    [[ -z "$lane" ]] && continue
+    printf '%s\tprio=%s\tglyph=%s\tvalue=%s\n' "$lane" \
+      "$(rec_get -g status "$lane" prio 50)" \
+      "$(rec_get -g status "$lane" glyph ●)" \
+      "$(rec_get -w status "$lane" "")"
+  done < <(_status_sorted_lanes)
+}
+
+# --- health (a per-window "health" record store, reduced by max severity) ---
+# Each contributor is a per-window record (severity as the primary value).
+# airline reduces the roster to the worst severity and caches it in the option
+# below, which the gutter renders. stress > alert > ok; ok/none → cleared.
+#
+# This is airline's one piece of *derived* state: a cache of max(health records),
+# kept in sync only by _health_reduce. It exists because a tmux format can't walk
+# the roster to compute the max live, so we precompute the scalar where the
+# format can read it. Internal — never set by hand; like every @airline-* name
+# it's private and reached only through this one accessor.
+AIRLINE_HEALTH_REDUCED="@airline-health"
+
+_health_reduce () {   # <wscope>
+  local ws="$1" key sev best=0 max="" r
+  for key in $(rec_ids "$ws" health); do
+    sev="$(rec_get "$ws" health "$key" "")"
+    case "$sev" in stress) r=3 ;; alert) r=2 ;; ok) r=1 ;; *) r=0 ;; esac
+    (( r > best )) && { best=$r; max="$sev"; }
+  done
+  if [[ "$max" == "stress" || "$max" == "alert" ]]; then
+    tmux set $ws "$AIRLINE_HEALTH_REDUCED" "$max"
+  else
+    tmux set $ws -u "$AIRLINE_HEALTH_REDUCED" 2>/dev/null || true
+  fi
+}
+
+# set <key> <severity> [--transient] [-t target]
+airline_health_set () {
+  local key="$1" sev="$2"; shift 2
+  _parse_signal_args "$@"; local ws="$_SIG_WSCOPE"
+  _is_lane_name "$key" || { _err "invalid health key: $key"; return; }
+  _is_severity "$sev"  || { _err "severity must be ok|alert|stress: $sev"; return; }
+  rec_set "$ws" health "$key" "" "$sev"
+  rec_add "$ws" health "$key"
+  if (( _SIG_TRANSIENT )); then
+    rec_set "$ws" health "$key" transient 1
+    _ensure_unfocus_hook
+  else
+    rec_unset "$ws" health "$key" transient
+  fi
+  _health_reduce "$ws"
+}
+
+# clear <key> [-t target]
+airline_health_clear () {
+  local key="$1"; shift
+  local ws; ws="$(_wscope "$@")"
+  rec_del "$ws" health "$key" transient
+  _health_reduce "$ws"
+}
+
+# list   each contributor's severity + the reduced result on the window.
+airline_health_list () {
+  local ws key; ws="$(_wscope "$@")"
+  for key in $(rec_ids "$ws" health); do
+    printf '%s\t%s\n' "$key" "$(rec_get "$ws" health "$key" "")"
+  done
+  printf 'reduced\t%s\n' "$(tmux show-option $ws -qv "$AIRLINE_HEALTH_REDUCED")"
+}
+
+# Rebuild everything a roster change can affect — window formats and both status
+# bars. Needs the palette, so load the theme first; all of it is idempotent.
+_airline_rebuild () {
+  load_theme
+  set_window_formats
+  tmux set -gq status-left  "$(_build_status_left)"
+  tmux set -gq status-right "$(_build_status_right)"
+}
+
+# --- consume-on-view (transient signals) ------------------------------------
+# A signal set with --transient clears itself once you've viewed the window and
+# moved on. The setter can't observe being seen, so airline does it: on
+# pane-focus-out it hands the window that lost focus to `airline _unfocus`, which
+# clears that window's --transient lanes/keys. Sticky signals (no --transient)
+# are left to their setter.
+
+# Fixed hook index — indexing makes (re)registration idempotent, so a reload or
+# repeated --transient never stacks duplicate copies (set-hook -a would).
+AIRLINE_HOOK_IDX_UNFOCUS=90
+
+# Register the focus hook and enable focus-events (which the feature needs).
+# Called lazily, only when a --transient signal is set, so airline doesn't turn
+# focus reporting on for users who never use transience.
+_ensure_unfocus_hook () {
+  tmux set -g focus-events on
+  tmux set-hook -g "pane-focus-out[$AIRLINE_HOOK_IDX_UNFOCUS]" \
+    "run-shell -b \"$CURRENT_DIR/airline _unfocus #{window_id}\""
+}
+
+# Clear every --transient signal on <window>, then re-reduce health and redraw.
+# Invoked by the pane-focus-out hook with the window that lost focus. Roster-
+# driven (status lanes are a global registry; health keys a per-window one), so
+# no option-name globbing or parsing — just check each record's transient flag.
+airline_unfocus () {
+  local win="$1" ws lane key changed=0
+  [[ -n "$win" ]] || return 0
+  ws="$(_wscope -t "$win")"
+  for lane in $(rec_ids -g status); do
+    if [[ -n "$(rec_get "$ws" status "$lane" transient)" ]]; then
+      rec_unset "$ws" status "$lane" ""
+      rec_unset "$ws" status "$lane" transient
+      changed=1
+    fi
+  done
+  for key in $(rec_ids "$ws" health); do
+    if [[ -n "$(rec_get "$ws" health "$key" transient)" ]]; then
+      rec_del "$ws" health "$key" transient
+      changed=1
+    fi
+  done
+  if (( changed )); then
+    _health_reduce "$ws"
+    tmux refresh-client -S 2>/dev/null || true   # no attached client → harmless
+  fi
+  return 0
 }
 
 #-----------------------------------------------------------------------------#
@@ -165,86 +380,185 @@ register_window_badge_clear () {
 #
 #-----------------------------------------------------------------------------#
 
-left_outer () {
-  local fg="${THEME[emphasized]}"
-  local bg="${THEME[outer-bg]}"
-  local next_bg="${THEME[middle-bg]}"
-  local template="$(tmpl_ref @airline_tmpl_left_outer "$(configure_online)")"
+# The left and right status bars are a registered, ordered stack of segments —
+# not six fixed slots. Each segment has a side (left|right), a priority
+# (ascending = closer to the window list), a background tier (outer|middle|inner)
+# for the powerline depth, and content. Content is either a literal tmux format
+# (--format, for plugins/users) or a built-in generator (--gen, for the shipped
+# widgets, so they re-render under the current theme). Like the status lanes, the
+# roster is CLI-managed and changing it rebuilds the bar; @airline-segment-* are
+# private. Plugins add segments with `airline segment`, never by hand.
 
-  echo "#[fg=$fg,bg=$bg] ${template} $(chev_right "$bg" "$next_bg")"
+# Built-in segment content generators for the widgets that need real work. The
+# plugin widgets (online/prefix/cpu) are just their configure_* functions, used
+# as generators directly; only these two need wrapping.
+_seg_host () { hostname | cut -d '.' -f 1; }
+_seg_date () {
+  local d="%Y-%m-%d %H:%M" b
+  b="$(configure_battery)"
+  [[ -n "$b" ]] && d="$d $b"
+  printf '%s' "$d"
 }
 
-left_middle () {
-  local fg="${THEME[emphasized]}"
-  local bg="${THEME[middle-bg]}"
-  local next_bg="${THEME[inner-bg]}"
-  local template="$(tmpl_ref @airline_tmpl_left_middle "$(hostname | cut -d '.' -f 1)")"
+# Registered segment ids on a side, ascending priority (stable on ties). One
+# unified "segment" roster; side is an attribute we filter on at render time.
+_segments_sorted () {
+  local side="$1" id
+  for id in $(rec_sorted -g segment prio); do
+    [[ "$(rec_get -g segment "$id" side)" == "$side" ]] && printf '%s\n' "$id"
+  done
+}
 
-  echo "#[fg=$fg,bg=$bg] ${template} $(chev_right "$bg" "$next_bg") "
+# Resolve a segment's content: run its generator, else its stored format.
+_segment_content () {
+  local name="$1" gen
+  gen="$(rec_get -g segment "$name" gen)"
+  if [[ -n "$gen" ]]; then "$gen"; else rec_get -g segment "$name" format; fi
+}
+
+# Low-level define (no rebuild). Trailing arg is --gen <fn> or --format <fmt>.
+_segment_define () {
+  local name="$1" side="$2" prio="$3" tier="$4"; shift 4
+  local gen="" fmt=""
+  case "${1:-}" in --gen) gen="$2" ;; --format) fmt="$2" ;; esac
+  rec_set -g segment "$name" side   "$side"
+  rec_set -g segment "$name" prio   "$prio"
+  rec_set -g segment "$name" tier   "$tier"
+  rec_set -g segment "$name" gen    "$gen"
+  rec_set -g segment "$name" format "$fmt"
+  rec_add -g segment "$name"
+}
+
+# Compose status-left: blocks left→right, each followed by a chevron into the
+# next segment's tier (or the inner-bg window list after the last one).
+_build_status_left () {
+  local fg="${THEME[emphasized]}" out="" seg bg next_bg i
+  local -a segs=()
+  while IFS= read -r seg; do [[ -n "$seg" ]] && segs+=("$seg"); done < <(_segments_sorted left)
+  for (( i = 0; i < ${#segs[@]}; i++ )); do
+    seg="${segs[i]}"
+    bg="${THEME[$(rec_get -g segment "$seg" tier middle)-bg]}"
+    if (( i + 1 < ${#segs[@]} )); then
+      next_bg="${THEME[$(rec_get -g segment "${segs[i+1]}" tier middle)-bg]}"
+    else
+      next_bg="${THEME[inner-bg]}"
+    fi
+    out+="#[fg=$fg,bg=$bg] $(_segment_content "$seg") $(chev_right "$bg" "$next_bg")"
+  done
+  printf '%s' "$out"
+}
+
+# Compose status-right: each segment preceded by a chevron from the previous
+# tier (the inner-bg window list before the first one).
+_build_status_right () {
+  local fg="${THEME[emphasized]}" out="" seg bg prev_bg="${THEME[inner-bg]}"
+  while IFS= read -r seg; do
+    [[ -z "$seg" ]] && continue
+    bg="${THEME[$(rec_get -g segment "$seg" tier middle)-bg]}"
+    out+="$(chev_left "$prev_bg" "$bg")#[fg=$fg,bg=$bg] $(_segment_content "$seg") "
+    prev_bg="$bg"
+  done < <(_segments_sorted right)
+  printf '%s' "$out"
+}
+
+# Register the shipped default segments, once per server (sentinel-gated so a
+# reload doesn't clobber user customization). Their content regenerates on each
+# rebuild via the generators, so widgets follow the active theme and plugin set.
+register_default_segments () {
+  [[ "$(get_tmux_option @airline-defaults-done 0)" == "1" ]] && return
+  _segment_define online left  10 outer  --gen configure_online
+  _segment_define host   left  20 middle --gen _seg_host
+  _segment_define prefix right 10 inner  --gen configure_prefix_highlight
+  _segment_define cpu    right 20 middle --gen configure_cpu
+  _segment_define date   right 30 outer  --gen _seg_date
+  tmux set -g @airline-defaults-done 1
+}
+
+# --- CLI: airline segment ---------------------------------------------------
+
+# register <name> [--side left|right] [--priority N] [--tier outer|middle|inner]
+#                 [--format <tmux-format>]   (idempotent; rebuilds the bar)
+airline_segment_register () {
+  local name="${1:-}"; shift || true
+  local side="left" prio=50 tier="middle" fmt=""
+  _is_lane_name "$name" || { _err "invalid segment name: $name"; return; }
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --side)     side="$2"; shift 2 ;;
+      --priority) prio="$2"; shift 2 ;;
+      --tier)     tier="$2"; shift 2 ;;
+      --format)   fmt="$2";  shift 2 ;;
+      *) _err "unknown segment option: $1"; return ;;
+    esac
+  done
+  case "$side" in left|right) ;; *) _err "side must be left|right: $side"; return ;; esac
+  case "$tier" in outer|middle|inner) ;; *) _err "tier must be outer|middle|inner: $tier"; return ;; esac
+  [[ "$prio" =~ ^[0-9]+$ ]] || { _err "priority must be an integer: $prio"; return; }
+  _segment_define "$name" "$side" "$prio" "$tier" --format "$fmt"
+  _airline_rebuild
+}
+
+# unregister <name>   (drop the segment; rebuilds the bar)
+airline_segment_unregister () {
+  rec_del -g segment "$1" side prio tier gen format
+  _airline_rebuild
+}
+
+# list   segments per side, in render order: name, side, priority, tier.
+airline_segment_list () {
+  local side seg
+  for side in left right; do
+    while IFS= read -r seg; do
+      [[ -z "$seg" ]] && continue
+      printf '%s\tside=%s\tprio=%s\ttier=%s\n' "$seg" "$side" \
+        "$(rec_get -g segment "$seg" prio 50)" \
+        "$(rec_get -g segment "$seg" tier middle)"
+    done < <(_segments_sorted "$side")
+  done
 }
 
 set_window_formats () {
-  local template="$(get_tmux_option @airline_tmpl_window '#I:#W')"
-  local bg="${THEME[inner-bg]}"
-  local hi="${THEME[active]}"
+  local template bg
+  template="$(get_tmux_option @airline-tmpl-window '#I:#W')"
+  bg="${THEME[inner-bg]}"
 
-  # Per-window color channel (see window_color_expr): when a window sets
-  # @airline-window-color to a palette token, inactive windows take the color
-  # as fg here; the active window takes it as bg below. Unset → unchanged, so
-  # the normal/last/activity/bell styles still apply.
-  local fg_override="#{?@airline-window-color,#[fg=$(window_color_expr "${THEME[primary]}")],}"
+  # Entry color: tmux modes > baseline, in the single signal slot (fg when
+  # inactive, highlight bg when focused — see "Window entry color" above).
+  local mode_fg hi_expr
+  mode_fg="$(window_mode_fg)"
+  hi_expr="$(window_mode_hi)"
 
-  # Per-window badge channel (see window_badge): a colored glyph appended after
-  # the name when @airline-window-badge is set. Independent of the color channel
-  # above — a window can carry either, both, or neither.
-  local badge="$(window_badge)"
+  # Health gutter (left): one glyph at the window's reduced severity; empty when
+  # healthy. Status stack (right): one glyph per lit lane, ascending priority.
+  local hglyph health_expr status_expr="" lane glyph
+  hglyph="$(get_tmux_option @airline-health-glyph "●")"
+  health_expr="#{?${AIRLINE_HEALTH_REDUCED},#[fg=$(palette_token_expr "$AIRLINE_HEALTH_REDUCED" "${THEME[primary]}")]$hglyph ,}"
+  while IFS= read -r lane; do
+    [[ -z "$lane" ]] && continue
+    glyph="$(rec_get -g status "$lane" glyph ●)"
+    status_expr+="#{?$(rec_key status "$lane"), #[fg=$(palette_token_expr "$(rec_key status "$lane")" "${THEME[primary]}")]$glyph,}"
+  done < <(_status_sorted_lanes)
 
-  # default window treatments
   tmux set -gq window-status-separator-string " "
-  tmux set -gq window-status-format "${fg_override}${template}${badge}"
 
-  # window styles
+  # inactive: health gutter, then #[default] to restore the applicable style so
+  # the gutter glyph's color can't bleed into the name, then the mode fg (if a
+  # mode is active), the name, and finally the status stack.
+  tmux set -gq window-status-format \
+    "${health_expr}#[default]${mode_fg}${template}${status_expr}"
+
+  # baseline positional styles for inactive windows
   tmux set -gq window-status-style "fg=${THEME[primary]} bg=$bg"
   tmux set -gq window-status-last-style "fg=${THEME[emphasized]} bg=$bg"
   tmux set -gq window-status-activity-style "fg=${THEME[alert]} bg=$bg"
   tmux set -gq window-status-bell-style "fg=${THEME[stress]} bg=$bg"
 
-  # special case for current window: the highlight bg becomes the color-channel
-  # token when set (chevrons follow it), else the normal active highlight.
-  # The active window reads as one filled block — dark text on the highlight bg
-  # — so both flanking chevrons take fg=inner-bg (their leading edge matches the
-  # neighbouring window's bg, the trailing edge fills with the highlight).
-  local hi_expr="$(window_color_expr "$hi")"
-  tmux set -gq window-status-current-format "$(chev_right "$bg" "$hi_expr") $template${badge} $(chev_left "$hi_expr" "$bg")"
-}
-
-right_inner () {
-  local fg="${THEME[inner-bg]}"
-  local bg="${THEME[inner-bg]}"
-  local template="$(tmpl_ref @airline_tmpl_right_inner "$(configure_prefix_highlight)")"
-
-  echo "#[fg=$fg,bg=$bg]${template}"
-}
-
-right_middle () {
-  local fg="${THEME[emphasized]}"
-  local bg="${THEME[middle-bg]}"
-  local prev_bg="${THEME[inner-bg]}"
-  local template="$(tmpl_ref @airline_tmpl_right_middle "$(configure_cpu)")"
-
-  echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg] $template"
-}
-
-right_outer () {
-  local fg="${THEME[emphasized]}"
-  local bg="${THEME[outer-bg]}"
-  local prev_bg="${THEME[middle-bg]}"
-  local default="%Y-%m-%d %H:%M"
-  local battery="$(configure_battery)"
-  [[ -n "$battery" ]] && default="$default $battery"
-  local template="$(tmpl_ref @airline_tmpl_right_outer "$default")"
-
-  echo "$(chev_left $prev_bg $bg)#[fg=$fg,bg=$bg] ${template}"
+  # focused window: a reverse-video block. The highlight bg is the active mode's
+  # color, else the normal active highlight; the chevrons follow it. The name is
+  # knocked out in inner-bg (#[fg=$bg]); the health gutter and status stack sit
+  # inside the block, each setting its own fg.
+  tmux set -gq window-status-current-format \
+    "$(chev_right "$bg" "$hi_expr") ${health_expr}#[fg=$bg]${template}${status_expr} $(chev_left "$hi_expr" "$bg")"
 }
 
 #-----------------------------------------------------------------------------#
@@ -254,10 +568,10 @@ right_outer () {
 #-----------------------------------------------------------------------------#
 
 main () {
-  # TODO: is this needed?
-  # TODO: what is mode-style?
-  #tmux set -gq mode-style "fg=${THEME[special]} bg=${THEME[alert]}"
-  # tmux set -gq message-command-style
+  # Publish the CLI path so cooperating plugins can drive airline without
+  # guessing the install location: `"$(tmux show -gqv @airline-cli)" status …`.
+  # One well-known option, consistent with airline's everything-via-options model.
+  tmux set -gq @airline-cli "$CURRENT_DIR/airline"
 
   # Configure panes, use highlight color for active panes
   tmux set -gq pane-border-style "fg=${THEME[primary]}"
@@ -270,23 +584,51 @@ main () {
 
   # Configure window status
   set_window_formats
-  register_window_color_clear
-  register_window_badge_clear
 
-  tmux set -gq status-left-style "fg=${THEME[primary]} bg=${THEME[outer-bg]}"
-  tmux set -gq status-left "$(left_outer) $(left_middle)"
-
+  # Status-bar segments: register the shipped defaults (once), then compose.
+  register_default_segments
+  tmux set -gq status-left-style  "fg=${THEME[primary]} bg=${THEME[outer-bg]}"
   tmux set -gq status-right-style "fg=${THEME[primary]} bg=${THEME[outer-bg]}"
-  tmux set -gq status-right "$(right_inner) $(right_middle) $(right_outer)"
+  tmux set -gq status-left  "$(_build_status_left)"
+  tmux set -gq status-right "$(_build_status_right)"
 
   tmux set -gq clock-mode-color "${THEME[special]}"
 
-  tmux bind -T root F12 run-shell "$CURRENT_DIR/scripts/suspend.sh"
-  tmux bind -T off  F12 run-shell "$CURRENT_DIR/scripts/resume.sh"
+  tmux bind -T root F12 run-shell "$CURRENT_DIR/airline suspend"
+  tmux bind -T off  F12 run-shell "$CURRENT_DIR/airline resume"
 
 }
 
-if [[ "${AIRLINE_TESTING:-}" != "1" ]]; then
+#-----------------------------------------------------------------------------#
+#
+# Suspend / resume (for nested sessions) — invoked via the `airline` CLI
+#
+#-----------------------------------------------------------------------------#
+
+# Disable the outer prefix and dim the bar so keystrokes pass to the inner
+# session. main() rebuilds the bar with the suspended palette (load_theme
+# applies the dimming when @airline-suspended is 1).
+airline_suspend () {
+  tmux set -g @airline-suspended 1
+  tmux set -g prefix None
+  tmux set -g key-table off
+  load_theme
+  main
+}
+
+# Restore the outer prefix, key-table, and normal palette.
+airline_resume () {
+  tmux set -g @airline-suspended 0
+  tmux set -u prefix
+  tmux set -u key-table
+  load_theme
+  main
+}
+
+# Skip startup when sourced as a library: by the test harness (AIRLINE_TESTING)
+# or by the `airline` CLI (AIRLINE_LIB_ONLY), which both want the functions
+# without building the bar.
+if [[ "${AIRLINE_TESTING:-}" != "1" && "${AIRLINE_LIB_ONLY:-}" != "1" ]]; then
   load_theme
   main
 fi

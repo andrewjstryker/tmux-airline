@@ -41,17 +41,19 @@ load helper
   [[ "${THEME[stress]}" == "$stress" ]]
 }
 
-@test "left_outer uses dimmed colors after override" {
+@test "left segments use dimmed colors after override" {
   init_theme
+  register_default_segments
   apply_suspended_overrides
-  run left_outer
+  run _build_status_left
   assert_output --partial "fg=${THEME[secondary]}"
   assert_output --partial "bg=${THEME[inner-bg]}"
 }
 
-@test "left_outer uses normal colors without override" {
+@test "left segments use normal colors without override" {
   init_theme
-  run left_outer
+  register_default_segments
+  run _build_status_left
   assert_output --partial "fg=${THEME[emphasized]}"
   assert_output --partial "bg=${THEME[outer-bg]}"
 }

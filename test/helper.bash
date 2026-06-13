@@ -40,11 +40,26 @@ get_option() {
   $TMUX -L "$_bats_socket" show-option -gqv "$1"
 }
 
+# Read a window option from the isolated server (current window unless a target
+# follows, e.g. wopt @airline-health -t @2)
+wopt() {
+  local name="$1"; shift
+  $TMUX -L "$_bats_socket" show-options -wqv "$@" "$name"
+}
+
 # Resolve a built section through the isolated tmux server. Section templates
 # are now live #{?...} references, so tests assert on what tmux actually renders
 # rather than on the pre-expansion format string.
 resolve() {
   $TMUX -L "$_bats_socket" display-message -p "$1"
+}
+
+# Run the airline CLI against the isolated server. The CLI is an executed
+# process, so the helper's exported tmux() function does not reach it; point it
+# at the bats socket via the AIRLINE_TMUX seam instead.
+airline() {
+  AIRLINE_DIR="$PROJECT_ROOT" AIRLINE_TMUX="$TMUX -L $_bats_socket" \
+    "$PROJECT_ROOT/airline" "$@"
 }
 
 # vim: ft=bash

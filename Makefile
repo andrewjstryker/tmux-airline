@@ -7,5 +7,5 @@ test:
 
 lint:
 	@command -v shellcheck >/dev/null \
-	  && shellcheck airline.tmux scripts/*.sh scripts/plugins/*.sh \
+	  && shellcheck airline airline.tmux scripts/*.sh scripts/plugins/*.sh \
 	  || echo "shellcheck not installed; skipping"

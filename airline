@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+#
+# airline — command-line interface to the tmux-airline status line.
+#
+# This is the supported, stable API. Plugins and keybindings drive airline
+# through these subcommands rather than by setting tmux options directly: the
+# CLI owns the (private) option layout, validates input, and implements the
+# badge stack / health reduce so callers don't reimplement them.
+#
+# Usage:
+#   airline status register <lane> [glyph] [priority]
+#   airline status unregister <lane>
+#   airline status set <lane> <token> [--transient] [-t <target>]
+#   airline status clear <lane> [-t <target>]
+#   airline status list
+#
+#   airline health set <key> <ok|alert|stress> [--transient] [-t <target>]
+#   airline health clear <key> [-t <target>]
+#   airline health list
+#
+#   --transient clears the signal on pane-focus-out (consume-on-view).
+#
+#   airline segment register <name> [--side left|right] [--priority N]
+#                                   [--tier outer|middle|inner] [--format <fmt>]
+#   airline segment unregister <name>
+#   airline segment list
+#
+#   airline suspend | resume
+#
+# tokens are airline palette names: active alert stress ok special monitor copy zoom
+
+AIRLINE_DIR="${AIRLINE_DIR:-$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )}"
+
+# Test/advanced seam: target a specific tmux server. AIRLINE_TMUX may be a
+# command with arguments (e.g. "tmux -L mysocket"); word-splitting is intended.
+if [[ -n "${AIRLINE_TMUX:-}" ]]; then
+  tmux () { command ${AIRLINE_TMUX} "$@"; }
+fi
+
+# Source airline.tmux for its functions only (no bar build, no theme load).
+AIRLINE_LIB_ONLY=1 source "$AIRLINE_DIR/airline.tmux"
+
+# Print the "Usage:" comment block from this file's header.
+usage () { sed -n '/^# Usage:/,/^# tokens /p' "$AIRLINE_DIR/airline" | sed 's/^# \{0,1\}//'; }
+
+die () { echo "airline: $*" >&2; exit 2; }
+
+cmd_status () {
+  local verb="${1:-}"; shift || true
+  case "$verb" in
+    register)   airline_status_register   "$@" ;;
+    unregister) airline_status_unregister "$@" ;;
+    set)        airline_status_set        "$@" ;;
+    clear)      airline_status_clear      "$@" ;;
+    list)       airline_status_list       "$@" ;;
+    ""|-h|--help) usage ;;
+    *) die "unknown status command: $verb" ;;
+  esac
+}
+
+cmd_health () {
+  local verb="${1:-}"; shift || true
+  case "$verb" in
+    set)   airline_health_set   "$@" ;;
+    clear) airline_health_clear "$@" ;;
+    list)  airline_health_list  "$@" ;;
+    ""|-h|--help) usage ;;
+    *) die "unknown health command: $verb" ;;
+  esac
+}
+
+cmd_segment () {
+  local verb="${1:-}"; shift || true
+  case "$verb" in
+    register)   airline_segment_register   "$@" ;;
+    unregister) airline_segment_unregister "$@" ;;
+    list)       airline_segment_list       "$@" ;;
+    ""|-h|--help) usage ;;
+    *) die "unknown segment command: $verb" ;;
+  esac
+}
+
+main_cli () {
+  local cmd="${1:-}"; shift || true
+  case "$cmd" in
+    status)   cmd_status "$@" ;;
+    health)   cmd_health "$@" ;;
+    segment)  cmd_segment "$@" ;;
+    suspend)  airline_suspend ;;
+    resume)   airline_resume ;;
+    _unfocus) airline_unfocus "$@" ;;   # internal: pane-focus-out hook callback
+    ""|-h|--help|help) usage ;;
+    *) die "unknown command: $cmd (try: airline --help)" ;;
+  esac
+}
+
+main_cli "$@"
