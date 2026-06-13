@@ -26,6 +26,10 @@
 # These call `tmux`, which the test harness overrides and the CLI points at the
 # right server — same indirection as the rest of airline.
 
+# SC2086: the unquoted $scope/$1 below is the documented word-splitting contract
+# above — "-w -t @2" must reach tmux as separate args. Disabled for the module.
+# shellcheck disable=SC2086
+
 rec_key () {  # ns id [attr]   → the tmux option name
   if [[ -n "${3:-}" ]]; then printf '@airline-%s-%s-%s' "$1" "$2" "$3"
   else printf '@airline-%s-%s' "$1" "$2"; fi

@@ -6,6 +6,8 @@ test:
 	bats test/
 
 lint:
-	@command -v shellcheck >/dev/null \
-	  && shellcheck airline airline.tmux scripts/*.sh scripts/plugins/*.sh \
-	  || echo "shellcheck not installed; skipping"
+	@if command -v shellcheck >/dev/null; then \
+	  shellcheck airline airline.tmux scripts/*.sh scripts/plugins/*.sh; \
+	else \
+	  echo "shellcheck not installed; skipping"; \
+	fi

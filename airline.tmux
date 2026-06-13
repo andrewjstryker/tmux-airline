@@ -129,6 +129,9 @@ palette_token_expr () {
 # applied to each mode's color; `fallback` is emitted when no mode is active.
 _mode_expr () {
   local fmt="$1" fallback="$2"
+  # SC2059: $fmt is a caller-supplied printf template ('%s' or '#[fg=%s]'), used
+  # as the format on purpose — that's the parameter's whole job.
+  # shellcheck disable=SC2059
   printf '#{?#{window_zoomed_flag},%s,#{?#{pane_in_mode},%s,#{?monitor-activity,%s,%s}}}' \
     "$(printf "$fmt" "${THEME[zoom]}")" \
     "$(printf "$fmt" "${THEME[copy]}")" \
@@ -285,6 +288,8 @@ _health_reduce () {   # <wscope>
     case "$sev" in stress) r=3 ;; alert) r=2 ;; ok) r=1 ;; *) r=0 ;; esac
     (( r > best )) && { best=$r; max="$sev"; }
   done
+  # SC2086: $ws is a word-split tmux scope ("-w -t @2"); see scripts/record.sh.
+  # shellcheck disable=SC2086
   if [[ "$max" == "stress" || "$max" == "alert" ]]; then
     tmux set $ws "$AIRLINE_HEALTH_REDUCED" "$max"
   else
@@ -325,6 +330,7 @@ airline_health_list () {
   for key in $(rec_ids "$ws" health); do
     printf '%s\t%s\n' "$key" "$(rec_get "$ws" health "$key" "")"
   done
+  # shellcheck disable=SC2086  # $ws is a word-split tmux scope (see record.sh)
   printf 'reduced\t%s\n' "$(tmux show-option $ws -qv "$AIRLINE_HEALTH_REDUCED")"
 }
 
