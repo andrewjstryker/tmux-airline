@@ -168,39 +168,52 @@ The bar is the **window list** in the centre, flanked by a left and a right
 ```
 
 Segments are a registered, ordered stack managed by the **`airline` CLI** — the
-same model as status badges. Each has a **side** (`left`/`right`), a **priority**
-(ascending = closer to the window list), a **tier** (`outer`/`middle`/`inner`,
-which picks the background and drives the powerline depth), and **content** (a
-tmux format string). airline ships these defaults:
+same model as status badges. A segment has two required parts — a **side**
+(`left`/`right`) and **content** (a tmux format) — plus an optional **priority**
+(ascending = closer to the window list; default 50). Register one with:
 
-| Segment  | Side  | Tier   | Default content          |
-|----------|-------|--------|--------------------------|
-| `online` | left  | outer  | Online status indicator  |
-| `host`   | left  | middle | Hostname                 |
-| `prefix` | right | inner  | Prefix highlight         |
-| `cpu`    | right | middle | CPU usage                |
-| `date`   | right | outer  | Date/time + battery      |
+```tmux
+airline segment register <name> --side left|right --format <fmt> [--priority N]
+```
+
+The **background tier** (`outer`/`middle`/`inner`, which drives the powerline
+depth) is *derived from position*, not specified: the block at the outer edge is
+`outer`, the next one in is `middle`, the rest `inner`. So you place a segment
+with `--priority` and the gradient falls out automatically — there is no tier to
+keep in sync. airline ships these defaults (tiers shown are the derived result):
+
+| Segment  | Side  | Priority | Tier (derived) | Default content          |
+|----------|-------|----------|----------------|--------------------------|
+| `online` | left  | 10       | outer          | Online status indicator  |
+| `host`   | left  | 20       | middle         | Hostname                 |
+| `prefix` | right | 10       | inner          | Prefix highlight         |
+| `cpu`    | right | 20       | middle         | CPU usage                |
+| `date`   | right | 30       | outer          | Date/time + battery      |
 
 Add, reorder, or replace segments at runtime:
 
 ```tmux
-# add a segment between cpu (priority 20) and date (30)
-airline segment register k8s --side right --priority 25 --tier middle \
+# add a segment between cpu (priority 20) and date (30) — tier is derived
+airline segment register k8s --side right --priority 25 \
   --format '#[fg=colour39]⎈ #(kubectl config current-context)'
 
 # override a default by re-registering its name
-airline segment register host --side left --tier middle --format '#S'
+airline segment register host --side left --format '#S'
 
-# remove one, or inspect the stack
+# remove one, or inspect the stack (segment list shows the derived tier)
 airline segment unregister cpu
 airline segment list
 ```
 
 You own ordering (`--priority`) and content (`--format`); airline owns the
-chevrons and tier backgrounds. The content is a normal tmux format, so dynamic
-parts (`#{...}`, `#(...)`, `strftime`) stay live; changing the *roster* rebuilds
-the bar. (Registering the defaults happens once per server, so a config reload
-won't undo your customizations.)
+chevrons and the tier backgrounds. The content is a normal tmux format, so
+dynamic parts (`#{...}`, `#(...)`, `strftime`) stay live; changing the *roster*
+rebuilds the bar. (Registering the defaults happens once per server, so a config
+reload won't undo your customizations.)
+
+If you really need to force a block's background, `--tier outer|middle|inner` is
+an explicit override — but reach for it only when the derived depth is wrong;
+normally leaving it off is what keeps the gradient consistent.
 
 The **window-list entry** itself is templated by the `@airline-tmpl-window`
 option (default `#I:#W`):

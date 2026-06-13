@@ -20,10 +20,13 @@
 #
 #   --transient clears the signal on pane-focus-out (consume-on-view).
 #
-#   airline segment register <name> [--side left|right] [--priority N]
-#                                   [--tier outer|middle|inner] [--format <fmt>]
+#   airline segment register <name> --side left|right --format <fmt>
+#                                   [--priority N] [--tier outer|middle|inner]
 #   airline segment unregister <name>
 #   airline segment list
+#
+#   --side and --format are required; --tier is an override (omit to auto-derive
+#   the powerline depth from the segment's position in the stack).
 #
 #   airline suspend | resume
 #

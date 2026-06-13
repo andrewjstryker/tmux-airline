@@ -420,6 +420,22 @@ _segments_sorted () {
   done
 }
 
+# Resolve a segment's background tier. A segment's tier is normally *derived*
+# from its depth in the side stack — the powerline gradient is a function of
+# position, so the caller shouldn't hand-maintain (and risk mismatching) it:
+# the block at the outer edge is `outer`, the next in is `middle`, the rest
+# `inner`. The edge is the far end from the window list, which is index 0 on the
+# left but the last index on the right. A stored tier is an explicit override
+# (the `--tier` flag); empty means derive. `idx`/`count` are the segment's
+# position in its side stack.
+_segment_tier () {
+  local side="$1" idx="$2" count="$3" seg="$4" override d
+  override="$(rec_get -g segment "$seg" tier "")"
+  [[ -n "$override" ]] && { printf '%s' "$override"; return; }
+  if [[ "$side" == left ]]; then d="$idx"; else d=$(( count - 1 - idx )); fi
+  case "$d" in 0) printf outer ;; 1) printf middle ;; *) printf inner ;; esac
+}
+
 # Resolve a segment's content: run its generator, else its stored format.
 _segment_content () {
   local name="$1" gen
@@ -428,6 +444,8 @@ _segment_content () {
 }
 
 # Low-level define (no rebuild). Trailing arg is --gen <fn> or --format <fmt>.
+# tier "" means derive from position (see _segment_tier); a non-empty tier is a
+# stored override.
 _segment_define () {
   local name="$1" side="$2" prio="$3" tier="$4"; shift 4
   local gen="" fmt=""
@@ -446,11 +464,12 @@ _build_status_left () {
   local fg="${THEME[emphasized]}" out="" seg bg next_bg i
   local -a segs=()
   while IFS= read -r seg; do [[ -n "$seg" ]] && segs+=("$seg"); done < <(_segments_sorted left)
-  for (( i = 0; i < ${#segs[@]}; i++ )); do
+  local n=${#segs[@]}
+  for (( i = 0; i < n; i++ )); do
     seg="${segs[i]}"
-    bg="${THEME[$(rec_get -g segment "$seg" tier middle)-bg]}"
-    if (( i + 1 < ${#segs[@]} )); then
-      next_bg="${THEME[$(rec_get -g segment "${segs[i+1]}" tier middle)-bg]}"
+    bg="${THEME[$(_segment_tier left "$i" "$n" "$seg")-bg]}"
+    if (( i + 1 < n )); then
+      next_bg="${THEME[$(_segment_tier left "$((i+1))" "$n" "${segs[i+1]}")-bg]}"
     else
       next_bg="${THEME[inner-bg]}"
     fi
@@ -462,13 +481,16 @@ _build_status_left () {
 # Compose status-right: each segment preceded by a chevron from the previous
 # tier (the inner-bg window list before the first one).
 _build_status_right () {
-  local fg="${THEME[emphasized]}" out="" seg bg prev_bg="${THEME[inner-bg]}"
-  while IFS= read -r seg; do
-    [[ -z "$seg" ]] && continue
-    bg="${THEME[$(rec_get -g segment "$seg" tier middle)-bg]}"
+  local fg="${THEME[emphasized]}" out="" seg bg prev_bg="${THEME[inner-bg]}" i
+  local -a segs=()
+  while IFS= read -r seg; do [[ -n "$seg" ]] && segs+=("$seg"); done < <(_segments_sorted right)
+  local n=${#segs[@]}
+  for (( i = 0; i < n; i++ )); do
+    seg="${segs[i]}"
+    bg="${THEME[$(_segment_tier right "$i" "$n" "$seg")-bg]}"
     out+="$(chev_left "$prev_bg" "$bg")#[fg=$fg,bg=$bg] $(_segment_content "$seg") "
     prev_bg="$bg"
-  done < <(_segments_sorted right)
+  done
   printf '%s' "$out"
 }
 
@@ -477,21 +499,29 @@ _build_status_right () {
 # rebuild via the generators, so widgets follow the active theme and plugin set.
 register_default_segments () {
   [[ "$(get_tmux_option @airline-defaults-done 0)" == "1" ]] && return
-  _segment_define online left  10 outer  --gen configure_online
-  _segment_define host   left  20 middle --gen _seg_host
-  _segment_define prefix right 10 inner  --gen configure_prefix_highlight
-  _segment_define cpu    right 20 middle --gen configure_cpu
-  _segment_define date   right 30 outer  --gen _seg_date
+  # No explicit tier: each segment's background is derived from its depth in the
+  # side stack (see _segment_tier), which reproduces the outer→middle→inner
+  # gradient these priorities lay out.
+  _segment_define online left  10 "" --gen configure_online
+  _segment_define host   left  20 "" --gen _seg_host
+  _segment_define prefix right 10 "" --gen configure_prefix_highlight
+  _segment_define cpu    right 20 "" --gen configure_cpu
+  _segment_define date   right 30 "" --gen _seg_date
   tmux set -g @airline-defaults-done 1
 }
 
 # --- CLI: airline segment ---------------------------------------------------
 
-# register <name> [--side left|right] [--priority N] [--tier outer|middle|inner]
-#                 [--format <tmux-format>]   (idempotent; rebuilds the bar)
+# register <name> --side left|right --format <tmux-format>
+#                 [--priority N] [--tier outer|middle|inner]   (idempotent; rebuilds)
+#
+# --side and --format are required: a segment must declare which stack it joins,
+# and content is the whole point of one. --priority defaults to 50. --tier is an
+# OVERRIDE — omit it and the background is derived from the segment's depth in
+# the stack (see _segment_tier); pass it only to force a specific tier.
 airline_segment_register () {
   local name="${1:-}"; shift || true
-  local side="left" prio=50 tier="middle" fmt=""
+  local side="" prio=50 tier="" fmt=""
   _is_lane_name "$name" || { _err "invalid segment name: $name"; return; }
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -502,9 +532,12 @@ airline_segment_register () {
       *) _err "unknown segment option: $1"; return ;;
     esac
   done
-  case "$side" in left|right) ;; *) _err "side must be left|right: $side"; return ;; esac
-  case "$tier" in outer|middle|inner) ;; *) _err "tier must be outer|middle|inner: $tier"; return ;; esac
+  case "$side" in left|right) ;; "") _err "segment requires --side left|right"; return ;;
+                  *) _err "side must be left|right: $side"; return ;; esac
+  [[ -z "$tier" ]] || case "$tier" in outer|middle|inner) ;;
+                  *) _err "tier must be outer|middle|inner: $tier"; return ;; esac
   [[ "$prio" =~ ^[0-9]+$ ]] || { _err "priority must be an integer: $prio"; return; }
+  [[ -n "$fmt" ]] || { _err "segment requires --format <tmux-format>"; return; }
   _segment_define "$name" "$side" "$prio" "$tier" --format "$fmt"
   _airline_rebuild
 }
@@ -515,16 +548,21 @@ airline_segment_unregister () {
   _airline_rebuild
 }
 
-# list   segments per side, in render order: name, side, priority, tier.
+# list   segments per side, in render order: name, side, priority, tier. The
+# tier shown is the *resolved* one (derived from position unless overridden), so
+# the listing matches what the bar actually renders.
 airline_segment_list () {
-  local side seg
+  local side seg i
   for side in left right; do
-    while IFS= read -r seg; do
-      [[ -z "$seg" ]] && continue
+    local -a segs=()
+    while IFS= read -r seg; do [[ -n "$seg" ]] && segs+=("$seg"); done < <(_segments_sorted "$side")
+    local n=${#segs[@]}
+    for (( i = 0; i < n; i++ )); do
+      seg="${segs[i]}"
       printf '%s\tside=%s\tprio=%s\ttier=%s\n' "$seg" "$side" \
         "$(rec_get -g segment "$seg" prio 50)" \
-        "$(rec_get -g segment "$seg" tier middle)"
-    done < <(_segments_sorted "$side")
+        "$(_segment_tier "$side" "$i" "$n" "$seg")"
+    done
   done
 }
 

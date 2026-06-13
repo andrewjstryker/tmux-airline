@@ -77,22 +77,54 @@ fake_plugin_dir() {
   assert_output --partial "note	side=right	prio=15	tier=inner"
 }
 
+# --- CLI: tier derived from position (the powerline gradient) ---------------
+
+@test "segment register derives tier from stack depth when --tier is omitted" {
+  # right stack, center -> edge: inner, middle, outer
+  airline segment register near --side right --priority 10 --format 'N'
+  airline segment register mid  --side right --priority 20 --format 'M'
+  airline segment register edge --side right --priority 30 --format 'E'
+  run airline segment list
+  assert_output --partial "near	side=right	prio=10	tier=inner"
+  assert_output --partial "mid	side=right	prio=20	tier=middle"
+  assert_output --partial "edge	side=right	prio=30	tier=outer"
+}
+
+@test "segment register --tier overrides the derived tier" {
+  airline segment register a --side left --priority 10 --format 'A'             # derives outer
+  airline segment register b --side left --priority 20 --tier inner --format 'B' # derives middle
+  run airline segment list
+  assert_output --partial "b	side=left	prio=20	tier=inner"
+}
+
 # --- CLI: validation --------------------------------------------------------
 
+@test "segment register requires a side" {
+  run airline segment register note --format 'NOTE'
+  assert_failure
+  assert_output --partial "requires --side"
+}
+
+@test "segment register requires content" {
+  run airline segment register note --side right
+  assert_failure
+  assert_output --partial "requires --format"
+}
+
 @test "segment register rejects a bad side" {
-  run airline segment register note --side up
+  run airline segment register note --side up --format 'NOTE'
   assert_failure
   assert_output --partial "side must be"
 }
 
 @test "segment register rejects a bad tier" {
-  run airline segment register note --tier deep
+  run airline segment register note --side right --tier deep --format 'NOTE'
   assert_failure
   assert_output --partial "tier must be"
 }
 
 @test "segment register rejects a non-integer priority" {
-  run airline segment register note --priority soon
+  run airline segment register note --side right --priority soon --format 'NOTE'
   assert_failure
   assert_output --partial "priority"
 }
