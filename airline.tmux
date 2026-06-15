@@ -238,6 +238,10 @@ airline_status_set () {
   _parse_signal_args "$@"; local ws="$_SIG_WSCOPE"
   _lane_registered "$lane"   || { _err "lane not registered: $lane"; return; }
   _is_palette_token "$token" || { _err "invalid token: $token"; return; }
+  # Redraw only when the rendered token actually moves. The bar shows the token,
+  # not the transient flag, so we compare against what's already there and gate on
+  # that — re-lighting the same token (the common case) is a write but no redraw.
+  local before; before="$(rec_get "$ws" status "$lane" "")"
   rec_set "$ws" status "$lane" "" "$token"
   if (( _SIG_TRANSIENT )); then
     rec_set "$ws" status "$lane" transient 1
@@ -245,16 +249,17 @@ airline_status_set () {
   else
     rec_unset "$ws" status "$lane" transient
   fi
-  _redraw
+  if [[ "$token" != "$before" ]]; then _redraw; fi
 }
 
 # clear <lane> [-t target]
 airline_status_clear () {
   local lane="$1"; shift
   local ws; ws="$(_wscope "$@")"
+  local before; before="$(rec_get "$ws" status "$lane" "")"
   rec_unset "$ws" status "$lane" ""
   rec_unset "$ws" status "$lane" transient
-  _redraw
+  if [[ -n "$before" ]]; then _redraw; fi   # only if a badge was actually lit
 }
 
 # list   lanes by priority: name, priority, glyph, current value on the window.
@@ -281,6 +286,16 @@ airline_status_list () {
 # it's private and reached only through this one accessor.
 AIRLINE_HEALTH_REDUCED="@airline-health"
 
+# Reduce the health roster to its worst severity and write the cached scalar (the
+# bar renders this, not the per-key records). A plain idempotent writer — callers
+# that gate a redraw read this option before and after, so the change detection
+# stays local to them. _health_reduced_value reads it back for that comparison.
+_health_reduced_value () {   # <wscope>
+  # SC2086: $ws is a word-split tmux scope ("-w -t @2"); see scripts/record.sh.
+  # shellcheck disable=SC2086
+  tmux show-option $1 -qv "$AIRLINE_HEALTH_REDUCED"
+}
+
 _health_reduce () {   # <wscope>
   local ws="$1" key sev best=0 max="" r
   for key in $(rec_ids "$ws" health); do
@@ -288,13 +303,11 @@ _health_reduce () {   # <wscope>
     case "$sev" in stress) r=3 ;; alert) r=2 ;; ok) r=1 ;; *) r=0 ;; esac
     (( r > best )) && { best=$r; max="$sev"; }
   done
+  [[ "$max" != "stress" && "$max" != "alert" ]] && max=""   # ok/none → cleared
   # SC2086: $ws is a word-split tmux scope ("-w -t @2"); see scripts/record.sh.
   # shellcheck disable=SC2086
-  if [[ "$max" == "stress" || "$max" == "alert" ]]; then
-    tmux set $ws "$AIRLINE_HEALTH_REDUCED" "$max"
-  else
-    tmux set $ws -u "$AIRLINE_HEALTH_REDUCED" 2>/dev/null || true
-  fi
+  if [[ -n "$max" ]]; then tmux set $ws "$AIRLINE_HEALTH_REDUCED" "$max"
+  else tmux set $ws -u "$AIRLINE_HEALTH_REDUCED" 2>/dev/null || true; fi
 }
 
 # set <key> <severity> [--transient] [-t target]
@@ -311,8 +324,11 @@ airline_health_set () {
   else
     rec_unset "$ws" health "$key" transient
   fi
+  # Redraw only when the reduced (rendered) severity moves — a contributor that
+  # doesn't change the max writes a record but triggers no redraw.
+  local before; before="$(_health_reduced_value "$ws")"
   _health_reduce "$ws"
-  _redraw
+  if [[ "$(_health_reduced_value "$ws")" != "$before" ]]; then _redraw; fi
 }
 
 # clear <key> [-t target]
@@ -320,8 +336,9 @@ airline_health_clear () {
   local key="$1"; shift
   local ws; ws="$(_wscope "$@")"
   rec_del "$ws" health "$key" transient
+  local before; before="$(_health_reduced_value "$ws")"
   _health_reduce "$ws"
-  _redraw
+  if [[ "$(_health_reduced_value "$ws")" != "$before" ]]; then _redraw; fi
 }
 
 # list   each contributor's severity + the reduced result on the window.
