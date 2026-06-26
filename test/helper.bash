@@ -15,6 +15,24 @@ teardown() {
   $TMUX -L "$_bats_socket" kill-server 2>/dev/null || true
 }
 
+# Source tmux.sh standalone, with the `tmux` command pointed at the isolated
+# server. Lets the mechanical layer be exercised on its own.
+load_tmux() {
+  tmux() { $TMUX -L "$_bats_socket" "$@"; }
+  export -f tmux
+  source "$PROJECT_ROOT/tmux.sh"
+}
+
+# Source the logic layer (compose.sh) on top of the mechanical layer (tmux.sh),
+# with the `tmux` command pointed at the isolated server.
+load_compose() {
+  export AIRLINE_DIR="$PROJECT_ROOT"
+  tmux() { $TMUX -L "$_bats_socket" "$@"; }
+  export -f tmux
+  source "$PROJECT_ROOT/tmux.sh"
+  source "$PROJECT_ROOT/compose.sh"
+}
+
 # Source airline.tmux in test mode (no side effects). THEME and
 # AIRLINE_PALETTE_TOKENS are declared -g in airline.tmux, so they stay global
 # even though we source from inside this function.
