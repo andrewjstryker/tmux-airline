@@ -430,8 +430,13 @@ Rules:
   rendering.
 
 `coll_*` mirror `opt_*`'s scope suffix (`_global` / `_window <win>`). Ops:
-`register` / `unregister` (key-list membership), `members` (the list),
-`get` / `set` (the per-key tuple), and `reduce` (health's max severity). Pure
+`register` / `unregister` / `has` (key-list membership), `members` (the list),
+`get` / `set` (the per-key tuple), and `reduce` (health's max severity). `set`
+auto-registers (a tuple for a non-member would be unreachable), and `unregister`
+also unsets the tuple. `reduce` stays domain-free by taking the severity ranking
+**as data** — `coll_reduce_window <win> health "ok alert stress"` returns the
+highest-ranked first-field value among the members (empty if none rank); the
+"ok/none → blank gutter" decision is the caller's, not the collection's. Pure
 bash, zero-dependency.
 
 This refines the existing `record.sh`: keep the registry list, pack each entry's

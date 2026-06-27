@@ -23,6 +23,15 @@ load_tmux() {
   source "$PROJECT_ROOT/tmux.sh"
 }
 
+# Source the collections layer (collections.sh) on top of the mechanical layer
+# (tmux.sh), with the `tmux` command pointed at the isolated server.
+load_collections() {
+  tmux() { $TMUX -L "$_bats_socket" "$@"; }
+  export -f tmux
+  source "$PROJECT_ROOT/tmux.sh"
+  source "$PROJECT_ROOT/collections.sh"
+}
+
 # Source the logic layer (compose.sh) on top of the mechanical layer (tmux.sh),
 # with the `tmux` command pointed at the isolated server.
 load_compose() {
