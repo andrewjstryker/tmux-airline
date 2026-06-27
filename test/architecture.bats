@@ -31,7 +31,33 @@ LINT="$BATS_TEST_DIRNAME/lint-architecture.sh"
 }
 
 @test "Invariant B — the @airline-* collection layout has one source of truth" {
-  # Dormant until collections.sh exists (see lint-architecture.sh / DESIGN.md §B).
   run "$LINT" B
-  assert_success
+  if [[ "$status" -ne 0 ]]; then
+    {
+      echo "The @airline-<ns> key scheme is built outside collections.sh. Reach keys"
+      echo "through coll_optname / coll_* and name fixed scalars as constants instead"
+      echo "(DESIGN.md §Enforcement B). Today this is the old scripts/record.sh:"
+      echo
+      printf '%s\n' "$output" | cut -d: -f2 | sort | uniq -c | sort -rn
+      echo
+      echo "Full list: test/lint-architecture.sh B"
+    } >&2
+    return 1
+  fi
+}
+
+@test "Invariant C — data files (themes/, bundles/) stay data" {
+  run "$LINT" C
+  if [[ "$status" -ne 0 ]]; then
+    {
+      echo "Data files calling tmux / setting @airline-* — config must flow through"
+      echo "the CLI/API (DESIGN.md §Configuration is API-only). Migrate these to"
+      echo "semantic '<key> <value>' lines consumed by 'theme use' / 'bundle use':"
+      echo
+      printf '%s\n' "$output" | cut -d: -f2 | sort | uniq -c | sort -rn
+      echo
+      echo "Full list: test/lint-architecture.sh C"
+    } >&2
+    return 1
+  fi
 }

@@ -182,7 +182,8 @@ What calls what:
   `<noun> apply` when ready (so several `set`s can batch into one freeze).
 - `theme use` / `bundle use` → stages ×N then applies once, on the caller's behalf.
 - a runtime event (`status set`, `health set`) → option write + redraw, no `apply`.
-- a user who hand-edited an `@airline-*` override → the relevant `<noun> apply`.
+- a `.tmux.conf` → drives all of the above through `run-shell "#{@airline-cli} …"`;
+  nobody sets `@airline-*` by hand (see *Configuration is API-only*).
 
 This replaces the divergent `main()` / `_airline_rebuild` pair: one compose path,
 so a theme switch repaints the whole bar.
@@ -190,7 +191,7 @@ so a theme switch repaints the whole bar.
 ## Enforcement (build-time lint)
 
 No runtime guards. A lint (gated in CI next to shellcheck, surfaced as
-`test/architecture.bats` with didactic failure messages) checks two invariants:
+`test/architecture.bats` with didactic failure messages) checks three invariants:
 
 - **A — only `tmux.sh` invokes the `tmux` binary.** Allowlist: `tmux.sh`.
   `collections.sh` is *not* on it — it reaches tmux only through `opt_*`, so there
@@ -203,6 +204,10 @@ No runtime guards. A lint (gated in CI next to shellcheck, surfaced as
   `@airline-<ns>-<key>` tuples) is built only in `collections.sh`, and fixed scalar
   names live as named constants referenced elsewhere. (Data files use *semantic*
   names — `active`, `right-mid` — not `@airline-*`, so they don't participate.)
+- **C — data files stay data.** `themes/*` and `bundles/*` contain no `tmux`, no
+  `set-option`, and no `@airline-` — so a theme can never regress into a script
+  that sets options behind the CLI's back (the *Configuration is API-only* rule).
+  This guards the migration off the old `source-file` themes.
 
 These are grep-able. The plan is to land the lint first and let it run **red** —
 its violation list (today: everything in the current `airline.tmux`, the existing
@@ -233,6 +238,7 @@ airline status   register | unregister | set | clear | show
 airline health                          set | clear | show
 airline segment                         set | clear | apply | show
 airline theme    set | use | apply | show
+airline config   set | apply | show
 airline bundle   use
 ```
 
@@ -244,13 +250,13 @@ airline bundle   use
 The verbs are not chosen per noun — they fall into three fixed roles, and which
 roles a noun gets is determined by its data model:
 
-| Verb | Role | status | health | segment | theme | bundle |
-|------|------|:--:|:--:|:--:|:--:|:--:|
-| `register` / `unregister` | declare an entry that carries config (glyph + priority) | ✓ | — | — | — | — |
-| `set` / `clear` | write / remove a **value** at a **target** | ✓² | ✓² | ✓ | set¹ | — |
-| `apply` | **freeze** the staged state into composed tmux output | — | — | ✓ | ✓ | — |
-| `use <name>` | replay a delimited **data file** as `set`s, then `apply` once | — | — | — | ✓ | ✓ |
-| `show` | read current state | ✓ | ✓ | ✓ | ✓ | — |
+| Verb | Role | status | health | segment | theme | config | bundle |
+|------|------|:--:|:--:|:--:|:--:|:--:|:--:|
+| `register` / `unregister` | declare an entry that carries config (glyph + priority) | ✓ | — | — | — | — | — |
+| `set` / `clear` | write / remove a **value** at a **target** | ✓² | ✓² | ✓ | set¹ | set | — |
+| `apply` | **freeze** the staged state into composed tmux output | — | — | ✓ | ✓ | ✓ | — |
+| `use <name>` | replay a delimited **data file** as `set`s, then `apply` once | — | — | — | ✓ | — | ✓ |
+| `show` | read current state | ✓ | ✓ | ✓ | ✓ | ✓ | — |
 
 ¹ `theme set <element> <color>`; no `clear` — a `use` replaces the whole palette.
 ² **Config `set` stages; runtime `set` signals.** A `segment`/`theme` `set` only
@@ -263,10 +269,11 @@ roles a noun gets is determined by its data model:
   airline-owned.
 - **`set <target> <value>` / `clear <target>`** write or remove a *value* at a
   target — a lane's lit token, a health key's severity, a segment slot's format, a
-  theme color element. `set` **always** takes a (target, value) pair; no
-  exceptions. For the **config** nouns (`segment`, `theme`) a `set` only *stages*:
-  it writes the source-of-truth `@airline-*` option and renders nothing — an
-  `apply` freezes it. For the **runtime** nouns (`status`, `health`) a `set` is a
+  theme color element, a config knob. `set` **always** takes a (target, value)
+  pair; no exceptions. For the **config** nouns (`segment`, `theme`, `config`) a
+  `set` only *stages*: it writes the source-of-truth `@airline-*` option and
+  renders nothing — an `apply` freezes it. For the **runtime** nouns (`status`,
+  `health`) a `set` is a
   live event that renders immediately. (The `-t <window>` flag is a separate axis:
   it scopes *which window*, not what is being set.)
 - **`apply`** freezes a config noun's staged state into the bar: it reads the
@@ -298,6 +305,10 @@ The asymmetries are the data model showing through, not inconsistencies:
   writes one color and a `theme use` replaces the whole palette, so there's nothing
   to `clear`. A bundle is *only* a data file you `use` (its individual writes are
   `segment set`s), so it carries no setter of its own.
+- **config has no `clear` or `register`** — its targets are a fixed set of named
+  scalar knobs (`tmpl-window`, `health-glyph`, …) that always hold a value; `init`
+  seeds the defaults and `set` overrides one. There is nothing to declare and
+  nothing to remove — to reset a knob, `set` it (or re-`init`).
 
 ### Private verbs
 
@@ -309,6 +320,37 @@ airline _unfocus <window-id>     # pane-focus-out hook callback (clears --transi
 
 `init` and the per-noun `apply` are public (no underscore): the entry point,
 mutations, and users all call them.
+
+### Configuration is API-only
+
+Every input airline takes — theme colors, segment formats, and the scalar knobs
+(`config`) — enters through the CLI/API. **Nothing sets `@airline-*` by hand**,
+not in a data file and not in `.tmux.conf`. airline owns the entire `@airline-*`
+namespace; the CLI is its only writer (through `tmux.sh`). That ownership is what
+lets airline validate input at the boundary, keep the names private, and run the
+stage/freeze model — and it retires the old `load_theme` / `tmux source-file`
+path, where theme files set `@airline-*` directly.
+
+`config` holds the scalars that are neither colors nor segments — `tmpl-window`
+(the window-name template), `health-glyph`, and the like. Like theme and segment
+it follows stage/freeze: `config set <key> <value>` stages, `config apply`
+freezes, `init` seeds the defaults.
+
+A `.tmux.conf` drives airline through `run-shell`, using the CLI path `init`
+publishes (`@airline-cli`):
+
+```tmux
+# … after the plugin's init has run (it publishes @airline-cli):
+run-shell "#{@airline-cli} theme use solarized-dark"
+run-shell "#{@airline-cli} config set tmpl-window '#W'"
+run-shell "#{@airline-cli} segment set right-mid '#{cpu_fg_color}#{cpu_icon}'"
+```
+
+**Trade-off (accepted, revisit if awkward):** this is less idiomatic than tmux's
+usual `set -g @plugin-opt value` and is order-sensitive — config calls must follow
+`init`. We chose full API ownership over native feel. If real `.tmux.conf` use
+proves clumsy, the fallback is a small, documented set of *read-at-init* public
+input options — not reopening hand-set of the private layer.
 
 ### Data files (`themes/`, `bundles/`) and `use`
 

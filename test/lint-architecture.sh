@@ -13,8 +13,10 @@
 #       else reaches tmux only through tmux.sh's opt_* / verb functions.
 #   B — the private @airline-* collection layout has one source of truth
 #       (collections.sh). Pending until collections.sh lands — see below.
+#   C — data files (themes/, bundles/) stay data: no tmux, no set-option, no
+#       @airline-, so a theme can't regress into a script behind the CLI.
 #
-# Usage: test/lint-architecture.sh [A|B|all]   (default: all)
+# Usage: test/lint-architecture.sh [A|B|C|all]   (default: all)
 # Exit:  0 = clean, 1 = violations (printed, one per line), 2 = bad usage.
 
 set -u
@@ -58,16 +60,44 @@ _check_a () {
   return $rc
 }
 
-# Invariant B — the collection key scheme (@airline-<ns> list + @airline-<ns>-<key>
-# tuples) is built only in collections.sh. There is nothing to guard until that
-# module exists; today the scheme lives in the to-be-replaced scripts/record.sh.
-# Implement the grep when collections.sh lands (see DESIGN.md §Enforcement B).
+# Invariant B — the collection key scheme is built in ONE place. The telltale of
+# *constructing* a key is a built name: the printf template `@airline-%s` (the
+# registry/tuple builders) or an interpolated key `@airline-status-$…` /
+# `@airline-health-$…`. Both belong only in collections.sh; everyone else reaches a
+# key through coll_optname / coll_*. A *fixed* scalar like `@airline-health-glyph`
+# is fine — it's a named constant, not a constructed key, so the pattern requires a
+# `%s` or a `$` after the namespace. (Today this still flags the to-be-replaced
+# scripts/record.sh — its worklist entry, green once record.sh is gone.)
 _check_b () {
-  if [[ -f "$ROOT/collections.sh" ]]; then
-    printf 'B: not yet implemented — collections.sh exists; wire up invariant B\n' >&2
-    return 1
-  fi
-  return 0   # no collections.sh yet → nothing to enforce
+  local f rc=0 hits
+  while IFS= read -r f; do
+    [[ "$(basename "$f")" == collections.sh ]] && continue   # the one home for the scheme
+    hits="$(grep -nE '@airline-(%s|(status|health)-[$])' "$f" 2>/dev/null)" || continue
+    [[ -z "$hits" ]] && continue
+    while IFS= read -r line; do
+      [[ "${line#*:}" =~ ^[[:space:]]*# ]] && continue        # skip comment prose
+      rc=1
+      printf 'B: %s:%s\n' "${f#"$ROOT"/}" "$line"
+    done <<< "$hits"
+  done < <(_sources)
+  return $rc
+}
+
+# Invariant C — data files must contain only data. Configuration flows through
+# the CLI/API, so a packaged theme/bundle may not call tmux or name @airline-*.
+_check_c () {
+  shopt -s nullglob
+  local f rc=0 hits
+  for f in "$ROOT"/themes/* "$ROOT"/bundles/*; do
+    [[ -f "$f" ]] || continue
+    hits="$(grep -nE '(\btmux\b|set-option|@airline-)' "$f" 2>/dev/null)" || continue
+    [[ -z "$hits" ]] && continue
+    rc=1
+    while IFS= read -r line; do
+      printf 'C: %s:%s\n' "${f#"$ROOT"/}" "$line"
+    done <<< "$hits"
+  done
+  return $rc
 }
 
 main () {
@@ -75,8 +105,9 @@ main () {
   case "$which" in
     A)   _check_a || rc=1 ;;
     B)   _check_b || rc=1 ;;
-    all) _check_a || rc=1; _check_b || rc=1 ;;
-    *)   printf 'usage: %s [A|B|all]\n' "$0" >&2; exit 2 ;;
+    C)   _check_c || rc=1 ;;
+    all) _check_a || rc=1; _check_b || rc=1; _check_c || rc=1 ;;
+    *)   printf 'usage: %s [A|B|C|all]\n' "$0" >&2; exit 2 ;;
   esac
   return $rc
 }
