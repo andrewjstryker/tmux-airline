@@ -17,9 +17,10 @@ Status of this document:
    divergent way to build or repaint the bar. (This is the rule the old
    `main()` / `_airline_rebuild` split violated, which is why a theme change
    only half-repainted.)
-3. **The middle is logic.** Composition — the badge stack, the health reduce,
-   segment-slot assembly, render expressions, theme application — is expressed
-   in domain terms and never calls tmux directly.
+3. **The middle is logic.** Composition — the badge reduce (status and health
+   both collapse many contributors to one mark), segment-slot assembly, render
+   expressions, theme application — is expressed in domain terms and never calls
+   tmux directly.
 4. **No runtime enforcement.** Bash gives us one global namespace and no
    visibility modifiers, so layers are a convention. We enforce it at **build
    time** with a lint, not at runtime.
@@ -50,7 +51,7 @@ regressing. Treat these as a checklist as code migrates:
 | `airline.tmux` | **Entry point.** Run by TPM / `run-shell`. Invokes `init` through the CLI (which composes the bar; the sentinel skips the clobber on a bare reload); holds no logic. | no (only invokes the CLI) | `airline` |
 | `airline` | **CLI / API — the boundary.** Public surface for users, `airline.tmux`, and external plugins. Parses and **validates** input (the only place it is checked), then stores via `opt_*` or dispatches to `compose.sh`. Holds the command handlers and the `use` data-file readers. | no | `compose.sh`, `tmux.sh` |
 | `compose.sh` | **Composition.** Loads the palette and implements `apply` — composing the bar (`status-left/right`, window formats, `*-style`, pane, clock) from the stored `@airline-*` state. Owns the shared vocabulary — slot/element names + the predicates the CLI validates against — and *trusts* its inputs. Reads/writes only through `collections.sh` / `tmux.sh`. | **no** | `collections.sh`, `tmux.sh`, `widgets/*.sh` |
-| `collections.sh` | **Collections (status & health only).** A registry (explicit key list) + per-key tuples over options, split with bash `IFS` — the "0 or more" shape behind lit lanes and health contributors. Pure bash on `opt_*`; no direct tmux calls, no domain terms. Segments are *not* collections. | no (via `tmux.sh`) | `tmux.sh` |
+| `collections.sh` | **Collections (status & health only).** A registry (explicit key list) + per-key tuples over options, split with bash `IFS` — the "0 or more" shape behind the status and health contributors that each reduce to one badge. Pure bash on `opt_*`; no direct tmux calls, no domain terms. Segments are *not* collections. | no (via `tmux.sh`) | `tmux.sh` |
 | `tmux.sh` | **Mechanical.** The *sole* caller of the `tmux` binary: scoped option get/set/unset, redraw, `source-file`, hooks, binds. No airline-invented abstractions. | **yes (only here)** | — |
 | `widgets/*.sh` | **External widget adapters.** Configure third-party tmux plugins for airline — translate `THEME` into their `@plugin-*` options (cpu, battery, online, prefix-highlight). Logic tier. | no (via `tmux.sh`) | `tmux.sh` |
 | `scripts/*.sh` | **Generic helpers.** Cross-cutting shell utilities with no render role (e.g. plugin-install checks). Reserved for generic concerns — *not* widgets. | no | — |
@@ -160,11 +161,12 @@ This is the constant-vs-dynamic split. The bar holds three kinds of value, and
    `*-style` options) and into the widgets' `@cpu_*`/`@batt_*` options. A color
    changes only at the next `apply`. This is the "freeze."
 2. **Selectors — live, choose among frozen colors.** A `#{?…}` expression tmux
-   re-evaluates every render to pick *which baked color* shows: the lane token,
-   the health severity, the window mode (zoom > copy > monitor > active). The
-   colors in the selector are frozen at `apply`; *which branch fires* is live.
-   `status`/`health` `set` drive these by writing the option the selector reads,
-   then forcing a redraw — no recompose.
+   re-evaluates every render to pick *which baked color* shows: the status badge
+   token, the health badge token (severity), the window mode (zoom > copy >
+   monitor > active). The colors in the selector are frozen at `apply`; *which
+   branch fires* is live. `status`/`health` `set` drive these by re-projecting the
+   per-window scalar the selector reads (the reduced badge winner) and forcing a
+   redraw — no recompose.
 3. **Widget & clock readings — live, the point of a widget.** `#{cpu_percentage}`,
    `#{cpu_fg_color}`, `%H:%M`, the online dot — tmux and the plugins re-evaluate
    these every status-interval. airline **never** recomposes for them; they live
@@ -173,7 +175,8 @@ This is the constant-vs-dynamic split. The bar holds three kinds of value, and
 The law: **a color is frozen; a selector is live; a reading is live.** `apply`
 freezes colors and nothing else — never the things that vary between applies. This
 is why `theme set`/`use` need an `apply` (they move frozen colors) but a job
-lighting a status lane does not (it moves a live selector, redraw only).
+reporting status does not (it re-projects the scalar and the selector follows,
+redraw only).
 
 What calls what:
 
@@ -181,7 +184,8 @@ What calls what:
 - a config `set`/`clear` (`theme`, `segment`) → stages only; the caller runs
   `<noun> apply` when ready (so several `set`s can batch into one freeze).
 - `theme use` / `bundle use` → stages ×N then applies once, on the caller's behalf.
-- a runtime event (`status set`, `health set`) → option write + redraw, no `apply`.
+- a runtime event (`status set`, `health set`) → contributor write + re-project
+  the badge scalar + redraw, no `apply`.
 - a `.tmux.conf` → drives all of the above through `run-shell "#{@airline-cli} …"`;
   nobody sets `@airline-*` by hand (see *Configuration is API-only*).
 
@@ -234,7 +238,7 @@ airline help                 # usage  (also -h / --help, and <noun> help)
 ### Nouns and their verbs
 
 ```
-airline status   register | unregister | set | clear | show
+airline status                          set | clear | show
 airline health                          set | clear | show
 airline segment                         set | clear | apply | show
 airline theme    set | use | apply | show
@@ -247,12 +251,11 @@ airline bundle   use
 
 ### Verb conventions
 
-The verbs are not chosen per noun — they fall into three fixed roles, and which
+The verbs are not chosen per noun — they fall into a few fixed roles, and which
 roles a noun gets is determined by its data model:
 
 | Verb | Role | status | health | segment | theme | config | bundle |
 |------|------|:--:|:--:|:--:|:--:|:--:|:--:|
-| `register` / `unregister` | declare an entry that carries config (glyph + priority) | ✓ | — | — | — | — | — |
 | `set` / `clear` | write / remove a **value** at a **target** | ✓² | ✓² | ✓ | set¹ | set | — |
 | `apply` | **freeze** the staged state into composed tmux output | — | — | ✓ | ✓ | ✓ | — |
 | `use <name>` | replay a delimited **data file** as `set`s, then `apply` once | — | — | — | ✓ | — | ✓ |
@@ -264,12 +267,9 @@ roles a noun gets is determined by its data model:
   bar. A `status`/`health` `set` is a live runtime event — it renders immediately
   (redraw-gated), so it has no staging step and no `apply`.
 
-- **`register`/`unregister`** when an entry carries presentation config that must
-  be declared before use — a status *lane* (glyph + priority). The registry is
-  airline-owned.
 - **`set <target> <value>` / `clear <target>`** write or remove a *value* at a
-  target — a lane's lit token, a health key's severity, a segment slot's format, a
-  theme color element, a config knob. `set` **always** takes a (target, value)
+  target — a status contributor's token, a health key's severity, a segment slot's
+  format, a theme color element, a config knob. `set` **always** takes a (target, value)
   pair; no exceptions. For the **config** nouns (`segment`, `theme`, `config`) a
   `set` only *stages*: it writes the source-of-truth `@airline-*` option and
   renders nothing — an `apply` freezes it. For the **runtime** nouns (`status`,
@@ -295,8 +295,15 @@ roles a noun gets is determined by its data model:
 
 The asymmetries are the data model showing through, not inconsistencies:
 
-- **health has no `register`** — keys are dynamic contributors (one per
-  job/agent) with no config; created on first `set`, gone on `clear`.
+- **status and health are symmetric — no `register`, no `apply`.** Both are
+  collections of dynamic contributors (one per job/agent) created on first `set`
+  and gone on `clear`, and both *reduce* their contributors to a single badge —
+  health by severity (`ok alert stress`), status by a semantic ladder
+  (`active < result < attention`, low→high; the most actionable reporter wins, see
+  *The status ladder* under Collections). Both orders are handed to the same
+  `reduce` as data. Neither noun carries per-entry presentation config, so there is
+  nothing to declare; the badge's one glyph is a `config` knob (`status-glyph` /
+  `health-glyph`), not a per-entry attribute.
 - **segment has no `register`** — its targets are a *fixed* set of named slots
   (`left-out`, `left-mid`, `left-in`, `right-in`, `right-mid`, `right-out`), so
   there is nothing to declare; you `set`/`clear` a slot's format. Not a
@@ -306,7 +313,7 @@ The asymmetries are the data model showing through, not inconsistencies:
   to `clear`. A bundle is *only* a data file you `use` (its individual writes are
   `segment set`s), so it carries no setter of its own.
 - **config has no `clear` or `register`** — its targets are a fixed set of named
-  scalar knobs (`tmpl-window`, `health-glyph`, …) that always hold a value; `init`
+  scalar knobs (`tmpl-window`, `status-glyph`, `health-glyph`, …) that always hold a value; `init`
   seeds the defaults and `set` overrides one. There is nothing to declare and
   nothing to remove — to reset a knob, `set` it (or re-`init`).
 
@@ -332,9 +339,12 @@ stage/freeze model — and it retires the old `load_theme` / `tmux source-file`
 path, where theme files set `@airline-*` directly.
 
 `config` holds the scalars that are neither colors nor segments — `tmpl-window`
-(the window-name template), `health-glyph`, and the like. Like theme and segment
-it follows stage/freeze: `config set <key> <value>` stages, `config apply`
-freezes, `init` seeds the defaults.
+(the window-name template) and the two badge glyphs, `status-glyph` (left, app
+status) and `health-glyph` (right, health). Each badge glyph is a single literal
+the user types — the byte typed is the byte rendered, no name table and no escape;
+the powerline chevrons are *not* here (structural, hardcoded). Like theme and
+segment, `config` follows stage/freeze: `config set <key> <value>` stages,
+`config apply` freezes, `init` seeds the defaults.
 
 A `.tmux.conf` drives airline through `run-shell`, using the CLI path `init`
 publishes (`@airline-cli`):
@@ -443,11 +453,12 @@ caller via `current_window`.
 
 ## Collections (`collections.sh`) — status and health only
 
-status and health each hold *0 or more* dynamic entries — lanes lit on a window,
-health contributors reporting in — which tmux's flat option store has no concept
-of. `collections.sh` adds exactly that, and **only** for these two; segments are
-not a collection (they're fixed slots — see the CLI section). No tmux calls (built
-on `opt_*`), no domain knowledge: `status` / `health` arrive as the `ns` argument.
+status and health each hold *0 or more* dynamic contributors per window — jobs and
+agents reporting an app state or a health severity — which tmux's flat option store
+has no concept of. `collections.sh` adds exactly that, and **only** for these two;
+segments are not a collection (they're fixed slots — see the CLI section). No tmux
+calls (built on `opt_*`), no domain knowledge: `status` / `health` arrive as the
+`ns` argument.
 
 Two storage shapes, each a single-delimiter string split with bash `IFS`/`read` —
 no awk, no jq, no subprocess on the hot path:
@@ -463,28 +474,49 @@ Rules:
   discover entries by globbing/parsing `@airline-*` option names. Keys are only
   ever *constructed* from `(ns, key)`, so a key may contain `-`.
 - **One delimiter per option.** Registry = space-delimited names; tuple =
-  tab-delimited fields (the lone arbitrary field, a status glyph, is never a tab).
+  tab-delimited fields. Every field is controlled-vocabulary or a flag (a token, a
+  severity, a `--transient` marker) — none is free text, so none can contain a tab.
   Fixed arity: `set` writes the whole tuple, so field positions stay stable.
-- **Storage ≠ render, with one safe shortcut.** A collection holds airline's
-  bookkeeping; the bar reads *render references* derived from it. An **aggregate**
-  — health's max severity — can't be computed inside a tmux format, so it is
-  *projected* to a scalar (`@airline-gutter`, written by compose's `health_project`)
-  that the gutter reads live. A **single-field** entry — a status lane's lit token
-  — needs no projection: its tuple option is itself render-safe, so the window
-  format references it live via `coll_optname`. The rule that bit the old model —
-  *never let a multi-field tuple be the live render reference* — still holds; it is
-  why a lane's `--transient` flag will live in its own collection, keeping the lit
-  token single-field.
+- **Storage ≠ render — always project.** A collection holds airline's bookkeeping;
+  the bar never references a tuple directly. Both badges are **aggregates** — a
+  reduce over the window's contributors that a tmux format can't compute — so each
+  is *projected* to a per-window scalar at `set`/`clear` time: health's max severity
+  to `@airline-badge-health` (compose's `health_project`), status's precedence-winning
+  level to `@airline-badge-status` (`status_project`). Both scalars sit OUTSIDE the
+  collection namespaces (`@airline-status*` / `@airline-health*`) — the status
+  registry *is* `@airline-status`, so the badge can't reuse that name — and the badge
+  reads its scalar live through a token→color selector. This is what makes status and
+  health symmetric.
+  Because render always goes through the projected scalar, a contributor tuple may
+  carry extra fields — a `--transient` flag beside the token — without ever
+  reviving the old hazard of a multi-field tuple becoming the live render reference.
 
 `coll_*` mirror `opt_*`'s scope suffix (`_global` / `_window <win>`). Ops:
 `register` / `unregister` / `has` (key-list membership), `members` (the list),
-`get` / `set` (the per-key tuple), and `reduce` (health's max severity). `set`
+`get` / `set` (the per-key tuple), and `reduce` (the badge winner). `set`
 auto-registers (a tuple for a non-member would be unreachable), and `unregister`
-also unsets the tuple. `reduce` stays domain-free by taking the severity ranking
-**as data** — `coll_reduce_window <win> health "ok alert stress"` returns the
-highest-ranked first-field value among the members (empty if none rank); the
-"ok/none → blank gutter" decision is the caller's, not the collection's. Pure
-bash, zero-dependency.
+also unsets the tuple. (The CLI exposes no `status register`/`unregister` — `set`
+auto-registers — but the collection primitives stay general.) `reduce` stays
+domain-free by taking the ranking **as data**: the same op serves both badges,
+`coll_reduce_window <win> health "ok alert stress"` for severity and
+`coll_reduce_window <win> status "active result attention"` for app status, each
+returning the highest-ranked first-field value among the members (empty if none
+rank). The "none → blank badge" decision is the caller's, not the collection's.
+Pure bash, zero-dependency.
+
+**The status ladder.** Where health's tokens *are* severities, status tokens are
+semantic levels mapped to colors: `active` (something is happening you can watch) →
+the `active` role, `result` (something to see) → `ok`, `attention` (waiting for
+input) → `alert`; a cleared contributor shows nothing. Precedence is that order,
+low→high, so `attention` outranks `result` outranks `active`. Two overlaps are
+deliberate and harmless. `active` reuses the active-window highlight color — a badge
+only earns its place on *inactive* windows ("something's happening over there"),
+which carry no highlight to clash with, and on the focused window you can already
+see the activity. And the status and health ladders may map to the same hues at all,
+because the two badges are told apart by **side** (status left, health right), not
+by color — so `attention` taking `alert` (orange) alongside health's `alert` is
+fine, and `stress` (red) stays available to status too if a louder level is ever
+wanted.
 
 This refines the existing `record.sh`: keep the registry list, pack each entry's
 attributes into one tab-delimited tuple instead of an option-per-attribute, and
