@@ -611,7 +611,7 @@ set_window_formats () {
     status_expr+="#{?$(rec_key status "$lane"), #[fg=$(palette_token_expr "$(rec_key status "$lane")" "${THEME[primary]}")]$glyph,}"
   done < <(_status_sorted_lanes)
 
-  tmux set -gq window-status-separator-string " "
+  tmux set -gq window-status-separator " "
 
   # inactive: health gutter, then #[default] to restore the applicable style so
   # the gutter glyph's color can't bleed into the name, then the mode fg (if a

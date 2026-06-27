@@ -130,44 +130,99 @@ _seed_palette() {
   refute_output --partial "#I:#W"
 }
 
-# --- badges: status stack + health gutter -----------------------------------
+# --- badges: status (left) + health (right) ---------------------------------
 
-@test "status stack weaves a lit-token selector per registered lane" {
+@test "status badge renders a selector over the projected status scalar" {
   load_compose
   _seed_palette
-  coll_set_global status build "▲" 20
   set_window_formats
   run get_option window-status-format
-  assert_output --partial "@airline-status-build"   # lane's lit-token option, live
-  assert_output --partial "▲"                       # its glyph
-  assert_output --partial "colour214"               # a baked token color (active)
+  assert_output --partial "@airline-badge-status"   # the projected reduced-level scalar
+  assert_output --partial "●"                        # the default badge glyph
 }
 
-@test "an unregistered lane contributes nothing to the stack" {
+@test "status badge maps each semantic level to its theme color" {
   load_compose
   _seed_palette
   set_window_formats
   run get_option window-status-format
-  refute_output --partial "@airline-status-"
+  # level→color pairs unique to the status ladder (health has no result/attention)
+  assert_output --partial "result},colour114"      # result → ok
+  assert_output --partial "attention},colour208"   # attention → alert
 }
 
-@test "lanes render in ascending priority order" {
+@test "status badge honors a custom @airline-status-glyph" {
   load_compose
   _seed_palette
-  coll_set_global status deploy "■" 30
-  coll_set_global status build  "▲" 10
+  opt_set_global @airline-status-glyph "▲"
   set_window_formats
   run get_option window-status-format
-  # build (prio 10) appears before deploy (prio 30)
-  [[ "$output" == *"@airline-status-build"*"@airline-status-deploy"* ]]
+  assert_output --partial "▲"
 }
 
-@test "health gutter renders a selector over the projected reduced scalar" {
+@test "window-status-format places status left of the name and health right" {
   load_compose
   _seed_palette
   set_window_formats
   run get_option window-status-format
-  assert_output --partial "@airline-gutter"   # the projected reduced-severity scalar
+  [[ "$output" == *"@airline-badge-status"*"#I:#W"*"@airline-badge-health"* ]]
+}
+
+@test "status_project reduces contributors to the highest level" {
+  load_compose
+  win="$(current_window)"
+  coll_set_window "$win" status build  active
+  coll_set_window "$win" status test   result
+  coll_set_window "$win" status review attention
+  status_project "$win"
+  run opt_get_window "$win" @airline-badge-status
+  assert_output "attention"
+}
+
+@test "status_project leaves a blank badge when nothing reports" {
+  load_compose
+  win="$(current_window)"
+  status_project "$win" || true   # returns 1 = nothing to render (redraw-gate signal)
+  run opt_get_window "$win" @airline-badge-status
+  assert_output ""
+}
+
+@test "status_project signals change via exit status (gate a redraw)" {
+  load_compose
+  win="$(current_window)"
+  coll_set_window "$win" status build active
+  run status_project "$win"        # unset -> active : changed
+  assert_success
+  run status_project "$win"        # active -> active : no change
+  assert_failure
+}
+
+@test "status_project clears the badge when the top contributor is removed" {
+  load_compose
+  win="$(current_window)"
+  coll_set_window "$win" status review attention
+  status_project "$win"
+  coll_unregister_window "$win" status review
+  status_project "$win"
+  run opt_get_window "$win" @airline-badge-status
+  assert_output ""
+}
+
+@test "health badge renders a selector over the projected reduced scalar" {
+  load_compose
+  _seed_palette
+  set_window_formats
+  run get_option window-status-format
+  assert_output --partial "@airline-badge-health"   # the projected reduced-severity scalar
+}
+
+@test "health badge honors a custom @airline-health-glyph" {
+  load_compose
+  _seed_palette
+  opt_set_global @airline-health-glyph "✚"
+  set_window_formats
+  run get_option window-status-format
+  assert_output --partial "✚"
 }
 
 @test "health_project reduces contributors to the max severity scalar" {
@@ -177,16 +232,16 @@ _seed_palette() {
   coll_set_window "$win" health disk alert
   coll_set_window "$win" health net stress
   health_project "$win"
-  run opt_get_window "$win" @airline-gutter
+  run opt_get_window "$win" @airline-badge-health
   assert_output "stress"
 }
 
-@test "health_project leaves a clean gutter when only ok reports" {
+@test "health_project leaves a blank badge when only ok reports" {
   load_compose
   win="$(current_window)"
   coll_set_window "$win" health cpu ok
   health_project "$win" || true   # returns 1 = nothing to render (redraw-gate signal)
-  run opt_get_window "$win" @airline-gutter
+  run opt_get_window "$win" @airline-badge-health
   assert_output ""
 }
 
@@ -200,13 +255,58 @@ _seed_palette() {
   assert_failure
 }
 
-@test "health_project clears the gutter when the worst contributor is removed" {
+@test "health_project clears the badge when the worst contributor is removed" {
   load_compose
   win="$(current_window)"
   coll_set_window "$win" health net stress
   health_project "$win"
   coll_unregister_window "$win" health net
   health_project "$win"
-  run opt_get_window "$win" @airline-gutter
+  run opt_get_window "$win" @airline-badge-health
   assert_output ""
+}
+
+# --- recompose: the compose-all / freeze step -------------------------------
+
+@test "recompose bakes the chrome styles from the palette" {
+  load_compose
+  _seed_palette
+  recompose
+  run get_option status-style
+  assert_output --partial "fg=colour245"   # secondary
+  assert_output --partial "bg=colour234"   # inner-bg
+  run get_option pane-active-border-style
+  assert_output --partial "colour214"      # active
+  run get_option clock-mode-color
+  assert_output "colour134"                 # special
+}
+
+@test "recompose writes status-left/right from registered segments" {
+  load_compose
+  _seed_palette
+  opt_set_global @airline-segment-left-out "LOAD"
+  opt_set_global @airline-segment-right-out "TIME"
+  recompose
+  run get_option status-left
+  assert_output --partial "LOAD"
+  run get_option status-right
+  assert_output --partial "TIME"
+}
+
+@test "recompose composes the window formats too" {
+  load_compose
+  _seed_palette
+  recompose
+  run get_option window-status-format
+  assert_output --partial "#I:#W"
+}
+
+@test "recompose is redraw-gated: a no-op second call reports no change" {
+  load_compose
+  _seed_palette
+  opt_set_global @airline-segment-left-out "LOAD"
+  run recompose          # first call: everything changes
+  assert_success
+  run recompose          # identical state: nothing changes
+  assert_failure
 }

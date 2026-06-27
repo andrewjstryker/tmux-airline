@@ -50,21 +50,39 @@ declare -ga AIRLINE_THEME_ELEMENTS=(
   active special ok alert stress zoom copy monitor
 )
 
-# Palette tokens: the subset of roles a runtime signal may name — a status lane's
-# lit color, a health severity, a window mode. The badge selectors map a stored
-# token to its baked color through this list. (Not the positional backgrounds or
-# text weights, which a signal never names.)
+# Palette tokens: roles whose NAME is also a valid runtime signal value — a health
+# severity, a window mode. The health badge selector maps a stored token to its
+# baked color through this list (token name == role name). The status badge does
+# NOT use this — its levels are semantic and map through AIRLINE_STATUS_COLOR below.
+# (Not the positional backgrounds or text weights, which a signal never names.)
 declare -ga AIRLINE_PALETTE_TOKENS=(active alert stress ok special monitor copy zoom)
 
 # Health severities, low→high — handed to coll_reduce as the ranking, so the
 # collection layer stays severity-agnostic.
 declare -ga AIRLINE_SEVERITIES=(ok alert stress)
 
-# The window-scoped scalar the health gutter renders: the reduced (max) severity,
-# projected from the per-window "health" collection by health_project. Deliberately
-# NOT in the "health" collection namespace (which owns @airline-health and
-# @airline-health-<key>), so a contributor key can never collide with it.
-AIRLINE_OPT_GUTTER='@airline-gutter'
+# The window-scoped scalars the two badges render — each a reduction projected from
+# its collection at set/clear time (status_project / health_project) and read live
+# by the window format through a token→color selector. Deliberately OUTSIDE both
+# collection namespaces (@airline-status*, @airline-health*) so a contributor key
+# can never collide with a badge scalar.
+AIRLINE_OPT_STATUS='@airline-badge-status'   # left badge:  reduced app-status level
+AIRLINE_OPT_HEALTH='@airline-badge-health'   # right badge: reduced health severity
+
+# The status ladder — semantic levels, low→high precedence, each mapped to a theme
+# color role. The order is handed to coll_reduce as the ranking (collections stays
+# domain-free) and to the selector as the level→color map: `attention` outranks
+# `result` outranks `active`; a window with no status contributor shows no badge.
+# (`active` reusing the active-window highlight color is intentional — a badge only
+# earns its place on inactive windows, which carry no highlight to clash with.)
+declare -ga AIRLINE_STATUS_LEVELS=(active result attention)
+declare -gA AIRLINE_STATUS_COLOR=([active]=active [result]=ok [attention]=alert)
+
+# The default badge mark — the glyph a status / health badge shows when the caller
+# names none. Overridden per channel via `config set status-glyph` / `health-glyph`,
+# each a plain literal (the byte typed is the byte rendered). Defined once here, not
+# repeated at the call sites.
+AIRLINE_GLYPH_BADGE='●'
 
 # Boundary validators — pure predicates the CLI calls before it stores anything.
 _segment_slot_valid () {
@@ -113,10 +131,15 @@ _palette_suspend () {
 # A slot's tier (outer/middle/inner) is its background; the powerline chevrons
 # step between consecutive non-empty slots. Empty slots are skipped entirely.
 
-# Powerline chevron between two backgrounds. <left_bg> <right_bg>.
+# Powerline chevron between two backgrounds. The glyph is structural — its fg is the
+# left block's bg, its bg the right block's, so the separator carries the color
+# gradient. The two glyphs (U+E0B0 / U+E0B2) are hardcoded in _chev_right/_chev_left
+# below, never configurable: a bare-char knob would render against the wrong
+# gradient. (A "no powerline font" mode, if wanted, is a separate switch — not a
+# per-chevron option.)
 _chevron () { printf '#[fg=%s,bg=%s]%s' "$2" "$1" "$3"; }   # left_bg right_bg glyph
-_chev_right () { _chevron "$2" "$1" ''; }
-_chev_left  () { _chevron "$1" "$2" ''; }
+_chev_right () { _chevron "$2" "$1" ""; }
+_chev_left  () { _chevron "$1" "$2" ""; }
 
 # The non-empty slots on a side, in render order. <left|right>
 _active_slots () {
@@ -161,8 +184,8 @@ _build_status_right () {
 #-----------------------------------------------------------------------------#
 # A window has one "signal color" slot, drawn reverse-video on the focused window
 # (its background is the highlight; the flat bg becomes the knockout foreground)
-# and as the foreground on inactive windows. Only modes touch it here; badges
-# (health gutter, status stack) are layered in with the collections slice.
+# and as the foreground on inactive windows. Only modes touch it here; the status
+# and health badges are layered in by the window formats below.
 
 # zoom > copy > monitor precedence, in one place. `fmt` is a printf template
 # applied to each mode's color; `fallback` is emitted when no mode is active.
@@ -183,20 +206,23 @@ window_mode_hi () { _mode_expr '%s' "${THEME[active]}"; }
 window_mode_fg () { _mode_expr '#[fg=%s]' ''; }
 
 #-----------------------------------------------------------------------------#
-# Badges — health gutter (left of the name) and status stack (right of it).
+# Badges — status (left of the name) and health (right of it).
 #-----------------------------------------------------------------------------#
-# Two channels flank the window name, both driven by the runtime collections:
-#   health : per-window contributors (ns "health") reduced to one max severity,
-#            projected into AIRLINE_OPT_GUTTER; the gutter shows one glyph in that
-#            severity's color, or nothing when healthy.
-#   status : a global registry of lanes (ns "status": glyph + priority), each lit
-#            per window by a token in its own option; the stack shows one glyph
-#            per lit lane, ascending priority.
+# Two channels flank the window name. Each is a runtime collection reduced to ONE
+# badge and projected to a per-window scalar (status_project / health_project):
+#   status : app-status contributors (ns "status") reduced by the level ladder into
+#            AIRLINE_OPT_STATUS; the left badge shows one glyph in that level's
+#            color, or nothing when no contributor reports.
+#   health : health contributors (ns "health") reduced to the max severity into
+#            AIRLINE_OPT_HEALTH; the right badge shows one glyph in that severity's
+#            color, or nothing when healthy.
 # The colors are baked here at compose time; WHICH color shows is a live #{?…}
 # selector tmux re-evaluates per window — the selector leg of the freeze model.
+# The side (left vs right) tells the two badges apart, so their colors may overlap.
 
-# A live expression mapping a token-valued option to its baked theme color,
-# falling back to <fallback> when the option is empty or holds an unknown token.
+# A live expression mapping a token-valued option to its baked theme color, falling
+# back to <fallback> when the option is empty or holds an unknown token. Used for
+# health, whose tokens (severities) ARE theme role names — token maps to THEME[token].
 _palette_token_expr () {   # <option-name> <fallback-color>
   local option="$1" expr="$2" tok
   for tok in "${AIRLINE_PALETTE_TOKENS[@]}"; do
@@ -205,66 +231,109 @@ _palette_token_expr () {   # <option-name> <fallback-color>
   printf '%s' "$expr"
 }
 
-# Registered status lanes, ascending priority (stable). The global "status"
-# collection stores each lane as a (glyph, priority) tuple; we sort on priority.
-_status_lanes_sorted () {
-  local lane glyph prio
-  for lane in $(coll_members_global status); do
-    IFS=$'\t' read -r glyph prio <<< "$(coll_get_global status "$lane")"
-    printf '%s %s\n' "${prio:-50}" "$lane"
-  done | sort -n -s -k1,1 | awk '{print $2}'
+# The same, for the status ladder, whose levels are NOT theme role names: each level
+# maps through AIRLINE_STATUS_COLOR to its baked color (e.g. result → THEME[ok]).
+_status_token_expr () {   # <option-name> <fallback-color>
+  local option="$1" expr="$2" lvl
+  for lvl in "${AIRLINE_STATUS_LEVELS[@]}"; do
+    expr="#{?#{==:#{$option},$lvl},${THEME[${AIRLINE_STATUS_COLOR[$lvl]}]},$expr}"
+  done
+  printf '%s' "$expr"
 }
 
-# Project the per-window reduced health severity into the gutter scalar. stress /
-# alert → set it; ok / none → clear it (a clean gutter means healthy). Called by
-# `health set`/`clear` at runtime; the window-status-format reads the scalar live.
-# Returns 0 when the rendered value changed (so the caller can gate a redraw).
+# Project a window's reduced collection value into its badge scalar: the highest-
+# ranked entry among the window's contributors, or clear when none rank. Called by
+# `status`/`health` `set`/`clear` at runtime; the window format reads the scalar
+# live. Returns 0 when the rendered value changed (so the caller can gate a redraw).
+_project () {   # <win> <ns> <ranking> <badge-option>
+  local win="$1" ns="$2" ranking="$3" opt="$4" top
+  top="$(coll_reduce_window "$win" "$ns" "$ranking")"
+  if [[ -n "$top" ]]; then
+    opt_setif_window "$win" "$opt" "$top"
+  else
+    [[ -n "$(opt_get_window "$win" "$opt")" ]] || return 1
+    opt_unset_window "$win" "$opt"
+  fi
+}
+
+# Status: every level shows (absence is the blank), so project the reduce verbatim.
+status_project () {   # <win>
+  _project "$1" status "${AIRLINE_STATUS_LEVELS[*]}" "$AIRLINE_OPT_STATUS"
+}
+
+# Health: a clean badge means healthy, so an `ok`/none reduce projects as blank.
 health_project () {   # <win>
   local win="$1" max
   max="$(coll_reduce_window "$win" health "${AIRLINE_SEVERITIES[*]}")"
   case "$max" in stress|alert) ;; *) max="" ;; esac
   if [[ -n "$max" ]]; then
-    opt_setif_window "$win" "$AIRLINE_OPT_GUTTER" "$max"
+    opt_setif_window "$win" "$AIRLINE_OPT_HEALTH" "$max"
   else
-    [[ -n "$(opt_get_window "$win" "$AIRLINE_OPT_GUTTER")" ]] || return 1
-    opt_unset_window "$win" "$AIRLINE_OPT_GUTTER"
+    [[ -n "$(opt_get_window "$win" "$AIRLINE_OPT_HEALTH")" ]] || return 1
+    opt_unset_window "$win" "$AIRLINE_OPT_HEALTH"
   fi
 }
 
 #-----------------------------------------------------------------------------#
-# Window formats — the window-list styling, with the health gutter + status stack
-# woven in around the name.
+# Window formats — the window-list styling, with the status and health badges
+# woven in around the name (status left, health right).
 #-----------------------------------------------------------------------------#
+# Returns 0 when any rendered option actually changed (so recompose can gate one
+# redraw across the whole bar), 1 when every value was already current.
 set_window_formats () {
-  local bg="${THEME[inner-bg]}" template mode_fg hi_expr
+  local bg="${THEME[inner-bg]}" template mode_fg hi_expr changed=1
   template="$(opt_getor_global @airline-tmpl-window '#I:#W')"
   mode_fg="$(window_mode_fg)"
   hi_expr="$(window_mode_hi)"
 
-  # Health gutter: one glyph at the window's reduced severity, empty when healthy.
+  # Status badge (left of the name): one glyph at the window's reduced level.
+  local status_expr sglyph
+  sglyph="$(opt_getor_global @airline-status-glyph "$AIRLINE_GLYPH_BADGE")"
+  status_expr="#{?$AIRLINE_OPT_STATUS,#[fg=$(_status_token_expr "$AIRLINE_OPT_STATUS" "${THEME[primary]}")]$sglyph ,}"
+
+  # Health badge (right of the name): one glyph at the window's reduced severity.
   local health_expr hglyph
-  hglyph="$(opt_getor_global @airline-health-glyph '●')"
-  health_expr="#{?$AIRLINE_OPT_GUTTER,#[fg=$(_palette_token_expr "$AIRLINE_OPT_GUTTER" "${THEME[primary]}")]$hglyph ,}"
+  hglyph="$(opt_getor_global @airline-health-glyph "$AIRLINE_GLYPH_BADGE")"
+  health_expr="#{?$AIRLINE_OPT_HEALTH, #[fg=$(_palette_token_expr "$AIRLINE_OPT_HEALTH" "${THEME[primary]}")]$hglyph,}"
 
-  # Status stack: one glyph per lit lane, ascending priority, each colored by its
-  # lit token. Each lane's option is referenced live, so lighting it is redraw-only.
-  local status_expr="" lane glyph prio opt
-  while IFS= read -r lane; do
-    [[ -z "$lane" ]] && continue
-    IFS=$'\t' read -r glyph prio <<< "$(coll_get_global status "$lane")"
-    opt="$(coll_optname status "$lane")"
-    status_expr+="#{?$opt, #[fg=$(_palette_token_expr "$opt" "${THEME[primary]}")]${glyph:-●},}"
-  done < <(_status_lanes_sorted)
+  opt_setif_global window-status-separator " " && changed=0
+  opt_setif_global window-status-format \
+    "${status_expr}#[default]${mode_fg}${template}${health_expr}" && changed=0
+  opt_setif_global window-status-style          "fg=${THEME[primary]} bg=$bg"     && changed=0
+  opt_setif_global window-status-last-style     "fg=${THEME[emphasized]} bg=$bg"  && changed=0
+  opt_setif_global window-status-activity-style "fg=${THEME[alert]} bg=$bg"       && changed=0
+  opt_setif_global window-status-bell-style     "fg=${THEME[stress]} bg=$bg"      && changed=0
+  opt_setif_global window-status-current-format \
+    "$(_chev_right "$bg" "$hi_expr") ${status_expr}#[fg=$bg]${template}${health_expr} $(_chev_left "$hi_expr" "$bg")" && changed=0
+  return $changed
+}
 
-  opt_set_global window-status-separator-string " "
-  opt_set_global window-status-format \
-    "${health_expr}#[default]${mode_fg}${template}${status_expr}"
-  opt_set_global window-status-style          "fg=${THEME[primary]} bg=$bg"
-  opt_set_global window-status-last-style     "fg=${THEME[emphasized]} bg=$bg"
-  opt_set_global window-status-activity-style "fg=${THEME[alert]} bg=$bg"
-  opt_set_global window-status-bell-style     "fg=${THEME[stress]} bg=$bg"
-  opt_set_global window-status-current-format \
-    "$(_chev_right "$bg" "$hi_expr") ${health_expr}#[fg=$bg]${template}${status_expr} $(_chev_left "$hi_expr" "$bg")"
+#-----------------------------------------------------------------------------#
+# Compose-all — bake the whole bar from stored @airline-* state.
+#-----------------------------------------------------------------------------#
+# The shared "freeze" step: load the palette and write every composed option —
+# chrome styles, segment bars, window formats — baking THEME colors in as constants
+# (the freeze leg of the model; live #{?…} selectors decide which baked color shows).
+# init and each noun's `apply` call this; it does NOT seed defaults, publish the CLI
+# path, or bind keys — those are init's job. Idempotent and redraw-gated: it rewrites
+# only options whose value changed (opt_setif_*) and redraws once iff any did.
+# Returns 0 when something changed (a redraw happened), 1 when the bar was current.
+recompose () {
+  _palette_load
+  local changed=1
+  opt_setif_global pane-border-style         "fg=${THEME[primary]}"                       && changed=0
+  opt_setif_global pane-active-border-style   "fg=${THEME[active]}"                        && changed=0
+  opt_setif_global display-panes-color        "${THEME[primary]}"                          && changed=0
+  opt_setif_global display-panes-active-color "${THEME[active]}"                           && changed=0
+  opt_setif_global status-style               "fg=${THEME[secondary]} bg=${THEME[inner-bg]}" && changed=0
+  opt_setif_global status-left-style          "fg=${THEME[primary]} bg=${THEME[outer-bg]}"   && changed=0
+  opt_setif_global status-right-style         "fg=${THEME[primary]} bg=${THEME[outer-bg]}"   && changed=0
+  opt_setif_global status-left                "$(_build_status_left)"                      && changed=0
+  opt_setif_global status-right               "$(_build_status_right)"                     && changed=0
+  opt_setif_global clock-mode-color           "${THEME[special]}"                          && changed=0
+  set_window_formats && changed=0
+  [[ $changed -eq 0 ]] && redraw
+  return $changed
 }
 
 # vim: ft=bash
