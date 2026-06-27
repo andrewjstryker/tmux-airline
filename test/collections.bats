@@ -49,6 +49,12 @@ load helper
   [ "$prio" = "20" ]
 }
 
+@test "coll_optname builds the tuple option name (for live format refs)" {
+  load_collections
+  run coll_optname status build
+  assert_output "@airline-status-build"
+}
+
 @test "get is empty for an unset key" {
   load_collections
   run coll_get_global status missing

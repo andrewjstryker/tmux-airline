@@ -39,6 +39,7 @@ load_compose() {
   tmux() { $TMUX -L "$_bats_socket" "$@"; }
   export -f tmux
   source "$PROJECT_ROOT/tmux.sh"
+  source "$PROJECT_ROOT/collections.sh"
   source "$PROJECT_ROOT/compose.sh"
 }
 

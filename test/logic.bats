@@ -129,3 +129,84 @@ _seed_palette() {
   assert_output --partial "#[default]"
   refute_output --partial "#I:#W"
 }
+
+# --- badges: status stack + health gutter -----------------------------------
+
+@test "status stack weaves a lit-token selector per registered lane" {
+  load_compose
+  _seed_palette
+  coll_set_global status build "▲" 20
+  set_window_formats
+  run get_option window-status-format
+  assert_output --partial "@airline-status-build"   # lane's lit-token option, live
+  assert_output --partial "▲"                       # its glyph
+  assert_output --partial "colour214"               # a baked token color (active)
+}
+
+@test "an unregistered lane contributes nothing to the stack" {
+  load_compose
+  _seed_palette
+  set_window_formats
+  run get_option window-status-format
+  refute_output --partial "@airline-status-"
+}
+
+@test "lanes render in ascending priority order" {
+  load_compose
+  _seed_palette
+  coll_set_global status deploy "■" 30
+  coll_set_global status build  "▲" 10
+  set_window_formats
+  run get_option window-status-format
+  # build (prio 10) appears before deploy (prio 30)
+  [[ "$output" == *"@airline-status-build"*"@airline-status-deploy"* ]]
+}
+
+@test "health gutter renders a selector over the projected reduced scalar" {
+  load_compose
+  _seed_palette
+  set_window_formats
+  run get_option window-status-format
+  assert_output --partial "@airline-gutter"   # the projected reduced-severity scalar
+}
+
+@test "health_project reduces contributors to the max severity scalar" {
+  load_compose
+  win="$(current_window)"
+  coll_set_window "$win" health cpu ok
+  coll_set_window "$win" health disk alert
+  coll_set_window "$win" health net stress
+  health_project "$win"
+  run opt_get_window "$win" @airline-gutter
+  assert_output "stress"
+}
+
+@test "health_project leaves a clean gutter when only ok reports" {
+  load_compose
+  win="$(current_window)"
+  coll_set_window "$win" health cpu ok
+  health_project "$win" || true   # returns 1 = nothing to render (redraw-gate signal)
+  run opt_get_window "$win" @airline-gutter
+  assert_output ""
+}
+
+@test "health_project signals change via exit status (gate a redraw)" {
+  load_compose
+  win="$(current_window)"
+  coll_set_window "$win" health net stress
+  run health_project "$win"        # unset -> stress : changed
+  assert_success
+  run health_project "$win"        # stress -> stress : no change
+  assert_failure
+}
+
+@test "health_project clears the gutter when the worst contributor is removed" {
+  load_compose
+  win="$(current_window)"
+  coll_set_window "$win" health net stress
+  health_project "$win"
+  coll_unregister_window "$win" health net
+  health_project "$win"
+  run opt_get_window "$win" @airline-gutter
+  assert_output ""
+}

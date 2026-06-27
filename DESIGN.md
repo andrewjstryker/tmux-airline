@@ -423,11 +423,16 @@ Rules:
 - **One delimiter per option.** Registry = space-delimited names; tuple =
   tab-delimited fields (the lone arbitrary field, a status glyph, is never a tab).
   Fixed arity: `set` writes the whole tuple, so field positions stay stable.
-- **Storage ≠ render.** A collection holds airline's bookkeeping; `apply` reads it
-  and projects the options tmux renders (the per-lane render references, the
-  reduced health scalar). The store is never itself the live render reference —
-  that coupling in the old model is why changing storage *looked* like it broke
-  rendering.
+- **Storage ≠ render, with one safe shortcut.** A collection holds airline's
+  bookkeeping; the bar reads *render references* derived from it. An **aggregate**
+  — health's max severity — can't be computed inside a tmux format, so it is
+  *projected* to a scalar (`@airline-gutter`, written by compose's `health_project`)
+  that the gutter reads live. A **single-field** entry — a status lane's lit token
+  — needs no projection: its tuple option is itself render-safe, so the window
+  format references it live via `coll_optname`. The rule that bit the old model —
+  *never let a multi-field tuple be the live render reference* — still holds; it is
+  why a lane's `--transient` flag will live in its own collection, keeping the lit
+  token single-field.
 
 `coll_*` mirror `opt_*`'s scope suffix (`_global` / `_window <win>`). Ops:
 `register` / `unregister` / `has` (key-list membership), `members` (the list),

@@ -18,6 +18,10 @@ if ! declare -F opt_get_global >/dev/null; then
   printf 'compose.sh: load tmux.sh first\n' >&2
   return 1 2>/dev/null || exit 1
 fi
+if ! declare -F coll_get_global >/dev/null; then
+  printf 'compose.sh: load collections.sh first\n' >&2
+  return 1 2>/dev/null || exit 1
+fi
 
 #-----------------------------------------------------------------------------#
 # Vocabulary — the names the bar is built from. The CLI validates input against
@@ -45,6 +49,22 @@ declare -ga AIRLINE_THEME_ELEMENTS=(
   secondary primary emphasized
   active special ok alert stress zoom copy monitor
 )
+
+# Palette tokens: the subset of roles a runtime signal may name — a status lane's
+# lit color, a health severity, a window mode. The badge selectors map a stored
+# token to its baked color through this list. (Not the positional backgrounds or
+# text weights, which a signal never names.)
+declare -ga AIRLINE_PALETTE_TOKENS=(active alert stress ok special monitor copy zoom)
+
+# Health severities, low→high — handed to coll_reduce as the ranking, so the
+# collection layer stays severity-agnostic.
+declare -ga AIRLINE_SEVERITIES=(ok alert stress)
+
+# The window-scoped scalar the health gutter renders: the reduced (max) severity,
+# projected from the per-window "health" collection by health_project. Deliberately
+# NOT in the "health" collection namespace (which owns @airline-health and
+# @airline-health-<key>), so a contributor key can never collide with it.
+AIRLINE_OPT_GUTTER='@airline-gutter'
 
 # Boundary validators — pure predicates the CLI calls before it stores anything.
 _segment_slot_valid () {
@@ -163,8 +183,57 @@ window_mode_hi () { _mode_expr '%s' "${THEME[active]}"; }
 window_mode_fg () { _mode_expr '#[fg=%s]' ''; }
 
 #-----------------------------------------------------------------------------#
-# Window formats — the window-list styling. The badge expressions (health gutter
-# + status stack) are added with the collections slice; empty placeholders now.
+# Badges — health gutter (left of the name) and status stack (right of it).
+#-----------------------------------------------------------------------------#
+# Two channels flank the window name, both driven by the runtime collections:
+#   health : per-window contributors (ns "health") reduced to one max severity,
+#            projected into AIRLINE_OPT_GUTTER; the gutter shows one glyph in that
+#            severity's color, or nothing when healthy.
+#   status : a global registry of lanes (ns "status": glyph + priority), each lit
+#            per window by a token in its own option; the stack shows one glyph
+#            per lit lane, ascending priority.
+# The colors are baked here at compose time; WHICH color shows is a live #{?…}
+# selector tmux re-evaluates per window — the selector leg of the freeze model.
+
+# A live expression mapping a token-valued option to its baked theme color,
+# falling back to <fallback> when the option is empty or holds an unknown token.
+_palette_token_expr () {   # <option-name> <fallback-color>
+  local option="$1" expr="$2" tok
+  for tok in "${AIRLINE_PALETTE_TOKENS[@]}"; do
+    expr="#{?#{==:#{$option},$tok},${THEME[$tok]},$expr}"
+  done
+  printf '%s' "$expr"
+}
+
+# Registered status lanes, ascending priority (stable). The global "status"
+# collection stores each lane as a (glyph, priority) tuple; we sort on priority.
+_status_lanes_sorted () {
+  local lane glyph prio
+  for lane in $(coll_members_global status); do
+    IFS=$'\t' read -r glyph prio <<< "$(coll_get_global status "$lane")"
+    printf '%s %s\n' "${prio:-50}" "$lane"
+  done | sort -n -s -k1,1 | awk '{print $2}'
+}
+
+# Project the per-window reduced health severity into the gutter scalar. stress /
+# alert → set it; ok / none → clear it (a clean gutter means healthy). Called by
+# `health set`/`clear` at runtime; the window-status-format reads the scalar live.
+# Returns 0 when the rendered value changed (so the caller can gate a redraw).
+health_project () {   # <win>
+  local win="$1" max
+  max="$(coll_reduce_window "$win" health "${AIRLINE_SEVERITIES[*]}")"
+  case "$max" in stress|alert) ;; *) max="" ;; esac
+  if [[ -n "$max" ]]; then
+    opt_setif_window "$win" "$AIRLINE_OPT_GUTTER" "$max"
+  else
+    [[ -n "$(opt_get_window "$win" "$AIRLINE_OPT_GUTTER")" ]] || return 1
+    opt_unset_window "$win" "$AIRLINE_OPT_GUTTER"
+  fi
+}
+
+#-----------------------------------------------------------------------------#
+# Window formats — the window-list styling, with the health gutter + status stack
+# woven in around the name.
 #-----------------------------------------------------------------------------#
 set_window_formats () {
   local bg="${THEME[inner-bg]}" template mode_fg hi_expr
@@ -172,7 +241,20 @@ set_window_formats () {
   mode_fg="$(window_mode_fg)"
   hi_expr="$(window_mode_hi)"
 
-  local health_expr="" status_expr=""   # filled in by the status/health slice
+  # Health gutter: one glyph at the window's reduced severity, empty when healthy.
+  local health_expr hglyph
+  hglyph="$(opt_getor_global @airline-health-glyph '●')"
+  health_expr="#{?$AIRLINE_OPT_GUTTER,#[fg=$(_palette_token_expr "$AIRLINE_OPT_GUTTER" "${THEME[primary]}")]$hglyph ,}"
+
+  # Status stack: one glyph per lit lane, ascending priority, each colored by its
+  # lit token. Each lane's option is referenced live, so lighting it is redraw-only.
+  local status_expr="" lane glyph prio opt
+  while IFS= read -r lane; do
+    [[ -z "$lane" ]] && continue
+    IFS=$'\t' read -r glyph prio <<< "$(coll_get_global status "$lane")"
+    opt="$(coll_optname status "$lane")"
+    status_expr+="#{?$opt, #[fg=$(_palette_token_expr "$opt" "${THEME[primary]}")]${glyph:-●},}"
+  done < <(_status_lanes_sorted)
 
   opt_set_global window-status-separator-string " "
   opt_set_global window-status-format \

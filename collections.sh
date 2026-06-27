@@ -52,6 +52,11 @@ _coll_ounset () { # <win|""> <name>
 _coll_reg () { printf '@airline-%s' "$1"; }            # ns       → registry option
 _coll_key () { printf '@airline-%s-%s' "$1" "$2"; }    # ns key   → tuple option
 
+# Public name constructor: the tuple option for (ns, key). compose embeds this in
+# a tmux format as a live `#{…}` reference (a single-field tuple is render-safe),
+# so the @airline-<ns>-<key> scheme is built here and nowhere else (Invariant B).
+coll_optname () { _coll_key "$@"; }                    # <ns> <key> → option name
+
 #-----------------------------------------------------------------------------#
 # Private cores — operate on (win, ns, …); the public wrappers bake the scope.
 #-----------------------------------------------------------------------------#
