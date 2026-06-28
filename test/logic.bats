@@ -111,13 +111,46 @@ _seed_palette() {
   assert_output --partial "bg=colour234"        # inner-bg
 }
 
-@test "window current format knocks out the name in inner-bg and flanks it" {
+# --- modes: inactive fills the background, active tints the foreground -------
+
+@test "inactive window fills its background with the mode color" {
+  load_compose
+  _seed_palette
+  set_window_formats
+  run get_option window-status-format
+  # bg is a mode selector: zoom→81, copy→75, monitor→109, else inner-bg 234
+  assert_output --partial "bg=#{?#{window_zoomed_flag},colour81"
+  assert_output --partial "monitor-activity,colour109,colour234"   # else flat inner-bg
+}
+
+@test "inactive name knocks out over a filled block, else stays primary" {
+  load_compose
+  _seed_palette
+  set_window_formats
+  run get_option window-status-format
+  # fg: inner-bg knockout when in any mode, primary (250) when flat
+  assert_output --partial "#[fg=#{?#{window_zoomed_flag},colour234"
+  assert_output --partial "monitor-activity,colour234,colour250"
+}
+
+@test "active window keeps a constant active-color highlight block" {
   load_compose
   _seed_palette
   set_window_formats
   run get_option window-status-current-format
-  assert_output --partial "#[fg=colour234]#I:#W"  # name knocked out in inner-bg
-  assert_output --partial "window_zoomed_flag"    # highlight bg via mode/active
+  assert_output --partial "bg=colour214"          # active highlight, not a mode selector
+  refute_output --partial "bg=#{?#{window_zoomed_flag}"  # active bg never varies with mode
+}
+
+@test "active window tints the name foreground by mode (knockout when none)" {
+  load_compose
+  _seed_palette
+  set_window_formats
+  run get_option window-status-current-format
+  # name fg is the mode color, falling back to inner-bg knockout
+  assert_output --partial "#[fg=#{?#{window_zoomed_flag},colour81"
+  assert_output --partial "monitor-activity,colour109,colour234"   # monitor tint, else knockout
+  assert_output --partial "]#I:#W"                                  # …applied to the name
 }
 
 # --- badges: status (left) + health (right) ---------------------------------

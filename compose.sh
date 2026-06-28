@@ -187,15 +187,17 @@ _build_status_right () {
 }
 
 #-----------------------------------------------------------------------------#
-# Window entry — modes (zoom > copy > monitor) over the per-window signal slot.
+# Window entry — modes (zoom > copy > monitor).
 #-----------------------------------------------------------------------------#
-# A window has one "signal color" slot, drawn reverse-video on the focused window
-# (its background is the highlight; the flat bg becomes the knockout foreground)
-# and as the foreground on inactive windows. Only modes touch it here; the status
-# and health badges are layered in by the window formats below.
+# A window can be in a tmux mode: zoomed, in copy/view mode, or flagged for
+# monitor-activity. The loud signal goes where you're NOT looking (same rule as the
+# badges): an *inactive* window in a mode fills its BACKGROUND with the mode color
+# ("look — window 3 is zoomed"); the *active* window, which you can already see, only
+# tints its name FOREGROUND. The active window keeps its active-color highlight block
+# either way, so "which window is current" stays obvious.
 
-# zoom > copy > monitor precedence, in one place. `fmt` is a printf template
-# applied to each mode's color; `fallback` is emitted when no mode is active.
+# zoom > copy > monitor precedence, in one place. `fmt` is a printf template applied
+# to each mode's color; `fallback` is emitted when no mode is active.
 _mode_expr () {
   local fmt="$1" fallback="$2"
   # SC2059: $fmt is a caller-supplied printf template ('%s' or '#[fg=%s]'); using
@@ -207,10 +209,15 @@ _mode_expr () {
     "$(printf "$fmt" "${THEME[monitor]}")" \
     "$fallback"
 }
-# Highlight background for the focused window (bare color): the active mode, else active.
-window_mode_hi () { _mode_expr '%s' "${THEME[active]}"; }
-# Foreground override for inactive windows (#[fg=…]); empty when no mode is active.
-window_mode_fg () { _mode_expr '#[fg=%s]' ''; }
+# Bare mode color, or inner-bg when no mode — the inactive window's background fill
+# AND the active window's name foreground (the one signal value, used on both sides).
+window_mode_color () { _mode_expr '%s' "${THEME[inner-bg]}"; }
+# "<in-mode>" when the window is in any mode, else "<none>" — used to knock the
+# inactive name out to inner-bg over a filled block, but keep primary on a flat one.
+_window_mode_pick () {   # <in-mode> <none>
+  printf '#{?#{window_zoomed_flag},%s,#{?#{pane_in_mode},%s,#{?monitor-activity,%s,%s}}}' \
+    "$1" "$1" "$1" "$2"
+}
 
 #-----------------------------------------------------------------------------#
 # Badges — status (left of the name) and health (right of it).
@@ -288,10 +295,13 @@ health_project () {   # <win>
 # Returns 0 when any rendered option actually changed (so recompose can gate one
 # redraw across the whole bar), 1 when every value was already current.
 set_window_formats () {
-  local bg="${THEME[inner-bg]}" template mode_fg hi_expr changed=1
+  local bg="${THEME[inner-bg]}" active_bg="${THEME[active]}" template changed=1
   template="$AIRLINE_TMPL_WINDOW"
-  mode_fg="$(window_mode_fg)"
-  hi_expr="$(window_mode_hi)"
+
+  # Mode signal. inactive: fill the background; active: tint the name foreground.
+  local mode_color inactive_fg
+  mode_color="$(window_mode_color)"                                       # mode color, else inner-bg
+  inactive_fg="$(_window_mode_pick "$bg" "${THEME[primary]}")"           # knock out over a fill, else primary
 
   # Status badge (left of the name): one glyph at the window's reduced level.
   local status_expr
@@ -302,14 +312,16 @@ set_window_formats () {
   health_expr="#{?$AIRLINE_OPT_HEALTH, #[fg=$(_palette_token_expr "$AIRLINE_OPT_HEALTH" "${THEME[primary]}")]$AIRLINE_GLYPH_HEALTH,}"
 
   opt_setif_global window-status-separator " " && changed=0
+  # inactive: the whole tab fills with the mode color (flat inner-bg when no mode).
   opt_setif_global window-status-format \
-    "${status_expr}#[default]${mode_fg}${template}${health_expr}" && changed=0
+    "#[bg=${mode_color}]${status_expr}#[fg=${inactive_fg}]${template}${health_expr}" && changed=0
   opt_setif_global window-status-style          "fg=${THEME[primary]} bg=$bg"     && changed=0
   opt_setif_global window-status-last-style     "fg=${THEME[emphasized]} bg=$bg"  && changed=0
   opt_setif_global window-status-activity-style "fg=${THEME[alert]} bg=$bg"       && changed=0
   opt_setif_global window-status-bell-style     "fg=${THEME[stress]} bg=$bg"      && changed=0
+  # active: a constant active-color highlight block, name foreground tinted by mode.
   opt_setif_global window-status-current-format \
-    "$(_chev_right "$bg" "$hi_expr") ${status_expr}#[fg=$bg]${template}${health_expr} $(_chev_left "$hi_expr" "$bg")" && changed=0
+    "$(_chev_right "$bg" "$active_bg") ${status_expr}#[fg=${mode_color}]${template}${health_expr} $(_chev_left "$active_bg" "$bg")" && changed=0
   return $changed
 }
 

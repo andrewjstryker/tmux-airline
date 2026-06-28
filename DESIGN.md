@@ -191,11 +191,15 @@ This is the constant-vs-dynamic split. The bar holds three kinds of value, and
    changes only at the next `apply`. This is the "freeze."
 2. **Selectors — live, choose among frozen colors.** A `#{?…}` expression tmux
    re-evaluates every render to pick *which baked color* shows: the status badge
-   token, the health badge token (severity), the window mode (zoom > copy >
-   monitor > active). The colors in the selector are frozen at `apply`; *which
-   branch fires* is live. `status`/`health` `set` drive these by re-projecting the
-   per-window scalar the selector reads (the reduced badge winner) and forcing a
-   redraw — no recompose.
+   token, the health badge token (severity), and the window mode (zoom > copy >
+   monitor). The mode lands where you're *not* looking — an inactive window in a
+   mode fills its **background** with the mode color; the active window only tints
+   its name **foreground**, keeping its constant active-color highlight block (same
+   "signal where you're not looking" rule as the badges). The colors in the
+   selector are frozen at `apply`; *which branch fires* is live. `status`/`health`
+   `set` drive their selectors by re-projecting the per-window scalar (the reduced
+   badge winner) and forcing a redraw — no recompose; the mode selectors are driven
+   by tmux's own `window_zoomed_flag` / `pane_in_mode` / `monitor-activity`.
 3. **Widget & clock readings — live, the point of a widget.** `#{cpu_percentage}`,
    `#{cpu_fg_color}`, `%H:%M`, the online dot — tmux and the plugins re-evaluate
    these every status-interval. airline **never** recomposes for them; they live
