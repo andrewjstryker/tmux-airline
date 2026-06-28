@@ -4,146 +4,174 @@ load test_helper/bats-support/load
 load test_helper/bats-assert/load
 load helper
 
-# The CLI is the public API. These drive ./airline against the isolated server
-# via the AIRLINE_TMUX seam (see helper.bash) — the real path plugins use.
+# The CLI/API boundary (the `airline` executable) on the new layer. These drive the
+# real CLI as a subprocess (the `airline()` helper points it at the isolated server
+# via AIRLINE_TMUX), so they exercise the same path production uses.
+#
+# A clean server (-f /dev/null) so `init`'s default-seeding isn't perturbed by the
+# developer's own ~/.tmux.conf (which may already configure airline).
 
-# --- status: register / list / set / clear ----------------------------------
-
-@test "status register adds a lane and rebuilds the window format" {
-  airline status register agent ⟳ 20
-  run get_option window-status-format
-  assert_output --partial "@airline-status-agent"
+setup() {
+  $TMUX -L "$_bats_socket" -f /dev/null new-session -d -s bats
 }
 
-@test "status register is idempotent" {
-  airline status register agent ⟳ 20
-  airline status register agent ⟳ 20
-  run airline status list
-  assert_equal "$(printf '%s\n' "$output" | grep -c agent)" "1"
+# --- init -------------------------------------------------------------------
+
+@test "init publishes the CLI path and sets the first-run sentinel" {
+  airline init
+  run get_option @airline--cli
+  assert_output --partial "/airline"
+  run get_option @airline--defaults-done
+  assert_output "1"
 }
 
-@test "status list reports lanes sorted by priority" {
-  airline status register agent ⟳ 20
-  airline status register ci ⚙ 10
-  run airline status list
-  # ci (priority 10) before agent (priority 20)
-  assert_line --index 0 --partial "ci"
-  assert_line --index 1 --partial "agent"
+@test "init seeds the default theme when no palette is set" {
+  airline init
+  run get_option @airline-inner-bg
+  assert_output "colour234"          # from themes/dark
 }
 
-@test "status set lights a lane and renders its glyph in the token color" {
-  init_theme dark            # so THEME matches the CLI's default (dark) rebuild
-  airline status register agent ⟳ 20
-  airline status set agent active
-  run resolve "$(get_option window-status-format)"
-  assert_output --partial "⟳"
-  assert_output --partial "fg=${THEME[active]}"
+@test "init seeds dependency-free default segments" {
+  airline init
+  run get_option status-left
+  assert_output --partial "#S"       # the session-name segment from bundles/default
 }
 
-@test "status clear removes a lane's badge from the window" {
-  airline status register agent ⟳ 20
-  airline status set agent active
-  airline status clear agent
-  run wopt @airline-status-agent
+@test "init does not clobber a user-set palette" {
+  $TMUX -L "$_bats_socket" set -g @airline-inner-bg colour99
+  airline init
+  run get_option @airline-inner-bg
+  assert_output "colour99"           # user value preserved; dark not sourced
+}
+
+@test "init is idempotent: a reload keeps runtime segment changes" {
+  airline init
+  $TMUX -L "$_bats_socket" set -g @airline-segment-left-out "CUSTOM"
+  airline init                       # sentinel set → no re-seed
+  run get_option @airline-segment-left-out
+  assert_output "CUSTOM"
+}
+
+@test "init composes the bar (chrome + window formats)" {
+  airline init
+  run get_option status-style
+  assert_output --partial "bg=colour234"
+  run get_option window-status-current-format
+  assert_output --partial "#I:#W"
+}
+
+# --- apply / use ------------------------------------------------------------
+
+@test "apply recomposes from the current source of truth" {
+  airline init
+  $TMUX -L "$_bats_socket" set -g @airline-segment-right-out "ZZZ"
+  airline apply
+  run get_option status-right
+  assert_output --partial "ZZZ"
+}
+
+@test "use sources a tmux file then freezes" {
+  airline init
+  printf 'set -g @airline-inner-bg colour55\n' > "$BATS_TMPDIR/airline-use-theme"
+  airline use "$BATS_TMPDIR/airline-use-theme"
+  run get_option @airline-inner-bg
+  assert_output "colour55"
+  run get_option status-style
+  assert_output --partial "bg=colour55"     # recomposed with the new color
+}
+
+@test "use rejects an unknown name" {
+  airline init
+  run airline use no-such-theme-xyz
+  assert_failure
+}
+
+# --- status (dynamic noun) --------------------------------------------------
+
+@test "status set lights the badge; clear removes it" {
+  airline init
+  airline status set build active
+  run wopt @airline--badge-status
+  assert_output "active"
+  airline status clear build
+  run wopt @airline--badge-status
   assert_output ""
 }
 
-@test "status badges render in ascending priority order" {
-  init_theme dark
-  airline status register ci ⚙ 10
-  airline status register agent ⟳ 20
-  airline status set ci stress
-  airline status set agent active
-  run resolve "$(get_option window-status-format)"
-  # ci's glyph appears before agent's
-  [[ "$output" == *"⚙"*"⟳"* ]]
+@test "status set reduces multiple contributors by precedence" {
+  airline init
+  airline status set build active
+  airline status set review attention
+  run wopt @airline--badge-status
+  assert_output "attention"          # attention outranks active
 }
 
-@test "status unregister drops the lane from the format" {
-  airline status register agent ⟳ 20
-  airline status unregister agent
-  run airline status list
-  refute_output --partial "agent"
-  run get_option window-status-format
-  refute_output --partial "@airline-status-agent"
-}
-
-# --- status: validation ------------------------------------------------------
-
-@test "status set rejects an unknown token" {
-  airline status register agent ⟳ 20
-  run airline status set agent purple
+@test "status set rejects an invalid level" {
+  airline init
+  run airline status set x bogus
   assert_failure
-  assert_output --partial "invalid token"
 }
 
-@test "status set rejects an unregistered lane" {
-  run airline status set ghost active
-  assert_failure
-  assert_output --partial "not registered"
+@test "status show lists contributors and the badge" {
+  airline init
+  airline status set build active
+  run airline status show
+  assert_output --partial "build"
+  assert_output --partial "active"
 }
 
-@test "status register rejects a bad priority" {
-  run airline status register agent ⟳ high
-  assert_failure
-  assert_output --partial "priority"
-}
+# --- health (dynamic noun) --------------------------------------------------
 
-# --- health: keyed reduce ----------------------------------------------------
-
-@test "health set stores a contributor and reduces to it" {
-  airline health set build alert
-  run wopt @airline-health
+@test "health set/clear drives the health badge" {
+  airline init
+  airline health set cpu alert
+  run wopt @airline--badge-health
   assert_output "alert"
-}
-
-@test "health reduces multiple contributors to the max severity" {
-  airline health set build alert
-  airline health set ctx stress
-  run wopt @airline-health
-  assert_output "stress"
-}
-
-@test "health ok contributes no badge" {
-  airline health set build ok
-  run wopt @airline-health
+  airline health clear cpu
+  run wopt @airline--badge-health
   assert_output ""
 }
 
-@test "health clear lowers the reduced severity" {
-  airline health set build alert
-  airline health set ctx stress
-  airline health clear ctx
-  run wopt @airline-health
-  assert_output "alert"
-}
-
-@test "health clearing the last contributor empties the gutter" {
-  airline health set build alert
-  airline health clear build
-  run wopt @airline-health
-  assert_output ""
-}
-
-@test "health list shows contributors and the reduced result" {
-  airline health set build alert
-  airline health set ctx stress
-  run airline health list
-  assert_output --partial "build	alert"
-  assert_output --partial "ctx	stress"
-  assert_output --partial "reduced	stress"
-}
-
-@test "health set rejects a bad severity" {
-  run airline health set build warning
+@test "health set rejects an invalid severity" {
+  airline init
+  run airline health set disk warpspeed
   assert_failure
-  assert_output --partial "severity"
 }
 
-# --- dispatch ----------------------------------------------------------------
+# --- transient (consume-on-view) --------------------------------------------
 
-@test "unknown command fails with guidance" {
-  run airline frobnicate
-  assert_failure
-  assert_output --partial "unknown command"
+@test "a --transient signal arms the focus hook and clears on _unfocus" {
+  airline init
+  win="$($TMUX -L "$_bats_socket" display-message -p '#{window_id}')"
+  airline status set build active                 # persistent
+  airline status set review attention --transient # transient
+  run get_option focus-events
+  assert_output "on"
+  airline _unfocus "$win"
+  run wopt @airline--badge-status
+  assert_output "active"             # transient 'review' gone, persistent 'build' remains
+}
+
+# --- suspend / resume -------------------------------------------------------
+
+@test "suspend sets the flag and traps the prefix; resume restores" {
+  airline init
+  airline suspend
+  run get_option @airline--suspended
+  assert_output "1"
+  run get_option prefix
+  assert_output "None"
+  airline resume
+  run get_option @airline--suspended
+  assert_output "0"
+  run get_option prefix
+  refute_output "None"              # prefix unset → back to default
+}
+
+# --- help -------------------------------------------------------------------
+
+@test "help prints usage" {
+  run airline help
+  assert_output --partial "airline init"
+  assert_output --partial "status set"
 }

@@ -1,0 +1,13 @@
+# Default segment set — dependency-free.
+#
+# A plain tmux file: `airline init` sources it on first run (if no segments are
+# set) and `airline use default` loads it on demand. It uses only built-in tmux
+# format variables, so a fresh install renders a real bar with no third-party
+# plugins. Widget segments (cpu, online, prefix, battery) come from the widget
+# bundles once those adapters land.
+
+set -g @airline-segment-left-out  "#S"                 # session name
+set -g @airline-segment-right-mid "#h"                 # short hostname
+set -g @airline-segment-right-out "%Y-%m-%d %H:%M"     # date + time
+
+# vim: ft=tmux

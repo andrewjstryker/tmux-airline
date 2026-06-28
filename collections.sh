@@ -93,7 +93,9 @@ _coll_get () {       # <win> <ns> <key>   → the tab-delimited tuple ("" if uns
 _coll_set () {       # <win> <ns> <key> <field…>   register + write the whole tuple
   local win="$1" ns="$2" key="$3"; shift 3
   _coll_register "$win" "$ns" "$key"
-  local IFS=$'\t'; _coll_oset "$win" "$(_coll_key "$ns" "$key")" "$*"
+  # Tab-join the fields in a subshell so IFS never leaks into _coll_oset — the
+  # option layer (and the AIRLINE_TMUX shim) must run with the default IFS.
+  _coll_oset "$win" "$(_coll_key "$ns" "$key")" "$(IFS=$'\t'; printf '%s' "$*")"
 }
 
 # Reduce the collection to the highest-ranked first-field value among its members.

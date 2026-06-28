@@ -1,61 +1,217 @@
 #!/usr/bin/env bash
 #
-# airline — command-line interface to the tmux-airline status line.
+# airline — the CLI/API boundary.
 #
-# This is the supported, stable API. Plugins and keybindings drive airline
-# through these subcommands rather than by setting tmux options directly: the
-# CLI owns the (private) option layout, validates input, and implements the
-# badge stack / health reduce so callers don't reimplement them.
+# The supported, stable surface for the *dynamic* nouns (status, health) and the
+# *lifecycle* (init, apply, use, show, suspend, resume). Static config is NOT here:
+# users set public @airline-* options directly, the idiomatic tmux way
+# (DESIGN.md §Static config). This file owns input validation — the one place input
+# is checked — then dispatches to the layers (tmux.sh → collections.sh → compose.sh)
+# and never invokes tmux directly.
 #
 # Usage:
-#   airline status register <lane> [glyph] [priority]
-#   airline status unregister <lane>
-#   airline status set <lane> <token> [--transient] [-t <target>]
-#   airline status clear <lane> [-t <target>]
-#   airline status list
+#   airline init                       # seed defaults + binds + publish path, then apply
+#   airline apply                      # freeze: recompose the bar from the source of truth
+#   airline use <file|name>            # source-file a tmux config, then apply
+#   airline show                       # print the resolved config + per-window state
+#   airline suspend | resume           # toggle the dim/passthrough state for nested sessions
 #
-#   airline health set <key> <ok|alert|stress> [--transient] [-t <target>]
-#   airline health clear <key> [-t <target>]
-#   airline health list
+#   airline status set <key> <active|result|attention> [--transient] [-t <window>]
+#   airline status clear <key> [-t <window>]
+#   airline status show [-t <window>]
 #
-#   --transient clears the signal on pane-focus-out (consume-on-view).
+#   airline health set <key> <ok|alert|stress> [--transient] [-t <window>]
+#   airline health clear <key> [-t <window>]
+#   airline health show [-t <window>]
 #
-#   airline segment register <name> --side left|right --format <fmt>
-#                                   [--priority N] [--tier outer|middle|inner]
-#   airline segment unregister <name>
-#   airline segment list
+#   airline help                       # this message  (also -h / --help)
 #
-#   --side and --format are required; --tier is an override (omit to auto-derive
-#   the powerline depth from the segment's position in the stack).
-#
-#   airline suspend | resume
-#
-# tokens are airline palette names: active alert stress ok special monitor copy zoom
+#   --transient clears the signal when you focus away from the window (consume-on-view).
+
+set -u
 
 AIRLINE_DIR="${AIRLINE_DIR:-$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )}"
 
-# Test/advanced seam: target a specific tmux server. AIRLINE_TMUX may be a
-# command with arguments (e.g. "tmux -L mysocket"); word-splitting is intended.
+# Test/advanced seam: target a specific tmux server. AIRLINE_TMUX may carry args
+# (e.g. "tmux -L mysock"); the word-splitting is intentional. tmux.sh's calls are
+# late-bound, so defining this before sourcing is enough.
 if [[ -n "${AIRLINE_TMUX:-}" ]]; then
+  # shellcheck disable=SC2086
   tmux () { command ${AIRLINE_TMUX} "$@"; }
 fi
 
-# Source airline.tmux for its functions only (no bar build, no theme load).
-AIRLINE_LIB_ONLY=1 source "$AIRLINE_DIR/airline.tmux"
+# shellcheck source=tmux.sh
+source "$AIRLINE_DIR/tmux.sh"
+# shellcheck source=collections.sh
+source "$AIRLINE_DIR/collections.sh"
+# shellcheck source=compose.sh
+source "$AIRLINE_DIR/compose.sh"
 
-# Print the "Usage:" comment block from this file's header.
-usage () { sed -n '/^# Usage:/,/^# tokens /p' "$AIRLINE_DIR/airline" | sed 's/^# \{0,1\}//'; }
+die ()   { printf 'airline: %s\n' "$*" >&2; exit 2; }
+usage () { sed -n '/^# Usage:/,/^$/p' "$AIRLINE_DIR/airline" | sed 's/^# \{0,1\}//'; }
 
-die () { echo "airline: $*" >&2; exit 2; }
+#-----------------------------------------------------------------------------#
+# Lifecycle
+#-----------------------------------------------------------------------------#
+
+# True when no segment slot is set yet (a fresh install) — gates default seeding.
+_segments_unset () {
+  local s
+  for s in "${AIRLINE_SEGMENT_SLOTS[@]}"; do
+    [[ -n "$(opt_get_global "@airline-segment-$s")" ]] && return 1
+  done
+  return 0
+}
+
+# Bootstrap. Publish the CLI path, bind F12, and on first run seed defaults behind a
+# sentinel (without clobbering user config or runtime state on a reload); then apply.
+cmd_init () {
+  opt_set_global "$AIRLINE_OPT_CLI" "$AIRLINE_DIR/airline"
+  key_bind root F12 "run-shell \"$AIRLINE_DIR/airline suspend\""
+  key_bind off  F12 "run-shell \"$AIRLINE_DIR/airline resume\""
+
+  if [[ "$(opt_get_global "$AIRLINE_OPT_DEFAULTS")" != 1 ]]; then
+    # Seed a default theme only if the user set no palette, and default segments only
+    # if none are set — so .tmux.conf config and runtime changes both win.
+    [[ -z "$(opt_get_global @airline-inner-bg)" ]] && source_file "$AIRLINE_DIR/themes/dark"
+    _segments_unset && source_file "$AIRLINE_DIR/bundles/default"
+    opt_set_global "$AIRLINE_OPT_DEFAULTS" 1
+  fi
+  recompose
+}
+
+# Load a tmux config file (a theme or bundle of `set -g @airline-*` lines), then
+# freeze. <name> may be a path, or a bare name resolved under themes/ then bundles/.
+cmd_use () {
+  local name="${1:-}"; [[ -n "$name" ]] || die "use: need <file|name>"
+  local file=""
+  if   [[ -f "$name" ]];                      then file="$name"
+  elif [[ -f "$AIRLINE_DIR/themes/$name" ]];  then file="$AIRLINE_DIR/themes/$name"
+  elif [[ -f "$AIRLINE_DIR/bundles/$name" ]]; then file="$AIRLINE_DIR/bundles/$name"
+  else die "use: no such theme, bundle, or file: $name"; fi
+  source_file "$file"
+  recompose || true
+}
+
+cmd_suspend () {
+  opt_set_global "$AIRLINE_OPT_SUSPENDED" 1
+  opt_set_global prefix None
+  opt_set_global key-table off
+  recompose || true
+}
+
+cmd_resume () {
+  opt_set_global "$AIRLINE_OPT_SUSPENDED" 0
+  opt_unset_global prefix
+  opt_unset_global key-table
+  recompose || true
+}
+
+cmd_show () {
+  local win; win="$(current_window)"
+  local el s v
+  printf 'theme:\n'
+  for el in "${AIRLINE_THEME_ELEMENTS[@]}"; do
+    printf '  %-11s %s\n' "$el" "$(opt_get_global "@airline-$el")"
+  done
+  printf 'segments:\n'
+  for s in "${AIRLINE_SEGMENT_SLOTS[@]}"; do
+    v="$(opt_get_global "@airline-segment-$s")"
+    [[ -n "$v" ]] && printf '  %-10s %s\n' "$s" "$v"
+  done
+  printf 'window %s:\n' "$win"
+  printf '  status badge: %s\n' "$(opt_get_window "$win" "$AIRLINE_OPT_STATUS")"
+  printf '  health badge: %s\n' "$(opt_get_window "$win" "$AIRLINE_OPT_HEALTH")"
+  printf '  suspended:    %s\n' "$(opt_get_global "$AIRLINE_OPT_SUSPENDED")"
+}
+
+#-----------------------------------------------------------------------------#
+# Transient (consume-on-view)
+#-----------------------------------------------------------------------------#
+# A signal set with --transient clears itself once you focus away from its window.
+# The first such signal arms the pane-focus-out hook (and focus-events); the hook
+# calls back `airline _unfocus <window>`, which drops the transient contributors.
+
+_ensure_unfocus_hook () {
+  opt_set_global focus-events on
+  hook_set "pane-focus-out[90]" "run-shell -b \"$AIRLINE_DIR/airline _unfocus #{window_id}\""
+}
+
+# Drop every transient contributor on <window>, then re-project both badges once.
+cmd_unfocus () {
+  local win="${1:-}"; [[ -n "$win" ]] || return 0
+  local changed="" ns key f1 f2
+  for ns in status health; do
+    for key in $(coll_members_window "$win" "$ns"); do
+      IFS=$'\t' read -r f1 f2 <<< "$(coll_get_window "$win" "$ns" "$key")"
+      [[ "$f2" == 1 ]] && { coll_unregister_window "$win" "$ns" "$key"; changed=1; }
+    done
+  done
+  [[ -n "$changed" ]] || return 0
+  status_project "$win" || true
+  health_project "$win" || true
+  redraw
+}
+
+#-----------------------------------------------------------------------------#
+# Dynamic nouns — status & health (symmetric: a contributor reduced to one badge)
+#-----------------------------------------------------------------------------#
+# Shared set/clear/show for a runtime channel. $1 = ns, $2 = a validator function
+# name, then the verb + args. The badge is re-projected and the redraw gated.
+
+_signal_set () {   # <ns> <validator> <key> <value> [--transient] [-t <win>]
+  local ns="$1" valid="$2"; shift 2
+  local key="" value="" transient="" win="" ; local -a pos=()
+  while (( $# )); do
+    case "$1" in
+      --transient) transient=1; shift ;;
+      -t)          win="${2:-}"; shift 2 ;;
+      *)           pos+=("$1"); shift ;;
+    esac
+  done
+  key="${pos[0]:-}"; value="${pos[1]:-}"
+  [[ -n "$key" ]] || die "$ns set: need <key>"
+  "$valid" "$value" || die "$ns set: invalid value '$value'"
+  [[ -n "$win" ]] || win="$(current_window)"
+  coll_set_window "$win" "$ns" "$key" "$value" "$transient"
+  [[ -n "$transient" ]] && _ensure_unfocus_hook
+  "${ns}_project" "$win" && redraw
+  return 0
+}
+
+_signal_clear () {   # <ns> <key> [-t <win>]
+  local ns="$1"; shift
+  local key="" win=""
+  while (( $# )); do
+    case "$1" in -t) win="${2:-}"; shift 2 ;; *) key="$1"; shift ;; esac
+  done
+  [[ -n "$key" ]] || die "$ns clear: need <key>"
+  [[ -n "$win" ]] || win="$(current_window)"
+  coll_unregister_window "$win" "$ns" "$key"
+  "${ns}_project" "$win" && redraw
+  return 0
+}
+
+_signal_show () {   # <ns> [-t <win>]
+  local ns="$1"; shift
+  local win="" key f1 f2
+  while (( $# )); do
+    case "$1" in -t) win="${2:-}"; shift 2 ;; *) shift ;; esac
+  done
+  [[ -n "$win" ]] || win="$(current_window)"
+  for key in $(coll_members_window "$win" "$ns"); do
+    IFS=$'\t' read -r f1 f2 <<< "$(coll_get_window "$win" "$ns" "$key")"
+    printf '%-16s %s%s\n' "$key" "$f1" "${f2:+  (transient)}"
+  done
+  printf 'badge: %s\n' "$(opt_get_window "$win" "$([[ $ns == status ]] && printf %s "$AIRLINE_OPT_STATUS" || printf %s "$AIRLINE_OPT_HEALTH")")"
+}
 
 cmd_status () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    register)   airline_status_register   "$@" ;;
-    unregister) airline_status_unregister "$@" ;;
-    set)        airline_status_set        "$@" ;;
-    clear)      airline_status_clear      "$@" ;;
-    list)       airline_status_list       "$@" ;;
+    set)   _signal_set   status _status_level_valid "$@" ;;
+    clear) _signal_clear status "$@" ;;
+    show)  _signal_show  status "$@" ;;
     ""|-h|--help) usage ;;
     *) die "unknown status command: $verb" ;;
   esac
@@ -64,36 +220,32 @@ cmd_status () {
 cmd_health () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    set)   airline_health_set   "$@" ;;
-    clear) airline_health_clear "$@" ;;
-    list)  airline_health_list  "$@" ;;
+    set)   _signal_set   health _health_severity_valid "$@" ;;
+    clear) _signal_clear health "$@" ;;
+    show)  _signal_show  health "$@" ;;
     ""|-h|--help) usage ;;
     *) die "unknown health command: $verb" ;;
   esac
 }
 
-cmd_segment () {
-  local verb="${1:-}"; shift || true
-  case "$verb" in
-    register)   airline_segment_register   "$@" ;;
-    unregister) airline_segment_unregister "$@" ;;
-    list)       airline_segment_list       "$@" ;;
-    ""|-h|--help) usage ;;
-    *) die "unknown segment command: $verb" ;;
-  esac
-}
+#-----------------------------------------------------------------------------#
+# Dispatch
+#-----------------------------------------------------------------------------#
 
 main_cli () {
   local cmd="${1:-}"; shift || true
   case "$cmd" in
+    init)     cmd_init "$@" ;;
+    apply)    recompose || true ;;
+    use)      cmd_use "$@" ;;
+    show)     cmd_show "$@" ;;
+    suspend)  cmd_suspend ;;
+    resume)   cmd_resume ;;
     status)   cmd_status "$@" ;;
     health)   cmd_health "$@" ;;
-    segment)  cmd_segment "$@" ;;
-    suspend)  airline_suspend ;;
-    resume)   airline_resume ;;
-    _unfocus) airline_unfocus "$@" ;;   # internal: pane-focus-out hook callback
+    _unfocus) cmd_unfocus "$@" ;;   # internal: pane-focus-out hook callback
     ""|-h|--help|help) usage ;;
-    *) die "unknown command: $cmd (try: airline --help)" ;;
+    *) die "unknown command: $cmd (try: airline help)" ;;
   esac
 }
 

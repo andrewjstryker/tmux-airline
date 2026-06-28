@@ -43,26 +43,6 @@ load_compose() {
   source "$PROJECT_ROOT/compose.sh"
 }
 
-# Source airline.tmux in test mode (no side effects). THEME and
-# AIRLINE_PALETTE_TOKENS are declared -g in airline.tmux, so they stay global
-# even though we source from inside this function.
-load_airline() {
-  export AIRLINE_TESTING=1
-  export AIRLINE_DIR="$PROJECT_ROOT"
-  # Override tmux to target our isolated server
-  tmux() { $TMUX -L "$_bats_socket" "$@"; }
-  export -f tmux
-  source "$PROJECT_ROOT/airline.tmux"
-}
-
-# Source airline, then populate THEME via airline's own load_theme — the same
-# path production uses — so tests exercise the real population logic.
-# Usage: init_theme [theme_name]   (defaults to "solarized-dark")
-init_theme() {
-  load_airline
-  load_theme "${1:-solarized-dark}"
-}
-
 # Read a global tmux option value from the isolated server
 get_option() {
   $TMUX -L "$_bats_socket" show-option -gqv "$1"

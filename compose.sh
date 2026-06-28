@@ -67,9 +67,15 @@ declare -ga AIRLINE_SEVERITIES=(ok alert stress)
 # by the window format through a token→color selector. The `--` keeps them clear of
 # the collection namespaces (@airline--status*, @airline--health*) AND of any public
 # @airline-<element> a user sets, so nothing can collide with a badge scalar.
-AIRLINE_OPT_STATUS='@airline--badge-status'   # left badge:  reduced app-status level
-AIRLINE_OPT_HEALTH='@airline--badge-health'   # right badge: reduced health severity
-AIRLINE_OPT_SUSPENDED='@airline--suspended'   # private flag: dim palette for nested sessions
+AIRLINE_OPT_STATUS='@airline--badge-status'    # left badge:  reduced app-status level
+AIRLINE_OPT_HEALTH='@airline--badge-health'    # right badge: reduced health severity
+AIRLINE_OPT_SUSPENDED='@airline--suspended'    # private flag: dim palette for nested sessions
+# SC2034: these two are consumed by the `airline` CLI (init), which sources this
+# file — shellcheck can't trace the cross-file use.
+# shellcheck disable=SC2034
+AIRLINE_OPT_CLI='@airline--cli'                # published CLI path (plugins discover airline)
+# shellcheck disable=SC2034
+AIRLINE_OPT_DEFAULTS='@airline--defaults-done' # first-run sentinel: seed defaults once
 
 # The status ladder — semantic levels, low→high precedence, each mapped to a theme
 # color role. The order is handed to coll_reduce as the ranking (collections stays
@@ -96,6 +102,14 @@ _segment_slot_valid () {
 }
 _theme_element_valid () {
   local e; for e in "${AIRLINE_THEME_ELEMENTS[@]}"; do [[ "$e" == "$1" ]] && return 0; done
+  return 1
+}
+_status_level_valid () {
+  local l; for l in "${AIRLINE_STATUS_LEVELS[@]}"; do [[ "$l" == "$1" ]] && return 0; done
+  return 1
+}
+_health_severity_valid () {
+  local s; for s in "${AIRLINE_SEVERITIES[@]}"; do [[ "$s" == "$1" ]] && return 0; done
   return 1
 }
 
