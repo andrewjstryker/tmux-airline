@@ -8,15 +8,18 @@ Status of this document:
 
 ## Principles
 
-1. **Semantic public surface, mechanical internal surface.** The CLI speaks in
-   domain terms (`status`, `health`, `segment`, `theme`, `bundle`); it funnels down through
-   composition logic to a single mechanical layer that talks to tmux. Callers
-   never set `@airline-*` options by hand.
-2. **One path to set state.** Internal startup, user commands, and plugin calls
-   all take the same route — the CLI, and `init`/`apply` beneath it. There is no second,
-   divergent way to build or repaint the bar. (This is the rule the old
-   `main()` / `_airline_rebuild` split violated, which is why a theme change
-   only half-repainted.)
+1. **Two classes of state, split by who writes them** (see *State model* below).
+   *Static* config is **public** `@airline-*` options a user sets directly, the
+   idiomatic tmux way. *Dynamic* state is **private** `@airline--*` options only
+   airline writes, at runtime, through the CLI. The CLI speaks domain terms
+   (`status`, `health`) for the dynamic part and owns the lifecycle
+   (`init`, `apply`, `use`); it does not wrap the static part — `set -g @airline-*`
+   is the API for that.
+2. **One compose path.** Whatever moves the source of truth — a user editing an
+   option, a runtime event, `init` — the bar is (re)built by a single path:
+   `recompose`, invoked by `apply`. There is no second, divergent way to build or
+   repaint the bar. (This is the rule the old `main()` / `_airline_rebuild` split
+   violated, which is why a theme change only half-repainted.)
 3. **The middle is logic.** Composition — the badge reduce (status and health
    both collapse many contributors to one mark), segment-slot assembly, render
    expressions, theme application — is expressed in domain terms and never calls
@@ -49,14 +52,14 @@ regressing. Treat these as a checklist as code migrates:
 | File | Role | Calls `tmux`? | Depends on |
 |------|------|:---:|------------|
 | `airline.tmux` | **Entry point.** Run by TPM / `run-shell`. Invokes `init` through the CLI (which composes the bar; the sentinel skips the clobber on a bare reload); holds no logic. | no (only invokes the CLI) | `airline` |
-| `airline` | **CLI / API — the boundary.** Public surface for users, `airline.tmux`, and external plugins. Parses and **validates** input (the only place it is checked), then stores via `opt_*` or dispatches to `compose.sh`. Holds the command handlers and the `use` data-file readers. | no | `compose.sh`, `tmux.sh` |
-| `compose.sh` | **Composition.** Loads the palette and implements `apply` — composing the bar (`status-left/right`, window formats, `*-style`, pane, clock) from the stored `@airline-*` state. Owns the shared vocabulary — slot/element names + the predicates the CLI validates against — and *trusts* its inputs. Reads/writes only through `collections.sh` / `tmux.sh`. | **no** | `collections.sh`, `tmux.sh`, `widgets/*.sh` |
+| `airline` | **CLI / API — the boundary for *dynamic* state + lifecycle.** Public surface for the runtime nouns (`status`, `health`) and the lifecycle verbs (`init`, `apply`, `use`, `show`, `suspend`/`resume`). **Validates** dynamic input (the only place it is checked), then dispatches to `compose.sh`. Static config does *not* pass through it — users set public `@airline-*` options directly. | no | `compose.sh`, `tmux.sh` |
+| `compose.sh` | **Composition.** Loads the palette and implements `recompose` (the `apply` freeze) — composing the bar (`status-left/right`, window formats, `*-style`, pane, clock) from the public `@airline-*` inputs and private `@airline--*` state. Owns the shared vocabulary — slot/element names, the rendering constants (glyphs, chevrons, name template), the predicates the CLI validates against — and *trusts* its inputs. Reads/writes only through `collections.sh` / `tmux.sh`. | **no** | `collections.sh`, `tmux.sh`, `widgets/*.sh` |
 | `collections.sh` | **Collections (status & health only).** A registry (explicit key list) + per-key tuples over options, split with bash `IFS` — the "0 or more" shape behind the status and health contributors that each reduce to one badge. Pure bash on `opt_*`; no direct tmux calls, no domain terms. Segments are *not* collections. | no (via `tmux.sh`) | `tmux.sh` |
 | `tmux.sh` | **Mechanical.** The *sole* caller of the `tmux` binary: scoped option get/set/unset, redraw, `source-file`, hooks, binds. No airline-invented abstractions. | **yes (only here)** | — |
 | `widgets/*.sh` | **External widget adapters.** Configure third-party tmux plugins for airline — translate `THEME` into their `@plugin-*` options (cpu, battery, online, prefix-highlight). Logic tier. | no (via `tmux.sh`) | `tmux.sh` |
 | `scripts/*.sh` | **Generic helpers.** Cross-cutting shell utilities with no render role (e.g. plugin-install checks). Reserved for generic concerns — *not* widgets. | no | — |
-| `themes/*` | **Built-in themes.** Delimited data (`<element> <color>`), read by `theme use` and replayed as `theme set` calls. Not sourced, not executed. | n/a (data) | — |
-| `bundles/*` | **Built-in status-bar bundles.** Delimited data (`<slot> <format>`), read by `bundle use` and replayed as `segment set` calls. | n/a (data) | — |
+| `themes/*` | **Built-in themes.** Plain tmux files of `set -g @airline-<element> <color>` lines, loaded by `use` (`source-file` + `apply`). A theme is config, not airline production shell — it sets *public* options the idiomatic way. | sets public options (sourced by `use`) | — |
+| `bundles/*` | **Built-in segment sets.** Plain tmux files of `set -g @airline-segment-<slot> <format>` lines, loaded by the same `use`. Same shape as a theme; the split is only by convention (colors vs segments). | sets public options (sourced by `use`) | — |
 
 Notes:
 
@@ -93,7 +96,9 @@ graph TD
     LOGIC --> MECH["tmux.sh<br/><i>mechanical — sole tmux caller</i>"]
     WIDGETS --> MECH
     COLL --> MECH
-    LOGIC -. "use: reads data" .-> DATA["themes/* · bundles/*<br/><i>delimited data</i>"]
+    EXT -. "set -g @airline-*<br/>(static config)" .-> TMUX
+    CLI -. "use: source-file" .-> DATA["themes/* · bundles/*<br/><i>tmux config files</i>"]
+    DATA -. "set -g @airline-*" .-> TMUX
     MECH ==> TMUX([tmux server]):::ext
 
     classDef ext fill:#eee,stroke:#999,color:#333,font-style:italic;
@@ -109,25 +114,49 @@ graph LR
     C --> D[("@airline-* options")]
 ```
 
-## Data flow: stage, freeze, and what stays live
+## State model & data flow
 
-airline's `@airline-*` options are the **source of truth** (input): the status /
-health registries, the segment slots, the theme colors, and config. tmux stores
-them but takes no behavior from them. The tmux-native options that actually render
-the bar (`status-left`, `window-status-format`, the `*-style` options, pane
-borders, clock) are **derived output**. `set` mutates the source of truth;
-`apply` freezes it into the derived output:
+airline's state splits into **four** kinds, by who writes a value and when. This
+split is the spine of the whole design:
+
+| kind | who writes | when | examples |
+|------|-----------|:--:|----------|
+| **Public input** `@airline-*` | the **user** (`set -g`) | static | palette colors · `@airline-segment-<slot>` |
+| **Private state** `@airline--*` | **airline** | runtime | `--status[-key]` · `--health[-key]` · `--badge-status` · `--badge-health` · `--suspended` · `--cli` |
+| **Composed output** (native tmux opts) | **airline** | at `apply` | `status-left/right` · `window-status-*` · `*-style` · pane borders · `clock-mode-color` |
+| **Constant** (bash) | **nobody** (source) | — | glyphs · chevrons · name template · palette-token list · status ladder · severity ranking · slot→tier table |
+
+The classification is mechanical, not stylistic:
+
+- **A value is a tmux option only if something *outside compose* writes it** — a
+  user (public `@airline-*`) or airline at runtime (private `@airline--*`). A fixed
+  value that only compose *reads* is a **bash constant**, not an option. (A private
+  option airline would write at init only to read back at compose is pure overhead;
+  a constant baked straight into the format string does the identical thing.)
+- **Public vs private is exactly static vs dynamic.** Static config is the user's to
+  set, so it's public and idiomatic (`set -g @airline-active colour214`). Dynamic
+  state is airline's to manage, so it's private — **marked with a double dash**
+  (`@airline--`) so a user's `set -g @airline-…` can never land in it, and so a
+  reader (or the lint) can tell a variable's class from its name alone. (The `--`
+  convention is the old `record.sh`'s `--roster`.)
+- **Composed output is derived, never authored.** The tmux-native options that
+  render the bar are a *snapshot* of the inputs at freeze time; nobody edits them.
+
+**Source of truth → derived output.** Public inputs and private state are the
+source of truth; tmux stores them but takes no behavior from them. `apply` reads
+the whole source of truth and freezes it into the composed output:
 
 ```mermaid
 graph LR
-    INIT(["init"]):::verb -- "seeds defaults<br/>(clobbers)" --> S
-    SET(["set / use"]):::verb -- "stage (no render)" --> S
-    subgraph IN["airline state — source of truth"]
-        S["@airline-* options<br/>registries · slots · theme · config"]
+    INIT(["init"]):::verb -- "seed defaults" --> S
+    USER(["user: set -g @airline-*"]):::ext -- "stage (static)" --> S
+    EVT(["status / health set"]):::verb -- "write private (dynamic)" --> S
+    subgraph IN["source of truth"]
+        S["public @airline-*<br/>private @airline--*"]
     end
-    S -- "apply — freeze<br/>(pure · idempotent)" --> T
-    subgraph OUT["tmux render state — derived"]
-        T["status-left/right · window-status-format<br/>*-style · pane-border · clock"]
+    S -- "apply → recompose<br/>(freeze · idempotent)" --> T
+    subgraph OUT["composed output — derived"]
+        T["status-left/right · window-status-*<br/>*-style · pane-border · clock"]
     end
     T --> R([tmux renders the bar]):::ext
 
@@ -135,21 +164,21 @@ graph LR
     classDef verb fill:#dde,stroke:#669,color:#224;
 ```
 
-- **`set` stages.** A config `set` writes one `@airline-*` option and stops. The
-  bar still shows the previously-frozen values; staging is just "the source of
-  truth moved, the render is now stale."
-- **`apply` freezes.** It reads the *current* source of truth and composes the
-  derived output — baking palette colors in as literal constants, and (for
-  `theme`) reconfiguring the widgets' `@cpu_*`/`@batt_*` colors from the new
-  palette. `apply` composes from the whole source of truth, so it is **not**
-  per-noun isolated: a staged `theme set` is picked up by any later `apply`. That
-  is correct — derived output is a snapshot of the source of truth at freeze time,
-  not a per-noun delta.
-- **`init`** seeds airline's input state (default slots, F12 binds, `@airline-cli`,
-  config — clobbering to a baseline behind a sentinel), then composes. The entry
-  point calls `init` on first run *and* on a bare config reload; the sentinel
-  skips the clobber on reload, so re-sourcing `.tmux.conf` recomposes without
-  resetting runtime state. There is no separate top-level render verb.
+- **Setting an input *is* the stage.** Whether a user runs `set -g @airline-active
+  colour214` or airline writes a private `@airline--badge-status` at runtime, the
+  bar keeps showing the previously-frozen output until the next freeze. There is no
+  `stage` verb — moving an option is free; rendering is `apply`.
+- **`apply` freezes.** It runs `recompose`: read the current source of truth, bake
+  palette colors in as literal constants (and reconfigure the widgets' `@cpu_*`/
+  `@batt_*` colors from the palette), write the composed output. It composes from
+  the *whole* source of truth — not per-noun — so any pending change is picked up.
+  Idempotent and redraw-gated (`opt_setif_*`; one redraw iff something changed).
+- **`use <file>`** = `source-file` the file (a tmux config of `set -g @airline-*`
+  lines) then one `apply`. Loading configuration the standard tmux way.
+- **`init`** seeds defaults (default colors/segments behind a sentinel, F12 binds,
+  publishes `@airline--cli`), then composes. The entry point calls `init` on first
+  run *and* on a bare config reload; the sentinel skips the clobber on reload, so
+  re-sourcing `.tmux.conf` recomposes without resetting runtime state.
 
 ### What freezes and what stays live
 
@@ -174,20 +203,20 @@ This is the constant-vs-dynamic split. The bar holds three kinds of value, and
 
 The law: **a color is frozen; a selector is live; a reading is live.** `apply`
 freezes colors and nothing else — never the things that vary between applies. This
-is why `theme set`/`use` need an `apply` (they move frozen colors) but a job
-reporting status does not (it re-projects the scalar and the selector follows,
-redraw only).
+is why editing a color (`set -g @airline-*`) or a `use` needs an `apply` (they move
+frozen colors) but a job reporting status does not (it re-projects the scalar and
+the selector follows, redraw only).
 
 What calls what:
 
 - `airline.tmux` (entry point) → `init` (first run clobbers; reload recomposes).
-- a config `set`/`clear` (`theme`, `segment`) → stages only; the caller runs
-  `<noun> apply` when ready (so several `set`s can batch into one freeze).
-- `theme use` / `bundle use` → stages ×N then applies once, on the caller's behalf.
-- a runtime event (`status set`, `health set`) → contributor write + re-project
-  the badge scalar + redraw, no `apply`.
-- a `.tmux.conf` → drives all of the above through `run-shell "#{@airline-cli} …"`;
-  nobody sets `@airline-*` by hand (see *Configuration is API-only*).
+- a user setting a public option (`set -g @airline-*`) → stages only; the user
+  runs `apply` when ready (so several edits batch into one freeze).
+- `use <file>` → `source-file` (N staged `set -g`s) then one `apply`.
+- a runtime event (`status set`, `health set`) → private contributor write +
+  re-project the badge scalar + redraw, no `apply`.
+- a `.tmux.conf` → sets public `@airline-*` directly, then `run-shell
+  "#{@airline--cli} apply"` (or relies on the entry point's `init`).
 
 This replaces the divergent `main()` / `_airline_rebuild` pair: one compose path,
 so a theme switch repaints the whole bar.
@@ -195,127 +224,88 @@ so a theme switch repaints the whole bar.
 ## Enforcement (build-time lint)
 
 No runtime guards. A lint (gated in CI next to shellcheck, surfaced as
-`test/architecture.bats` with didactic failure messages) checks three invariants:
+`test/architecture.bats` with didactic failure messages) checks two invariants:
 
 - **A — only `tmux.sh` invokes the `tmux` binary.** Allowlist: `tmux.sh`.
   `collections.sh` is *not* on it — it reaches tmux only through `opt_*`, so there
-  are no direct calls to flag. (`themes/` and `bundles/` are pure data — no tmux
-  calls to begin with.) Excluded: the `AIRLINE_TMUX` test shim's `tmux ()` wrapper.
-- **B — the private `@airline-*` schema has one source of truth.** Callers pass
-  option *names* to `opt_*`, so names legitimately appear at call sites (Invariant
-  A still guarantees they reach tmux only through the option layer). What B forbids
-  is *duplicating the layout*: the collection key scheme (`@airline-<ns>` list +
-  `@airline-<ns>-<key>` tuples) is built only in `collections.sh`, and fixed scalar
-  names live as named constants referenced elsewhere. (Data files use *semantic*
-  names — `active`, `right-mid` — not `@airline-*`, so they don't participate.)
-- **C — data files stay data.** `themes/*` and `bundles/*` contain no `tmux`, no
-  `set-option`, and no `@airline-` — so a theme can never regress into a script
-  that sets options behind the CLI's back (the *Configuration is API-only* rule).
-  This guards the migration off the old `source-file` themes.
+  are no direct calls to flag. Excluded: the `AIRLINE_TMUX` test shim's `tmux ()`
+  wrapper. (Theme/bundle files set options directly, but they're config, not
+  production shell — the lint doesn't scan them.)
+- **B — the private `@airline--*` layout has one source of truth.** The double-dash
+  namespace is airline's dynamic state, and its *construction* belongs in one place:
+  the collection key scheme (`@airline--<ns>` list + `@airline--<ns>-<key>` tuples)
+  is built only in `collections.sh`; fixed private scalars (`@airline--badge-*`,
+  `@airline--suspended`, `@airline--cli`) live as named constants in their owning
+  module. Public `@airline-*` names are *not* policed — users and any layer may set
+  them; that's the whole point of the public tier. The lint flags a *constructed*
+  `@airline--` key (a `%s` builder or interpolated `@airline--<ns>-$…`) outside
+  `collections.sh`.
 
 These are grep-able. The plan is to land the lint first and let it run **red** —
 its violation list (today: everything in the current `airline.tmux`, the existing
 record store, and the ~46 `tmux set` calls in the widget adapters) becomes the
-rework worklist.
+rework worklist. (Invariant A is the worklist driver; B goes green once the private
+scheme lives only in `collections.sh`.)
 
 ## The CLI/API surface
 
-The public, stable contract. Users, `airline.tmux`, and external plugins drive
-airline through these verbs; nobody sets `@airline-*` options by hand. Argument
-detail (flags like `--transient`, `-t <window>`, `--side`, `--format`) lives in
-`airline --help`; this section fixes the *grammar*, not the man page. (The
-`-t <window>` flag, where it appears, scopes *which window* a command targets —
-a separate axis from the positional `<target>` a `set` writes to.)
+The public, stable contract for the **dynamic** nouns and the **lifecycle**.
+Static config is *not* here — users set public `@airline-*` options directly (see
+*Static config* below). Argument detail (flags like `--transient`, `-t <window>`)
+lives in `airline --help`; this section fixes the *grammar*. (The `-t <window>`
+flag, where it appears, scopes *which window* a command targets.)
 
 ### Top-level verbs (whole-system, no noun)
 
 ```
-airline init                 # seed airline state from defaults, then compose the bar
-airline suspend | resume     # set the suspended flag + recompose; also toggles prefix/key-table
+airline init                 # seed defaults + publish @airline--cli + binds, then apply
+airline apply                # freeze: recompose the bar from the current source of truth
+airline use <file>           # source-file a tmux config (set -g @airline-*), then apply
+airline show                 # print the current resolved config + state
+airline suspend | resume     # toggle the suspended flag + recompose; also prefix/key-table
 airline help                 # usage  (also -h / --help, and <noun> help)
 ```
 
 ### Nouns and their verbs
 
+Only the **dynamic** channels are nouns — they're the one kind of state a user
+can't just `set -g`, because each is a live reduce over many runtime contributors:
+
 ```
-airline status                          set | clear | show
-airline health                          set | clear | show
-airline segment                         set | clear | apply | show
-airline theme    set | use | apply | show
-airline config   set | apply | show
-airline bundle   use
+airline status   set | clear | show
+airline health   set | clear | show
 ```
 
-`apply` is a per-noun verb, not a top-level one (see *Data flow* below): a config
-`set` stages, and `<noun> apply` freezes the staged state into the bar.
+`apply` is top-level, not per-noun: there is one freeze (`recompose`) over the
+whole source of truth. `status`/`health` `set` need no `apply` — they're live
+runtime events that re-project a badge scalar and redraw (see the freeze law).
 
 ### Verb conventions
 
-The verbs are not chosen per noun — they fall into a few fixed roles, and which
-roles a noun gets is determined by its data model:
+`status` and `health` are symmetric — identical verbs, because they're the same
+shape: a collection of runtime contributors reduced to one badge.
 
-| Verb | Role | status | health | segment | theme | config | bundle |
-|------|------|:--:|:--:|:--:|:--:|:--:|:--:|
-| `set` / `clear` | write / remove a **value** at a **target** | ✓² | ✓² | ✓ | set¹ | set | — |
-| `apply` | **freeze** the staged state into composed tmux output | — | — | ✓ | ✓ | ✓ | — |
-| `use <name>` | replay a delimited **data file** as `set`s, then `apply` once | — | — | — | ✓ | — | ✓ |
-| `show` | read current state | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| Verb | Role |
+|------|------|
+| `set <key> <value>` | a contributor reports in — a status *level* or a health *severity*; writes the private tuple, re-projects the badge, redraws (gated) |
+| `clear <key>` | a contributor drops out; re-projects, redraws (gated) |
+| `show` | list this channel's contributors and the reduced badge |
 
-¹ `theme set <element> <color>`; no `clear` — a `use` replaces the whole palette.
-² **Config `set` stages; runtime `set` signals.** A `segment`/`theme` `set` only
-  writes the source-of-truth option (no render); an `apply` freezes it into the
-  bar. A `status`/`health` `set` is a live runtime event — it renders immediately
-  (redraw-gated), so it has no staging step and no `apply`.
+`set`/`clear` are **live**: they write a private `@airline--<ns>-<key>` tuple, run
+the `project` step, and redraw only if the rendered badge changed. No staging, no
+`apply` — the badge selector is already baked; only *which* color shows moves. (The
+`-t <window>` flag is a separate axis: it scopes *which window*, not what is set.)
 
-- **`set <target> <value>` / `clear <target>`** write or remove a *value* at a
-  target — a status contributor's token, a health key's severity, a segment slot's
-  format, a theme color element, a config knob. `set` **always** takes a (target, value)
-  pair; no exceptions. For the **config** nouns (`segment`, `theme`, `config`) a
-  `set` only *stages*: it writes the source-of-truth `@airline-*` option and
-  renders nothing — an `apply` freezes it. For the **runtime** nouns (`status`,
-  `health`) a `set` is a
-  live event that renders immediately. (The `-t <window>` flag is a separate axis:
-  it scopes *which window*, not what is being set.)
-- **`apply`** freezes a config noun's staged state into the bar: it reads the
-  source-of-truth `@airline-*` options, bakes the palette colors into the tmux
-  output as constants, and — for `theme` — reconfigures the on-bar widgets from
-  the new palette. The baked values hold until the next `apply`. It is idempotent
-  and redraw-gated (rewrites only the tmux options that actually changed). There
-  is **no top-level `apply`**; it is a per-noun verb (`theme apply`, `segment
-  apply`), and `init`/`suspend`/`resume` drive the same compose internally.
-- **`use <name>`** replays a delimited data file as a batch of staged `set`s
-  followed by a single `apply` — a theme file is `<element> <color>` lines (→
-  `theme set` ×N, then `theme apply`), a bundle file is `<slot> <format>` lines (→
-  `segment set` ×N, then `segment apply`). It only ever reads data and stages
-  values — no sourcing, no execution — so `<name>` may be a packaged file or an
-  absolute path with equal safety. See *Data files* below.
-- **`show`** always — the component's current state (for `theme`, the current
-  palette). One read verb across all nouns; we deliberately do not mirror tmux's
-  own `show`/`list` split, for internal consistency.
+The lifecycle verbs (`init`, `apply`, `use`, `show`, `suspend`/`resume`) act on the
+whole system, not a noun. Bare `show` prints the resolved config; `status show` /
+`health show` print a channel's contributors — one read verb, uniform across the
+surface (cheap, because it just wraps `opt_*` / `coll_*`).
 
-The asymmetries are the data model showing through, not inconsistencies:
-
-- **status and health are symmetric — no `register`, no `apply`.** Both are
-  collections of dynamic contributors (one per job/agent) created on first `set`
-  and gone on `clear`, and both *reduce* their contributors to a single badge —
-  health by severity (`ok alert stress`), status by a semantic ladder
-  (`active < result < attention`, low→high; the most actionable reporter wins, see
-  *The status ladder* under Collections). Both orders are handed to the same
-  `reduce` as data. Neither noun carries per-entry presentation config, so there is
-  nothing to declare; the badge's one glyph is a `config` knob (`status-glyph` /
-  `health-glyph`), not a per-entry attribute.
-- **segment has no `register`** — its targets are a *fixed* set of named slots
-  (`left-out`, `left-mid`, `left-in`, `right-in`, `right-mid`, `right-out`), so
-  there is nothing to declare; you `set`/`clear` a slot's format. Not a
-  collection — just keyed options at known names.
-- **theme has no `clear`; bundle has only `use`** — `theme set <element> <color>`
-  writes one color and a `theme use` replaces the whole palette, so there's nothing
-  to `clear`. A bundle is *only* a data file you `use` (its individual writes are
-  `segment set`s), so it carries no setter of its own.
-- **config has no `clear` or `register`** — its targets are a fixed set of named
-  scalar knobs (`tmpl-window`, `status-glyph`, `health-glyph`, …) that always hold a value; `init`
-  seeds the defaults and `set` overrides one. There is nothing to declare and
-  nothing to remove — to reset a knob, `set` it (or re-`init`).
+**Why these are the only nouns.** There is no `segment`, `theme`, or `config` noun:
+those are *static* public input, set with `set -g @airline-*` and frozen by `apply`.
+A CLI setter for them would only duplicate `set -g` — abstraction without benefit
+(see *Static config*). The dynamic channels earn a noun because a reduce-to-one-badge
+can't be expressed as a single `set -g`.
 
 ### Private verbs
 
@@ -325,81 +315,70 @@ Internal but CLI-reachable callbacks use a leading underscore:
 airline _unfocus <window-id>     # pane-focus-out hook callback (clears --transient signals)
 ```
 
-`init` and the per-noun `apply` are public (no underscore): the entry point,
-mutations, and users all call them.
+`init`, `apply`, and `use` are public (no underscore): the entry point, user
+config, and external callers all use them.
 
-### Configuration is API-only
+### Static config
 
-Every input airline takes — theme colors, segment formats, and the scalar knobs
-(`config`) — enters through the CLI/API. **Nothing sets `@airline-*` by hand**,
-not in a data file and not in `.tmux.conf`. airline owns the entire `@airline-*`
-namespace; the CLI is its only writer (through `tmux.sh`). That ownership is what
-lets airline validate input at the boundary, keep the names private, and run the
-stage/freeze model — and it retires the old `load_theme` / `tmux source-file`
-path, where theme files set `@airline-*` directly.
-
-`config` holds the scalars that are neither colors nor segments — `tmpl-window`
-(the window-name template) and the two badge glyphs, `status-glyph` (left, app
-status) and `health-glyph` (right, health). Each badge glyph is a single literal
-the user types — the byte typed is the byte rendered, no name table and no escape;
-the powerline chevrons are *not* here (structural, hardcoded). Like theme and
-segment, `config` follows stage/freeze: `config set <key> <value>` stages,
-`config apply` freezes, `init` seeds the defaults.
-
-A `.tmux.conf` drives airline through `run-shell`, using the CLI path `init`
-publishes (`@airline-cli`):
+Static config — palette colors and segment slot formats — is **public** input the
+user sets the idiomatic tmux way:
 
 ```tmux
-# … after the plugin's init has run (it publishes @airline-cli):
-run-shell "#{@airline-cli} theme use solarized-dark"
-run-shell "#{@airline-cli} config set tmpl-window '#W'"
-run-shell "#{@airline-cli} segment set right-mid '#{cpu_fg_color}#{cpu_icon}'"
+set -g @airline-inner-bg colour234
+set -g @airline-active   colour214
+set -g @airline-segment-right-mid "#{cpu_fg_color}#{cpu_icon}"
+run-shell "#{@airline--cli} apply"   # freeze; or just let the entry point's init do it
 ```
 
-**Trade-off (accepted, revisit if awkward):** this is less idiomatic than tmux's
-usual `set -g @plugin-opt value` and is order-sensitive — config calls must follow
-`init`. We chose full API ownership over native feel. If real `.tmux.conf` use
-proves clumsy, the fallback is a small, documented set of *read-at-init* public
-input options — not reopening hand-set of the private layer.
+`recompose` reads these `@airline-*` options to bake the bar, so it never matters
+whether they were written by a user, a theme file, or `.tmux.conf` — the source of
+truth is the same option either way. There is therefore **no `theme set` / `segment
+set` / `config set`**: setting the option *is* the API.
 
-### Data files (`themes/`, `bundles/`) and `use`
+What is **not** a public option:
 
-Themes and bundles are **delimited data files** — not scripts, not tmux
-source-files:
+- **Glyphs, chevrons, and the window-name template are constants**, not config. They
+  never change at runtime and aren't user-tunable, so they're bash constants in
+  `compose.sh`, baked into the format strings at `apply`. (A private option airline
+  writes at init only to read back at compose would be pure overhead.) The badge
+  marks (`●`), the powerline chevrons (`U+E0B0`/`U+E0B2`), and the name template
+  (`#I:#W`) live there, marked "not configurable."
+- **The whole `@airline--*` namespace is private** — airline's dynamic state, never
+  hand-set (see *State model*).
 
+**Trade-off accepted:** changing a color at runtime is two steps (`set -g …; apply`)
+not one, and a typo'd option name silently no-ops instead of erroring at a CLI
+boundary. Both are the normal tmux-plugin experience; we took idiomatic, legible
+config over a validating wrapper that bought nothing the freeze didn't already give.
+
+### Themes and bundles (`use`)
+
+A theme or bundle is a **plain tmux file** of `set -g @airline-*` lines — the same
+thing a user would type, packaged:
+
+```tmux
+# themes/solarized-dark
+set -g @airline-inner-bg colour234
+set -g @airline-active   colour214
+# …
 ```
-themes/<name>     <element> <color>     e.g.  active    colour214
-bundles/<name>    <slot> <format>       e.g.  right-mid #{cpu_fg_color}#{cpu_icon}…
-```
 
-`theme use <name>` reads the theme file, stages a `theme set <element> <color>` per
-line, then runs one `theme apply`; `bundle use <name>` stages a `segment set <slot>
-<format>` per line, then one `segment apply`. That is the whole mechanism.
-Consequences:
+`use <file>` is `source-file <file>` then one `apply`. That's the whole mechanism —
+"load configuration" the standard tmux way, with no bespoke `<element> <color>`
+format and no parser. A theme sets colors, a bundle sets `@airline-segment-*`; the
+split is convention only, and a single file may do both.
 
-- **No execution.** A data file can only ever yield validated `set` calls, so a
-  `<name>` is safe whether packaged or an absolute path — `use` reads data, it
-  never sources or runs code.
-- **Semantic, not tmux, names.** Files name *elements* and *slots* (`active`,
-  `right-mid`), never `@airline-*`; airline owns that mapping. Invariant B holds
-  for free, and the files contain no tmux calls — nothing to lint.
-- **`set` stages; `apply` freezes.** A `use` is N staged `set`s then one `apply`;
-  if `set` rendered, a 14-line theme would repaint 14 times. Config `set`s (theme,
-  segment) only write the source of truth; `apply` composes. (status/health `set`
-  are the exception — runtime events that redraw immediately, not part of a batch.)
-- **Widget colors aren't in the data; backgrounds aren't either.** A bundle's cpu
-  slot is static text like `#{cpu_fg_color}#{cpu_icon}`, referencing `@cpu_*` (the
-  thresholds `apply`'s widget config bakes from the palette) — so the format is
-  theme-agnostic data. A slot may live-reference a *foreground* role,
-  `#[fg=#{@airline-emphasized}]`: that's the published palette read live, and since
-  the palette only moves at `apply` it is effectively a constant too. But a slot
-  must **never set a background** — compose owns the block's tier `bg` and bakes
-  the flanking chevrons to match it, so a data-supplied `bg=` would desync the
-  chevron seam. The role→widget mapping is logic; it lives in `apply`, not in
-  theme files.
-
-The `airline`-runs-a-file-that-calls-`airline` cycle is benign: the inner calls are
-staged `set`s (no re-entry), and `use` does the single `apply` at the end.
+- **Executable, by design.** A theme is a tmux config file, so it runs tmux
+  commands — the original, well-understood model. The cost is no "can't regress into
+  a script" guarantee, which only matters for *untrusted third-party* themes; your
+  own are config you'd write by hand anyway.
+- **A slot may live-reference a foreground role**, `#[fg=#{@airline-emphasized}]` —
+  the published palette read live; since the palette only moves at `apply` it's
+  effectively constant. But a slot must **never set a background**: compose owns the
+  block's tier `bg` and bakes the flanking chevrons to match, so a stray `bg=` would
+  desync the chevron seam.
+- **`use` ends in one `apply`.** The N `set -g` lines stage; the single trailing
+  `apply` freezes — a 14-line theme repaints once, not 14 times.
 
 ## The mechanical layer (`tmux.sh`)
 
@@ -446,7 +425,7 @@ caller via `current_window`.
 | Function | tmux call | Purpose |
 |----------|-----------|---------|
 | `redraw` | `refresh-client -S` | force a bar re-eval (no client → harmless) |
-| `source_file <path>` | `source-file` | source a tmux config file (themes are data now, not sourced — candidate for removal if unused) |
+| `source_file <path>` | `source-file` | load a tmux config file — the engine behind `use` (themes/bundles are tmux files) |
 | `current_window` | `display-message -p '#{window_id}'` | resolve "current" for window-scoped callers |
 | `hook_set <spec> <cmd>` / `hook_unset <spec>` | `set-hook -g` / `-gu` | the focus-out consume-on-view hook |
 | `key_bind <table> <key> <cmd>` / `key_unbind <table> <key>` | `bind-key` / `unbind-key` | the F12 suspend/resume binds |
@@ -464,14 +443,18 @@ Two storage shapes, each a single-delimiter string split with bash `IFS`/`read` 
 no awk, no jq, no subprocess on the hot path:
 
 ```
-@airline-<ns>          registry: a space-delimited list of keys (membership)
-@airline-<ns>-<key>    that entry's fixed-arity tuple, tab-delimited
+@airline--<ns>          registry: a space-delimited list of keys (membership)
+@airline--<ns>-<key>    that entry's fixed-arity tuple, tab-delimited
 ```
+
+The double dash marks these **private** — airline's dynamic state, never hand-set
+(see *State model*) — and keeps them clear of any public `@airline-<element>` a
+user might set.
 
 Rules:
 
 - **Names are data, never inferred.** Membership is the registry list; we never
-  discover entries by globbing/parsing `@airline-*` option names. Keys are only
+  discover entries by globbing/parsing `@airline--*` option names. Keys are only
   ever *constructed* from `(ns, key)`, so a key may contain `-`.
 - **One delimiter per option.** Registry = space-delimited names; tuple =
   tab-delimited fields. Every field is controlled-vocabulary or a flag (a token, a
@@ -481,10 +464,10 @@ Rules:
   the bar never references a tuple directly. Both badges are **aggregates** — a
   reduce over the window's contributors that a tmux format can't compute — so each
   is *projected* to a per-window scalar at `set`/`clear` time: health's max severity
-  to `@airline-badge-health` (compose's `health_project`), status's precedence-winning
-  level to `@airline-badge-status` (`status_project`). Both scalars sit OUTSIDE the
-  collection namespaces (`@airline-status*` / `@airline-health*`) — the status
-  registry *is* `@airline-status`, so the badge can't reuse that name — and the badge
+  to `@airline--badge-health` (compose's `health_project`), status's precedence-winning
+  level to `@airline--badge-status` (`status_project`). Both scalars sit OUTSIDE the
+  collection namespaces (`@airline--status*` / `@airline--health*`) — the status
+  registry *is* `@airline--status`, so the badge can't reuse that name — and the badge
   reads its scalar live through a token→color selector. This is what makes status and
   health symmetric.
   Because render always goes through the projected scalar, a contributor tuple may
