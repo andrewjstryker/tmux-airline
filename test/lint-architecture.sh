@@ -11,12 +11,13 @@
 #
 #   A — only tmux.sh invokes the `tmux` binary. Allowlist: tmux.sh. Everything
 #       else reaches tmux only through tmux.sh's opt_* / verb functions.
-#   B — the private @airline-* collection layout has one source of truth
-#       (collections.sh). Pending until collections.sh lands — see below.
-#   C — data files (themes/, bundles/) stay data: no tmux, no set-option, no
-#       @airline-, so a theme can't regress into a script behind the CLI.
+#   B — the private @airline--* layout (double-dash) has one source of truth:
+#       collections.sh builds the @airline--<ns> registry/tuple scheme. Nobody
+#       else *constructs* an @airline-- name; fixed private scalars are named
+#       constants in their owning module. Public @airline-* is not policed —
+#       users and any layer may set it (that is the point of the public tier).
 #
-# Usage: test/lint-architecture.sh [A|B|C|all]   (default: all)
+# Usage: test/lint-architecture.sh [A|B|all]   (default: all)
 # Exit:  0 = clean, 1 = violations (printed, one per line), 2 = bad usage.
 
 set -u
@@ -60,19 +61,19 @@ _check_a () {
   return $rc
 }
 
-# Invariant B — the collection key scheme is built in ONE place. The telltale of
-# *constructing* a key is a built name: the printf template `@airline-%s` (the
-# registry/tuple builders) or an interpolated key `@airline-status-$…` /
-# `@airline-health-$…`. Both belong only in collections.sh; everyone else reaches a
-# key through coll_optname / coll_*. A *fixed* scalar like `@airline-health-glyph`
-# is fine — it's a named constant, not a constructed key, so the pattern requires a
-# `%s` or a `$` after the namespace. (Today this still flags the to-be-replaced
-# scripts/record.sh — its worklist entry, green once record.sh is gone.)
+# Invariant B — the private @airline--* scheme is built in ONE place. The telltale
+# of *constructing* a private name is a `%s` printf template or a `$` interpolation
+# right after the double dash: `@airline--%s` (the registry/tuple builders) or
+# `@airline--<ns>-$…`. Those belong only in collections.sh; everyone else reaches a
+# private key through coll_optname / coll_*. A *fixed* private scalar like
+# `@airline--badge-status` is fine — a named constant, not a constructed key, so the
+# pattern requires a `%` or `$` in the name. Public single-dash `@airline-*` is not
+# matched at all (the leading `--` is required) — it is the open, user-settable tier.
 _check_b () {
   local f rc=0 hits
   while IFS= read -r f; do
     [[ "$(basename "$f")" == collections.sh ]] && continue   # the one home for the scheme
-    hits="$(grep -nE '@airline-(%s|(status|health)-[$])' "$f" 2>/dev/null)" || continue
+    hits="$(grep -nE '@airline--[a-z-]*[%$]' "$f" 2>/dev/null)" || continue
     [[ -z "$hits" ]] && continue
     while IFS= read -r line; do
       [[ "${line#*:}" =~ ^[[:space:]]*# ]] && continue        # skip comment prose
@@ -83,31 +84,13 @@ _check_b () {
   return $rc
 }
 
-# Invariant C — data files must contain only data. Configuration flows through
-# the CLI/API, so a packaged theme/bundle may not call tmux or name @airline-*.
-_check_c () {
-  shopt -s nullglob
-  local f rc=0 hits
-  for f in "$ROOT"/themes/* "$ROOT"/bundles/*; do
-    [[ -f "$f" ]] || continue
-    hits="$(grep -nE '(\btmux\b|set-option|@airline-)' "$f" 2>/dev/null)" || continue
-    [[ -z "$hits" ]] && continue
-    rc=1
-    while IFS= read -r line; do
-      printf 'C: %s:%s\n' "${f#"$ROOT"/}" "$line"
-    done <<< "$hits"
-  done
-  return $rc
-}
-
 main () {
   local which="${1:-all}" rc=0
   case "$which" in
     A)   _check_a || rc=1 ;;
     B)   _check_b || rc=1 ;;
-    C)   _check_c || rc=1 ;;
-    all) _check_a || rc=1; _check_b || rc=1; _check_c || rc=1 ;;
-    *)   printf 'usage: %s [A|B|C|all]\n' "$0" >&2; exit 2 ;;
+    all) _check_a || rc=1; _check_b || rc=1 ;;
+    *)   printf 'usage: %s [A|B|all]\n' "$0" >&2; exit 2 ;;
   esac
   return $rc
 }

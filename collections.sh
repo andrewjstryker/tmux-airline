@@ -48,13 +48,15 @@ _coll_ounset () { # <win|""> <name>
   if [[ -n "$1" ]]; then opt_unset_window "$1" "$2"; else opt_unset_global "$2"; fi
 }
 
-# Option names — constructed, never parsed.
-_coll_reg () { printf '@airline-%s' "$1"; }            # ns       → registry option
-_coll_key () { printf '@airline-%s-%s' "$1" "$2"; }    # ns key   → tuple option
+# Option names — constructed, never parsed. The double dash marks them PRIVATE:
+# airline's dynamic state, never hand-set, fenced off from any public @airline-<el>
+# a user might set (DESIGN.md §State model). This scheme is built here and nowhere
+# else — Invariant B greps for a constructed `@airline--` key outside this file.
+_coll_reg () { printf '@airline--%s' "$1"; }           # ns       → registry option
+_coll_key () { printf '@airline--%s-%s' "$1" "$2"; }   # ns key   → tuple option
 
-# Public name constructor: the tuple option for (ns, key). compose embeds this in
-# a tmux format as a live `#{…}` reference (a single-field tuple is render-safe),
-# so the @airline-<ns>-<key> scheme is built here and nowhere else (Invariant B).
+# Public name constructor: the private tuple option for (ns, key). The single home
+# for the @airline--<ns>-<key> scheme, so callers never hand-build a private name.
 coll_optname () { _coll_key "$@"; }                    # <ns> <key> → option name
 
 #-----------------------------------------------------------------------------#

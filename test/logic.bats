@@ -90,7 +90,7 @@ _seed_palette() {
   load_compose
   _seed_palette
   opt_set_global @airline-segment-left-out X
-  opt_set_global @airline-suspended 1
+  opt_set_global @airline--suspended 1
   _palette_load
   run _build_status_left
   refute_output --partial "bg=colour238"   # outer dimmed to inner-bg
@@ -120,16 +120,6 @@ _seed_palette() {
   assert_output --partial "window_zoomed_flag"    # highlight bg via mode/active
 }
 
-@test "window-status-format honors a custom @airline-tmpl-window" {
-  load_compose
-  _seed_palette
-  opt_set_global @airline-tmpl-window "#W"
-  set_window_formats
-  run get_option window-status-format
-  assert_output --partial "#[default]"
-  refute_output --partial "#I:#W"
-}
-
 # --- badges: status (left) + health (right) ---------------------------------
 
 @test "status badge renders a selector over the projected status scalar" {
@@ -137,7 +127,7 @@ _seed_palette() {
   _seed_palette
   set_window_formats
   run get_option window-status-format
-  assert_output --partial "@airline-badge-status"   # the projected reduced-level scalar
+  assert_output --partial "@airline--badge-status"   # the projected reduced-level scalar
   assert_output --partial "●"                        # the default badge glyph
 }
 
@@ -151,21 +141,12 @@ _seed_palette() {
   assert_output --partial "attention},colour208"   # attention → alert
 }
 
-@test "status badge honors a custom @airline-status-glyph" {
-  load_compose
-  _seed_palette
-  opt_set_global @airline-status-glyph "▲"
-  set_window_formats
-  run get_option window-status-format
-  assert_output --partial "▲"
-}
-
 @test "window-status-format places status left of the name and health right" {
   load_compose
   _seed_palette
   set_window_formats
   run get_option window-status-format
-  [[ "$output" == *"@airline-badge-status"*"#I:#W"*"@airline-badge-health"* ]]
+  [[ "$output" == *"@airline--badge-status"*"#I:#W"*"@airline--badge-health"* ]]
 }
 
 @test "status_project reduces contributors to the highest level" {
@@ -175,7 +156,7 @@ _seed_palette() {
   coll_set_window "$win" status test   result
   coll_set_window "$win" status review attention
   status_project "$win"
-  run opt_get_window "$win" @airline-badge-status
+  run opt_get_window "$win" @airline--badge-status
   assert_output "attention"
 }
 
@@ -183,7 +164,7 @@ _seed_palette() {
   load_compose
   win="$(current_window)"
   status_project "$win" || true   # returns 1 = nothing to render (redraw-gate signal)
-  run opt_get_window "$win" @airline-badge-status
+  run opt_get_window "$win" @airline--badge-status
   assert_output ""
 }
 
@@ -204,7 +185,7 @@ _seed_palette() {
   status_project "$win"
   coll_unregister_window "$win" status review
   status_project "$win"
-  run opt_get_window "$win" @airline-badge-status
+  run opt_get_window "$win" @airline--badge-status
   assert_output ""
 }
 
@@ -213,16 +194,7 @@ _seed_palette() {
   _seed_palette
   set_window_formats
   run get_option window-status-format
-  assert_output --partial "@airline-badge-health"   # the projected reduced-severity scalar
-}
-
-@test "health badge honors a custom @airline-health-glyph" {
-  load_compose
-  _seed_palette
-  opt_set_global @airline-health-glyph "✚"
-  set_window_formats
-  run get_option window-status-format
-  assert_output --partial "✚"
+  assert_output --partial "@airline--badge-health"   # the projected reduced-severity scalar
 }
 
 @test "health_project reduces contributors to the max severity scalar" {
@@ -232,7 +204,7 @@ _seed_palette() {
   coll_set_window "$win" health disk alert
   coll_set_window "$win" health net stress
   health_project "$win"
-  run opt_get_window "$win" @airline-badge-health
+  run opt_get_window "$win" @airline--badge-health
   assert_output "stress"
 }
 
@@ -241,7 +213,7 @@ _seed_palette() {
   win="$(current_window)"
   coll_set_window "$win" health cpu ok
   health_project "$win" || true   # returns 1 = nothing to render (redraw-gate signal)
-  run opt_get_window "$win" @airline-badge-health
+  run opt_get_window "$win" @airline--badge-health
   assert_output ""
 }
 
@@ -262,7 +234,7 @@ _seed_palette() {
   health_project "$win"
   coll_unregister_window "$win" health net
   health_project "$win"
-  run opt_get_window "$win" @airline-badge-health
+  run opt_get_window "$win" @airline--badge-health
   assert_output ""
 }
 

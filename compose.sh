@@ -61,13 +61,15 @@ declare -ga AIRLINE_PALETTE_TOKENS=(active alert stress ok special monitor copy 
 # collection layer stays severity-agnostic.
 declare -ga AIRLINE_SEVERITIES=(ok alert stress)
 
-# The window-scoped scalars the two badges render — each a reduction projected from
-# its collection at set/clear time (status_project / health_project) and read live
-# by the window format through a token→color selector. Deliberately OUTSIDE both
-# collection namespaces (@airline-status*, @airline-health*) so a contributor key
-# can never collide with a badge scalar.
-AIRLINE_OPT_STATUS='@airline-badge-status'   # left badge:  reduced app-status level
-AIRLINE_OPT_HEALTH='@airline-badge-health'   # right badge: reduced health severity
+# PRIVATE state options (@airline--*, double-dash; DESIGN.md §State model) — the
+# window-scoped scalars the two badges render. Each is a reduction airline projects
+# from its collection at set/clear time (status_project / health_project), read live
+# by the window format through a token→color selector. The `--` keeps them clear of
+# the collection namespaces (@airline--status*, @airline--health*) AND of any public
+# @airline-<element> a user sets, so nothing can collide with a badge scalar.
+AIRLINE_OPT_STATUS='@airline--badge-status'   # left badge:  reduced app-status level
+AIRLINE_OPT_HEALTH='@airline--badge-health'   # right badge: reduced health severity
+AIRLINE_OPT_SUSPENDED='@airline--suspended'   # private flag: dim palette for nested sessions
 
 # The status ladder — semantic levels, low→high precedence, each mapped to a theme
 # color role. The order is handed to coll_reduce as the ranking (collections stays
@@ -78,11 +80,14 @@ AIRLINE_OPT_HEALTH='@airline-badge-health'   # right badge: reduced health sever
 declare -ga AIRLINE_STATUS_LEVELS=(active result attention)
 declare -gA AIRLINE_STATUS_COLOR=([active]=active [result]=ok [attention]=alert)
 
-# The default badge mark — the glyph a status / health badge shows when the caller
-# names none. Overridden per channel via `config set status-glyph` / `health-glyph`,
-# each a plain literal (the byte typed is the byte rendered). Defined once here, not
-# repeated at the call sites.
-AIRLINE_GLYPH_BADGE='●'
+# Private rendering vocabulary — airline-owned CONSTANTS, baked into the composed
+# format strings at apply. Not configurable: no public option, no private option, no
+# knob (DESIGN.md §Static config). They never change at runtime and aren't a user's
+# to tune; a value only compose reads is a constant, not an option. The glyph and
+# chevron literals are set below where the byte injection is visible.
+AIRLINE_TMPL_WINDOW='#I:#W'   # window-name template (index:name)
+AIRLINE_GLYPH_STATUS='●'      # left badge mark  (status)
+AIRLINE_GLYPH_HEALTH='●'      # right badge mark (health)
 
 # Boundary validators — pure predicates the CLI calls before it stores anything.
 _segment_slot_valid () {
@@ -102,14 +107,14 @@ _theme_element_valid () {
 # harness sources compose.sh from within a helper).
 declare -gA THEME
 
-# Read every theme element into THEME, then apply the suspended dimming when
-# @airline-suspended is 1 (flat, muted palette for nested sessions).
+# Read every theme element into THEME, then apply the suspended dimming when the
+# private suspended flag is 1 (flat, muted palette for nested sessions).
 _palette_load () {
   local el
   for el in "${AIRLINE_THEME_ELEMENTS[@]}"; do
     THEME[$el]="$(opt_get_global "@airline-$el")"
   done
-  if [[ "$(opt_get_global @airline-suspended)" == 1 ]]; then _palette_suspend; fi
+  if [[ "$(opt_get_global "$AIRLINE_OPT_SUSPENDED")" == 1 ]]; then _palette_suspend; fi
 }
 
 _palette_suspend () {
@@ -133,13 +138,15 @@ _palette_suspend () {
 
 # Powerline chevron between two backgrounds. The glyph is structural — its fg is the
 # left block's bg, its bg the right block's, so the separator carries the color
-# gradient. The two glyphs (U+E0B0 / U+E0B2) are hardcoded in _chev_right/_chev_left
-# below, never configurable: a bare-char knob would render against the wrong
-# gradient. (A "no powerline font" mode, if wanted, is a separate switch — not a
-# per-chevron option.)
+# gradient. The two glyphs (U+E0B0 / U+E0B2) are private rendering CONSTANTS
+# (AIRLINE_CHEV_* below), never configurable: a bare-char knob would render against
+# the wrong gradient. (A "no powerline font" mode, if wanted, is a separate switch —
+# not a per-chevron option.)
+AIRLINE_CHEV_RIGHT=""   # powerline separator, status-left
+AIRLINE_CHEV_LEFT=""    # powerline separator, status-right
 _chevron () { printf '#[fg=%s,bg=%s]%s' "$2" "$1" "$3"; }   # left_bg right_bg glyph
-_chev_right () { _chevron "$2" "$1" ""; }
-_chev_left  () { _chevron "$1" "$2" ""; }
+_chev_right () { _chevron "$2" "$1" "$AIRLINE_CHEV_RIGHT"; }
+_chev_left  () { _chevron "$1" "$2" "$AIRLINE_CHEV_LEFT"; }
 
 # The non-empty slots on a side, in render order. <left|right>
 _active_slots () {
@@ -282,19 +289,17 @@ health_project () {   # <win>
 # redraw across the whole bar), 1 when every value was already current.
 set_window_formats () {
   local bg="${THEME[inner-bg]}" template mode_fg hi_expr changed=1
-  template="$(opt_getor_global @airline-tmpl-window '#I:#W')"
+  template="$AIRLINE_TMPL_WINDOW"
   mode_fg="$(window_mode_fg)"
   hi_expr="$(window_mode_hi)"
 
   # Status badge (left of the name): one glyph at the window's reduced level.
-  local status_expr sglyph
-  sglyph="$(opt_getor_global @airline-status-glyph "$AIRLINE_GLYPH_BADGE")"
-  status_expr="#{?$AIRLINE_OPT_STATUS,#[fg=$(_status_token_expr "$AIRLINE_OPT_STATUS" "${THEME[primary]}")]$sglyph ,}"
+  local status_expr
+  status_expr="#{?$AIRLINE_OPT_STATUS,#[fg=$(_status_token_expr "$AIRLINE_OPT_STATUS" "${THEME[primary]}")]$AIRLINE_GLYPH_STATUS ,}"
 
   # Health badge (right of the name): one glyph at the window's reduced severity.
-  local health_expr hglyph
-  hglyph="$(opt_getor_global @airline-health-glyph "$AIRLINE_GLYPH_BADGE")"
-  health_expr="#{?$AIRLINE_OPT_HEALTH, #[fg=$(_palette_token_expr "$AIRLINE_OPT_HEALTH" "${THEME[primary]}")]$hglyph,}"
+  local health_expr
+  health_expr="#{?$AIRLINE_OPT_HEALTH, #[fg=$(_palette_token_expr "$AIRLINE_OPT_HEALTH" "${THEME[primary]}")]$AIRLINE_GLYPH_HEALTH,}"
 
   opt_setif_global window-status-separator " " && changed=0
   opt_setif_global window-status-format \

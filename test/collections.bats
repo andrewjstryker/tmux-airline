@@ -49,10 +49,10 @@ load helper
   [ "$prio" = "20" ]
 }
 
-@test "coll_optname builds the tuple option name (for live format refs)" {
+@test "coll_optname builds the private tuple option name" {
   load_collections
   run coll_optname status build
-  assert_output "@airline-status-build"
+  assert_output "@airline--status-build"
 }
 
 @test "get is empty for an unset key" {
