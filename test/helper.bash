@@ -32,15 +32,27 @@ load_collections() {
   source "$PROJECT_ROOT/collections.sh"
 }
 
-# Source the logic layer (compose.sh) on top of the mechanical layer (tmux.sh),
+# Source the render layer (render.sh) on top of the mechanical layer (tmux.sh),
 # with the `tmux` command pointed at the isolated server.
-load_compose() {
+load_render() {
   export AIRLINE_DIR="$PROJECT_ROOT"
   tmux() { $TMUX -L "$_bats_socket" "$@"; }
   export -f tmux
   source "$PROJECT_ROOT/tmux.sh"
   source "$PROJECT_ROOT/collections.sh"
-  source "$PROJECT_ROOT/compose.sh"
+  source "$PROJECT_ROOT/render.sh"
+}
+
+# Source the api layer (api.sh) on top of render/collections/tmux — lets the CLI
+# command handlers be exercised in-process (the CLI itself is just dispatch).
+load_api() {
+  export AIRLINE_DIR="$PROJECT_ROOT"
+  tmux() { $TMUX -L "$_bats_socket" "$@"; }
+  export -f tmux
+  source "$PROJECT_ROOT/tmux.sh"
+  source "$PROJECT_ROOT/collections.sh"
+  source "$PROJECT_ROOT/render.sh"
+  source "$PROJECT_ROOT/api.sh"
 }
 
 # Read a global tmux option value from the isolated server

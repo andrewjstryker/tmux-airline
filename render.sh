@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 #
-# compose.sh — composition.
+# render.sh — composition: render the status bar.
 #
-# Builds the status bar from the stored @airline-* state: it loads the palette
-# and composes the segment bar (and, later, the window formats and `apply`). It
-# also owns airline's shared vocabulary — the segment slots and theme elements,
-# plus the predicates the CLI validates against at the boundary. It reaches tmux
-# only through the mechanical layer (tmux.sh's opt_*) and *trusts its inputs*;
-# validation lives at the boundary (the `airline` CLI), not here.
+# Builds the bar from the stored @airline-* state: it loads the palette and renders
+# the segment bar, window formats, and chrome (the `render` function, driven by
+# `apply`). It also owns airline's shared vocabulary — the segment slots, theme
+# elements, and rendering constants — plus the predicates the CLI validates against
+# at the boundary. It reaches tmux only through the mechanical layer (tmux.sh's
+# opt_*) and *trusts its inputs*; validation lives at the boundary (api.sh), not here.
 #
 # Assumes tmux.sh is already sourced — the CLI and the test harness load
 # mechanical-then-logic, in that order. The guard below enforces it.
@@ -15,11 +15,11 @@
 # shellcheck shell=bash
 
 if ! declare -F opt_get_global >/dev/null; then
-  printf 'compose.sh: load tmux.sh first\n' >&2
+  printf 'render.sh: load tmux.sh first\n' >&2
   return 1 2>/dev/null || exit 1
 fi
 if ! declare -F coll_get_global >/dev/null; then
-  printf 'compose.sh: load collections.sh first\n' >&2
+  printf 'render.sh: load collections.sh first\n' >&2
   return 1 2>/dev/null || exit 1
 fi
 
@@ -89,7 +89,7 @@ declare -gA AIRLINE_STATUS_COLOR=([active]=active [result]=ok [attention]=alert)
 # Private rendering vocabulary — airline-owned CONSTANTS, baked into the composed
 # format strings at apply. Not configurable: no public option, no private option, no
 # knob (DESIGN.md §Static config). They never change at runtime and aren't a user's
-# to tune; a value only compose reads is a constant, not an option. The glyph and
+# to tune; a value only render reads is a constant, not an option. The glyph and
 # chevron literals are set below where the byte injection is visible.
 AIRLINE_TMPL_WINDOW='#I:#W'   # window-name template (index:name)
 AIRLINE_GLYPH_STATUS='●'      # left badge mark  (status)
@@ -118,7 +118,7 @@ _health_severity_valid () {
 #-----------------------------------------------------------------------------#
 
 # -gA so it survives being populated from inside a sourced function (the test
-# harness sources compose.sh from within a helper).
+# harness sources render.sh from within a helper).
 declare -gA THEME
 
 # Read every theme element into THEME, then apply the suspended dimming when the
@@ -245,7 +245,7 @@ _window_mode_pick () {   # <in-mode> <none>
 #            AIRLINE_OPT_HEALTH; the right badge shows one glyph in that severity's
 #            color, or nothing when healthy.
 # The colors are baked here at compose time; WHICH color shows is a live #{?…}
-# selector tmux re-evaluates per window — the selector leg of the freeze model.
+# selector tmux re-evaluates per window — the selector leg of the render model.
 # The side (left vs right) tells the two badges apart, so their colors may overlap.
 
 # A live expression mapping a token-valued option to its baked theme color, falling
@@ -306,7 +306,7 @@ health_project () {   # <win>
 # Window formats — the window-list styling, with the status and health badges
 # woven in around the name (status left, health right).
 #-----------------------------------------------------------------------------#
-# Returns 0 when any rendered option actually changed (so recompose can gate one
+# Returns 0 when any rendered option actually changed (so render can gate one
 # redraw across the whole bar), 1 when every value was already current.
 set_window_formats () {
   local bg="${THEME[inner-bg]}" active_bg="${THEME[active]}" template changed=1
@@ -340,16 +340,16 @@ set_window_formats () {
 }
 
 #-----------------------------------------------------------------------------#
-# Compose-all — bake the whole bar from stored @airline-* state.
+# render — produce the whole bar from the stored @airline-* state.
 #-----------------------------------------------------------------------------#
-# The shared "freeze" step: load the palette and write every composed option —
-# chrome styles, segment bars, window formats — baking THEME colors in as constants
-# (the freeze leg of the model; live #{?…} selectors decide which baked color shows).
-# init and each noun's `apply` call this; it does NOT seed defaults, publish the CLI
-# path, or bind keys — those are init's job. Idempotent and redraw-gated: it rewrites
-# only options whose value changed (opt_setif_*) and redraws once iff any did.
-# Returns 0 when something changed (a redraw happened), 1 when the bar was current.
-recompose () {
+# The shared render step: load the palette and write every composed option — chrome
+# styles, segment bars, window formats — baking THEME colors in as constants (live
+# #{?…} selectors then decide which baked color shows). `apply` and `init` call this;
+# it does NOT seed defaults, publish the CLI path, or bind keys — those are init's
+# job. Idempotent and redraw-gated: it rewrites only options whose value changed
+# (opt_setif_*) and redraws once iff any did. Returns 0 when something changed
+# (a redraw happened), 1 when the bar was already current.
+render () {
   _palette_load
   local changed=1
   opt_setif_global pane-border-style         "fg=${THEME[primary]}"                       && changed=0

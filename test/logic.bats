@@ -4,15 +4,15 @@ load test_helper/bats-support/load
 load test_helper/bats-assert/load
 load helper
 
-# compose.sh — the composition layer: the boundary validators (predicates the
-# CLI calls), the palette, and the segment-bar composition. compose.sh trusts
+# render.sh — the composition layer: the boundary validators (predicates the
+# CLI calls), the palette, and the segment-bar composition. render.sh trusts
 # its inputs; validation lives at the boundary, so it is exercised here only as
 # the predicates the CLI will call — not as a validate-and-store path.
 
 # --- boundary validators ----------------------------------------------------
 
 @test "_segment_slot_valid accepts the six slots and rejects others" {
-  load_compose
+  load_render
   _segment_slot_valid right-mid
   _segment_slot_valid left-out
   ! _segment_slot_valid middle
@@ -20,7 +20,7 @@ load helper
 }
 
 @test "_theme_element_valid accepts palette roles and rejects others" {
-  load_compose
+  load_render
   _theme_element_valid active
   _theme_element_valid outer-bg
   ! _theme_element_valid bogus
@@ -49,7 +49,7 @@ _seed_palette() {
 }
 
 @test "left bar composes non-empty slots with their tier backgrounds" {
-  load_compose
+  load_render
   _seed_palette
   opt_set_global @airline-segment-left-out OUT
   opt_set_global @airline-segment-left-mid MID
@@ -61,7 +61,7 @@ _seed_palette() {
 }
 
 @test "empty slots are skipped, and the last left block chevrons to inner-bg" {
-  load_compose
+  load_render
   _seed_palette
   opt_set_global @airline-segment-left-out ONLY   # left-mid, left-in empty
   run _build_status_left
@@ -71,14 +71,14 @@ _seed_palette() {
 }
 
 @test "an all-empty side composes to nothing" {
-  load_compose
+  load_render
   _seed_palette
   run _build_status_left
   assert_output ""
 }
 
 @test "right bar composes with a leading chevron from the window list" {
-  load_compose
+  load_render
   _seed_palette
   opt_set_global @airline-segment-right-out DATE
   run _build_status_right
@@ -87,7 +87,7 @@ _seed_palette() {
 }
 
 @test "suspended dims the outer/middle backgrounds to inner-bg" {
-  load_compose
+  load_render
   _seed_palette
   opt_set_global @airline-segment-left-out X
   opt_set_global @airline--suspended 1
@@ -100,7 +100,7 @@ _seed_palette() {
 # --- window formats ---------------------------------------------------------
 
 @test "window formats set the name template, mode expr, and base styles" {
-  load_compose
+  load_render
   _seed_palette
   set_window_formats
   run get_option window-status-format
@@ -114,7 +114,7 @@ _seed_palette() {
 # --- modes: inactive fills the background, active tints the foreground -------
 
 @test "inactive window fills its background with the mode color" {
-  load_compose
+  load_render
   _seed_palette
   set_window_formats
   run get_option window-status-format
@@ -124,7 +124,7 @@ _seed_palette() {
 }
 
 @test "inactive name knocks out over a filled block, else stays primary" {
-  load_compose
+  load_render
   _seed_palette
   set_window_formats
   run get_option window-status-format
@@ -134,7 +134,7 @@ _seed_palette() {
 }
 
 @test "active window keeps a constant active-color highlight block" {
-  load_compose
+  load_render
   _seed_palette
   set_window_formats
   run get_option window-status-current-format
@@ -143,7 +143,7 @@ _seed_palette() {
 }
 
 @test "active window tints the name foreground by mode (knockout when none)" {
-  load_compose
+  load_render
   _seed_palette
   set_window_formats
   run get_option window-status-current-format
@@ -156,7 +156,7 @@ _seed_palette() {
 # --- badges: status (left) + health (right) ---------------------------------
 
 @test "status badge renders a selector over the projected status scalar" {
-  load_compose
+  load_render
   _seed_palette
   set_window_formats
   run get_option window-status-format
@@ -165,7 +165,7 @@ _seed_palette() {
 }
 
 @test "status badge maps each semantic level to its theme color" {
-  load_compose
+  load_render
   _seed_palette
   set_window_formats
   run get_option window-status-format
@@ -175,7 +175,7 @@ _seed_palette() {
 }
 
 @test "window-status-format places status left of the name and health right" {
-  load_compose
+  load_render
   _seed_palette
   set_window_formats
   run get_option window-status-format
@@ -183,7 +183,7 @@ _seed_palette() {
 }
 
 @test "status_project reduces contributors to the highest level" {
-  load_compose
+  load_render
   win="$(current_window)"
   coll_set_window "$win" status build  active
   coll_set_window "$win" status test   result
@@ -194,7 +194,7 @@ _seed_palette() {
 }
 
 @test "status_project leaves a blank badge when nothing reports" {
-  load_compose
+  load_render
   win="$(current_window)"
   status_project "$win" || true   # returns 1 = nothing to render (redraw-gate signal)
   run opt_get_window "$win" @airline--badge-status
@@ -202,7 +202,7 @@ _seed_palette() {
 }
 
 @test "status_project signals change via exit status (gate a redraw)" {
-  load_compose
+  load_render
   win="$(current_window)"
   coll_set_window "$win" status build active
   run status_project "$win"        # unset -> active : changed
@@ -212,7 +212,7 @@ _seed_palette() {
 }
 
 @test "status_project clears the badge when the top contributor is removed" {
-  load_compose
+  load_render
   win="$(current_window)"
   coll_set_window "$win" status review attention
   status_project "$win"
@@ -223,7 +223,7 @@ _seed_palette() {
 }
 
 @test "health badge renders a selector over the projected reduced scalar" {
-  load_compose
+  load_render
   _seed_palette
   set_window_formats
   run get_option window-status-format
@@ -231,7 +231,7 @@ _seed_palette() {
 }
 
 @test "health_project reduces contributors to the max severity scalar" {
-  load_compose
+  load_render
   win="$(current_window)"
   coll_set_window "$win" health cpu ok
   coll_set_window "$win" health disk alert
@@ -242,7 +242,7 @@ _seed_palette() {
 }
 
 @test "health_project leaves a blank badge when only ok reports" {
-  load_compose
+  load_render
   win="$(current_window)"
   coll_set_window "$win" health cpu ok
   health_project "$win" || true   # returns 1 = nothing to render (redraw-gate signal)
@@ -251,7 +251,7 @@ _seed_palette() {
 }
 
 @test "health_project signals change via exit status (gate a redraw)" {
-  load_compose
+  load_render
   win="$(current_window)"
   coll_set_window "$win" health net stress
   run health_project "$win"        # unset -> stress : changed
@@ -261,7 +261,7 @@ _seed_palette() {
 }
 
 @test "health_project clears the badge when the worst contributor is removed" {
-  load_compose
+  load_render
   win="$(current_window)"
   coll_set_window "$win" health net stress
   health_project "$win"
@@ -271,12 +271,12 @@ _seed_palette() {
   assert_output ""
 }
 
-# --- recompose: the compose-all / freeze step -------------------------------
+# --- render: the render step -------------------------------
 
-@test "recompose bakes the chrome styles from the palette" {
-  load_compose
+@test "render bakes the chrome styles from the palette" {
+  load_render
   _seed_palette
-  recompose
+  render
   run get_option status-style
   assert_output --partial "fg=colour245"   # secondary
   assert_output --partial "bg=colour234"   # inner-bg
@@ -286,32 +286,32 @@ _seed_palette() {
   assert_output "colour134"                 # special
 }
 
-@test "recompose writes status-left/right from registered segments" {
-  load_compose
+@test "render writes status-left/right from registered segments" {
+  load_render
   _seed_palette
   opt_set_global @airline-segment-left-out "LOAD"
   opt_set_global @airline-segment-right-out "TIME"
-  recompose
+  render
   run get_option status-left
   assert_output --partial "LOAD"
   run get_option status-right
   assert_output --partial "TIME"
 }
 
-@test "recompose composes the window formats too" {
-  load_compose
+@test "render composes the window formats too" {
+  load_render
   _seed_palette
-  recompose
+  render
   run get_option window-status-format
   assert_output --partial "#I:#W"
 }
 
-@test "recompose is redraw-gated: a no-op second call reports no change" {
-  load_compose
+@test "render is redraw-gated: a no-op second call reports no change" {
+  load_render
   _seed_palette
   opt_set_global @airline-segment-left-out "LOAD"
-  run recompose          # first call: everything changes
+  run render          # first call: everything changes
   assert_success
-  run recompose          # identical state: nothing changes
+  run render          # identical state: nothing changes
   assert_failure
 }

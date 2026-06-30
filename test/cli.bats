@@ -62,7 +62,7 @@ setup() {
 
 # --- apply / use ------------------------------------------------------------
 
-@test "apply recomposes from the current source of truth" {
+@test "apply renders from the current source of truth" {
   airline init
   $TMUX -L "$_bats_socket" set -g @airline-segment-right-out "ZZZ"
   airline apply
@@ -70,19 +70,60 @@ setup() {
   assert_output --partial "ZZZ"
 }
 
-@test "use sources a tmux file then freezes" {
+@test "theme use sources a tmux file then renders" {
   airline init
   printf 'set -g @airline-inner-bg colour55\n' > "$BATS_TMPDIR/airline-use-theme"
-  airline use "$BATS_TMPDIR/airline-use-theme"
+  airline theme use "$BATS_TMPDIR/airline-use-theme"
   run get_option @airline-inner-bg
   assert_output "colour55"
   run get_option status-style
-  assert_output --partial "bg=colour55"     # recomposed with the new color
+  assert_output --partial "bg=colour55"     # rendered with the new color
 }
 
-@test "use rejects an unknown name" {
+@test "theme use rejects an unknown name" {
   airline init
-  run airline use no-such-theme-xyz
+  run airline theme use no-such-theme-xyz
+  assert_failure
+}
+
+# --- theme / segment (static nouns: set X / clear X / show [X], staged) ------
+
+@test "theme set stages a color; apply renders it" {
+  airline init
+  airline theme set active colour201
+  run get_option @airline-active
+  assert_output "colour201"             # staged public option, no render yet
+  airline apply
+  run get_option window-status-current-format
+  assert_output --partial "colour201"   # rendered into the bar (active highlight)
+}
+
+@test "theme show X prints one element; theme show prints all" {
+  airline init
+  airline theme set active colour201
+  run airline theme show active
+  assert_output "colour201"
+  run airline theme show
+  assert_output --partial "active"
+  assert_output --partial "inner-bg"
+}
+
+@test "theme set rejects an unknown element" {
+  airline init
+  run airline theme set bogus colour1
+  assert_failure
+}
+
+@test "segment set stages a slot; show reads it back" {
+  airline init
+  airline segment set left-out "#H"
+  run airline segment show left-out
+  assert_output "#H"
+}
+
+@test "segment set rejects an unknown slot" {
+  airline init
+  run airline segment set middle nope
   assert_failure
 }
 
@@ -112,12 +153,14 @@ setup() {
   assert_failure
 }
 
-@test "status show lists contributors and the badge" {
+@test "status show lists contributors; status show X prints one level" {
   airline init
   airline status set build active
   run airline status show
   assert_output --partial "build"
   assert_output --partial "active"
+  run airline status show build
+  assert_output "active"
 }
 
 # --- health (dynamic noun) --------------------------------------------------
@@ -173,5 +216,5 @@ setup() {
 @test "help prints usage" {
   run airline help
   assert_output --partial "airline init"
-  assert_output --partial "status set"
+  assert_output --partial "set <key>"
 }
