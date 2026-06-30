@@ -4,9 +4,14 @@ load test_helper/bats-support/load
 load test_helper/bats-assert/load
 load helper
 
-# collections.sh — the dynamic keyed-tuple store for status and health, exercised
-# directly against an isolated server. Mechanical and domain-free: ns and the
-# severity ordering are arguments, so the tests drive it with arbitrary names.
+# collections.sh — the dynamic keyed-tuple store for status and health. Mechanical
+# and domain-free: ns and the severity ordering are arguments, so the tests drive
+# it with arbitrary names.
+#
+# Runs on the in-memory fake (load_collections) — no tmux server, so override the
+# real-server setup/teardown from helper.bash with no-ops.
+setup()    { :; }
+teardown() { :; }
 
 # --- registry / membership --------------------------------------------------
 

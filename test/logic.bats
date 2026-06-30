@@ -8,6 +8,11 @@ load helper
 # CLI calls), the palette, and the segment-bar composition. render.sh trusts
 # its inputs; validation lives at the boundary, so it is exercised here only as
 # the predicates the CLI will call — not as a validate-and-store path.
+#
+# Runs on the in-memory fake (load_render) — no tmux server, so override the
+# real-server setup/teardown from helper.bash with no-ops.
+setup()    { :; }
+teardown() { :; }
 
 # --- boundary validators ----------------------------------------------------
 
@@ -205,10 +210,12 @@ _seed_palette() {
   load_render
   win="$(current_window)"
   coll_set_window "$win" status build active
-  run status_project "$win"        # unset -> active : changed
-  assert_success
-  run status_project "$win"        # active -> active : no change
-  assert_failure
+  # Call directly (not via `run`) so the badge write persists in this shell; capture
+  # status with `|| rc=$?` to keep bats' errexit from aborting on the no-change 1.
+  rc=0; status_project "$win" || rc=$?   # unset -> active : changed
+  assert_equal "$rc" 0
+  rc=0; status_project "$win" || rc=$?   # active -> active : no change
+  assert_equal "$rc" 1
 }
 
 @test "status_project clears the badge when the top contributor is removed" {
@@ -254,10 +261,10 @@ _seed_palette() {
   load_render
   win="$(current_window)"
   coll_set_window "$win" health net stress
-  run health_project "$win"        # unset -> stress : changed
-  assert_success
-  run health_project "$win"        # stress -> stress : no change
-  assert_failure
+  rc=0; health_project "$win" || rc=$?   # unset -> stress : changed
+  assert_equal "$rc" 0
+  rc=0; health_project "$win" || rc=$?   # stress -> stress : no change
+  assert_equal "$rc" 1
 }
 
 @test "health_project clears the badge when the worst contributor is removed" {
@@ -310,8 +317,8 @@ _seed_palette() {
   load_render
   _seed_palette
   opt_set_global @airline-segment-left-out "LOAD"
-  run render          # first call: everything changes
-  assert_success
-  run render          # identical state: nothing changes
-  assert_failure
+  rc=0; render || rc=$?   # first call: everything changes
+  assert_equal "$rc" 0
+  rc=0; render || rc=$?   # identical state: nothing changes
+  assert_equal "$rc" 1
 }

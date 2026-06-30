@@ -256,6 +256,45 @@ the CLI/render layers are clean — so A's last violations are the widget adapte
 (`scripts/plugins/*.sh`), which go green when they migrate to `widgets/*.sh` on the
 `opt_*` layer.
 
+## Testing
+
+The same seam that makes the lint a grep makes the tests cheap. Because `tmux.sh`
+is the *sole* tmux caller, every layer above it can be exercised in-process against
+an **in-memory fake** — no server to spawn and kill per test.
+
+- **`test/fake-tmux.sh`** sources the *real* `tmux.sh` (so the composed layer —
+  `opt_setif_*`, `opt_getor_*`, the scope wrappers, and all of `collections.sh` /
+  `render.sh` — runs unmodified and under test) and replaces **only** the leaf
+  cores (`_opt_show` / `_opt_write` / `_opt_clear`) and the standalone verbs
+  (`redraw`, `current_window`, `source_file`, `hook_*`, `key_*`) with bash
+  associative arrays. It models only the leaf *store* semantics — empty-when-unset,
+  overwrite, remove, window/global independence, spaces survive — and nothing more
+  (no `#{?…}` evaluation, no redraw side effect), because the layer tests assert on
+  the composed format **strings**, never on tmux evaluating them.
+
+How the suites split, and why:
+
+| Suite | Backend | Proves |
+|-------|---------|--------|
+| `tmux.bats` | **real** tmux | the mechanical layer's contract against the binary — **the contract the fake must match** |
+| `collections.bats`, `logic.bats` | **fake** | the store/composition logic, in-process and fast |
+| `cli.bats` | **real** tmux (subprocess via `AIRLINE_TMUX`) | the `airline` parser/dispatch end-to-end |
+| `architecture.bats` | — | the lint (Invariants A/B) |
+
+`tmux.bats` and the fake are a matched pair: `tmux.bats` pins the exact leaf
+semantics the fake reimplements, so extending a core's behavior means updating
+both. `cli.bats` stays on a real server on purpose — it exists to prove the real
+subprocess + dispatch path, which a fake would erase. The result: the two broad
+logic suites dropped from ~78s to ~11s (~7×); the residual is bats' own per-test
+overhead, not tmux.
+
+**One seam to respect.** The fake's state is in-process, so a mutation made inside
+bats `run` (a subshell) does **not** persist to the next line — a real server hides
+this only because its state is external. Tests that act *then* observe persistence
+across calls (e.g. the redraw-gate checks: project once → project again expecting
+"no change") must call the function directly and capture status with `|| rc=$?`,
+not wrap the mutation in `run`.
+
 ## The CLI/API surface
 
 The public, stable contract. `airline` is the **parser/dispatcher**; the handlers

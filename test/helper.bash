@@ -23,36 +23,49 @@ load_tmux() {
   source "$PROJECT_ROOT/tmux.sh"
 }
 
-# Source the collections layer (collections.sh) on top of the mechanical layer
-# (tmux.sh), with the `tmux` command pointed at the isolated server.
+# Source the collections layer (collections.sh) on the in-memory fake — no tmux
+# server. collections.sh is pure logic over tmux.sh's opt_*; the fake provides
+# those leaves (tmux.bats proves the real ones match), so the store round-trips
+# without a process. get_option/wopt are redirected to the in-process store.
 load_collections() {
-  tmux() { $TMUX -L "$_bats_socket" "$@"; }
-  export -f tmux
-  source "$PROJECT_ROOT/tmux.sh"
+  export AIRLINE_DIR="$PROJECT_ROOT"
+  source "$PROJECT_ROOT/test/fake-tmux.sh"
   source "$PROJECT_ROOT/collections.sh"
+  _use_fake_readback
 }
 
-# Source the render layer (render.sh) on top of the mechanical layer (tmux.sh),
-# with the `tmux` command pointed at the isolated server.
+# Source the render layer (render.sh) on the in-memory fake — no tmux server.
 load_render() {
   export AIRLINE_DIR="$PROJECT_ROOT"
-  tmux() { $TMUX -L "$_bats_socket" "$@"; }
-  export -f tmux
-  source "$PROJECT_ROOT/tmux.sh"
+  source "$PROJECT_ROOT/test/fake-tmux.sh"
   source "$PROJECT_ROOT/collections.sh"
   source "$PROJECT_ROOT/render.sh"
+  _use_fake_readback
 }
 
-# Source the api layer (api.sh) on top of render/collections/tmux — lets the CLI
-# command handlers be exercised in-process (the CLI itself is just dispatch).
+# Source the api layer (api.sh) on the in-memory fake — lets the CLI command
+# handlers be exercised in-process (the CLI itself is just dispatch) with no server.
 load_api() {
   export AIRLINE_DIR="$PROJECT_ROOT"
-  tmux() { $TMUX -L "$_bats_socket" "$@"; }
-  export -f tmux
-  source "$PROJECT_ROOT/tmux.sh"
+  source "$PROJECT_ROOT/test/fake-tmux.sh"
   source "$PROJECT_ROOT/collections.sh"
   source "$PROJECT_ROOT/render.sh"
   source "$PROJECT_ROOT/api.sh"
+  _use_fake_readback
+}
+
+# Point the readback helpers at the in-process fake store. The real get_option/wopt
+# (below) shell out to a tmux server; on the fake path there is none, so a layer
+# test reads the very options the code under test just wrote, through tmux.sh's own
+# getters. Same call sites in the .bats files, no server.
+_use_fake_readback() {
+  get_option() { opt_get_global "$1"; }
+  wopt() {
+    local name="$1"; shift
+    local win="$_FAKE_WIN"
+    [[ "${1:-}" == -t ]] && { win="$2"; shift 2; }
+    opt_get_window "$win" "$name"
+  }
 }
 
 # Read a global tmux option value from the isolated server
