@@ -58,7 +58,7 @@ EOF
 _segments_unset () {
   local s
   for s in "${AIRLINE_SEGMENT_SLOTS[@]}"; do
-    [[ -n "$(opt_get_global "@airline-segment-$s")" ]] && return 1
+    [[ -n "$(pub_get "segment-$s")" ]] && return 1
   done
   return 0
 }
@@ -66,14 +66,14 @@ _segments_unset () {
 # Bootstrap. Publish the CLI path, bind F12, and on first run seed defaults behind a
 # sentinel (without clobbering user config or runtime state on a reload); then render.
 cmd_init () {
-  opt_set_global "$AIRLINE_OPT_CLI" "$AIRLINE_DIR/airline"
+  prv_set_global "$AIRLINE_KEY_CLI" "$AIRLINE_DIR/airline"
   key_bind root F12 "run-shell \"$AIRLINE_DIR/airline suspend\""
   key_bind off  F12 "run-shell \"$AIRLINE_DIR/airline resume\""
 
-  if [[ "$(opt_get_global "$AIRLINE_OPT_DEFAULTS")" != 1 ]]; then
-    [[ -z "$(opt_get_global @airline-inner-bg)" ]] && source_file "$AIRLINE_DIR/themes/dark"
+  if [[ "$(prv_get_global "$AIRLINE_KEY_DEFAULTS")" != 1 ]]; then
+    [[ -z "$(pub_get inner-bg)" ]] && source_file "$AIRLINE_DIR/themes/dark"
     _segments_unset && source_file "$AIRLINE_DIR/bundles/default"
-    opt_set_global "$AIRLINE_OPT_DEFAULTS" 1
+    prv_set_global "$AIRLINE_KEY_DEFAULTS" 1
   fi
   render || true
 }
@@ -93,14 +93,14 @@ cmd_use () {   # <subdir> <name|path>
 }
 
 cmd_suspend () {
-  opt_set_global "$AIRLINE_OPT_SUSPENDED" 1
+  prv_set_global "$AIRLINE_KEY_SUSPENDED" 1
   opt_set_global prefix None
   opt_set_global key-table off
   render || true
 }
 
 cmd_resume () {
-  opt_set_global "$AIRLINE_OPT_SUSPENDED" 0
+  prv_set_global "$AIRLINE_KEY_SUSPENDED" 0
   opt_unset_global prefix
   opt_unset_global key-table
   render || true
@@ -212,37 +212,40 @@ cmd_health () {
 # Static nouns — theme & segment (public @airline-* options; set stages, apply renders)
 #-----------------------------------------------------------------------------#
 
-_static_set () {   # <opt-prefix> <validator> <X> <value>
-  local prefix="$1" valid="$2" x="${3:-}" value="${4:-}"
+# <key-prefix> is the bare-key prefix WITHIN the public namespace: "" for theme
+# (the key is the element) or "segment-" for segments. pub_* applies the @airline-
+# prefix; api never spells it.
+_static_set () {   # <key-prefix> <validator> <X> <value>
+  local keypfx="$1" valid="$2" x="${3:-}" value="${4:-}"
   [[ -n "$x" ]] || die "set: need a target"
   "$valid" "$x" || die "set: unknown target '$x'"
-  opt_set_global "${prefix}${x}" "$value"   # stage; `apply` renders
+  pub_set "${keypfx}${x}" "$value"   # stage a public option; `apply` renders
 }
 
-_static_clear () {   # <opt-prefix> <validator> <X>
-  local prefix="$1" valid="$2" x="${3:-}"
+_static_clear () {   # <key-prefix> <validator> <X>
+  local keypfx="$1" valid="$2" x="${3:-}"
   [[ -n "$x" ]] || die "clear: need a target"
   "$valid" "$x" || die "clear: unknown target '$x'"
-  opt_unset_global "${prefix}${x}"
+  pub_unset "${keypfx}${x}"
 }
 
-_static_show () {   # <opt-prefix> <validator> <list-array-name> [<X>]
-  local prefix="$1" valid="$2" listname="$3" x="${4:-}"
+_static_show () {   # <key-prefix> <validator> <list-array-name> [<X>]
+  local keypfx="$1" valid="$2" listname="$3" x="${4:-}"
   if [[ -n "$x" ]]; then
     "$valid" "$x" || die "show: unknown target '$x'"
-    opt_get_global "${prefix}${x}"
+    pub_get "${keypfx}${x}"
     return 0
   fi
   local -n all="$listname"; local k
-  for k in "${all[@]}"; do printf '%-12s %s\n' "$k" "$(opt_get_global "${prefix}${k}")"; done
+  for k in "${all[@]}"; do printf '%-12s %s\n' "$k" "$(pub_get "${keypfx}${k}")"; done
 }
 
 cmd_theme () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    set)   _static_set   "@airline-" _theme_element_valid "$@" ;;
-    clear) _static_clear "@airline-" _theme_element_valid "$@" ;;
-    show)  _static_show  "@airline-" _theme_element_valid AIRLINE_THEME_ELEMENTS "$@" ;;
+    set)   _static_set   "" _theme_element_valid "$@" ;;
+    clear) _static_clear "" _theme_element_valid "$@" ;;
+    show)  _static_show  "" _theme_element_valid AIRLINE_THEME_ELEMENTS "$@" ;;
     use)   cmd_use themes "$@" ;;
     ""|-h|--help) usage ;;
     *) die "unknown theme command: $verb" ;;
@@ -252,9 +255,9 @@ cmd_theme () {
 cmd_segment () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    set)   _static_set   "@airline-segment-" _segment_slot_valid "$@" ;;
-    clear) _static_clear "@airline-segment-" _segment_slot_valid "$@" ;;
-    show)  _static_show  "@airline-segment-" _segment_slot_valid AIRLINE_SEGMENT_SLOTS "$@" ;;
+    set)   _static_set   "segment-" _segment_slot_valid "$@" ;;
+    clear) _static_clear "segment-" _segment_slot_valid "$@" ;;
+    show)  _static_show  "segment-" _segment_slot_valid AIRLINE_SEGMENT_SLOTS "$@" ;;
     use)   cmd_use bundles "$@" ;;
     ""|-h|--help) usage ;;
     *) die "unknown segment command: $verb" ;;

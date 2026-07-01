@@ -11,11 +11,12 @@
 #
 #   A — only tmux.sh invokes the `tmux` binary. Allowlist: tmux.sh. Everything
 #       else reaches tmux only through tmux.sh's opt_* / verb functions.
-#   B — the private @airline--* layout (double-dash) has one source of truth:
-#       collections.sh builds the @airline--<ns> registry/tuple scheme. Nobody
-#       else *constructs* an @airline-- name; fixed private scalars are named
-#       constants in their owning module. Public @airline-* is not policed —
-#       users and any layer may set it (that is the point of the public tier).
+#   B — the @airline- option prefix (both tiers, public @airline- and private
+#       @airline--) lives in ONE place: tmux.sh, which owns the pub_* / prv_*
+#       accessors and the prv_name builder. Everything above addresses airline
+#       options by BARE key through those, so a literal @airline- option name in
+#       any other source is a layering violation. (Theme/bundle data files spell
+#       @airline- — that is the public contract — but they aren't scanned.)
 #
 # Usage: test/lint-architecture.sh [A|B|all]   (default: all)
 # Exit:  0 = clean, 1 = violations (printed, one per line), 2 = bad usage.
@@ -61,19 +62,19 @@ _check_a () {
   return $rc
 }
 
-# Invariant B — the private @airline--* scheme is built in ONE place. The telltale
-# of *constructing* a private name is a `%s` printf template or a `$` interpolation
-# right after the double dash: `@airline--%s` (the registry/tuple builders) or
-# `@airline--<ns>-$…`. Those belong only in collections.sh; everyone else reaches a
-# private key through coll_optname / coll_*. A *fixed* private scalar like
-# `@airline--badge-status` is fine — a named constant, not a constructed key, so the
-# pattern requires a `%` or `$` in the name. Public single-dash `@airline-*` is not
-# matched at all (the leading `--` is required) — it is the open, user-settable tier.
+# Invariant B — the @airline- prefix lives only in tmux.sh. The telltale of an
+# option NAME (vs prose) is a key character right after the prefix: a letter, or a
+# `%`/`$` for a constructed name. So the pattern is `@airline-` + an optional second
+# dash (the private tier) + one of [a-z%$]:
+#   matches:  @airline-inner-bg   @airline--badge-status   @airline--%s   @airline--$x
+#   skips:    @airline-*  @airline-<el>  @airline--<ns>     (documentation prose)
+# tmux.sh is the sole home (pub_* / prv_* / prv_name); a hit anywhere else means a
+# layer spelled a prefix instead of using a bare-key accessor.
 _check_b () {
   local f rc=0 hits
   while IFS= read -r f; do
-    [[ "$(basename "$f")" == collections.sh ]] && continue   # the one home for the scheme
-    hits="$(grep -nE '@airline--[a-z-]*[%$]' "$f" 2>/dev/null)" || continue
+    [[ "$(basename "$f")" == tmux.sh ]] && continue          # the one home for the prefix
+    hits="$(grep -nE '@airline--?[a-z%$]' "$f" 2>/dev/null)" || continue
     [[ -z "$hits" ]] && continue
     while IFS= read -r line; do
       [[ "${line#*:}" =~ ^[[:space:]]*# ]] && continue        # skip comment prose

@@ -56,7 +56,7 @@ regressing. Treat these as a checklist as code migrates:
 | `api.sh` | **Command handlers — the API logic.** One handler per verb; owns input **validation** (the only place input is checked, against `render.sh`'s predicates), then drives the layers — `opt_*` / `coll_*` to mutate, `render` to produce the bar. | no | `render.sh`, `collections.sh`, `tmux.sh` |
 | `render.sh` | **Composition.** Loads the palette and implements `render` (what `apply` runs) — producing the bar (`status-left/right`, window formats, `*-style`, pane, clock) from the public `@airline-*` inputs and private `@airline--*` state. Owns the shared vocabulary — slot/element names, the rendering constants (glyphs, chevrons, name template), and the predicates the CLI validates against. *Trusts* its inputs. | **no** | `collections.sh`, `tmux.sh`, `widgets/*.sh` |
 | `collections.sh` | **Collections (status & health only).** A registry (explicit key list) + per-key tuples over options, split with bash `IFS` — the "0 or more" shape behind the status and health contributors that each reduce to one badge. Pure bash on `opt_*`; no direct tmux calls, no domain terms. Segments are *not* collections. | no (via `tmux.sh`) | `tmux.sh` |
-| `tmux.sh` | **Mechanical.** The *sole* caller of the `tmux` binary: scoped option get/set/unset, redraw, `source-file`, hooks, binds. No airline-invented abstractions. | **yes (only here)** | — |
+| `tmux.sh` | **Mechanical + namespace policy.** The *sole* caller of the `tmux` binary: scoped option get/set/unset, redraw, `source-file`, hooks, binds. Also the *sole* owner of the `@airline-` / `@airline--` prefixes — the `pub_*` / `prv_*` accessors and `prv_name` builder, so every layer above names airline options by bare key. | **yes (only here)** | — |
 | `widgets/*.sh` | **External widget adapters.** Configure third-party tmux plugins for airline — translate `THEME` into their `@plugin-*` options (cpu, battery, online, prefix-highlight). Logic tier. | no (via `tmux.sh`) | `tmux.sh` |
 | `scripts/*.sh` | **Generic helpers.** Cross-cutting shell utilities with no render role (e.g. plugin-install checks). Reserved for generic concerns — *not* widgets. | no | — |
 | `themes/*` | **Built-in themes.** Plain tmux files of `set -g @airline-<element> <color>` lines, loaded by `use` (`source-file` + `apply`). A theme is config, not airline production shell — it sets *public* options the idiomatic way. | sets public options (sourced by `use`) | — |
@@ -143,6 +143,13 @@ The classification is mechanical, not stylistic:
   (`@airline--`) so a user's `set -g @airline-…` can never land in it, and so a
   reader (or the lint) can tell a variable's class from its name alone. (The `--`
   convention is the old `record.sh`'s `--roster`.)
+- **The prefix is policy, owned by `tmux.sh`.** The `@airline-` / `@airline--`
+  literals are written in exactly one file: `tmux.sh`, via the `pub_*` / `prv_*`
+  accessors and the `prv_name` builder. Every layer above names options by **bare
+  key** (`inner-bg`, `badge-status`) and never spells a prefix — so the public/
+  private boundary is enforced at one chokepoint, not re-typed at each call site
+  (Invariant **B**). Config files are the one exception: a user's `set -g
+  @airline-active …` spells the public prefix because that *is* the public contract.
 - **Composed output is derived, never authored.** The tmux-native options that
   render the bar are a *snapshot* of the inputs at render time; nobody edits them.
 
@@ -239,20 +246,24 @@ No runtime guards. A lint (gated in CI next to shellcheck, surfaced as
   are no direct calls to flag. Excluded: the `AIRLINE_TMUX` test shim's `tmux ()`
   wrapper. (Theme/bundle files set options directly, but they're config, not
   production shell — the lint doesn't scan them.)
-- **B — the private `@airline--*` layout has one source of truth.** The double-dash
-  namespace is airline's dynamic state, and its *construction* belongs in one place:
-  the collection key scheme (`@airline--<ns>` list + `@airline--<ns>-<key>` tuples)
-  is built only in `collections.sh`; fixed private scalars (`@airline--badge-*`,
-  `@airline--suspended`, `@airline--cli`) live as named constants in their owning
-  module. Public `@airline-*` names are *not* policed — users and any layer may set
-  them; that's the whole point of the public tier. The lint flags a *constructed*
-  `@airline--` key (a `%s` builder or interpolated `@airline--<ns>-$…`) outside
-  `collections.sh`.
+- **B — the `@airline-` prefix has one source of truth.** Both tiers — public
+  `@airline-<key>` and private `@airline--<key>` — are owned by `tmux.sh`, which is
+  the only file that writes the literal prefix: the `pub_*` accessors, the `prv_*`
+  accessors, and the `prv_name` builder. Every layer above addresses airline options
+  by **bare key** through those (`pub_get inner-bg`, `prv_setif_window $w badge-status …`);
+  `collections.sh` composes its `<ns>` / `<ns>-<key>` *shape* and hands it to
+  `prv_name` for the prefix. So a literal `@airline-` option name anywhere but
+  `tmux.sh` is a layering violation. (Theme/bundle data files *do* spell `@airline-`
+  — that's the public contract — but they're inert config, not scanned. Native tmux
+  options like `status-left` aren't airline's namespace and keep their real names.)
+  The lint matches `@airline-` followed by a key char (`@airline--?[a-z%$]`), so it
+  catches names and constructors but not documentation prose (`@airline-*`,
+  `@airline--<ns>`).
 
 These are grep-able, and run as the rework worklist. Invariant **B is green** (the
-private scheme lives only in `collections.sh`). Invariant **A is the remaining
-driver**: `airline.tmux` is now the thin adapter, the old record store is gone, and
-the CLI/render layers are clean — so A's last violations are the widget adapters
+prefix lives only in `tmux.sh`). Invariant **A is the remaining driver**:
+`airline.tmux` is now the thin adapter, the old record store is gone, and the
+CLI/render layers are clean — so A's last violations are the widget adapters
 (`scripts/plugins/*.sh`), which go green when they migrate to `widgets/*.sh` on the
 `opt_*` layer.
 
@@ -462,6 +473,26 @@ Public matrix — five verbs × two scopes (`global`, `window`):
 
 Window functions always take an explicit window id; "current" is resolved by the
 caller via `current_window`.
+
+### Airline namespaces (`pub_*` / `prv_*`)
+
+The `opt_*` matrix takes a *full* option name, so it serves native tmux options
+(`status-left`, `prefix`) and airline's own equally. On top of it sits the one piece
+of airline policy that belongs at the mechanical boundary: the `@airline-` prefixes.
+These wrappers take a **bare key** and apply the prefix, and they are the *only* code
+that writes the literal — so every layer above is prefix-free (Invariant **B**).
+
+| Function | wraps | Purpose |
+|----------|-------|---------|
+| `pub_get <key>` / `pub_set <key> <val>` / `pub_unset <key>` | `opt_*_global` on `@airline-<key>` | public static config (always global) |
+| `prv_name <key>` | `printf @airline--<key>` | build a private option *name* — for composition (`collections`) and format embedding (the badge `#{?…}` selectors) |
+| `prv_get_global <key>` / `prv_set_global <key> <val>` | `opt_*_global` on `@airline--<key>` | private state, global scope (`suspended`, `cli`, `defaults-done`) |
+| `prv_get_window <win> <key>` / `prv_setif_window <win> <key> <val>` / `prv_unset_window <win> <key>` | `opt_*_window` on `@airline--<key>` | private state, window scope (the `badge-*` scalars) |
+
+The surface is deliberately asymmetric: public is read by computed bare keys at
+global scope and never embedded, so it needs accessors only; private is reached by a
+few stable keys, embedded by name in selectors, and spans both scopes, so it adds the
+`prv_name` builder. No `pub_name` — nothing composes or embeds a public name.
 
 ### Standalone verbs (distinct subcommands)
 

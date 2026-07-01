@@ -67,6 +67,43 @@ opt_setif_window () {
 }
 
 #-----------------------------------------------------------------------------#
+# Airline option namespaces — POLICY (DESIGN.md §State model / §Enforcement)
+#-----------------------------------------------------------------------------#
+# airline owns two option namespaces, and this file is the ONE place their
+# prefixes are written:
+#   public  (@airline-<key>)   user-set static config — themes, segments
+#   private (@airline--<key>)  airline-managed dynamic state — badges, flags
+# Everything above addresses airline options by BARE key through the functions
+# below; it never spells a prefix. (Native tmux options — status-left, prefix,
+# focus-events, … — are not airline's namespace and keep their real names via
+# opt_*.) The lint enforces this: a literal @airline- name outside this file is a
+# violation.
+#
+# The surface is intentionally asymmetric, shaped by how each tier is used:
+#   * public is read/written by computed bare keys, always at global scope, and is
+#     never embedded in a format — so it needs accessors only, no name builder.
+#   * private is reached through a few stable keys AND embedded by name inside tmux
+#     #{?…} selectors (the badges), and spans global + window scope — so it needs a
+#     name builder (prv_name) plus scoped accessors.
+
+# --- public (always global) ---
+pub_get   () { opt_get_global   "@airline-$1"; }        # <key>
+pub_set   () { opt_set_global   "@airline-$1" "$2"; }   # <key> <value>
+pub_unset () { opt_unset_global "@airline-$1"; }        # <key>
+
+# --- private: name builder (for composition / format embedding, not get/set) ---
+# collections builds its <ns> / <ns>-<key> scheme on this; render embeds a badge
+# option name in a live selector with it. The single home for the @airline-- prefix.
+prv_name () { printf '@airline--%s' "$1"; }             # <key> → option name
+
+# --- private accessors (global and window scope) ---
+prv_get_global   () { opt_get_global   "@airline--$1"; }            # <key>
+prv_set_global   () { opt_set_global   "@airline--$1" "$2"; }       # <key> <value>
+prv_get_window   () { opt_get_window   "$1" "@airline--$2"; }       # <win> <key>
+prv_setif_window () { opt_setif_window "$1" "@airline--$2" "$3"; }  # <win> <key> <value>
+prv_unset_window () { opt_unset_window "$1" "@airline--$2"; }       # <win> <key>
+
+#-----------------------------------------------------------------------------#
 # Standalone verbs — distinct tmux subcommands (not option get/set)
 #-----------------------------------------------------------------------------#
 

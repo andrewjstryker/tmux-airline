@@ -61,21 +61,22 @@ declare -ga AIRLINE_PALETTE_TOKENS=(active alert stress ok special monitor copy 
 # collection layer stays severity-agnostic.
 declare -ga AIRLINE_SEVERITIES=(ok alert stress)
 
-# PRIVATE state options (@airline--*, double-dash; DESIGN.md §State model) — the
-# window-scoped scalars the two badges render. Each is a reduction airline projects
-# from its collection at set/clear time (status_project / health_project), read live
-# by the window format through a token→color selector. The `--` keeps them clear of
-# the collection namespaces (@airline--status*, @airline--health*) AND of any public
-# @airline-<element> a user sets, so nothing can collide with a badge scalar.
-AIRLINE_OPT_STATUS='@airline--badge-status'    # left badge:  reduced app-status level
-AIRLINE_OPT_HEALTH='@airline--badge-health'    # right badge: reduced health severity
-AIRLINE_OPT_SUSPENDED='@airline--suspended'    # private flag: dim palette for nested sessions
+# PRIVATE state — BARE keys into the private (@airline--) namespace; the prefix is
+# tmux.sh's (prv_name / prv_*), so render never spells it. These name the window-
+# scoped scalars the two badges render: each is a reduction airline projects from its
+# collection at set/clear time (status_project / health_project), read live by the
+# window format through a token→color selector. The private namespace keeps them
+# clear of the collection keys (status*, health*) AND of any public element a user
+# sets, so nothing can collide with a badge scalar.
+AIRLINE_KEY_STATUS='badge-status'        # left badge:  reduced app-status level
+AIRLINE_KEY_HEALTH='badge-health'        # right badge: reduced health severity
+AIRLINE_KEY_SUSPENDED='suspended'        # private flag: dim palette for nested sessions
 # SC2034: these two are consumed by the `airline` CLI (init), which sources this
 # file — shellcheck can't trace the cross-file use.
 # shellcheck disable=SC2034
-AIRLINE_OPT_CLI='@airline--cli'                # published CLI path (plugins discover airline)
+AIRLINE_KEY_CLI='cli'                    # published CLI path (plugins discover airline)
 # shellcheck disable=SC2034
-AIRLINE_OPT_DEFAULTS='@airline--defaults-done' # first-run sentinel: seed defaults once
+AIRLINE_KEY_DEFAULTS='defaults-done'     # first-run sentinel: seed defaults once
 
 # The status ladder — semantic levels, low→high precedence, each mapped to a theme
 # color role. The order is handed to coll_reduce as the ranking (collections stays
@@ -126,9 +127,9 @@ declare -gA THEME
 _palette_load () {
   local el
   for el in "${AIRLINE_THEME_ELEMENTS[@]}"; do
-    THEME[$el]="$(opt_get_global "@airline-$el")"
+    THEME[$el]="$(pub_get "$el")"
   done
-  if [[ "$(opt_get_global "$AIRLINE_OPT_SUSPENDED")" == 1 ]]; then _palette_suspend; fi
+  if [[ "$(prv_get_global "$AIRLINE_KEY_SUSPENDED")" == 1 ]]; then _palette_suspend; fi
 }
 
 _palette_suspend () {
@@ -167,7 +168,7 @@ _active_slots () {
   local slot
   local -n slots="AIRLINE_SLOTS_${1^^}"
   for slot in "${slots[@]}"; do
-    [[ -n "$(opt_get_global "@airline-segment-$slot")" ]] && printf '%s\n' "$slot"
+    [[ -n "$(pub_get "segment-$slot")" ]] && printf '%s\n' "$slot"
   done
 }
 
@@ -181,7 +182,7 @@ _build_status_left () {
     bg="${THEME[${AIRLINE_SLOT_TIER[${active[i]}]}-bg]}"
     if (( i+1 < n )); then next_bg="${THEME[${AIRLINE_SLOT_TIER[${active[i+1]}]}-bg]}"
     else                   next_bg="${THEME[inner-bg]}"; fi
-    out+="#[fg=$fg,bg=$bg] $(opt_get_global "@airline-segment-${active[i]}") $(_chev_right "$bg" "$next_bg")"
+    out+="#[fg=$fg,bg=$bg] $(pub_get "segment-${active[i]}") $(_chev_right "$bg" "$next_bg")"
   done
   printf '%s' "$out"
 }
@@ -194,7 +195,7 @@ _build_status_right () {
   local n=${#active[@]}
   for (( i=0; i<n; i++ )); do
     bg="${THEME[${AIRLINE_SLOT_TIER[${active[i]}]}-bg]}"
-    out+="$(_chev_left "$prev_bg" "$bg")#[fg=$fg,bg=$bg] $(opt_get_global "@airline-segment-${active[i]}") "
+    out+="$(_chev_left "$prev_bg" "$bg")#[fg=$fg,bg=$bg] $(pub_get "segment-${active[i]}") "
     prev_bg="$bg"
   done
   printf '%s' "$out"
@@ -239,11 +240,11 @@ _window_mode_pick () {   # <in-mode> <none>
 # Two channels flank the window name. Each is a runtime collection reduced to ONE
 # badge and projected to a per-window scalar (status_project / health_project):
 #   status : app-status contributors (ns "status") reduced by the level ladder into
-#            AIRLINE_OPT_STATUS; the left badge shows one glyph in that level's
-#            color, or nothing when no contributor reports.
-#   health : health contributors (ns "health") reduced to the max severity into
-#            AIRLINE_OPT_HEALTH; the right badge shows one glyph in that severity's
-#            color, or nothing when healthy.
+#            the AIRLINE_KEY_STATUS scalar; the left badge shows one glyph in that
+#            level's color, or nothing when no contributor reports.
+#   health : health contributors (ns "health") reduced to the max severity into the
+#            AIRLINE_KEY_HEALTH scalar; the right badge shows one glyph in that
+#            severity's color, or nothing when healthy.
 # The colors are baked here at compose time; WHICH color shows is a live #{?…}
 # selector tmux re-evaluates per window — the selector leg of the render model.
 # The side (left vs right) tells the two badges apart, so their colors may overlap.
@@ -273,20 +274,20 @@ _status_token_expr () {   # <option-name> <fallback-color>
 # ranked entry among the window's contributors, or clear when none rank. Called by
 # `status`/`health` `set`/`clear` at runtime; the window format reads the scalar
 # live. Returns 0 when the rendered value changed (so the caller can gate a redraw).
-_project () {   # <win> <ns> <ranking> <badge-option>
-  local win="$1" ns="$2" ranking="$3" opt="$4" top
+_project () {   # <win> <ns> <ranking> <badge-key>
+  local win="$1" ns="$2" ranking="$3" key="$4" top
   top="$(coll_reduce_window "$win" "$ns" "$ranking")"
   if [[ -n "$top" ]]; then
-    opt_setif_window "$win" "$opt" "$top"
+    prv_setif_window "$win" "$key" "$top"
   else
-    [[ -n "$(opt_get_window "$win" "$opt")" ]] || return 1
-    opt_unset_window "$win" "$opt"
+    [[ -n "$(prv_get_window "$win" "$key")" ]] || return 1
+    prv_unset_window "$win" "$key"
   fi
 }
 
 # Status: every level shows (absence is the blank), so project the reduce verbatim.
 status_project () {   # <win>
-  _project "$1" status "${AIRLINE_STATUS_LEVELS[*]}" "$AIRLINE_OPT_STATUS"
+  _project "$1" status "${AIRLINE_STATUS_LEVELS[*]}" "$AIRLINE_KEY_STATUS"
 }
 
 # Health: a clean badge means healthy, so an `ok`/none reduce projects as blank.
@@ -295,10 +296,10 @@ health_project () {   # <win>
   max="$(coll_reduce_window "$win" health "${AIRLINE_SEVERITIES[*]}")"
   case "$max" in stress|alert) ;; *) max="" ;; esac
   if [[ -n "$max" ]]; then
-    opt_setif_window "$win" "$AIRLINE_OPT_HEALTH" "$max"
+    prv_setif_window "$win" "$AIRLINE_KEY_HEALTH" "$max"
   else
-    [[ -n "$(opt_get_window "$win" "$AIRLINE_OPT_HEALTH")" ]] || return 1
-    opt_unset_window "$win" "$AIRLINE_OPT_HEALTH"
+    [[ -n "$(prv_get_window "$win" "$AIRLINE_KEY_HEALTH")" ]] || return 1
+    prv_unset_window "$win" "$AIRLINE_KEY_HEALTH"
   fi
 }
 
@@ -317,13 +318,19 @@ set_window_formats () {
   mode_color="$(window_mode_color)"                                       # mode color, else inner-bg
   inactive_fg="$(_window_mode_pick "$bg" "${THEME[primary]}")"           # knock out over a fill, else primary
 
+  # The two badges read their scalar live by NAME inside a #{?…} selector; resolve
+  # the bare keys to private option names through the policy builder.
+  local status_opt health_opt
+  status_opt="$(prv_name "$AIRLINE_KEY_STATUS")"
+  health_opt="$(prv_name "$AIRLINE_KEY_HEALTH")"
+
   # Status badge (left of the name): one glyph at the window's reduced level.
   local status_expr
-  status_expr="#{?$AIRLINE_OPT_STATUS,#[fg=$(_status_token_expr "$AIRLINE_OPT_STATUS" "${THEME[primary]}")]$AIRLINE_GLYPH_STATUS ,}"
+  status_expr="#{?$status_opt,#[fg=$(_status_token_expr "$status_opt" "${THEME[primary]}")]$AIRLINE_GLYPH_STATUS ,}"
 
   # Health badge (right of the name): one glyph at the window's reduced severity.
   local health_expr
-  health_expr="#{?$AIRLINE_OPT_HEALTH, #[fg=$(_palette_token_expr "$AIRLINE_OPT_HEALTH" "${THEME[primary]}")]$AIRLINE_GLYPH_HEALTH,}"
+  health_expr="#{?$health_opt, #[fg=$(_palette_token_expr "$health_opt" "${THEME[primary]}")]$AIRLINE_GLYPH_HEALTH,}"
 
   opt_setif_global window-status-separator " " && changed=0
   # inactive: the whole tab fills with the mode color (flat inner-bg when no mode).

@@ -48,12 +48,12 @@ _coll_ounset () { # <win|""> <name>
   if [[ -n "$1" ]]; then opt_unset_window "$1" "$2"; else opt_unset_global "$2"; fi
 }
 
-# Option names — constructed, never parsed. The double dash marks them PRIVATE:
-# airline's dynamic state, never hand-set, fenced off from any public @airline-<el>
-# a user might set (DESIGN.md §State model). This scheme is built here and nowhere
-# else — Invariant B greps for a constructed `@airline--` key outside this file.
-_coll_reg () { printf '@airline--%s' "$1"; }           # ns       → registry option
-_coll_key () { printf '@airline--%s-%s' "$1" "$2"; }   # ns key   → tuple option
+# Option names — constructed, never parsed. The PRIVATE prefix itself belongs to
+# tmux.sh (prv_name, DESIGN.md §State model); collections owns only the key SHAPE —
+# the <ns> registry and <ns>-<key> tuple layout — and asks prv_name to apply the
+# double dash. So this file holds the scheme but not the literal prefix.
+_coll_reg () { prv_name "$1"; }           # ns       → registry option  (@airline--<ns>)
+_coll_key () { prv_name "$1-$2"; }        # ns key   → tuple option     (@airline--<ns>-<key>)
 
 # Public name constructor: the private tuple option for (ns, key). The single home
 # for the @airline--<ns>-<key> scheme, so callers never hand-build a private name.
