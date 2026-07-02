@@ -4,7 +4,7 @@
 #
 # Builds the bar from the stored @airline-* state: it loads the palette and renders
 # the segment bar, window formats, and chrome (the `render` function, driven by
-# `apply`). It also owns airline's shared vocabulary — the segment slots, theme
+# `apply`). It also owns airline's shared vocabulary — the segment slots, palette
 # elements, and rendering constants — plus the predicates the CLI validates against
 # at the boundary. It reaches tmux only through the mechanical layer (tmux.sh's
 # opt_*) and *trusts its inputs*; validation lives at the boundary (api.sh), not here.
@@ -43,8 +43,8 @@ declare -ga AIRLINE_SLOTS_LEFT=(left-out left-mid left-in)
 # shellcheck disable=SC2034
 declare -ga AIRLINE_SLOTS_RIGHT=(right-in right-mid right-out)
 
-# Theme elements: the palette roles.
-declare -ga AIRLINE_THEME_ELEMENTS=(
+# Palette elements: the palette roles.
+declare -ga AIRLINE_PALETTE_ELEMENTS=(
   outer-bg middle-bg inner-bg
   secondary primary emphasized
   active special ok alert stress zoom copy monitor
@@ -78,7 +78,7 @@ AIRLINE_KEY_CLI='cli'                    # published CLI path (plugins discover 
 # shellcheck disable=SC2034
 AIRLINE_KEY_DEFAULTS='defaults-done'     # first-run sentinel: seed defaults once
 
-# The status ladder — semantic levels, low→high precedence, each mapped to a theme
+# The status ladder — semantic levels, low→high precedence, each mapped to a palette
 # color role. The order is handed to coll_reduce as the ranking (collections stays
 # domain-free) and to the selector as the level→color map: `attention` outranks
 # `result` outranks `active`; a window with no status contributor shows no badge.
@@ -101,8 +101,8 @@ _segment_slot_valid () {
   local s; for s in "${AIRLINE_SEGMENT_SLOTS[@]}"; do [[ "$s" == "$1" ]] && return 0; done
   return 1
 }
-_theme_element_valid () {
-  local e; for e in "${AIRLINE_THEME_ELEMENTS[@]}"; do [[ "$e" == "$1" ]] && return 0; done
+_palette_element_valid () {
+  local e; for e in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do [[ "$e" == "$1" ]] && return 0; done
   return 1
 }
 _status_level_valid () {
@@ -115,34 +115,34 @@ _health_severity_valid () {
 }
 
 #-----------------------------------------------------------------------------#
-# Palette — THEME, populated from the @airline-<element> options.
+# Palette — PALETTE, populated from the @airline-<element> options.
 #-----------------------------------------------------------------------------#
 
 # -gA so it survives being populated from inside a sourced function (the test
 # harness sources render.sh from within a helper).
-declare -gA THEME
+declare -gA PALETTE
 
-# Read every theme element into THEME, then apply the suspended dimming when the
+# Read every palette element into PALETTE, then apply the suspended dimming when the
 # private suspended flag is 1 (flat, muted palette for nested sessions).
 _palette_load () {
   local el
-  for el in "${AIRLINE_THEME_ELEMENTS[@]}"; do
-    THEME[$el]="$(pub_get "$el")"
+  for el in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
+    PALETTE[$el]="$(pub_get "$el")"
   done
   if [[ "$(prv_get_global "$AIRLINE_KEY_SUSPENDED")" == 1 ]]; then _palette_suspend; fi
 }
 
 _palette_suspend () {
-  THEME[outer-bg]="${THEME[inner-bg]}"
-  THEME[middle-bg]="${THEME[inner-bg]}"
-  THEME[emphasized]="${THEME[secondary]}"
-  THEME[primary]="${THEME[secondary]}"
-  THEME[active]="${THEME[secondary]}"
-  THEME[special]="${THEME[secondary]}"
-  THEME[ok]="${THEME[secondary]}"
-  THEME[zoom]="${THEME[secondary]}"
-  THEME[copy]="${THEME[secondary]}"
-  THEME[monitor]="${THEME[secondary]}"
+  PALETTE[outer-bg]="${PALETTE[inner-bg]}"
+  PALETTE[middle-bg]="${PALETTE[inner-bg]}"
+  PALETTE[emphasized]="${PALETTE[secondary]}"
+  PALETTE[primary]="${PALETTE[secondary]}"
+  PALETTE[active]="${PALETTE[secondary]}"
+  PALETTE[special]="${PALETTE[secondary]}"
+  PALETTE[ok]="${PALETTE[secondary]}"
+  PALETTE[zoom]="${PALETTE[secondary]}"
+  PALETTE[copy]="${PALETTE[secondary]}"
+  PALETTE[monitor]="${PALETTE[secondary]}"
 }
 
 #-----------------------------------------------------------------------------#
@@ -175,13 +175,13 @@ _active_slots () {
 # Compose status-left: blocks outer→inner, each followed by a chevron into the
 # next slot's tier (or the inner-bg window list after the last).
 _build_status_left () {
-  local fg="${THEME[emphasized]}" out="" bg next_bg i s
+  local fg="${PALETTE[emphasized]}" out="" bg next_bg i s
   local -a active=(); while IFS= read -r s; do active+=("$s"); done < <(_active_slots left)
   local n=${#active[@]}
   for (( i=0; i<n; i++ )); do
-    bg="${THEME[${AIRLINE_SLOT_TIER[${active[i]}]}-bg]}"
-    if (( i+1 < n )); then next_bg="${THEME[${AIRLINE_SLOT_TIER[${active[i+1]}]}-bg]}"
-    else                   next_bg="${THEME[inner-bg]}"; fi
+    bg="${PALETTE[${AIRLINE_SLOT_TIER[${active[i]}]}-bg]}"
+    if (( i+1 < n )); then next_bg="${PALETTE[${AIRLINE_SLOT_TIER[${active[i+1]}]}-bg]}"
+    else                   next_bg="${PALETTE[inner-bg]}"; fi
     out+="#[fg=$fg,bg=$bg] $(pub_get "segment-${active[i]}") $(_chev_right "$bg" "$next_bg")"
   done
   printf '%s' "$out"
@@ -190,11 +190,11 @@ _build_status_left () {
 # Compose status-right: each block preceded by a chevron from the previous tier
 # (the inner-bg window list before the first).
 _build_status_right () {
-  local fg="${THEME[emphasized]}" out="" bg prev_bg="${THEME[inner-bg]}" i s
+  local fg="${PALETTE[emphasized]}" out="" bg prev_bg="${PALETTE[inner-bg]}" i s
   local -a active=(); while IFS= read -r s; do active+=("$s"); done < <(_active_slots right)
   local n=${#active[@]}
   for (( i=0; i<n; i++ )); do
-    bg="${THEME[${AIRLINE_SLOT_TIER[${active[i]}]}-bg]}"
+    bg="${PALETTE[${AIRLINE_SLOT_TIER[${active[i]}]}-bg]}"
     out+="$(_chev_left "$prev_bg" "$bg")#[fg=$fg,bg=$bg] $(pub_get "segment-${active[i]}") "
     prev_bg="$bg"
   done
@@ -219,14 +219,14 @@ _mode_expr () {
   # it as the format string is the whole point.
   # shellcheck disable=SC2059
   printf '#{?#{window_zoomed_flag},%s,#{?#{pane_in_mode},%s,#{?monitor-activity,%s,%s}}}' \
-    "$(printf "$fmt" "${THEME[zoom]}")" \
-    "$(printf "$fmt" "${THEME[copy]}")" \
-    "$(printf "$fmt" "${THEME[monitor]}")" \
+    "$(printf "$fmt" "${PALETTE[zoom]}")" \
+    "$(printf "$fmt" "${PALETTE[copy]}")" \
+    "$(printf "$fmt" "${PALETTE[monitor]}")" \
     "$fallback"
 }
 # Bare mode color, or inner-bg when no mode — the inactive window's background fill
 # AND the active window's name foreground (the one signal value, used on both sides).
-window_mode_color () { _mode_expr '%s' "${THEME[inner-bg]}"; }
+window_mode_color () { _mode_expr '%s' "${PALETTE[inner-bg]}"; }
 # "<in-mode>" when the window is in any mode, else "<none>" — used to knock the
 # inactive name out to inner-bg over a filled block, but keep primary on a flat one.
 _window_mode_pick () {   # <in-mode> <none>
@@ -249,23 +249,23 @@ _window_mode_pick () {   # <in-mode> <none>
 # selector tmux re-evaluates per window — the selector leg of the render model.
 # The side (left vs right) tells the two badges apart, so their colors may overlap.
 
-# A live expression mapping a token-valued option to its baked theme color, falling
+# A live expression mapping a token-valued option to its baked palette color, falling
 # back to <fallback> when the option is empty or holds an unknown token. Used for
-# health, whose tokens (severities) ARE theme role names — token maps to THEME[token].
+# health, whose tokens (severities) ARE palette role names — token maps to PALETTE[token].
 _palette_token_expr () {   # <option-name> <fallback-color>
   local option="$1" expr="$2" tok
   for tok in "${AIRLINE_PALETTE_TOKENS[@]}"; do
-    expr="#{?#{==:#{$option},$tok},${THEME[$tok]},$expr}"
+    expr="#{?#{==:#{$option},$tok},${PALETTE[$tok]},$expr}"
   done
   printf '%s' "$expr"
 }
 
-# The same, for the status ladder, whose levels are NOT theme role names: each level
-# maps through AIRLINE_STATUS_COLOR to its baked color (e.g. result → THEME[ok]).
+# The same, for the status ladder, whose levels are NOT palette role names: each level
+# maps through AIRLINE_STATUS_COLOR to its baked color (e.g. result → PALETTE[ok]).
 _status_token_expr () {   # <option-name> <fallback-color>
   local option="$1" expr="$2" lvl
   for lvl in "${AIRLINE_STATUS_LEVELS[@]}"; do
-    expr="#{?#{==:#{$option},$lvl},${THEME[${AIRLINE_STATUS_COLOR[$lvl]}]},$expr}"
+    expr="#{?#{==:#{$option},$lvl},${PALETTE[${AIRLINE_STATUS_COLOR[$lvl]}]},$expr}"
   done
   printf '%s' "$expr"
 }
@@ -310,13 +310,13 @@ health_project () {   # <win>
 # Returns 0 when any rendered option actually changed (so render can gate one
 # redraw across the whole bar), 1 when every value was already current.
 set_window_formats () {
-  local bg="${THEME[inner-bg]}" active_bg="${THEME[active]}" template changed=1
+  local bg="${PALETTE[inner-bg]}" active_bg="${PALETTE[active]}" template changed=1
   template="$AIRLINE_TMPL_WINDOW"
 
   # Mode signal. inactive: fill the background; active: tint the name foreground.
   local mode_color inactive_fg
   mode_color="$(window_mode_color)"                                       # mode color, else inner-bg
-  inactive_fg="$(_window_mode_pick "$bg" "${THEME[primary]}")"           # knock out over a fill, else primary
+  inactive_fg="$(_window_mode_pick "$bg" "${PALETTE[primary]}")"           # knock out over a fill, else primary
 
   # The two badges read their scalar live by NAME inside a #{?…} selector; resolve
   # the bare keys to private option names through the policy builder.
@@ -326,20 +326,20 @@ set_window_formats () {
 
   # Status badge (left of the name): one glyph at the window's reduced level.
   local status_expr
-  status_expr="#{?$status_opt,#[fg=$(_status_token_expr "$status_opt" "${THEME[primary]}")]$AIRLINE_GLYPH_STATUS ,}"
+  status_expr="#{?$status_opt,#[fg=$(_status_token_expr "$status_opt" "${PALETTE[primary]}")]$AIRLINE_GLYPH_STATUS ,}"
 
   # Health badge (right of the name): one glyph at the window's reduced severity.
   local health_expr
-  health_expr="#{?$health_opt, #[fg=$(_palette_token_expr "$health_opt" "${THEME[primary]}")]$AIRLINE_GLYPH_HEALTH,}"
+  health_expr="#{?$health_opt, #[fg=$(_palette_token_expr "$health_opt" "${PALETTE[primary]}")]$AIRLINE_GLYPH_HEALTH,}"
 
   opt_setif_global window-status-separator " " && changed=0
   # inactive: the whole tab fills with the mode color (flat inner-bg when no mode).
   opt_setif_global window-status-format \
     "#[bg=${mode_color}]${status_expr}#[fg=${inactive_fg}]${template}${health_expr}" && changed=0
-  opt_setif_global window-status-style          "fg=${THEME[primary]} bg=$bg"     && changed=0
-  opt_setif_global window-status-last-style     "fg=${THEME[emphasized]} bg=$bg"  && changed=0
-  opt_setif_global window-status-activity-style "fg=${THEME[alert]} bg=$bg"       && changed=0
-  opt_setif_global window-status-bell-style     "fg=${THEME[stress]} bg=$bg"      && changed=0
+  opt_setif_global window-status-style          "fg=${PALETTE[primary]} bg=$bg"     && changed=0
+  opt_setif_global window-status-last-style     "fg=${PALETTE[emphasized]} bg=$bg"  && changed=0
+  opt_setif_global window-status-activity-style "fg=${PALETTE[alert]} bg=$bg"       && changed=0
+  opt_setif_global window-status-bell-style     "fg=${PALETTE[stress]} bg=$bg"      && changed=0
   # active: a constant active-color highlight block, name foreground tinted by mode.
   opt_setif_global window-status-current-format \
     "$(_chev_right "$bg" "$active_bg") ${status_expr}#[fg=${mode_color}]${template}${health_expr} $(_chev_left "$active_bg" "$bg")" && changed=0
@@ -350,7 +350,7 @@ set_window_formats () {
 # render — produce the whole bar from the stored @airline-* state.
 #-----------------------------------------------------------------------------#
 # The shared render step: load the palette and write every composed option — chrome
-# styles, segment bars, window formats — baking THEME colors in as constants (live
+# styles, segment bars, window formats — baking PALETTE colors in as constants (live
 # #{?…} selectors then decide which baked color shows). `apply` and `init` call this;
 # it does NOT seed defaults, publish the CLI path, or bind keys — those are init's
 # job. Idempotent and redraw-gated: it rewrites only options whose value changed
@@ -359,16 +359,16 @@ set_window_formats () {
 render () {
   _palette_load
   local changed=1
-  opt_setif_global pane-border-style         "fg=${THEME[primary]}"                       && changed=0
-  opt_setif_global pane-active-border-style   "fg=${THEME[active]}"                        && changed=0
-  opt_setif_global display-panes-color        "${THEME[primary]}"                          && changed=0
-  opt_setif_global display-panes-active-color "${THEME[active]}"                           && changed=0
-  opt_setif_global status-style               "fg=${THEME[secondary]} bg=${THEME[inner-bg]}" && changed=0
-  opt_setif_global status-left-style          "fg=${THEME[primary]} bg=${THEME[outer-bg]}"   && changed=0
-  opt_setif_global status-right-style         "fg=${THEME[primary]} bg=${THEME[outer-bg]}"   && changed=0
+  opt_setif_global pane-border-style         "fg=${PALETTE[primary]}"                       && changed=0
+  opt_setif_global pane-active-border-style   "fg=${PALETTE[active]}"                        && changed=0
+  opt_setif_global display-panes-color        "${PALETTE[primary]}"                          && changed=0
+  opt_setif_global display-panes-active-color "${PALETTE[active]}"                           && changed=0
+  opt_setif_global status-style               "fg=${PALETTE[secondary]} bg=${PALETTE[inner-bg]}" && changed=0
+  opt_setif_global status-left-style          "fg=${PALETTE[primary]} bg=${PALETTE[outer-bg]}"   && changed=0
+  opt_setif_global status-right-style         "fg=${PALETTE[primary]} bg=${PALETTE[outer-bg]}"   && changed=0
   opt_setif_global status-left                "$(_build_status_left)"                      && changed=0
   opt_setif_global status-right               "$(_build_status_right)"                     && changed=0
-  opt_setif_global clock-mode-color           "${THEME[special]}"                          && changed=0
+  opt_setif_global clock-mode-color           "${PALETTE[special]}"                          && changed=0
   set_window_formats && changed=0
   [[ $changed -eq 0 ]] && redraw
   return $changed

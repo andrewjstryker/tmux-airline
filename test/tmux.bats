@@ -118,7 +118,7 @@ load helper
 
 @test "source_file loads a tmux file that sets options" {
   load_tmux
-  f="$BATS_TMPDIR/airline-theme-$BATS_TEST_NUMBER"
+  f="$BATS_TMPDIR/airline-palette-$BATS_TEST_NUMBER"
   printf 'set-option -g @airline-loaded yes\n' > "$f"
   source_file "$f"
   run opt_get_global @airline-loaded

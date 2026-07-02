@@ -15,7 +15,7 @@
 #       @airline--) lives in ONE place: tmux.sh, which owns the pub_* / prv_*
 #       accessors and the prv_name builder. Everything above addresses airline
 #       options by BARE key through those, so a literal @airline- option name in
-#       any other source is a layering violation. (Theme/bundle data files spell
+#       any other source is a layering violation. (Palette/segment data files spell
 #       @airline- — that is the public contract — but they aren't scanned.)
 #
 # Usage: test/lint-architecture.sh [A|B|all]   (default: all)
@@ -25,15 +25,14 @@ set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Production shell sources the lint governs. Data files (themes/, bundles/) are
-# inert and the test tree drives an isolated server through a shim, so neither is
-# scanned. Globs that match nothing (e.g. widgets/ before it exists) drop out.
+# Production shell the lint governs — including adapters/* (bash snippets that must
+# reach tmux only through opt_*). Data/interpreted files (palettes/, segments/,
+# layouts/) are not shell and aren't scanned; the test tree drives an isolated server
+# through a shim, so it isn't either. Globs that match nothing drop out (nullglob).
 _sources () {
   shopt -s nullglob
   local f
-  for f in "$ROOT"/airline "$ROOT"/airline.tmux \
-           "$ROOT"/*.sh "$ROOT"/scripts/*.sh "$ROOT"/scripts/plugins/*.sh \
-           "$ROOT"/widgets/*.sh; do
+  for f in "$ROOT"/airline "$ROOT"/airline.tmux "$ROOT"/*.sh "$ROOT"/adapters/*; do
     printf '%s\n' "$f"
   done
 }

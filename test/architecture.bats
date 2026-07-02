@@ -7,11 +7,11 @@ load test_helper/bats-assert/load
 # normal `bats test/` run. The grep logic lives in test/lint-architecture.sh so
 # `make lint` can call it too; this wraps it with didactic failure messages.
 #
-# Invariant A is EXPECTED RED until the rework completes: its violation list is
-# the worklist (the widget adapters that still call `tmux` directly). It goes green
-# file-by-file as each layer migrates onto tmux.sh's opt_* / verb functions.
-# Invariant B is GREEN: the @airline- option prefix (both tiers) lives only in
-# tmux.sh, behind the pub_* / prv_* accessors and prv_name builder.
+# Both invariants are GREEN. A — every `tmux` call goes through tmux.sh; the plugin
+# adapters (adapters/*) set their options via opt_*, not raw tmux. B — the
+# @airline- option prefix (both tiers) lives only in tmux.sh, behind the pub_* /
+# prv_* accessors and the prv_name builder. These are now regression guards, not a
+# worklist: a red here means a new violation crept in.
 
 LINT="$BATS_TEST_DIRNAME/lint-architecture.sh"
 

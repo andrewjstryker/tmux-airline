@@ -24,11 +24,11 @@ teardown() { :; }
   ! _segment_slot_valid ""
 }
 
-@test "_theme_element_valid accepts palette roles and rejects others" {
+@test "_palette_element_valid accepts palette roles and rejects others" {
   load_render
-  _theme_element_valid active
-  _theme_element_valid outer-bg
-  ! _theme_element_valid bogus
+  _palette_element_valid active
+  _palette_element_valid outer-bg
+  ! _palette_element_valid bogus
 }
 
 # --- segment-bar composition ------------------------------------------------
@@ -169,7 +169,7 @@ _seed_palette() {
   assert_output --partial "●"                        # the default badge glyph
 }
 
-@test "status badge maps each semantic level to its theme color" {
+@test "status badge maps each semantic level to its palette color" {
   load_render
   _seed_palette
   set_window_formats

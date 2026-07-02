@@ -1,0 +1,12 @@
+# adapters/cpu — apply the palette to tmux-cpu's colour options (dynamic).
+#
+# A bash snippet: `adapter use cpu` sources it with PALETTE populated, so it sets
+# literal colours the plugin understands, re-applied whenever the palette changes
+# (the layout that uses it is re-run). Foreground only — render owns the block bg.
+# airline does nothing else; the plugin draws its own meter.
+#
+# Layout slot content: #{cpu_fg_color}#{cpu_icon}
+
+opt_set_global @cpu_low_fg_color    "${PALETTE[secondary]}"
+opt_set_global @cpu_medium_fg_color "${PALETTE[alert]}"
+opt_set_global @cpu_high_fg_color   "${PALETTE[stress]}"

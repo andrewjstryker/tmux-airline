@@ -37,8 +37,10 @@ case "$cmd" in
   resume)   cmd_resume  ;;
   status)   cmd_status  "$@" ;;
   health)   cmd_health  "$@" ;;
-  theme)    cmd_theme   "$@" ;;
+  palette)  cmd_palette "$@" ;;
   segment)  cmd_segment "$@" ;;
+  adapter)  cmd_adapter "$@" ;;
+  layout)   cmd_layout  "$@" ;;
   _unfocus) cmd_unfocus "$@" ;;   # internal: pane-focus-out hook callback
   ""|-h|--help|help) usage ;;
   *) die "unknown command: $cmd (try: airline help)" ;;

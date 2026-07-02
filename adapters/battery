@@ -1,0 +1,44 @@
+# adapters/battery — apply the palette to tmux-battery's colour options (dynamic).
+#
+# A bash snippet sourced by `adapter use battery` with PALETTE populated. Foreground
+# only — render owns the block background. The plugin draws its own meter.
+#
+# Layout slot content:
+#   #{battery_color_fg}#{battery_icon}#{battery_color_status_fg}#{battery_status}
+
+opt_set_global @batt_color_full_charge   "#[fg=${PALETTE[emphasized]}]"
+opt_set_global @batt_color_high_charge   "#[fg=${PALETTE[primary]}]"
+opt_set_global @batt_color_medium_charge "#[fg=${PALETTE[alert]}]"
+opt_set_global @batt_color_low_charge    "#[fg=${PALETTE[stress]}]"
+
+# charge-tier icon colours, calm → alarming
+opt_set_global @batt_color_charge_primary_tier8 "${PALETTE[primary]}"
+opt_set_global @batt_color_charge_primary_tier7 "${PALETTE[primary]}"
+opt_set_global @batt_color_charge_primary_tier6 "${PALETTE[emphasized]}"
+opt_set_global @batt_color_charge_primary_tier5 "${PALETTE[emphasized]}"
+opt_set_global @batt_color_charge_primary_tier4 "${PALETTE[alert]}"
+opt_set_global @batt_color_charge_primary_tier3 "${PALETTE[alert]}"
+opt_set_global @batt_color_charge_primary_tier2 "${PALETTE[stress]}"
+opt_set_global @batt_color_charge_primary_tier1 "${PALETTE[stress]}"
+
+# discharge icons (fullest → emptiest)
+opt_set_global @batt_icon_charge_tier8 '█'
+opt_set_global @batt_icon_charge_tier7 '▇'
+opt_set_global @batt_icon_charge_tier6 '▆'
+opt_set_global @batt_icon_charge_tier5 '▅'
+opt_set_global @batt_icon_charge_tier4 '▄'
+opt_set_global @batt_icon_charge_tier3 '▃'
+opt_set_global @batt_icon_charge_tier2 '▂'
+opt_set_global @batt_icon_charge_tier1 '▁'
+
+# charging-status icons + colours
+opt_set_global @batt_icon_status_charged     '⚡'
+opt_set_global @batt_icon_status_charging    '⚡'
+opt_set_global @batt_icon_status_discharging '🔋'
+opt_set_global @batt_icon_status_attached    '⚡'
+opt_set_global @batt_icon_status_unknown     ' '
+opt_set_global @batt_color_status_primary_charged     "${PALETTE[primary]}"
+opt_set_global @batt_color_status_primary_charging    "${PALETTE[active]}"
+opt_set_global @batt_color_status_primary_discharging "${PALETTE[emphasized]}"
+opt_set_global @batt_color_status_primary_attached    "${PALETTE[primary]}"
+opt_set_global @batt_color_status_primary_unknown     "${PALETTE[stress]}"

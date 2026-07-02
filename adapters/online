@@ -1,0 +1,7 @@
+# adapters/online — apply the palette to tmux-online-status's icon options (dynamic).
+#
+# A bash snippet sourced by `adapter use online` with PALETTE populated.
+# Layout slot content: #{online_status}
+
+opt_set_global @online_icon  "#[fg=${PALETTE[primary]}]●"
+opt_set_global @offline_icon "#[fg=${PALETTE[stress]}]●"

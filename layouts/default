@@ -1,0 +1,9 @@
+# layouts/default — the default composition.
+#
+# A layout is an interpreted list of airline composition commands (adapter/segment
+# only — no palette, so it stays orthogonal to whatever palette is active). `layout
+# use default` runs these; `apply` re-runs the stored layout to re-apply.
+#
+# The default is dependency-free: just the built-in segment set, no plugin adapters.
+
+segment use default

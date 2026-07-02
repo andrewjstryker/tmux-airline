@@ -71,10 +71,16 @@ _coll_has () {       # <win> <ns> <key>   (exit status)
   case " $(_coll_members "$1" "$2") " in *" $3 "*) return 0 ;; *) return 1 ;; esac
 }
 
-_coll_register () {  # <win> <ns> <key>   add to registry (idempotent)
+_coll_register () {  # <win> <ns> <key>   add to registry TAIL (idempotent)
   _coll_has "$1" "$2" "$3" && return 0
   local cur; cur="$(_coll_members "$1" "$2")"
   _coll_oset "$1" "$(_coll_reg "$2")" "${cur:+$cur }$3"
+}
+
+_coll_prepend () {   # <win> <ns> <key>   add to registry HEAD (idempotent)
+  _coll_has "$1" "$2" "$3" && return 0
+  local cur; cur="$(_coll_members "$1" "$2")"
+  _coll_oset "$1" "$(_coll_reg "$2")" "$3${cur:+ $cur}"
 }
 
 _coll_unregister () {  # <win> <ns> <key>   drop from registry AND unset its tuple
@@ -121,7 +127,8 @@ _coll_reduce () {    # <win> <ns> <order>
 #-----------------------------------------------------------------------------#
 
 # --- global scope ---
-coll_register_global   () { _coll_register   "" "$@"; }   # <ns> <key>
+coll_register_global   () { _coll_register   "" "$@"; }   # <ns> <key>  (tail)
+coll_prepend_global    () { _coll_prepend    "" "$@"; }   # <ns> <key>  (head)
 coll_unregister_global () { _coll_unregister "" "$@"; }   # <ns> <key>
 coll_has_global        () { _coll_has        "" "$@"; }   # <ns> <key>
 coll_members_global    () { _coll_members    "" "$@"; }   # <ns>
@@ -130,7 +137,8 @@ coll_set_global        () { _coll_set        "" "$@"; }   # <ns> <key> <field…
 coll_reduce_global     () { _coll_reduce     "" "$@"; }   # <ns> <order>
 
 # --- window scope (explicit window id first, per opt_*_window) ---
-coll_register_window   () { _coll_register   "$@"; }      # <win> <ns> <key>
+coll_register_window   () { _coll_register   "$@"; }      # <win> <ns> <key>  (tail)
+coll_prepend_window    () { _coll_prepend    "$@"; }      # <win> <ns> <key>  (head)
 coll_unregister_window () { _coll_unregister "$@"; }      # <win> <ns> <key>
 coll_has_window        () { _coll_has        "$@"; }      # <win> <ns> <key>
 coll_members_window    () { _coll_members    "$@"; }      # <win> <ns>

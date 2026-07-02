@@ -1,0 +1,17 @@
+# adapters/prefix-highlight — apply the palette to tmux-prefix-highlight (dynamic).
+#
+# A bash snippet sourced by `adapter use prefix-highlight` with PALETTE populated.
+# A highlight block that owns its own background (the active colour), like a badge.
+# Layout slot content: #{prefix_highlight}
+
+opt_set_global @prefix_highlight_output_prefix '['
+opt_set_global @prefix_highlight_output_suffix ']'
+
+opt_set_global @prefix_highlight_fg "${PALETTE[inner-bg]}"
+opt_set_global @prefix_highlight_bg "${PALETTE[active]}"
+
+opt_set_global @prefix_highlight_show_copy_mode 'on'
+opt_set_global @prefix_highlight_copy_mode_attr "fg=${PALETTE[inner-bg]},bg=${PALETTE[copy]}"
+
+opt_set_global @prefix_highlight_show_sync_mode 'on'
+opt_set_global @prefix_highlight_sync_mode_attr "fg=${PALETTE[inner-bg]},bg=${PALETTE[special]}"

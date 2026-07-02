@@ -71,7 +71,7 @@ opt_setif_window () {
 #-----------------------------------------------------------------------------#
 # airline owns two option namespaces, and this file is the ONE place their
 # prefixes are written:
-#   public  (@airline-<key>)   user-set static config — themes, segments
+#   public  (@airline-<key>)   user-set static config — palettes, segments
 #   private (@airline--<key>)  airline-managed dynamic state — badges, flags
 # Everything above addresses airline options by BARE key through the functions
 # below; it never spells a prefix. (Native tmux options — status-left, prefix,
@@ -112,7 +112,7 @@ prv_unset_window () { opt_unset_window "$1" "@airline--$2"; }       # <win> <key
 # lag; -S refreshes the status line. No attached client → harmless.
 redraw () { tmux refresh-client -S 2>/dev/null || true; }
 
-# Load a tmux source file (used for theme files).
+# Load a tmux source file (used for palette files).
 source_file () { tmux source-file "$1"; }
 
 # The id (@n) of the window the caller is acting in — lets window-scoped callers

@@ -25,6 +25,14 @@ teardown() { :; }
   ! coll_has_global status nope
 }
 
+@test "prepend adds to the front; register to the tail" {
+  load_collections
+  coll_register_global status build      # tail
+  coll_prepend_global  status deploy     # head
+  run coll_members_global status
+  assert_output "deploy build"
+}
+
 @test "register is idempotent" {
   load_collections
   coll_register_global status build

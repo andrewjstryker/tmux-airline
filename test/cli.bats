@@ -25,23 +25,27 @@ setup() {
   assert_output "1"
 }
 
-@test "init seeds the default theme when no palette is set" {
+@test "init applies the default palette when no palette is set" {
   airline init
   run get_option @airline-inner-bg
-  assert_output "colour234"          # from themes/dark
+  assert_output "colour234"          # palette use default
+  run get_option @airline--palette
+  assert_output "default"            # recorded
 }
 
-@test "init seeds dependency-free default segments" {
+@test "init applies the default layout (segments) when none is set" {
   airline init
   run get_option status-left
-  assert_output --partial "#S"       # the session-name segment from bundles/default
+  assert_output --partial "#S"       # layout use default → segment use default
+  run get_option @airline--layout
+  assert_output "default"            # recorded, so apply re-applies it
 }
 
 @test "init does not clobber a user-set palette" {
   $TMUX -L "$_bats_socket" set -g @airline-inner-bg colour99
   airline init
   run get_option @airline-inner-bg
-  assert_output "colour99"           # user value preserved; dark not sourced
+  assert_output "colour99"           # user value preserved; default not applied
 }
 
 @test "init is idempotent: a reload keeps runtime segment changes" {
@@ -64,33 +68,61 @@ setup() {
 
 @test "apply renders from the current source of truth" {
   airline init
-  $TMUX -L "$_bats_socket" set -g @airline-segment-right-out "ZZZ"
+  # a palette element is source-of-truth (not layout-managed, so apply won't reset it)
+  $TMUX -L "$_bats_socket" set -g @airline-active "colour201"
   airline apply
-  run get_option status-right
-  assert_output --partial "ZZZ"
+  run get_option window-status-current-format
+  assert_output --partial "colour201"
 }
 
-@test "theme use sources a tmux file then renders" {
+@test "register blesses a dir; use loads a bare name from it, then renders" {
   airline init
-  printf 'set -g @airline-inner-bg colour55\n' > "$BATS_TMPDIR/airline-use-theme"
-  airline theme use "$BATS_TMPDIR/airline-use-theme"
+  mkdir -p "$BATS_TMPDIR/mypalettes"
+  printf 'set -g @airline-inner-bg colour55\n' > "$BATS_TMPDIR/mypalettes/custom"
+  airline palette register "$BATS_TMPDIR/mypalettes"
+  airline palette use custom
   run get_option @airline-inner-bg
   assert_output "colour55"
   run get_option status-style
   assert_output --partial "bg=colour55"     # rendered with the new color
 }
 
-@test "theme use rejects an unknown name" {
+@test "palette use rejects an unknown name and a path (no literal-path escape)" {
   airline init
-  run airline theme use no-such-theme-xyz
+  run airline palette use no-such-palette-xyz
+  assert_failure
+  run airline palette use /etc/passwd        # a path is not a bare name
   assert_failure
 }
 
-# --- theme / segment (static nouns: set X / clear X / show [X], staged) ------
-
-@test "theme set stages a color; apply renders it" {
+@test "palette use resolves a bare name on the shipped search path" {
   airline init
-  airline theme set active colour201
+  run airline palette use light       # a shipped bare name → found on the registered palettes/ dir
+  assert_success
+}
+
+@test "register prepends: a registered dir shadows the shipped one" {
+  airline init
+  mkdir -p "$BATS_TMPDIR/shadow"
+  printf 'set -g @airline-inner-bg colour42\n' > "$BATS_TMPDIR/shadow/dark"   # same name as shipped
+  airline palette register "$BATS_TMPDIR/shadow"
+  airline palette use dark
+  run get_option @airline-inner-bg
+  assert_output "colour42"            # the registered dark won, not the shipped colour234
+}
+
+@test "use records the active selection" {
+  airline init
+  airline palette use light
+  run get_option @airline--palette
+  assert_output "light"
+}
+
+# --- palette / segment (static nouns: set X / clear X / show [X], staged) ------
+
+@test "palette set stages a color; apply renders it" {
+  airline init
+  airline palette set active colour201
   run get_option @airline-active
   assert_output "colour201"             # staged public option, no render yet
   airline apply
@@ -98,19 +130,19 @@ setup() {
   assert_output --partial "colour201"   # rendered into the bar (active highlight)
 }
 
-@test "theme show X prints one element; theme show prints all" {
+@test "palette show X prints one element; palette show prints all" {
   airline init
-  airline theme set active colour201
-  run airline theme show active
+  airline palette set active colour201
+  run airline palette show active
   assert_output "colour201"
-  run airline theme show
+  run airline palette show
   assert_output --partial "active"
   assert_output --partial "inner-bg"
 }
 
-@test "theme set rejects an unknown element" {
+@test "palette set rejects an unknown element" {
   airline init
-  run airline theme set bogus colour1
+  run airline palette set bogus colour1
   assert_failure
 }
 
@@ -125,6 +157,82 @@ setup() {
   airline init
   run airline segment set middle nope
   assert_failure
+}
+
+# --- adapter (dynamic: apply palette → a plugin's options) ------------------
+
+@test "adapter use applies the current palette to the plugin's options" {
+  airline init
+  airline adapter use cpu
+  # behaviour, not content: cpu's low-severity fg == the palette's secondary value
+  run get_option @cpu_low_fg_color
+  assert_output "$(get_option @airline-secondary)"
+}
+
+@test "adapter use re-applies literal colours on a palette change" {
+  airline init
+  airline adapter use cpu
+  airline palette set secondary colour99   # move the role
+  airline adapter use cpu                   # re-run the adapter
+  run get_option @cpu_low_fg_color
+  assert_output "colour99"                   # picked up the new palette value
+}
+
+@test "adapter use rejects an unknown name" {
+  airline init
+  run airline adapter use no-such-adapter
+  assert_failure
+}
+
+# --- layout (dynamic: a composition script, stored + re-applied) ------------
+
+@test "layout use runs the composition and records the active layout" {
+  airline init
+  $TMUX -L "$_bats_socket" set -g @airline-segment-left-out "SCRATCH"   # perturb
+  airline layout use default          # its `segment use default` resets the slots
+  run get_option @airline-segment-left-out
+  assert_output "#S"                   # composition applied
+  run get_option @airline--layout
+  assert_output "default"              # recorded active
+}
+
+@test "apply re-runs the stored layout" {
+  airline init
+  airline layout use default
+  $TMUX -L "$_bats_socket" set -g @airline-segment-left-out "SCRATCH"   # perturb after
+  airline apply                        # re-runs default → segment use default
+  run get_option @airline-segment-left-out
+  assert_output "#S"                    # restored by the re-run
+}
+
+@test "a layout may apply an adapter; palette drives its colours" {
+  airline init
+  mkdir -p "$BATS_TMPDIR/mylayouts"
+  printf 'adapter use cpu\nsegment use default\n' > "$BATS_TMPDIR/mylayouts/withcpu"
+  airline layout register "$BATS_TMPDIR/mylayouts"
+  airline layout use withcpu
+  run get_option @cpu_low_fg_color      # the adapter ran inside the layout
+  assert_output "$(get_option @airline-secondary)"
+}
+
+@test "a layout rejects non-composition commands (palette/lifecycle)" {
+  airline init
+  mkdir -p "$BATS_TMPDIR/badlayouts"
+  printf 'palette use light\n' > "$BATS_TMPDIR/badlayouts/sneaky"
+  airline layout register "$BATS_TMPDIR/badlayouts"
+  run airline layout use sneaky
+  assert_failure                        # only adapter/segment allowed
+}
+
+@test "palette use re-applies the active layout's adapters to the new palette" {
+  airline init
+  mkdir -p "$BATS_TMPDIR/pl"
+  printf 'adapter use cpu\nsegment use default\n' > "$BATS_TMPDIR/pl/withcpu"
+  airline layout register "$BATS_TMPDIR/pl"
+  airline layout use withcpu            # cpu adapter active, coloured by the dark palette
+  airline palette use light             # swap palette → must re-colour cpu
+  run get_option @cpu_low_fg_color
+  assert_output "$(get_option @airline-secondary)"   # tracks light's secondary now
 }
 
 # --- status (dynamic noun) --------------------------------------------------

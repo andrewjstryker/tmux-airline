@@ -19,10 +19,10 @@ Status of this document:
    option, a runtime event, `init` — the bar is (re)built by a single path:
    `render`, invoked by `apply`. There is no second, divergent way to build or
    repaint the bar. (This is the rule the old `main()` / `_airline_rebuild` split
-   violated, which is why a theme change only half-repainted.)
+   violated, which is why a palette change only half-repainted.)
 3. **The middle is logic.** Composition — the badge reduce (status and health
    both collapse many contributors to one mark), segment-slot assembly, render
-   expressions, theme application — is expressed in domain terms and never calls
+   expressions, palette application — is expressed in domain terms and never calls
    tmux directly.
 4. **No runtime enforcement.** Bash gives us one global namespace and no
    visibility modifiers, so layers are a convention. We enforce it at **build
@@ -54,13 +54,13 @@ regressing. Treat these as a checklist as code migrates:
 | `airline.tmux` | **Entry point.** Run by TPM / `run-shell`. Invokes `init` through the CLI (which renders the bar; the sentinel skips the clobber on a bare reload); holds no logic. | no (only invokes the CLI) | `airline` |
 | `airline` | **CLI — parser & dispatcher.** The entry users / `airline.tmux` / plugins call. Holds no logic: points the mechanical layer at the tmux server, sources the stack, and routes argv to an `api.sh` handler. | no | `api.sh` (+ the layers) |
 | `api.sh` | **Command handlers — the API logic.** One handler per verb; owns input **validation** (the only place input is checked, against `render.sh`'s predicates), then drives the layers — `opt_*` / `coll_*` to mutate, `render` to produce the bar. | no | `render.sh`, `collections.sh`, `tmux.sh` |
-| `render.sh` | **Composition.** Loads the palette and implements `render` (what `apply` runs) — producing the bar (`status-left/right`, window formats, `*-style`, pane, clock) from the public `@airline-*` inputs and private `@airline--*` state. Owns the shared vocabulary — slot/element names, the rendering constants (glyphs, chevrons, name template), and the predicates the CLI validates against. *Trusts* its inputs. | **no** | `collections.sh`, `tmux.sh`, `widgets/*.sh` |
+| `render.sh` | **Composition.** Loads the palette into `PALETTE` and implements `render` (what `apply` runs) — producing the bar (`status-left/right`, window formats, `*-style`, pane, clock) from the public `@airline-*` inputs and private `@airline--*` state. Owns the shared vocabulary — slot/element names, the rendering constants (glyphs, chevrons, name template), and the predicates the CLI validates against. *Trusts* its inputs. | **no** | `collections.sh`, `tmux.sh` |
 | `collections.sh` | **Collections (status & health only).** A registry (explicit key list) + per-key tuples over options, split with bash `IFS` — the "0 or more" shape behind the status and health contributors that each reduce to one badge. Pure bash on `opt_*`; no direct tmux calls, no domain terms. Segments are *not* collections. | no (via `tmux.sh`) | `tmux.sh` |
 | `tmux.sh` | **Mechanical + namespace policy.** The *sole* caller of the `tmux` binary: scoped option get/set/unset, redraw, `source-file`, hooks, binds. Also the *sole* owner of the `@airline-` / `@airline--` prefixes — the `pub_*` / `prv_*` accessors and `prv_name` builder, so every layer above names airline options by bare key. | **yes (only here)** | — |
-| `widgets/*.sh` | **External widget adapters.** Configure third-party tmux plugins for airline — translate `THEME` into their `@plugin-*` options (cpu, battery, online, prefix-highlight). Logic tier. | no (via `tmux.sh`) | `tmux.sh` |
-| `scripts/*.sh` | **Generic helpers.** Cross-cutting shell utilities with no render role (e.g. plugin-install checks). Reserved for generic concerns — *not* widgets. | no | — |
-| `themes/*` | **Built-in themes.** Plain tmux files of `set -g @airline-<element> <color>` lines, loaded by `use` (`source-file` + `apply`). A theme is config, not airline production shell — it sets *public* options the idiomatic way. | sets public options (sourced by `use`) | — |
-| `bundles/*` | **Built-in segment sets.** Plain tmux files of `set -g @airline-segment-<slot> <format>` lines, loaded by the same `use`. Same shape as a theme; the split is only by convention (colors vs segments). | sets public options (sourced by `use`) | — |
+| `palettes/*` | **Built-in palettes** *(static config).* Plain tmux files of `set -g @airline-<element> <color>` lines, loaded by `palette use` (`source-file`). Config, not production shell — it sets *public* options the idiomatic way. | sets public options (sourced by `use`) | — |
+| `segments/*` | **Built-in segment sets** *(static config).* Plain tmux files of `set -g @airline-segment-<slot> <format>` lines, loaded by `segment use`. Same shape as a palette; the split is only by convention (colors vs arrangement). | sets public options (sourced by `use`) | — |
+| `adapters/*` | **Plugin adapters** *(dynamic).* A bash snippet per third-party plugin (cpu/battery/online/prefix-highlight): `opt_set_global @<plugin>-* "${PALETTE[role]}"`. `adapter use` sources it *after* loading `PALETTE`, so it sets **literal** colors, re-applied on every palette change. No function wrapper, no install guard — airline only sets the plugin's options; the plugin draws its own meter. Scanned by the lint (must use `opt_*`). | no (via `tmux.sh`) | `tmux.sh` |
+| `layouts/*` | **Compositions** *(dynamic).* A short interpreted script — `adapter use …` / `segment use …` lines (composition verbs only). `layout use` runs it and records the active layout (`@airline--layout`); `apply` re-runs it. Never sets the palette — that's the orthogonal axis. | no (runs airline verbs) | `api.sh` handlers |
 
 Notes:
 
@@ -71,15 +71,21 @@ Notes:
   allowlist, leaving `tmux.sh` the genuinely sole tmux caller.
 - **Only status and health are collections.** They hold 0-or-more dynamic entries.
   Segments are a *fixed* set of named slots — plain keyed `opt_*`, no collection,
-  no registry. Themes are files. Don't grow the collection abstraction back over
+  no registry. Palettes are files. Don't grow the collection abstraction back over
   things that aren't variable-cardinality.
 - **`tmux.sh` is named for where tmux calls live, not for "options only."** It
   also owns redraw, hooks, binds, and mode toggles. Don't let the short name
   tempt the suspend/hook code back into the logic layer.
-- **`widgets/` vs `scripts/`.** `widgets/` holds the external on-bar widgets
-  configured for airline (the cpu/battery/online/prefix adapters); `scripts/` is
-  reserved for generic shell concerns. Keep the two from blurring — a new bar
-  widget goes in `widgets/`, a generic utility in `scripts/`.
+- **Four config kinds, two static + two dynamic.** *Palette* (colors) and *segments*
+  (arrangement) are static tmux-conf files, loaded by `source-file`. *Adapters*
+  (palette→plugin) and *layouts* (compositions) are dynamic — executed, not sourced
+  into tmux. `render` never touches adapters: an adapter is applied by `adapter use`
+  (which a layout invokes), so the palette→plugin bridge lives in the layout re-apply
+  path, not the render path.
+- **Palette ⟂ layout.** A palette is the colors; a layout is the arrangement (which
+  adapters + which segment set), and it *never* sets the palette. So you compose one
+  of each — N palettes + M layouts, not N×M. A palette swap re-runs the stored layout
+  so its adapters re-resolve to the new colors ("new palette → everything switches").
 
 ## Dependency graph
 
@@ -93,16 +99,15 @@ graph TD
     ENTRY --> CLI
     CLI --> API["api.sh<br/><i>command handlers</i>"]
     API --> LOGIC["render.sh<br/><i>composition logic</i>"]
-    API --> COLL
-    LOGIC --> WIDGETS["widgets/*.sh<br/><i>external widget adapters</i>"]
-    LOGIC --> COLL["collections.sh<br/><i>status/health registry</i>"]
+    API --> COLL["collections.sh<br/><i>status/health · search paths</i>"]
+    LOGIC --> COLL
     LOGIC --> MECH["tmux.sh<br/><i>mechanical — sole tmux caller</i>"]
     API --> MECH
-    WIDGETS --> MECH
     COLL --> MECH
     EXT -. "set -g @airline-*<br/>(static config)" .-> TMUX
-    CLI -. "use: source-file" .-> DATA["themes/* · bundles/*<br/><i>tmux config files</i>"]
-    DATA -. "set -g @airline-*" .-> TMUX
+    API -. "palette/segment use:<br/>source-file" .-> STATIC["palettes/* · segments/*<br/><i>static tmux conf</i>"]
+    API -. "adapter/layout use:<br/>execute" .-> DYN["adapters/* · layouts/*<br/><i>dynamic — apply / compose</i>"]
+    STATIC -. "set -g @airline-*" .-> TMUX
     MECH ==> TMUX([tmux server]):::ext
 
     classDef ext fill:#eee,stroke:#999,color:#333,font-style:italic;
@@ -126,7 +131,7 @@ split is the spine of the whole design:
 | kind | who writes | when | examples |
 |------|-----------|:--:|----------|
 | **Public input** `@airline-*` | the **user** (`set -g`) | static | palette colors · `@airline-segment-<slot>` |
-| **Private state** `@airline--*` | **airline** | runtime | `--status[-key]` · `--health[-key]` · `--badge-status` · `--badge-health` · `--suspended` · `--cli` |
+| **Private state** `@airline--*` | **airline** | runtime | `--status[-key]` · `--health[-key]` · `--badge-status` · `--badge-health` · `--suspended` · `--cli` · active selections (`--palette` · `--segment` · `--layout`) · search paths (`--path-<kind>`) |
 | **Composed output** (native tmux opts) | **airline** | at `apply` | `status-left/right` · `window-status-*` · `*-style` · pane borders · `clock-mode-color` |
 | **Constant** (bash) | **nobody** (source) | — | glyphs · chevrons · name template · palette-token list · status ladder · severity ranking · slot→tier table |
 
@@ -179,27 +184,33 @@ graph LR
   colour214` or airline writes a private `@airline--badge-status` at runtime, the
   bar keeps showing the previously-rendered output until the next render. There is no
   `stage` verb — moving an option is free; rendering is `apply`.
-- **`apply` renders.** It runs `render`: read the current source of truth, bake
-  palette colors in as literal constants (and reconfigure the widgets' `@cpu_*`/
-  `@batt_*` colors from the palette), write the composed output. It composes from
-  the *whole* source of truth — not per-noun — so any pending change is picked up.
-  Idempotent and redraw-gated (`opt_setif_*`; one redraw iff something changed).
-- **`use <file>`** = `source-file` the file (a tmux config of `set -g @airline-*`
-  lines) then one `apply`. Loading configuration the standard tmux way.
-- **`init`** seeds defaults (default colors/segments behind a sentinel, F12 binds,
-  publishes `@airline--cli`), then composes. The entry point calls `init` on first
-  run *and* on a bare config reload; the sentinel skips the clobber on reload, so
-  re-sourcing `.tmux.conf` renders without resetting runtime state.
+- **`apply` re-applies, then renders.** It re-runs the active layout (`@airline--layout`)
+  so its adapters re-resolve `@<plugin>-*` to the current palette and its segment set
+  is re-applied, then runs `render`: read the source of truth, bake palette colors in
+  as literal constants, write the composed output. It composes from the *whole* source
+  of truth — not per-noun — so any pending change is picked up. Idempotent and
+  redraw-gated (`opt_setif_*`; one redraw iff something changed).
+- **`use`** resolves a **bare name** on the kind's search path (`register` a dir to
+  add locations — the sole trust boundary; there is no literal-path escape hatch) and
+  records it active. *Static* kinds (`palette`, `segment`) `source-file` the resolved
+  conf; *dynamic* kinds (`adapter`, `layout`) execute it. `palette use` ends in
+  `apply` (a palette swap re-runs the layout → adapters re-color); `segment use` just
+  renders.
+- **`init`** applies a default of each axis behind a sentinel — `palette use default`
+  if no palette is set, `layout use default` (which brings its segments) if none is —
+  binds F12, publishes `@airline--cli`, then renders. The entry point calls `init` on
+  first run *and* on a bare config reload; the sentinel skips the clobber on reload.
 
 ### What renders and what stays live
 
 This is the constant-vs-dynamic split. The bar holds three kinds of value, and
 `apply` only ever renders the first:
 
-1. **Constants — colors.** Every theme color is baked at `apply` as a literal
-   `colourN` (or hex): into the composed chrome (block bg/fg, chevrons,
-   `*-style` options) and into the widgets' `@cpu_*`/`@batt_*` options. A color
-   changes only at the next `apply`. This is the "render."
+1. **Constants — colors.** Every palette color is baked as a literal `colourN` (or
+   hex): `render` bakes the composed chrome (block bg/fg, chevrons, `*-style`
+   options) at `apply`, and the active layout's **adapters** bake the plugins'
+   `@cpu_*`/`@batt_*` options (from `PALETTE`) when the layout runs. A color changes
+   only at the next `apply` — which re-runs both. This is the "render."
 2. **Selectors — live, choose among baked colors.** A `#{?…}` expression tmux
    re-evaluates every render to pick *which baked color* shows: the status badge
    token, the health badge token (severity), and the window mode (zoom > copy >
@@ -211,10 +222,11 @@ This is the constant-vs-dynamic split. The bar holds three kinds of value, and
    `set` drive their selectors by re-projecting the per-window scalar (the reduced
    badge winner) and forcing a redraw — no render; the mode selectors are driven
    by tmux's own `window_zoomed_flag` / `pane_in_mode` / `monitor-activity`.
-3. **Widget & clock readings — live, the point of a widget.** `#{cpu_percentage}`,
+3. **Plugin & clock readings — live, the point of a plugin.** `#{cpu_percentage}`,
    `#{cpu_fg_color}`, `%H:%M`, the online dot — tmux and the plugins re-evaluate
    these every status-interval. airline **never** renders for them; they live
-   as `#{…}` refs inside the baked format string.
+   as `#{…}` refs inside the baked format string. (An adapter only bakes the plugin's
+   *colors*; the plugin's own readings stay live.)
 
 The law: **a color is baked; a selector is live; a reading is live.** `apply`
 renders colors and nothing else — never the things that vary between applies. This
@@ -227,14 +239,15 @@ What calls what:
 - `airline.tmux` (entry point) → `init` (first run clobbers; reload renders).
 - a user setting a public option (`set -g @airline-*`) → stages only; the user
   runs `apply` when ready (so several edits batch into one render).
-- `use <file>` → `source-file` (N staged `set -g`s) then one `apply`.
+- `palette use <name>` → `source-file` the conf then `apply`; `layout use <name>` →
+  run its composition then render (adapters re-applied against the current palette).
 - a runtime event (`status set`, `health set`) → private contributor write +
   re-project the badge scalar + redraw, no `apply`.
 - a `.tmux.conf` → sets public `@airline-*` directly, then `run-shell
   "#{@airline--cli} apply"` (or relies on the entry point's `init`).
 
 This replaces the divergent `main()` / `_airline_rebuild` pair: one render path,
-so a theme switch repaints the whole bar.
+so a palette switch repaints the whole bar.
 
 ## Enforcement (build-time lint)
 
@@ -243,9 +256,10 @@ No runtime guards. A lint (gated in CI next to shellcheck, surfaced as
 
 - **A — only `tmux.sh` invokes the `tmux` binary.** Allowlist: `tmux.sh`.
   `collections.sh` is *not* on it — it reaches tmux only through `opt_*`, so there
-  are no direct calls to flag. Excluded: the `AIRLINE_TMUX` test shim's `tmux ()`
-  wrapper. (Theme/bundle files set options directly, but they're config, not
-  production shell — the lint doesn't scan them.)
+  are no direct calls to flag. The lint **does** scan `adapters/*` (they're bash that
+  must set plugin options via `opt_*`, never raw `tmux`). Excluded: the `AIRLINE_TMUX`
+  test shim's `tmux ()` wrapper, and the palette/segment/layout files — those are
+  data (tmux conf) or interpreted composition, not production shell.
 - **B — the `@airline-` prefix has one source of truth.** Both tiers — public
   `@airline-<key>` and private `@airline--<key>` — are owned by `tmux.sh`, which is
   the only file that writes the literal prefix: the `pub_*` accessors, the `prv_*`
@@ -253,19 +267,19 @@ No runtime guards. A lint (gated in CI next to shellcheck, surfaced as
   by **bare key** through those (`pub_get inner-bg`, `prv_setif_window $w badge-status …`);
   `collections.sh` composes its `<ns>` / `<ns>-<key>` *shape* and hands it to
   `prv_name` for the prefix. So a literal `@airline-` option name anywhere but
-  `tmux.sh` is a layering violation. (Theme/bundle data files *do* spell `@airline-`
+  `tmux.sh` is a layering violation. (Palette/segment data files *do* spell `@airline-`
   — that's the public contract — but they're inert config, not scanned. Native tmux
   options like `status-left` aren't airline's namespace and keep their real names.)
   The lint matches `@airline-` followed by a key char (`@airline--?[a-z%$]`), so it
   catches names and constructors but not documentation prose (`@airline-*`,
   `@airline--<ns>`).
 
-These are grep-able, and run as the rework worklist. Invariant **B is green** (the
-prefix lives only in `tmux.sh`). Invariant **A is the remaining driver**:
-`airline.tmux` is now the thin adapter, the old record store is gone, and the
-CLI/render layers are clean — so A's last violations are the widget adapters
-(`scripts/plugins/*.sh`), which go green when they migrate to `widgets/*.sh` on the
-`opt_*` layer.
+Both are grep-able and now **green** — they've gone from a rework worklist to
+regression guards. Invariant **B** holds because the prefix lives only in `tmux.sh`;
+Invariant **A** holds because every `tmux` call routes through `tmux.sh` — including
+the plugin adapters, which set their `@<plugin>-*` options via `opt_*` (the old
+`scripts/plugins/*.sh` and record store are gone). A red on either means a *new*
+violation to fix, not a migration still pending.
 
 ## Testing
 
@@ -326,26 +340,38 @@ truth.
 
 ### Nouns and their verbs
 
-Every noun takes the **same grammar** — `set X` / `clear X` / `show [X]` — plus
-`use` for the two static nouns:
+Two families. The **signal** nouns (status/health) are per-window dynamic state with
+`set`/`clear`/`show`. The **config** nouns (palette/segment/adapter/layout) share a
+uniform `use <name>` / `register <dir>`; the two *static* ones add `set`/`clear`/`show`
+(they have settable atoms — elements, slots), the two *dynamic* ones don't.
 
 ```
 airline status   set <key> <level> [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
 airline health   set <key> <severity> [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
-airline theme    set <element> <color> | clear <element> | show [<element>] | use <name|path>
-airline segment  set <slot> <format>   | clear <slot>    | show [<slot>]    | use <name|path>
+airline palette  set <element> <color> | clear <element> | show [<element>] | use <name> | register <dir>
+airline segment  set <slot> <format>   | clear <slot>    | show [<slot>]    | use <name> | register <dir>
+airline adapter  use <name> | register <dir>
+airline layout   use <name> | register <dir> | show
 ```
+
+`use` takes a **bare name** only (no literal path); `register <dir>` blesses a
+location and prepends it, so a user dir shadows a shipped one. `layout show` prints
+the active layout.
 
 ### Verb conventions
 
-The grammar is uniform; the **behaviour** of `set`/`clear` splits on the state model:
+The grammar is uniform; the **behaviour** of `set`/`clear`/`use` splits on the state model:
 
-| verb | meaning | dynamic (status/health) | static (theme/segment) |
+| verb | meaning | dynamic (status/health) | static (palette/segment) |
 |------|---------|-------------------------|------------------------|
 | `set X v` | write option X | **live** — write the private tuple, re-project the badge, redraw (gated) | **stage** — write the public `@airline-*` option; `apply` renders |
 | `clear X` | remove option X | live | stage |
 | `show [X]` | `show X` → X's value; bare `show` → every option in the noun | ✓ contributors | ✓ elements / slots |
-| `use <name>` | source a tmux file (themes/ or bundles/) then render | — | ✓ |
+| `use <name>` | resolve on the kind's path, load + record active | — | source-file the conf (palette use → apply; segment use → render) |
+
+The dynamic config nouns' `use` **executes**: `adapter use` sources a bash snippet
+that applies `PALETTE` → the plugin's options; `layout use` runs a composition
+(`adapter`/`segment` lines only) and records `@airline--layout` for `apply` to re-run.
 
 - **`show` is symmetric and cheap** — a thin `opt_*` / `coll_*` read on every noun.
 - **`set X` is symmetric too**, but its effect follows the data model: a dynamic
@@ -383,8 +409,8 @@ run-shell "#{@airline--cli} apply"   # render; or just let the entry point's ini
 ```
 
 `render` reads these `@airline-*` options to bake the bar, so it never matters
-whether they were written by `set -g`, a theme file, `.tmux.conf`, or the CLI's own
-`theme set` / `segment set` — the source of truth is the same option either way.
+whether they were written by `set -g`, a palette file, `.tmux.conf`, or the CLI's own
+`palette set` / `segment set` — the source of truth is the same option either way.
 The CLI setters exist as the **symmetric path** over those public options (cheap,
 since the get/set mechanics already serve the dynamic nouns); `set -g` stays the
 idiomatic shortcut. There is **no `config` noun** — its former scalars are constants.
@@ -405,34 +431,36 @@ not one, and a typo'd option name silently no-ops instead of erroring at a CLI
 boundary. Both are the normal tmux-plugin experience; we took idiomatic, legible
 config over a validating wrapper that bought nothing the render didn't already give.
 
-### Themes and bundles (`use`)
+### The four config kinds and `use` / `register`
 
-A theme or bundle is a **plain tmux file** of `set -g @airline-*` lines — the same
-thing a user would type, packaged:
+Four kinds of shipped configuration, all reached by one `use` mechanism over a
+per-kind search path (stored in `collections.sh`; `register <dir>` prepends). `use`
+takes a **bare name** — it resolves only inside registered (blessed) dirs, never a
+literal path, so nothing loads or executes code from an arbitrary location. Each
+`use` records its selection in `@airline--<kind>`.
 
-```tmux
-# themes/solarized-dark
-set -g @airline-inner-bg colour234
-set -g @airline-active   colour214
-# …
-```
+| kind | file is | `use` action |
+|------|---------|--------------|
+| **palette** | tmux conf (`set -g @airline-<role> <color>`) | `source-file`, then `apply` (re-runs the layout so adapters re-color) |
+| **segment** | tmux conf (`set -g @airline-segment-<slot> <format>`) | `source-file`, then render |
+| **adapter** | bash snippet (`opt_set_global @<plugin>-* "${PALETTE[role]}"`) | load `PALETTE`, `source` the snippet (sets literal plugin colors) |
+| **layout** | interpreted composition (`adapter use …` / `segment use …`) | run the lines in-process (composition verbs only), record active, defer to one redraw |
 
-`use <file>` is `source-file <file>` then one `apply`. That's the whole mechanism —
-"load configuration" the standard tmux way, with no bespoke `<element> <color>`
-format and no parser. A theme sets colors, a bundle sets `@airline-segment-*`; the
-split is convention only, and a single file may do both.
-
-- **Executable, by design.** A theme is a tmux config file, so it runs tmux
-  commands — the original, well-understood model. The cost is no "can't regress into
-  a script" guarantee, which only matters for *untrusted third-party* themes; your
-  own are config you'd write by hand anyway.
-- **A slot may live-reference a foreground role**, `#[fg=#{@airline-emphasized}]` —
-  the published palette read live; since the palette only moves at `apply` it's
-  effectively constant. But a slot must **never set a background**: render owns the
-  block's tier `bg` and bakes the flanking chevrons to match, so a stray `bg=` would
-  desync the chevron seam.
-- **`use` ends in one `apply`.** The N `set -g` lines stage; the single trailing
-  `apply` renders — a 14-line theme repaints once, not 14 times.
+- **Static kinds are declarative tmux conf**; a single file may set colors and
+  segments both — the palette/segment split is convention. They're loaded with
+  `source-file` — the standard tmux way, no bespoke `<element> <color>` parser.
+- **Dynamic kinds are executed, not sourced into tmux.** An adapter *applies* the
+  current palette (literal colors, re-applied on every palette change). A layout
+  *composes* — it runs `adapter`/`segment` `use` lines and is re-run by `apply`.
+  Because it's interpreted (airline verbs, not arbitrary bash) and reached only from
+  a blessed dir, "running a layout" is doubly bounded.
+- **A segment slot may live-reference a foreground role** — `#[fg=#{@airline-emphasized}]`,
+  the published palette read live. But a slot must **never set a background**: render
+  owns the block's tier `bg` and bakes the flanking chevrons to match, so a stray
+  `bg=` would desync the chevron seam.
+- **Defaults** are just the name `default` on each path: `init` runs `palette use
+  default` / `layout use default` when unset, and a user shadows either by registering
+  a dir with their own `default`.
 
 ## The mechanical layer (`tmux.sh`)
 
@@ -499,7 +527,7 @@ few stable keys, embedded by name in selectors, and spans both scopes, so it add
 | Function | tmux call | Purpose |
 |----------|-----------|---------|
 | `redraw` | `refresh-client -S` | force a bar re-eval (no client → harmless) |
-| `source_file <path>` | `source-file` | load a tmux config file — the engine behind `use` (themes/bundles are tmux files) |
+| `source_file <path>` | `source-file` | load a tmux config file — the engine behind `use` (palettes/segments are tmux files) |
 | `current_window` | `display-message -p '#{window_id}'` | resolve "current" for window-scoped callers |
 | `hook_set <spec> <cmd>` / `hook_unset <spec>` | `set-hook -g` / `-gu` | the focus-out consume-on-view hook |
 | `key_bind <table> <key> <cmd>` / `key_unbind <table> <key>` | `bind-key` / `unbind-key` | the F12 suspend/resume binds |
