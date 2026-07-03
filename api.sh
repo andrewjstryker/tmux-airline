@@ -22,37 +22,33 @@ fi
 
 die () { printf 'airline: %s\n' "$*" >&2; exit 2; }
 
+# Self-documenting help. Each documented case arm carries its own one-line help as a
+# trailing `#| <args> — note` marker (see the dispatcher and the cmd_* handlers). Help
+# is extracted from the source with sed — no separate text to keep in sync — and, like
+# `show`, iterates the top-level commands then recurses into each noun.
+
+# Print a source range's #|-annotated arms as "  verb   help". <file> <start> <end>.
+_help_arms () {
+  sed -n "/$2/,/$3/{ s/^[[:space:]]*\([a-zA-Z_][a-zA-Z0-9_-]*\))[^#]*#|[[:space:]]*\(.*\)/\1\t\2/p; }" "$1" \
+    | while IFS=$'\t' read -r v d; do printf '  %-9s %s\n' "$v" "$d"; done
+}
+
+# One noun's verbs — the recursion target (also `<noun> help`).
+_help_noun () {   # <noun>
+  printf '%s:\n' "$1"
+  _help_arms "$AIRLINE_DIR/api.sh" "^cmd_$1 () {" '^}'
+}
+
 usage () {
-  cat <<'EOF'
-airline — tmux-airline CLI
-
-Lifecycle:
-  airline init                 seed defaults + binds + publish path, then render
-  airline apply                render the bar from the source of truth
-  airline suspend | resume     nested-session dim / passthrough
-  airline help
-
-Dynamic nouns (airline manages — live):
-  airline status  set <key> <active|result|attention> [--transient] [-t <win>]
-  airline status  clear <key> [-t <win>]
-  airline status  show [<key>] [-t <win>]
-  airline health  set <key> <ok|alert|stress> [--transient] [-t <win>]
-  airline health  clear <key> [-t <win>]
-  airline health  show [<key>] [-t <win>]
-
-Static nouns (you own — public @airline-* options; staged, rendered at apply):
-  airline palette  set <element> <color> | clear <element> | show [<element>]
-  airline palette  use <name> | register <dir>
-  airline segment  set <slot> <format>   | clear <slot>    | show [<slot>]
-  airline segment  use <name> | register <dir>
-
-Composition (dynamic — run on use, re-applied on apply):
-  airline adapter  use <name> | register <dir>        apply palette → a plugin
-  airline layout   use <name> | register <dir> | show  compose adapters + segments
-
-  use loads a BARE name from a registered dir (register blesses a location).
-  --transient clears the signal when you focus away from its window.
-EOF
+  printf 'airline — tmux-airline CLI\n\n'
+  printf 'Commands:\n'
+  _help_arms "$AIRLINE_DIR/airline" '^case ' '^esac'
+  local n
+  for n in palette segment adapter layout status health; do
+    printf '\n'; _help_noun "$n"
+  done
+  printf '\n  use loads a bare name from a registered dir; register blesses a location.\n'
+  printf '  --transient clears a signal when you focus away from its window.\n'
 }
 
 #-----------------------------------------------------------------------------#
@@ -104,6 +100,23 @@ cmd_apply () {
   local lay; lay="$(prv_get_global layout)"
   [[ -n "$lay" && -n "$(_path_resolve layout "$lay")" ]] && _apply_layout "$lay"
   render || true
+}
+
+# Top-level `airline show`: the active configuration. First the whole-system records
+# (the private selections + lifecycle state), then a recursion into each STATIC noun's
+# own `show`. The dynamic per-window nouns (status/health) are NOT global config, so
+# they're excluded here — inspect them with `status show` / `health show`.
+cmd_show () {
+  local k
+  for k in cli palette segment layout suspended; do
+    printf '%-12s %s\n' "$k" "$(prv_get_global "$k")"
+  done
+  printf '\npaths:\n'                            # where `use` resolves, priority order
+  for k in palette segment adapter layout; do
+    printf '%-12s %s\n' "$k" "$(coll_members_global "$(_path_ns "$k")")"
+  done
+  printf '\npalette:\n'; cmd_palette show
+  printf '\nsegment:\n'; cmd_segment show
 }
 
 #-----------------------------------------------------------------------------#
@@ -302,10 +315,10 @@ _signal_show () {   # <ns> [<key>] [-t <win>]
 cmd_status () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    set)   _signal_set   status _status_level_valid "$@" ;;
-    clear) _signal_clear status "$@" ;;
-    show)  _signal_show  status "$@" ;;
-    ""|-h|--help) usage ;;
+    set)   _signal_set   status _status_level_valid "$@" ;;   #| <key> <active|result|attention> [--transient] [-t <win>]
+    clear) _signal_clear status "$@" ;;                       #| <key> [-t <win>]
+    show)  _signal_show  status "$@" ;;                       #| [<key>] [-t <win>] — a window's app-status
+    ""|-h|--help|help) _help_noun status ;;
     *) die "unknown status command: $verb" ;;
   esac
 }
@@ -313,10 +326,10 @@ cmd_status () {
 cmd_health () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    set)   _signal_set   health _health_severity_valid "$@" ;;
-    clear) _signal_clear health "$@" ;;
-    show)  _signal_show  health "$@" ;;
-    ""|-h|--help) usage ;;
+    set)   _signal_set   health _health_severity_valid "$@" ;;   #| <key> <ok|alert|stress> [--transient] [-t <win>]
+    clear) _signal_clear health "$@" ;;                          #| <key> [-t <win>]
+    show)  _signal_show  health "$@" ;;                          #| [<key>] [-t <win>] — a window's health
+    ""|-h|--help|help) _help_noun health ;;
     *) die "unknown health command: $verb" ;;
   esac
 }
@@ -356,12 +369,12 @@ _static_show () {   # <key-prefix> <validator> <list-array-name> [<X>]
 cmd_palette () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    set)      _static_set   "" _palette_element_valid "$@" ;;
-    clear)    _static_clear "" _palette_element_valid "$@" ;;
-    show)     _static_show  "" _palette_element_valid AIRLINE_PALETTE_ELEMENTS "$@" ;;
-    use)      _load_config palette "$@"; cmd_apply ;;   # re-apply: palette swap re-colours adapters
-    register) _register palette "$@" ;;
-    ""|-h|--help) usage ;;
+    set)      _static_set   "" _palette_element_valid "$@" ;;   #| <element> <color> — stage a colour
+    clear)    _static_clear "" _palette_element_valid "$@" ;;   #| <element> — unset a colour
+    show)     _static_show  "" _palette_element_valid AIRLINE_PALETTE_ELEMENTS "$@" ;;   #| [<element>] — read one or all
+    use)      _load_config palette "$@"; cmd_apply ;;   #| <name> — load a palette (re-applies the layout)
+    register) _register palette "$@" ;;                 #| <dir> — add a palette search dir
+    ""|-h|--help|help) _help_noun palette ;;
     *) die "unknown palette command: $verb" ;;
   esac
 }
@@ -369,12 +382,12 @@ cmd_palette () {
 cmd_segment () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    set)      _static_set   "segment-" _segment_slot_valid "$@" ;;
-    clear)    _static_clear "segment-" _segment_slot_valid "$@" ;;
-    show)     _static_show  "segment-" _segment_slot_valid AIRLINE_SEGMENT_SLOTS "$@" ;;
-    use)      _load_config segment "$@"; _render ;;
-    register) _register segment "$@" ;;
-    ""|-h|--help) usage ;;
+    set)      _static_set   "segment-" _segment_slot_valid "$@" ;;   #| <slot> <format> — stage a slot
+    clear)    _static_clear "segment-" _segment_slot_valid "$@" ;;   #| <slot> — unset a slot
+    show)     _static_show  "segment-" _segment_slot_valid AIRLINE_SEGMENT_SLOTS "$@" ;;   #| [<slot>] — read one or all
+    use)      _load_config segment "$@"; _render ;;   #| <name> — load a segment set
+    register) _register segment "$@" ;;               #| <dir> — add a segment search dir
+    ""|-h|--help|help) _help_noun segment ;;
     *) die "unknown segment command: $verb" ;;
   esac
 }
@@ -382,9 +395,9 @@ cmd_segment () {
 cmd_adapter () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    use)      _apply_adapter "$@"; _render ;;
-    register) _register adapter "$@" ;;
-    ""|-h|--help) usage ;;
+    use)      _apply_adapter "$@"; _render ;;   #| <name> — apply the palette to a plugin
+    register) _register adapter "$@" ;;         #| <dir> — add an adapter search dir
+    ""|-h|--help|help) _help_noun adapter ;;
     *) die "unknown adapter command: $verb" ;;
   esac
 }
@@ -392,10 +405,10 @@ cmd_adapter () {
 cmd_layout () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    use)      _apply_layout "$@"; render || true ;;
-    register) _register layout "$@" ;;
-    show)     prv_get_global layout ;;
-    ""|-h|--help) usage ;;
+    use)      _apply_layout "$@"; render || true ;;   #| <name> — run a composition (adapters + segments)
+    register) _register layout "$@" ;;                #| <dir> — add a layout search dir
+    show)     prv_get_global layout ;;                #| the active layout
+    ""|-h|--help|help) _help_noun layout ;;
     *) die "unknown layout command: $verb" ;;
   esac
 }

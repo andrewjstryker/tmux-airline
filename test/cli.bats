@@ -75,6 +75,19 @@ setup() {
   assert_output --partial "colour201"
 }
 
+@test "show reports the active config and recurses into the static nouns" {
+  airline init
+  run airline show
+  assert_success
+  assert_output --partial "layout"      # a top-level record
+  assert_output --partial "default"     # its active value
+  assert_output --partial "inner-bg"    # recursed into palette show
+  assert_output --partial "left-out"    # recursed into segment show
+  assert_output --partial "paths:"      # the search paths
+  assert_output --partial "/palettes"   # the shipped palette dir on the path
+  refute_output --partial "health"      # dynamic per-window nouns excluded from the walk
+}
+
 @test "register blesses a dir; use loads a bare name from it, then renders" {
   airline init
   mkdir -p "$BATS_TMPDIR/mypalettes"
@@ -321,8 +334,19 @@ setup() {
 
 # --- help -------------------------------------------------------------------
 
-@test "help prints usage" {
+@test "help is self-documenting: extracted verbs, iterate + recurse into nouns" {
   run airline help
-  assert_output --partial "airline init"
-  assert_output --partial "set <key>"
+  assert_success
+  assert_output --partial "init"                    # a top-level command (from the dispatcher)
+  assert_output --partial "palette:"                # recursed into a noun
+  assert_output --partial "<element> <color>"       # a verb's extracted #| help
+  refute_output --partial "#|"                      # the marker itself is stripped
+}
+
+@test "<noun> help prints just that noun" {
+  run airline palette help
+  assert_success
+  assert_output --partial "palette:"
+  assert_output --partial "register"
+  refute_output --partial "segment:"                # scoped to the one noun
 }
