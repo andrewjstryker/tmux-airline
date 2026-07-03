@@ -166,7 +166,7 @@ _seed_palette() {
   set_window_formats
   run get_option window-status-format
   assert_output --partial "@airline--badge-status"   # the projected reduced-level scalar
-  assert_output --partial "●"                        # the default badge glyph
+  assert_output --partial "●"                        # a badge glyph (result level)
 }
 
 @test "status badge maps each semantic level to its palette color" {
@@ -177,6 +177,27 @@ _seed_palette() {
   # level→color pairs unique to the status ladder (health has no result/attention)
   assert_output --partial "result},colour114"      # result → ok
   assert_output --partial "attention},colour208"   # attention → alert
+}
+
+@test "status badge maps each level to a distinct glyph; active blinks" {
+  load_render
+  _seed_palette
+  set_window_formats
+  run get_option window-status-format
+  assert_output --partial "active},○"          # a shape per level, redundant with color
+  assert_output --partial "result},●"
+  assert_output --partial "attention},◆"
+  assert_output --partial "active},#[blink]"   # active = watchable
+}
+
+@test "health badge maps each severity to a distinct glyph; stress blinks" {
+  load_render
+  _seed_palette
+  set_window_formats
+  run get_option window-status-format
+  assert_output --partial "alert},△"
+  assert_output --partial "stress},▲"
+  assert_output --partial "stress},#[blink]"   # stress = critical
 }
 
 @test "window-status-format places status left of the name and health right" {

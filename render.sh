@@ -93,8 +93,18 @@ declare -gA AIRLINE_STATUS_COLOR=([active]=active [result]=ok [attention]=alert)
 # to tune; a value only render reads is a constant, not an option. The glyph and
 # chevron literals are set below where the byte injection is visible.
 AIRLINE_TMPL_WINDOW='#I:#W'   # window-name template (index:name)
-AIRLINE_GLYPH_STATUS='●'      # left badge mark  (status)
-AIRLINE_GLYPH_HEALTH='●'      # right badge mark (health)
+
+# Badge glyphs — a distinct SHAPE per state, redundant with the color so the badge is
+# legible without color (color-blind users). Position separates the two lanes, so a
+# shape may repeat across lanes but each lane is internally distinct. The bare
+# AIRLINE_GLYPH_* are the fallback for an unknown token (never hit in practice).
+AIRLINE_GLYPH_STATUS='●'      # status fallback
+AIRLINE_GLYPH_HEALTH='▲'      # health fallback
+# SC2034: read via nameref in _glyph_expr, which shellcheck can't trace.
+# shellcheck disable=SC2034
+declare -gA AIRLINE_STATUS_GLYPH=([active]='○' [result]='●' [attention]='◆')  # watch → done → needs-you
+# shellcheck disable=SC2034
+declare -gA AIRLINE_HEALTH_GLYPH=([alert]='△' [stress]='▲')                    # escalating warning
 
 # Boundary validators — pure predicates the CLI calls before it stores anything.
 _segment_slot_valid () {
@@ -270,6 +280,22 @@ _status_token_expr () {   # <option-name> <fallback-color>
   printf '%s' "$expr"
 }
 
+# Live selector mapping <option>'s token to a GLYPH via the named assoc map; <fallback>
+# when empty/unknown. One level (token → glyph) — the shape channel that runs
+# alongside the color selectors so each badge state is distinct without color.
+_glyph_expr () {   # <option-name> <fallback-glyph> <map-array-name>
+  local option="$1" expr="$2" tok; local -n map="$3"
+  for tok in "${!map[@]}"; do
+    expr="#{?#{==:#{$option},$tok},${map[$tok]},$expr}"
+  done
+  printf '%s' "$expr"
+}
+
+# A `#[blink]` directive when <option> holds <token>, else nothing — the "watchable"
+# cue (status `active`, health `stress`). Best-effort: tmux emits the attribute but
+# terminals vary in honoring blink. Pair with a trailing `#[noblink]` so it can't leak.
+_blink_when () { printf '#{?#{==:#{%s},%s},#[blink],}' "$1" "$2"; }   # <option> <token>
+
 # Project a window's reduced collection value into its badge scalar: the highest-
 # ranked entry among the window's contributors, or clear when none rank. Called by
 # `status`/`health` `set`/`clear` at runtime; the window format reads the scalar
@@ -324,13 +350,15 @@ set_window_formats () {
   status_opt="$(prv_name "$AIRLINE_KEY_STATUS")"
   health_opt="$(prv_name "$AIRLINE_KEY_HEALTH")"
 
-  # Status badge (left of the name): one glyph at the window's reduced level.
+  # Status badge (left of the name): a per-level shape in the level's color, blinking
+  # while `active` (watchable). #[noblink] closes the attr so it can't leak to the name.
   local status_expr
-  status_expr="#{?$status_opt,#[fg=$(_status_token_expr "$status_opt" "${PALETTE[primary]}")]$AIRLINE_GLYPH_STATUS ,}"
+  status_expr="#{?$status_opt,#[fg=$(_status_token_expr "$status_opt" "${PALETTE[primary]}")]$(_blink_when "$status_opt" active)$(_glyph_expr "$status_opt" "$AIRLINE_GLYPH_STATUS" AIRLINE_STATUS_GLYPH)#[noblink] ,}"
 
-  # Health badge (right of the name): one glyph at the window's reduced severity.
+  # Health badge (right of the name): a per-severity shape in the severity's color,
+  # blinking while `stress` (critical).
   local health_expr
-  health_expr="#{?$health_opt, #[fg=$(_palette_token_expr "$health_opt" "${PALETTE[primary]}")]$AIRLINE_GLYPH_HEALTH,}"
+  health_expr="#{?$health_opt, #[fg=$(_palette_token_expr "$health_opt" "${PALETTE[primary]}")]$(_blink_when "$health_opt" stress)$(_glyph_expr "$health_opt" "$AIRLINE_GLYPH_HEALTH" AIRLINE_HEALTH_GLYPH)#[noblink],}"
 
   opt_setif_global window-status-separator " " && changed=0
   # inactive: the whole tab fills with the mode color (flat inner-bg when no mode).
