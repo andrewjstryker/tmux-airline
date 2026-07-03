@@ -17,9 +17,9 @@ setup() {
 
 # --- init -------------------------------------------------------------------
 
-@test "init publishes the CLI path and sets the first-run sentinel" {
+@test "init publishes the CLI path as the public bootstrap handle + sets the sentinel" {
   airline init
-  run get_option @airline--cli
+  run get_option @airline-cli          # public (single dash) — the one published handle
   assert_output --partial "/airline"
   run get_option @airline--defaults-done
   assert_output "1"
@@ -237,6 +237,33 @@ setup() {
   assert_failure                        # only adapter/segment allowed
 }
 
+@test "layout load runs a one-off by path and records the ABSOLUTE path for re-apply" {
+  airline init
+  printf 'segment use default\n' > "$BATS_TMPDIR/oneoff"
+  airline layout load "$BATS_TMPDIR/oneoff"
+  run get_option @airline--layout
+  assert_output --regexp '^/.*/oneoff$'   # absolute path recorded (not a bare name)
+  # apply re-runs the loaded layout (resets a perturbed slot)
+  airline segment set left-out "SCRATCH"
+  airline apply
+  run get_option @airline-segment-left-out
+  assert_output "#S"
+}
+
+@test "layout load rejects a missing file (no path walk, but must exist)" {
+  airline init
+  run airline layout load /no/such/layout-file
+  assert_failure
+}
+
+@test "adapter load applies a one-off adapter script (palette-driven, not recorded)" {
+  airline init
+  printf 'opt_set_global @custom_fg "${PALETTE[active]}"\n' > "$BATS_TMPDIR/oneoff-adapter"
+  airline adapter load "$BATS_TMPDIR/oneoff-adapter"
+  run get_option @custom_fg
+  assert_output "$(get_option @airline-active)"   # applied the current palette
+}
+
 @test "palette use re-applies the active layout's adapters to the new palette" {
   airline init
   mkdir -p "$BATS_TMPDIR/pl"
@@ -316,20 +343,39 @@ setup() {
   assert_output "active"             # transient 'review' gone, persistent 'build' remains
 }
 
-# --- suspend / resume -------------------------------------------------------
+# --- state (active/suspended) -----------------------------------------------
 
-@test "suspend sets the flag and traps the prefix; resume restores" {
+@test "state suspend traps the prefix; resume restores; show reads the state" {
   airline init
-  airline suspend
-  run get_option @airline--suspended
-  assert_output "1"
+  run airline state show
+  assert_output "active"            # default
+  airline state suspend
   run get_option prefix
-  assert_output "None"
-  airline resume
-  run get_option @airline--suspended
-  assert_output "0"
+  assert_output "None"              # prefix trapped
+  run airline state show
+  assert_output "suspended"
+  airline state resume
   run get_option prefix
-  refute_output "None"              # prefix unset → back to default
+  refute_output "None"              # released → back to default
+  run airline state show
+  assert_output "active"
+}
+
+@test "state toggle flips between active and suspended" {
+  airline init
+  airline state toggle
+  run airline state show
+  assert_output "suspended"
+  airline state toggle
+  run airline state show
+  assert_output "active"
+}
+
+@test "palette current reads the active palette via the API (not a private option)" {
+  airline init
+  airline palette use light
+  run airline palette current
+  assert_output "light"
 }
 
 # --- help -------------------------------------------------------------------

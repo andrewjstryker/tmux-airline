@@ -44,7 +44,7 @@ usage () {
   printf 'Commands:\n'
   _help_arms "$AIRLINE_DIR/airline" '^case ' '^esac'
   local n
-  for n in palette segment adapter layout status health; do
+  for n in palette segment adapter layout state status health; do
     printf '\n'; _help_noun "$n"
   done
   printf '\n  use loads a bare name from a registered dir; register blesses a location.\n'
@@ -64,12 +64,14 @@ _segments_unset () {
   return 0
 }
 
-# Bootstrap. Publish the CLI path, bind F12, and on first run seed defaults behind a
-# sentinel (without clobbering user config or runtime state on a reload); then render.
+# Bootstrap. Publish the CLI path and, on first run, seed defaults behind a sentinel
+# (without clobbering user config or runtime state on a reload); then render.
 cmd_init () {
-  prv_set_global "$AIRLINE_KEY_CLI" "$AIRLINE_DIR/airline"
-  key_bind root F12 "run-shell \"$AIRLINE_DIR/airline suspend\""
-  key_bind off  F12 "run-shell \"$AIRLINE_DIR/airline resume\""
+  # The CLI path is the ONE published (public) option — the bootstrap handle, since a
+  # script can't call the API to discover where the API lives. Everything else about
+  # airline's state is read through the CLI, never a private option. Airline binds no
+  # keys — a user wires their own (e.g. `bind F12 run "#{@airline-cli} state toggle"`).
+  pub_set "$AIRLINE_KEY_CLI" "$AIRLINE_DIR/airline"
 
   # Register airline's own shipped config dirs on each kind's search path.
   _path_register_self palette "$AIRLINE_DIR/palettes"
@@ -98,7 +100,7 @@ _render () { [[ -n "${_AIRLINE_DEFER:-}" ]] && return 0; render || true; }
 # `palette use X` (or a raw set) followed by apply.
 cmd_apply () {
   local lay; lay="$(prv_get_global layout)"
-  [[ -n "$lay" && -n "$(_path_resolve layout "$lay")" ]] && _apply_layout "$lay"
+  [[ -n "$lay" && -n "$(_layout_file "$lay")" ]] && _apply_layout "$lay"
   render || true
 }
 
@@ -107,8 +109,10 @@ cmd_apply () {
 # own `show`. The dynamic per-window nouns (status/health) are NOT global config, so
 # they're excluded here — inspect them with `status show` / `health show`.
 cmd_show () {
+  printf '%-12s %s\n' cli "$(pub_get cli)"          # the one public (bootstrap) handle
+  printf '%-12s %s\n' state "$(_state_word)"
   local k
-  for k in cli palette segment layout suspended; do
+  for k in palette segment layout; do
     printf '%-12s %s\n' "$k" "$(prv_get_global "$k")"
   done
   printf '\npaths:\n'                            # where `use` resolves, priority order
@@ -177,14 +181,40 @@ _load_config () {   # <kind> <name>
 # PALETTE, then `source` the snippet (bash, not source-file) so it can read PALETTE
 # and call opt_set_global. Reached through a layout (piece C); the layout's stored
 # path is re-run on a palette change, which re-runs this and re-applies the colours.
+# Resolve <path> to an absolute path (dir resolved via cd+pwd; the file itself is
+# checked by the caller). `load` records this so a later `apply`, running from another
+# cwd, still finds it.
+_abspath () {   # <path> → absolute
+  local dir base
+  dir="$(dirname -- "$1")"; base="$(basename -- "$1")"
+  printf '%s/%s' "$(cd -- "$dir" 2>/dev/null && pwd)" "$base"
+}
+
+# Run one adapter file: load PALETTE, then source the snippet so it can set the
+# plugin's @<plugin>-* options from PALETTE. The shared core of `use` and `load`.
+_source_adapter () {   # <file>
+  _palette_load
+  # shellcheck source=/dev/null
+  source "$1"
+}
+
+# adapter use <name>: resolve a bare name on the adapter path, then run it.
 _apply_adapter () {   # <name>
   local name="${1:-}"; [[ -n "$name" ]] || die "adapter use: need <name>"
-  [[ "$name" != */* ]] || die "adapter use: '$name' — use a bare name (register a dir to add locations)"
+  [[ "$name" != */* ]] || die "adapter use: '$name' — bare name (or 'adapter load <path>')"
   local file; file="$(_path_resolve adapter "$name")"
   [[ -n "$file" ]] || die "adapter use: '$name' not found on the adapter path"
-  _palette_load                 # populate PALETTE from the @airline-<role> options
-  # shellcheck source=/dev/null
-  source "$file"                # snippet: opt_set_global @<plugin>-* "${PALETTE[role]}"
+  _source_adapter "$file"
+}
+
+# adapter load <path>: run a one-off adapter script by path (no path walk). A one-shot
+# apply — adapters aren't recorded; a durable custom adapter lives in a layout that
+# `adapter load`s it. The user owns the file (it sources arbitrary bash).
+_load_adapter () {   # <path>
+  local path="${1:-}"; [[ -n "$path" ]] || die "adapter load: need <path>"
+  local abs; abs="$(_abspath "$path")"
+  [[ -f "$abs" ]] || die "adapter load: no such file: $path"
+  _source_adapter "$abs"
 }
 
 # A layout is an interpreted COMPOSITION: one airline command per line, restricted to
@@ -205,31 +235,71 @@ _run_layout () {   # <file>
   done < "$file"
 }
 
-# layout use <name>: resolve a bare name, record it active, run its composition with
-# renders deferred (the local _AIRLINE_DEFER is seen by the nested use handlers via
-# dynamic scoping). The caller renders once. Re-run on apply to re-apply.
-_apply_layout () {   # <name>
-  local name="${1:-}"; [[ -n "$name" ]] || die "layout use: need <name>"
-  [[ "$name" != */* ]] || die "layout use: '$name' — use a bare name (register a dir to add locations)"
-  local file; file="$(_path_resolve layout "$name")"
-  [[ -n "$file" ]] || die "layout use: '$name' not found on the layout path"
-  prv_set_global layout "$name"           # record the active layout
+# Resolve a layout HANDLE to a file: a bare name (from `use`/default) → the search
+# path; a path (from `load`, recorded absolute) → itself. The slash tells them apart —
+# reusing the invariant that names never contain '/'.
+_layout_file () {   # <handle> → file (empty if unresolved)
+  if [[ "$1" == */* ]]; then [[ -f "$1" ]] && printf '%s' "$1"
+  else _path_resolve layout "$1"; fi
+}
+
+# Record <handle> as the active layout and run its composition, renders deferred (the
+# local _AIRLINE_DEFER reaches the nested use handlers via dynamic scoping). The caller
+# renders once. `apply` re-runs the recorded handle — this is the re-apply engine.
+_apply_layout () {   # <handle>  (bare name, or absolute path from load)
+  local handle="${1:-}" file
+  file="$(_layout_file "$handle")"
+  [[ -n "$file" ]] || die "layout: '$handle' not found"
+  prv_set_global layout "$handle"
   local _AIRLINE_DEFER=1
   _run_layout "$file"
 }
 
-cmd_suspend () {
-  prv_set_global "$AIRLINE_KEY_SUSPENDED" 1
-  opt_set_global prefix None
-  opt_set_global key-table off
+# layout use <name>: curated — a bare name on the layout path.
+_layout_use () {   # <name>
+  local name="${1:-}"; [[ -n "$name" ]] || die "layout use: need <name>"
+  [[ "$name" != */* ]] || die "layout use: '$name' — bare name (or 'layout load <path>')"
+  _apply_layout "$name"
+}
+
+# layout load <path>: one-off — run a layout script by path, recording the ABSOLUTE
+# path so `apply` re-runs it from any cwd. The composition is still bounded to
+# adapter/segment verbs by the interpreter.
+_layout_load () {   # <path>
+  local path="${1:-}"; [[ -n "$path" ]] || die "layout load: need <path>"
+  local abs; abs="$(_abspath "$path")"
+  [[ -f "$abs" ]] || die "layout load: no such file: $path"
+  _apply_layout "$abs"
+}
+
+# The active/suspended state. `suspend` mutes the palette (the derived flat look, via
+# _palette_load) and traps the prefix so keys pass through — the nested-session signal
+# "this tmux is dormant." `resume` restores. The flat/vibrant colour is derived, not a
+# second palette. State is private; read it through `state show`, not the option.
+_state_word () { [[ "$(prv_get_global "$AIRLINE_KEY_SUSPENDED")" == 1 ]] && echo suspended || echo active; }
+
+_state_set () {   # <1=suspended|0=active>
+  prv_set_global "$AIRLINE_KEY_SUSPENDED" "$1"
+  if [[ "$1" == 1 ]]; then
+    opt_set_global prefix None
+    opt_set_global key-table off
+  else
+    opt_unset_global prefix
+    opt_unset_global key-table
+  fi
   render || true
 }
 
-cmd_resume () {
-  prv_set_global "$AIRLINE_KEY_SUSPENDED" 0
-  opt_unset_global prefix
-  opt_unset_global key-table
-  render || true
+cmd_state () {
+  local verb="${1:-}"; shift || true
+  case "$verb" in
+    suspend) _state_set 1 ;;   #| mute the palette + trap the prefix (session dormant)
+    resume)  _state_set 0 ;;   #| restore vibrant colours + release the prefix
+    toggle)  if [[ "$(prv_get_global "$AIRLINE_KEY_SUSPENDED")" == 1 ]]; then _state_set 0; else _state_set 1; fi ;;   #| flip active/suspended
+    show)    _state_word ;;    #| print the current state (active | suspended)
+    ""|-h|--help|help) _help_noun state ;;
+    *) die "unknown state command: $verb" ;;
+  esac
 }
 
 #-----------------------------------------------------------------------------#
@@ -374,6 +444,7 @@ cmd_palette () {
     show)     _static_show  "" _palette_element_valid AIRLINE_PALETTE_ELEMENTS "$@" ;;   #| [<element>] — read one or all
     use)      _load_config palette "$@"; cmd_apply ;;   #| <name> — load a palette (re-applies the layout)
     register) _register palette "$@" ;;                 #| <dir> — add a palette search dir
+    current)  prv_get_global palette ;;                 #| print the active palette name (for scripts)
     ""|-h|--help|help) _help_noun palette ;;
     *) die "unknown palette command: $verb" ;;
   esac
@@ -396,6 +467,7 @@ cmd_adapter () {
   local verb="${1:-}"; shift || true
   case "$verb" in
     use)      _apply_adapter "$@"; _render ;;   #| <name> — apply the palette to a plugin
+    load)     _load_adapter "$@"; _render ;;    #| <path> — apply a one-off adapter script
     register) _register adapter "$@" ;;         #| <dir> — add an adapter search dir
     ""|-h|--help|help) _help_noun adapter ;;
     *) die "unknown adapter command: $verb" ;;
@@ -405,9 +477,10 @@ cmd_adapter () {
 cmd_layout () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    use)      _apply_layout "$@"; render || true ;;   #| <name> — run a composition (adapters + segments)
-    register) _register layout "$@" ;;                #| <dir> — add a layout search dir
-    show)     prv_get_global layout ;;                #| the active layout
+    use)      _layout_use "$@"; render || true ;;    #| <name> — run a composition (adapters + segments)
+    load)     _layout_load "$@"; render || true ;;   #| <path> — run a one-off layout script (records it)
+    register) _register layout "$@" ;;               #| <dir> — add a layout search dir
+    show)     prv_get_global layout ;;               #| the active layout
     ""|-h|--help|help) _help_noun layout ;;
     *) die "unknown layout command: $verb" ;;
   esac

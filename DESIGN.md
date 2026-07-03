@@ -128,10 +128,10 @@ graph LR
 airline's state splits into **four** kinds, by who writes a value and when. This
 split is the spine of the whole design:
 
-| kind | who writes | when | examples |
-|------|-----------|:--:|----------|
-| **Public input** `@airline-*` | the **user** (`set -g`) | static | palette colors · `@airline-segment-<slot>` |
-| **Private state** `@airline--*` | **airline** | runtime | `--status[-key]` · `--health[-key]` · `--badge-status` · `--badge-health` · `--suspended` · `--cli` · active selections (`--palette` · `--segment` · `--layout`) · search paths (`--path-<kind>`) |
+| kind | who writes | examples |
+|------|-----------|----------|
+| **Public** `@airline-*` — the **contract** | user config (`set -g`) *and* airline's one published read | palette colors · `@airline-segment-<slot>` · `@airline-cli` (the bootstrap handle) |
+| **Private** `@airline--*` — **internal** | **airline** (runtime) | `--status[-key]` · `--health[-key]` · `--badge-status` · `--badge-health` · `--suspended` · active selections (`--palette` · `--segment` · `--layout`) · search paths (`--path-<kind>`) |
 | **Composed output** (native tmux opts) | **airline** | at `apply` | `status-left/right` · `window-status-*` · `*-style` · pane borders · `clock-mode-color` |
 | **Constant** (bash) | **nobody** (source) | — | glyphs · chevrons · name template · palette-token list · status ladder · severity ranking · slot→tier table |
 
@@ -142,12 +142,15 @@ The classification is mechanical, not stylistic:
   value that only render *reads* is a **bash constant**, not an option. (A private
   option airline would write at init only to read back at render is pure overhead;
   a constant baked straight into the format string does the identical thing.)
-- **Public vs private is exactly static vs dynamic.** Static config is the user's to
-  set, so it's public and idiomatic (`set -g @airline-active colour214`). Dynamic
-  state is airline's to manage, so it's private — **marked with a double dash**
-  (`@airline--`) so a user's `set -g @airline-…` can never land in it, and so a
-  reader (or the lint) can tell a variable's class from its name alone. (The `--`
-  convention is the old `record.sh`'s `--roster`.)
+- **Public vs private is the *contract* boundary, not "who writes."** Public
+  `@airline-*` is what the outside world touches: config a user sets (`set -g
+  @airline-active colour214`) *and* the single value airline publishes for scripts to
+  read — `@airline-cli`, the bootstrap handle (a script can't call the API to find the
+  API). Everything else airline manages is **private**, **marked with a double dash**
+  (`@airline--`), read only *through the CLI*, never as an option. The `--` keeps a
+  user's `set -g @airline-…` out of internal state and lets a reader (or the lint)
+  tell the class from the name. So airline's active palette is read via `palette
+  current`, its state via `state show` — not by peeking at `@airline--*`.
 - **The prefix is policy, owned by `tmux.sh`.** The `@airline-` / `@airline--`
   literals are written in exactly one file: `tmux.sh`, via the `pub_*` / `prv_*`
   accessors and the `prv_name` builder. Every layer above names options by **bare
@@ -198,8 +201,9 @@ graph LR
   renders.
 - **`init`** applies a default of each axis behind a sentinel — `palette use default`
   if no palette is set, `layout use default` (which brings its segments) if none is —
-  binds F12, publishes `@airline--cli`, then renders. The entry point calls `init` on
-  first run *and* on a bare config reload; the sentinel skips the clobber on reload.
+  publishes `@airline-cli` (the public bootstrap handle), then renders. It binds no
+  keys. The entry point calls `init` on first run *and* on a bare config reload; the
+  sentinel skips the clobber on reload.
 
 ### What renders and what stays live
 
@@ -244,7 +248,7 @@ What calls what:
 - a runtime event (`status set`, `health set`) → private contributor write +
   re-project the badge scalar + redraw, no `apply`.
 - a `.tmux.conf` → sets public `@airline-*` directly, then `run-shell
-  "#{@airline--cli} apply"` (or relies on the entry point's `init`).
+  "#{@airline-cli} apply"` (or relies on the entry point's `init`).
 
 This replaces the divergent `main()` / `_airline_rebuild` pair: one render path,
 so a palette switch repaints the whole bar.
@@ -329,14 +333,15 @@ live in `api.sh`. Argument detail lives in `airline help`; this section fixes th
 ### Top-level verbs (whole-system, no noun)
 
 ```
-airline init                 # seed defaults + publish @airline--cli + binds, then render
+airline init                 # seed defaults + publish @airline-cli, then render (binds nothing)
 airline apply                # render the bar from the current source of truth
-airline suspend | resume     # toggle the suspended flag + render; also prefix/key-table
+airline show                 # print the active configuration
 airline help                 # usage  (also -h / --help, and <noun> help)
 ```
 
 `apply` is top-level, not per-noun: there is one `render` over the whole source of
-truth.
+truth. `init` publishes only `@airline-cli` and binds no keys — a user wires their own
+(e.g. `bind F12 run "#{@airline-cli} state toggle"`).
 
 ### Nouns and their verbs
 
@@ -348,15 +353,25 @@ uniform `use <name>` / `register <dir>`; the two *static* ones add `set`/`clear`
 ```
 airline status   set <key> <level> [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
 airline health   set <key> <severity> [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
-airline palette  set <element> <color> | clear <element> | show [<element>] | use <name> | register <dir>
+airline palette  set <element> <color> | clear <element> | show [<element>] | use <name> | register <dir> | current
 airline segment  set <slot> <format>   | clear <slot>    | show [<slot>]    | use <name> | register <dir>
-airline adapter  use <name> | register <dir>
-airline layout   use <name> | register <dir> | show
+airline adapter  use <name> | load <path> | register <dir>
+airline layout   use <name> | load <path> | register <dir> | show
+airline state    suspend | resume | toggle | show
 ```
 
 `use` takes a **bare name** only (no literal path); `register <dir>` blesses a
-location and prepends it, so a user dir shadows a shipped one. `layout show` prints
-the active layout.
+location and prepends it, so a user dir shadows a shipped one. `load <path>` is the
+**one-off** counterpart on the *script* kinds (adapter, layout): it runs a file by
+path with no path walk — the explicit "I own this file" contract, distinct from the
+curated `use`. `layout load` records the file's absolute path so `apply` re-runs it;
+`adapter load` is a one-shot (adapters aren't recorded). The config kinds (palette,
+segment) have no `load` — their one-off is tmux's own `source-file` + `apply`, since
+they're plain config setting public options. `layout show` / `state show` print the
+active value; `palette current` prints the active palette name (the API read for
+scripts). `state` is the active/suspended axis: `suspend` mutes the palette (derived
+flat look) and traps the prefix, `resume` restores, `toggle` flips — the
+nested-session API, with the keybinding left to the user.
 
 ### Verb conventions
 
@@ -405,7 +420,7 @@ user sets the idiomatic tmux way:
 set -g @airline-inner-bg colour234
 set -g @airline-active   colour214
 set -g @airline-segment-right-mid "#{cpu_fg_color}#{cpu_icon}"
-run-shell "#{@airline--cli} apply"   # render; or just let the entry point's init do it
+run-shell "#{@airline-cli} apply"   # render; or just let the entry point's init do it
 ```
 
 `render` reads these `@airline-*` options to bake the bar, so it never matters
@@ -436,8 +451,17 @@ config over a validating wrapper that bought nothing the render didn't already g
 Four kinds of shipped configuration, all reached by one `use` mechanism over a
 per-kind search path (stored in `collections.sh`; `register <dir>` prepends). `use`
 takes a **bare name** — it resolves only inside registered (blessed) dirs, never a
-literal path, so nothing loads or executes code from an arbitrary location. Each
-`use` records its selection in `@airline--<kind>`.
+literal path, so the curated path never loads code from an arbitrary location.
+
+**Curated vs one-off.** `register`/`use` is the *collection* workflow. Its one-off
+sibling is `load <path>` — run a single file directly, no path walk, the explicit "I
+own this file" contract. `load` exists only on the **script** kinds (adapter, layout):
+the *config* kinds (palette, segment) already have a native one-off in tmux's
+`source-file`, since they're plain option-setting files. This split — `load` for
+scripts, `source-file` for config — mirrors the scripts-vs-config nature of the kinds.
+A layout is the lifecycle unit, so `layout load` **records** the file's absolute path
+(for `apply` to re-run from any cwd); an adapter is a component, so `adapter load` is a
+one-shot — a durable custom adapter lives in a layout that `load`s it.
 
 | kind | file is | `use` action |
 |------|---------|--------------|
@@ -514,7 +538,7 @@ that writes the literal — so every layer above is prefix-free (Invariant **B**
 |----------|-------|---------|
 | `pub_get <key>` / `pub_set <key> <val>` / `pub_unset <key>` | `opt_*_global` on `@airline-<key>` | public static config (always global) |
 | `prv_name <key>` | `printf @airline--<key>` | build a private option *name* — for composition (`collections`) and format embedding (the badge `#{?…}` selectors) |
-| `prv_get_global <key>` / `prv_set_global <key> <val>` | `opt_*_global` on `@airline--<key>` | private state, global scope (`suspended`, `cli`, `defaults-done`) |
+| `prv_get_global <key>` / `prv_set_global <key> <val>` | `opt_*_global` on `@airline--<key>` | private state, global scope (`suspended`, `defaults-done`, active selections) |
 | `prv_get_window <win> <key>` / `prv_setif_window <win> <key> <val>` / `prv_unset_window <win> <key>` | `opt_*_window` on `@airline--<key>` | private state, window scope (the `badge-*` scalars) |
 
 The surface is deliberately asymmetric: public is read by computed bare keys at
@@ -530,7 +554,7 @@ few stable keys, embedded by name in selectors, and spans both scopes, so it add
 | `source_file <path>` | `source-file` | load a tmux config file — the engine behind `use` (palettes/segments are tmux files) |
 | `current_window` | `display-message -p '#{window_id}'` | resolve "current" for window-scoped callers |
 | `hook_set <spec> <cmd>` / `hook_unset <spec>` | `set-hook -g` / `-gu` | the focus-out consume-on-view hook |
-| `key_bind <table> <key> <cmd>` / `key_unbind <table> <key>` | `bind-key` / `unbind-key` | the F12 suspend/resume binds |
+| `key_bind <table> <key> <cmd>` / `key_unbind <table> <key>` | `bind-key` / `unbind-key` | key-binding primitive (airline binds none itself; available to callers) |
 
 ## Collections (`collections.sh`) — status and health only
 

@@ -34,8 +34,7 @@ case "$cmd" in
   init)     cmd_init    "$@" ;;   #| seed defaults, bind F12, publish path; then render
   apply)    cmd_apply   "$@" ;;   #| re-apply the layout and render from the source of truth
   show)     cmd_show    ;;        #| print the active configuration
-  suspend)  cmd_suspend ;;        #| dim + trap the prefix (nested sessions)
-  resume)   cmd_resume  ;;        #| undo suspend
+  state)    cmd_state   "$@" ;;
   status)   cmd_status  "$@" ;;
   health)   cmd_health  "$@" ;;
   palette)  cmd_palette "$@" ;;
