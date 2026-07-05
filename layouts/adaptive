@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Adaptive layout (init's default) — probe each adapted plugin via the TPM install
+# convention and compose only what's present, so there are no empty blocks. Degrades to
+# the dependency-free base (session · date) when nothing is installed.
+source "$AIRLINE_DIR/helpers/tpm-installed"
+
+$AIRLINE_TMUX set -g @airline-segment-left-out  "#S"
+$AIRLINE_TMUX set -g @airline-segment-right-out "%Y-%m-%d %H:%M"
+
+adps=()
+installed tmux-cpu              && { $AIRLINE_TMUX set -g @airline-segment-right-mid "#{cpu_fg_color}#{cpu_icon}";                        adps+=(cpu);             }
+installed tmux-online-status    && { $AIRLINE_TMUX set -g @airline-segment-left-mid  "#{online_status}";                                 adps+=(online);          }
+installed tmux-prefix-highlight && { $AIRLINE_TMUX set -g @airline-segment-right-in  "#{prefix_highlight}";                              adps+=(prefix-highlight); }
+installed tmux-battery          && { $AIRLINE_TMUX set -g @airline-segment-right-out "%Y-%m-%d %H:%M #{battery_color_fg}#{battery_icon}"; adps+=(battery);         }
+
+[[ ${#adps[@]} -gt 0 ]] && airline adapter use "${adps[@]}"

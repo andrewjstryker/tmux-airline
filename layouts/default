@@ -1,9 +1,5 @@
-# layouts/default — the default composition.
-#
-# A layout is an interpreted list of airline composition commands (adapter/segment
-# only — no palette, so it stays orthogonal to whatever palette is active). `layout
-# use default` runs these; `apply` re-runs the stored layout to re-apply.
-#
-# The default is dependency-free: just the built-in segment set, no plugin adapters.
-
-segment use default
+#!/usr/bin/env bash
+# Default layout — dependency-free (session · host · date). No plugins, always works.
+$AIRLINE_TMUX set -g @airline-segment-left-out  "#S"
+$AIRLINE_TMUX set -g @airline-segment-right-mid "#h"
+$AIRLINE_TMUX set -g @airline-segment-right-out "%Y-%m-%d %H:%M"

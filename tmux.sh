@@ -124,7 +124,8 @@ current_window () { tmux display-message -p '#{window_id}'; }
 hook_set   () { tmux set-hook -g  "$1" "$2"; }
 hook_unset () { tmux set-hook -gu "$1"; }
 
-# Key bindings (the F12 suspend/resume binds). <table> is a key-table name.
+# Key bindings — a primitive for callers; airline itself binds no keys (a user wires
+# their own, e.g. `bind F12 run "#{@airline-cli} state toggle"`). <table> is a key-table.
 key_bind   () { tmux bind-key   -T "$1" "$2" "$3"; }
 key_unbind () { tmux unbind-key -T "$1" "$2"; }
 

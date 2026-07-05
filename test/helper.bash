@@ -13,6 +13,7 @@ setup() {
 
 teardown() {
   $TMUX -L "$_bats_socket" kill-server 2>/dev/null || true
+  rm -f "${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)/$_bats_socket" 2>/dev/null || true  # don't leak the socket file
 }
 
 # Source tmux.sh standalone, with the `tmux` command pointed at the isolated

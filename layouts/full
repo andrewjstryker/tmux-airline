@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Full layout — every plugin this project adapts (cpu / battery / online / prefix).
+# Assumes the plugins are installed; use `adaptive` to light up only what's present.
+airline adapter use cpu battery online prefix-highlight
+$AIRLINE_TMUX set -g @airline-segment-left-out  "#S"
+$AIRLINE_TMUX set -g @airline-segment-left-mid  "#{online_status}"
+$AIRLINE_TMUX set -g @airline-segment-right-in  "#{prefix_highlight}"
+$AIRLINE_TMUX set -g @airline-segment-right-mid "#{cpu_fg_color}#{cpu_icon}"
+$AIRLINE_TMUX set -g @airline-segment-right-out "%Y-%m-%d %H:%M #{battery_color_fg}#{battery_icon}"

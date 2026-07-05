@@ -31,7 +31,7 @@ source "$AIRLINE_DIR/api.sh"
 # own verb (set/clear/show/use). Nothing here but routing.
 cmd="${1:-}"; shift || true
 case "$cmd" in
-  init)     cmd_init    "$@" ;;   #| seed defaults, bind F12, publish path; then render
+  init)     cmd_init    "$@" ;;   #| seed defaults, register search paths, publish the CLI handle; then render
   apply)    cmd_apply   "$@" ;;   #| re-apply the layout and render from the source of truth
   show)     cmd_show    ;;        #| print the active configuration
   state)    cmd_state   "$@" ;;

@@ -380,7 +380,7 @@ set_window_formats () {
 # The shared render step: load the palette and write every composed option — chrome
 # styles, segment bars, window formats — baking PALETTE colors in as constants (live
 # #{?…} selectors then decide which baked color shows). `apply` and `init` call this;
-# it does NOT seed defaults, publish the CLI path, or bind keys — those are init's
+# it does NOT seed defaults or publish the CLI path — those are init's
 # job. Idempotent and redraw-gated: it rewrites only options whose value changed
 # (opt_setif_*) and redraws once iff any did. Returns 0 when something changed
 # (a redraw happened), 1 when the bar was already current.
