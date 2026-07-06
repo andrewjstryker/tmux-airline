@@ -1,7 +1,8 @@
 # tmux-airline
 
-A tmux status line inspired by vim-airline. Uses powerline-style chevrons and
-a layered color hierarchy with multiple theme options.
+A tmux status line inspired by vim-airline. Powerline-style chevrons, a layered
+color hierarchy, swappable palettes, and a small CLI that lets plugins and your
+own config drive the bar.
 
 <p align="center">
   <img src="airline-screenshot.png" alt="tmux-airline screenshot" width="800">
@@ -10,10 +11,12 @@ a layered color hierarchy with multiple theme options.
 Features:
 
 - Three-tier status bar with powerline chevrons
-- Dark, light, and Solarized themes included
+- Swappable color **palettes** (dark, light, Solarized) — or your own
+- Composable **layouts** that arrange the bar, plus a CLI to drive segments and
+  per-window badges
+- **Adapters** that recolor tmux-cpu, tmux-battery, tmux-online-status, and
+  tmux-prefix-highlight from the active palette
 - Suspend/resume for nested tmux sessions
-- Optional integration with tmux-online-status, tmux-cpu, tmux-battery, and
-  tmux-prefix-highlight
 
 ## Installation
 
@@ -53,193 +56,237 @@ Then reload:
 tmux source-file ~/.tmux.conf
 ```
 
+`airline.tmux` runs `airline init`, which publishes the CLI path, registers the
+built-in search paths, and applies a default palette + layout on first run. It
+binds **no keys** — you wire your own (see below).
+
+## How it fits together
+
+Four things, driven by one `airline` CLI:
+
+| Concept     | What it is                                                        | You change it with            |
+|-------------|-------------------------------------------------------------------|-------------------------------|
+| **palette** | The colors — a set of named roles (`inner-bg`, `active`, `ok`, …) | `palette use`, or `set -g`    |
+| **segment** | One powerline block's content, in a fixed slot                    | a layout, or `set -g`         |
+| **layout**  | A composition that fills the slots (and picks adapters)           | `layout use`                  |
+| **adapter** | A bridge that paints a third-party plugin from the palette        | `layout` (or `adapter use`)   |
+
+Palettes and segments are **static config** — plain `@airline-*` tmux options
+you set the idiomatic way; the CLI only reads them back for discovery, and
+`airline apply` bakes whatever they hold into the bar. Layouts and adapters are
+**dynamic** — scripts the CLI executes. Per-window **badges** (status/health)
+are live signals plugins raise at runtime.
+
 ## Nested sessions (suspend/resume)
 
-When running tmux inside tmux (e.g., local session SSH'd into a remote
-session), every layer looks identical and keystrokes only reach the outer
-session. Press **F12** to suspend the outer session:
+When running tmux inside tmux (e.g., a local session SSH'd into a remote one),
+every layer looks identical and keystrokes only reach the outer session.
+`airline state toggle` suspends the outer session:
 
 - The outer prefix is disabled and keystrokes pass through to the inner session
 - The outer status bar dims to a flat, muted palette so you can tell which
   layer is active
 
-Press **F12** again to resume the outer session and restore normal colors.
+airline binds no keys itself; bind your own, using the published CLI handle so
+it works wherever airline is installed. Because `suspend` switches tmux's
+`key-table` to `off`, bind the toggle in **both** the `root` table (fires while
+active) and the `off` table (fires while suspended), so one key round-trips:
 
-This works by toggling tmux's `key-table` between `root` (normal) and `off`
-(suspended, where only F12 is bound). The `@airline-suspended` option tracks
-the current state.
+```tmux
+bind -T root F12 run "#{@airline-cli} state toggle"
+bind -T off  F12 run "#{@airline-cli} state toggle"
+```
 
-## Color system
+Under the hood `suspend` sets tmux's `prefix` to `None` and `key-table` to `off`
+(so only your `off`-table bindings fire) and derives a flat look from the
+palette; `resume` restores both. Inspect the axis with `airline state show`
+(`active` | `suspended`).
 
-The status bar is built from a `THEME` associative array with three layers of
-configuration: backgrounds, content colors, and semantic highlights.
+## Palettes
 
-### Backgrounds
+A palette is a set of named color **roles**. The bar, badges, and window colors
+all reference roles, never raw colors — so swapping the palette recolors
+everything at once.
 
-Three tiers that create the chevron depth effect:
+### Backgrounds — the three chevron tiers
 
-| Key         | Role                           |
+| Role        | Where                          |
 |-------------|--------------------------------|
-| `outer-bg`  | Left/right edge sections       |
-| `middle-bg` | Hostname / CPU sections        |
+| `outer-bg`  | Left/right edge blocks         |
+| `middle-bg` | The blocks one step in         |
 | `inner-bg`  | Window list / center           |
 
-### Content colors
+### Content colors — text by visual weight
 
-Text colors ordered by visual weight:
-
-| Key          | Role                          |
+| Role         | Used for                      |
 |--------------|-------------------------------|
 | `secondary`  | Default / low-priority text   |
 | `primary`    | Normal text                   |
 | `emphasized` | Section labels, active text   |
 
-### Semantic highlights
+### Semantic roles — color by meaning
 
-Colors assigned by meaning rather than position:
-
-| Key        | Meaning                        |
+| Role       | Meaning                        |
 |------------|--------------------------------|
 | `active`   | Current window, active pane    |
 | `special`  | Clock, special modes           |
 | `ok`       | Success / completion (green)   |
-| `alert`    | Activity, medium battery       |
-| `stress`   | Bell, low battery, high CPU    |
+| `alert`    | Activity, degraded (amber)     |
+| `stress`   | Bell, critical (red)           |
 | `zoom`     | Zoomed pane indicator          |
 | `copy`     | Copy mode indicator            |
 | `monitor`  | Monitor mode indicator         |
 
-`ok`/`alert`/`stress` form a green/orange/red status triad. `ok` is for
-**discrete success** (a job or agent that *finished well*) — note the original
-meter widgets (cpu/battery) never needed it, since a meter's "good" state is
-just the normal/uncolored baseline; only event-based signals have a distinct
-"succeeded" state to paint green.
+`ok`/`alert`/`stress` form a green/amber/red triad. `ok` is for **discrete
+success** (a job or agent that *finished well*) — a meter's "good" state is just
+the normal baseline, so only event-based signals have a distinct "succeeded"
+state to paint green.
 
-### Overriding colors
+### Choosing and overriding a palette
 
-Set any `@airline-*` option in `.tmux.conf` before the plugin loads:
+Airline ships several palettes and picks `default` on first run. Switch with
+`palette use` — it reloads the colors and re-applies the bar:
 
 ```tmux
-set -g @airline-active "colour2"
+airline palette use dark
+```
+
+| Palette           | Description                                     |
+|-------------------|-------------------------------------------------|
+| `default`         | Airline's shipped look (256-color dark)         |
+| `dark`            | Neutral dark, explicit 256-color codes          |
+| `light`           | Neutral light, explicit 256-color codes         |
+| `solarized-dark`  | Solarized dark (assumes a Solarized terminal)   |
+| `solarized-light` | Solarized light (assumes a Solarized terminal)  |
+
+`airline palette available` lists what's on the search path; `airline palette
+show` prints the active palette and every role; `airline palette show name`
+prints just the active name (for scripts).
+
+Override individual roles with a normal tmux option, then re-apply:
+
+```tmux
+set -g @airline-active "colour214"
 set -g @airline-stress "colour196"
+airline apply
 ```
 
-### Themes
-
-The active theme is controlled by the `@airline-theme` option, which defaults
-to `dark`. The value maps to a file under `themes/`:
+A palette file is just a tmux source file of `set -g @airline-<role> <color>`
+lines (see `palettes/default`). To add your own, drop a file in a directory,
+bless it, and `use` it — a name you register shadows a shipped one:
 
 ```tmux
-set -g @airline-theme "dark"              # 256-color dark (default)
-set -g @airline-theme "light"             # 256-color light
-set -g @airline-theme "solarized-dark"    # requires Solarized palette
-set -g @airline-theme "solarized-light"   # requires Solarized palette
+airline palette register ~/.config/airline/palettes
+airline palette use my-palette
 ```
 
-Included themes:
+## Segments and layouts
 
-| Theme              | Description                                    |
-|--------------------|------------------------------------------------|
-| `dark`             | Neutral dark, explicit 256-color codes (default)|
-| `light`            | Neutral light, explicit 256-color codes        |
-| `solarized-dark`   | Solarized dark, requires Solarized palette     |
-| `solarized-light`  | Solarized light, requires Solarized palette    |
+The bar is the **window list** in the center, flanked by a left and a right
+**segment stack**. There are six fixed slots — three per side — and the powerline
+**tier** (which background, hence the depth gradient) is baked into each slot
+name, so the gradient is automatic:
 
-A theme file is a plain tmux source file that sets the `@airline-*` color
-options. See `themes/dark` for the full list. To create a custom theme,
-add a new file to `themes/` and set the option before the plugin loads:
+```
+┌──────────┬──────────┬─────────┬──────────────┬─────────┬──────────┬──────────┐
+│ left-out │ left-mid │ left-in │ window list  │ right-in│ right-mid│ right-out│
+│ (outer)  │ (middle) │ (inner) │  (inner-bg)  │ (inner) │ (middle) │ (outer)  │
+└──────────┴──────────┴─────────┴──────────────┴─────────┴──────────┴──────────┘
+   ←────────── left stack ──────────→          ←────────── right stack ──────────→
+```
+
+| Slot        | Side  | Tier   |
+|-------------|-------|--------|
+| `left-out`  | left  | outer  |
+| `left-mid`  | left  | middle |
+| `left-in`   | left  | inner  |
+| `right-in`  | right | inner  |
+| `right-mid` | right | middle |
+| `right-out` | right | outer  |
+
+A segment's content is a normal tmux format string. You set it directly and
+re-apply — the CLI reads segments back but does not write them:
 
 ```tmux
-set -g @airline-theme "my-theme"    # loads themes/my-theme
-set -g @plugin 'andrewjstryker/tmux-airline'
+# put the kubectl context in the right-inner slot
+set -g @airline-segment-right-in '#[fg=colour39]⎈ #(kubectl config current-context)'
+airline apply
+
+# inspect the slots (bare = all, or name one)
+airline segment show
+airline segment show right-in
 ```
 
-## Status bar layout
+### Layouts
 
-The bar is the **window list** in the centre, flanked by a left and a right
-**segment stack**. A segment is a powerline block; airline draws the chevrons:
-
-```
-┌─────────┬────────┬──────────────────┬──────────┬───────┬──────────────┐
-│ online  │ host   │   window list    │ prefix   │ cpu   │ date, battery │
-│ (outer) │(middle)│    (inner-bg)    │ (inner)  │(middle)│   (outer)    │
-└─────────┴────────┴──────────────────┴──────────┴───────┴──────────────┘
-   ← left stack →                          ← right stack →
-```
-
-Segments are a registered, ordered stack managed by the **`airline` CLI** — the
-same model as status badges. A segment has two required parts — a **side**
-(`left`/`right`) and **content** (a tmux format) — plus an optional **priority**
-(ascending = closer to the window list; default 50). Register one with:
+Usually you don't set slots by hand — a **layout** does. A layout is a script
+that fills the slots (and turns on the matching adapters) as one composition.
+`layout use` runs it and records it, so a later `palette use`/`apply` re-applies
+the same arrangement against the new colors:
 
 ```tmux
-airline segment register <name> --side left|right --format <fmt> [--priority N]
+airline layout use minimal
+airline layout show          # the active layout + its file
+airline layout available     # what's on the layout path
 ```
 
-The **background tier** (`outer`/`middle`/`inner`, which drives the powerline
-depth) is *derived from position*, not specified: the block at the outer edge is
-`outer`, the next one in is `middle`, the rest `inner`. So you place a segment
-with `--priority` and the gradient falls out automatically — there is no tier to
-keep in sync. airline ships these defaults (tiers shown are the derived result):
+| Layout     | What it composes                                                    |
+|------------|---------------------------------------------------------------------|
+| `adaptive` | Init's default — probes installed plugins, composes only what's present, degrades to session + date |
+| `default`  | The standard full arrangement                                       |
+| `full`     | Every slot populated                                                |
+| `minimal`  | A pared-down bar                                                    |
 
-| Segment  | Side  | Priority | Tier (derived) | Default content          |
-|----------|-------|----------|----------------|--------------------------|
-| `online` | left  | 10       | outer          | Online status indicator  |
-| `host`   | left  | 20       | middle         | Hostname                 |
-| `prefix` | right | 10       | inner          | Prefix highlight         |
-| `cpu`    | right | 20       | middle         | CPU usage                |
-| `date`   | right | 30       | outer          | Date/time + battery      |
+Switching layouts starts from a clean slate (every slot is cleared first), so a
+layout owns exactly the arrangement it declares. To build your own, write a
+script that sets `@airline-segment-*` options (and calls `airline adapter use`),
+then `register` its directory and `use` it — the same model as palettes.
 
-Add, reorder, or replace segments at runtime:
+The **window-list entry** itself is fixed as `#I:#W` (index:name) — a rendering
+constant, styled by the window colors below rather than a segment.
 
-```tmux
-# add a segment between cpu (priority 20) and date (30) — tier is derived
-airline segment register k8s --side right --priority 25 \
-  --format '#[fg=colour39]⎈ #(kubectl config current-context)'
+## Plugin adapters
 
-# override a default by re-registering its name
-airline segment register host --side left --format '#S'
+An **adapter** teaches a third-party plugin to draw in airline's palette. It's a
+small snippet that sets the plugin's own color options from the active palette —
+so tmux-cpu, tmux-battery, and friends match the bar and recolor whenever the
+palette changes. Adapters ship for:
 
-# remove one, or inspect the stack (segment list shows the derived tier)
-airline segment unregister cpu
-airline segment list
-```
+| Plugin                 | Adapter          | Slot it usually fills |
+|------------------------|------------------|-----------------------|
+| tmux-online-status     | `online`         | `left-mid`            |
+| tmux-prefix-highlight  | `prefix-highlight` | `right-in`          |
+| tmux-cpu               | `cpu`            | `right-mid`           |
+| tmux-battery           | `battery`        | `right-out`           |
 
-You own ordering (`--priority`) and content (`--format`); airline owns the
-chevrons and the tier backgrounds. The content is a normal tmux format, so
-dynamic parts (`#{...}`, `#(...)`, `strftime`) stay live; changing the *roster*
-rebuilds the bar. (Registering the defaults happens once per server, so a config
-reload won't undo your customizations.)
+The `adaptive` layout detects which of these are installed (by directory name in
+the plugin folder) and wires up only those — an uninstalled plugin leaves its
+slot empty (the block collapses to just its background). airline only sets the
+plugin's colors; the plugin draws its own widget.
 
-If you really need to force a block's background, `--tier outer|middle|inner` is
-an explicit override — but reach for it only when the derived depth is wrong;
-normally leaving it off is what keeps the gradient consistent.
-
-The **window-list entry** itself is templated by the `@airline-tmpl-window`
-option (default `#I:#W`):
-
-```tmux
-set -g @airline-tmpl-window '#W'        # window name only, no index
-```
+You rarely call adapters directly — a layout invokes them — but you can:
+`airline adapter use cpu`, `airline adapter show` (what's applied), `airline
+adapter available` (what's on the path).
 
 ## Window list signals
 
 A window entry has three layers, owned by two parties. **airline** owns the
-entry's *color* (foreground/background); **plugins** speak through *badges* that
+entry's *color* (the name itself); **plugins** speak through two *badges* that
 flank the name. They never collide.
 
 ```
- ⚠ 1:vim        2:zsh ⟳        3:build ⚙
- │  └name        └name └status   └name └status
- └health gutter (left)           status stack (right)
-   entry color (the name itself) = airline only
+ ○ 1:vim        ● 2:build ▲        ◆ 3:agent
+ │   └name      │   └name  └health   │   └name
+ └status        └status              └status  (needs you)
 ```
+
+The **status badge** sits *left* of the name; the **health badge** sits *right*.
+Because they're on opposite sides, their colors may overlap without ambiguity.
 
 ### Entry color (airline-owned): tmux modes
 
 The window name's color is airline's alone — no plugin API. It reflects, in
-order, **tmux modes** (a zoomed pane, copy mode, a monitored window) over the
-**baseline** (focused / last / normal):
+order, **tmux modes** over the **baseline** (focused / last / normal):
 
 | State                              | Color     |
 |------------------------------------|-----------|
@@ -247,18 +294,17 @@ order, **tmux modes** (a zoomed pane, copy mode, a monitored window) over the
 | The active pane is in **copy mode**| `copy`    |
 | `monitor-activity` is **on**       | `monitor` |
 
-Because the focused window is drawn *reverse-video* (its background is the
-highlight; the flat background becomes the knockout foreground), this single
-"signal color" is rendered as the **name foreground** on inactive windows and as
-the **highlight background** on the focused window — the chevrons follow it, so
-focus is never lost. Precedence is **zoom > copy > monitor**; with no mode, the
+The focused window is drawn reverse-video, so this single signal color renders
+as the name **foreground** on inactive windows and as the highlight
+**background** on the focused one — the chevrons follow it, so focus is never
+lost. Precedence is **zoom > copy > monitor**; with no mode, the
 normal/last/activity/bell styling applies.
 
 ### Badges (plugin-owned): the `airline` CLI
 
-Plugins drive badges through the **`airline` command** — the supported API.
-It owns the underlying tmux options and validates input, so plugins never depend
-on option-name conventions. Two channels flank the name:
+Plugins drive badges through the **`airline` command** — the supported API. It
+owns the underlying tmux options and validates input, so plugins never depend on
+option-name conventions.
 
 > **Finding the CLI.** airline publishes its own path in the `@airline-cli`
 > tmux option on load, so a cooperating plugin never has to guess the install
@@ -269,72 +315,85 @@ on option-name conventions. Two channels flank the name:
 > [ -n "$airline" ] && "$airline" status set agent active
 > ```
 >
-> The empty check doubles as a "is airline installed?" probe.
+> The empty check doubles as an "is airline installed?" probe.
 
-**Status** — a durable, ordered stack of named lanes on the **right**. Register a
-lane once (glyph + priority); light it on a window with a palette token; clear it
-when done. Many lanes can show at once, left→right by ascending priority:
-
-```tmux
-airline status register agent ⟳ 20      # declare a lane: glyph ⟳, priority 20
-airline status register ci ⚙ 10         # lower priority renders further left
-airline status set agent active         # light 'agent' on the current window
-airline status clear agent              # clear it
-airline status list                     # show lanes + current values
-```
-
-You own ordering (via `priority`) and glyphs — airline renders exactly the lanes
-you register, in that order, and never auto-deconflicts.
-
-**Health** — a single severity glyph in the **left gutter**, reduced from any
-number of contributors. Each contributor reports under its own key; airline shows
-the **worst** severity. `ok` (or no contributor) shows **nothing** — a clean
-gutter means healthy:
+**Status** (left) — a window's app-status, at one of three levels. Many
+contributors can report under their own keys; airline shows the highest-ranked
+one:
 
 ```tmux
-airline health set ctx stress           # this window's context is critical
-airline health set build alert          # …and a build is degraded
-# gutter now shows one glyph at the max severity (stress)
-airline health clear ctx                # drops to alert
-airline health list                     # contributors + reduced result
+airline status set build active      # ○ watching  (amber)
+airline status set build result      # ● finished well (green) — outranks active
+airline status set build attention   # ◆ needs you (amber)
+airline status clear build
+airline status show                  # keys + current values
 ```
 
-Severities are `ok` / `alert` / `stress` (green / amber / red). The glyph is `●`
-by default; override with `@airline-health-glyph`. All badge commands accept
-`-t <target>` to act on a window other than the current one.
+Levels are `active` / `result` / `attention`; `result` outranks `active`. A
+window with no status contributor shows nothing.
+
+**Health** (right) — a single severity glyph reduced from any number of
+contributors; airline shows the **worst**. `ok` (or no contributor) shows
+**nothing** — a clean right side means healthy:
+
+```tmux
+airline health set ctx stress        # ▲ critical (red)
+airline health set build alert       # △ degraded (amber)
+# badge now shows one glyph at the max severity (stress)
+airline health clear ctx             # drops to alert
+airline health show                  # contributors + reduced result
+```
+
+Severities are `ok` / `alert` / `stress` (green / amber / red). Glyphs are fixed
+(a distinct shape per state, so badges stay legible without color). All badge
+commands accept `-t <target>` to act on a window other than the current one.
 
 **Consume-on-view (`--transient`).** By default the setter owns clearing — a
 badge stays until something clears it. For a state whose setter can't observe
-that you've *seen* it (a job that finished, an agent waiting for input), set it
+that you've *seen* it (a finished job, an agent waiting for input), set it
 `--transient` and airline clears it once you've viewed the window and moved on:
 
 ```tmux
-airline status set agent ok --transient    # clears when you leave the window
+airline status set agent result --transient   # clears when you leave the window
 airline health set build stress --transient
 ```
 
-airline registers a single `pane-focus-out` hook that clears that window's
-transient signals (sticky ones are untouched) and enables `focus-events` — so
-the feature works without extra setup. The hook is registered idempotently, so
-reloads and repeated use never stack duplicates.
+airline registers a single `pane-focus-out` hook (idempotently) that clears that
+window's transient signals — sticky ones are untouched — and enables
+`focus-events`, so the feature works without extra setup.
 
 Because color and badges live on different layers, a window can show a mode
-color, a health glyph, and several status badges all at once without contention.
+color, a health glyph, and a status glyph all at once without contention.
 
-## Plugin integrations
+## The `airline` CLI
 
-Default widgets are used when the corresponding plugin is installed alongside
-tmux-airline (detected by directory name in the plugin folder):
+One entry point drives everything. Top-level verbs plus a handful of nouns, each
+with its own verbs. `-t <window>` scopes which window a command targets.
 
-| Plugin                 | Segment  | What it shows            |
-|------------------------|----------|--------------------------|
-| tmux-online-status     | `online` | Online/offline dot       |
-| tmux-prefix-highlight  | `prefix` | Prefix/copy/zoom state   |
-| tmux-cpu               | `cpu`    | CPU load with color      |
-| tmux-battery           | `date`   | Battery level and source |
+```
+airline init                 # seed defaults + publish @airline-cli, then render (binds nothing)
+airline apply                # re-apply the layout and render from the current source of truth
+airline show                 # print the active configuration
+airline help                 # usage (also -h / --help, and <noun> help)
 
-If a plugin is not installed, its segment renders empty (the powerline block
-collapses to just its background).
+airline palette  show [name|<element>] | available | use <name> | register <dir>
+airline segment  show [<slot>]                 # read-only; write with set -g @airline-segment-<slot>
+airline layout   show [name|path] | available | use <name> | load <path> | register <dir>
+airline adapter  show | available | use <name> | load <path> | register <dir>
+airline status   set <key> <level>    [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
+airline health   set <key> <severity> [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
+airline state    suspend | resume | toggle | show
+```
+
+Two conventions run through it:
+
+- **`use` vs `register`.** `use <name>` loads a bare name from a blessed
+  directory; `register <dir>` blesses one (and shadows shipped names). `load
+  <path>` runs a one-off file by path (adapters and layouts only).
+- **`show`.** Bare `show` is a human summary; `show <field>` prints one raw
+  value, newline-terminated, safe for `$(…)`. `available` lists the catalog a
+  `use` can pick from. Editing a color or segment option is free; the bar
+  re-renders on the next `apply` (or `use`, which ends in one).
 
 ## Testing
 
