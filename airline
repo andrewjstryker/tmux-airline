@@ -1,10 +1,17 @@
 #!/usr/bin/env bash
 #
-# airline — the CLI parser and dispatcher.
+# airline — the tmux-airline CLI: argument parsing, the command grammar, dispatch,
+# and help, all in one file. Read this to know the entire command surface.
 #
-# This file holds no command logic: it locates the install, points the mechanical
-# layer at the right tmux server, sources the stack, and routes argv to a handler in
-# api.sh. The supported surface and behaviour live there (and in DESIGN.md).
+# It locates the install, points the mechanical layer at the right tmux server, sources
+# the behaviour stack (tmux.sh → collections.sh → render.sh → api.sh), then parses argv
+# and calls the api.sh function behind each verb. api.sh holds the behaviour as pure
+# functions; the decision of which to call — the grammar — lives here.
+#
+# Grammar: a few top-level verbs (init/apply/show/…) plus four config nouns
+# (palette/segment/adapter/layout) and two dynamic ones (status/health), each with its
+# own verb set. Every noun's verbs live in a cmd_<noun> dispatcher below; help is
+# generated from the `#| …` markers on the case arms, so the grammar documents itself.
 
 set -u
 
@@ -27,13 +34,140 @@ source "$AIRLINE_DIR/render.sh"
 # shellcheck source=api.sh
 source "$AIRLINE_DIR/api.sh"
 
-# Dispatch: top-level verbs and nouns route to api.sh handlers; nouns carry their
-# own verb (set/clear/show/use). Nothing here but routing.
+#-----------------------------------------------------------------------------#
+# Help — generated from the `#| …` markers on the case arms below, so the grammar
+# is the single source of truth (no separate help text to keep in sync). Like `show`,
+# it lists the top-level commands then recurses into each noun's dispatcher.
+#-----------------------------------------------------------------------------#
+
+# Print a source range's #|-annotated arms as "  verb   help". <file> <start> <end>.
+_help_arms () {
+  sed -n "/$2/,/$3/{ s/^[[:space:]]*\([a-zA-Z_][a-zA-Z0-9_-]*\))[^#]*#|[[:space:]]*\(.*\)/\1\t\2/p; }" "$1" \
+    | while IFS=$'\t' read -r v d; do printf '  %-9s %s\n' "$v" "$d"; done
+}
+
+# One noun's verbs — the recursion target (also `<noun> help`). The dispatchers live in
+# THIS file, so that's where the arms are read from.
+_help_noun () {   # <noun>
+  printf '%s:\n' "$1"
+  _help_arms "$AIRLINE_DIR/airline" "^cmd_$1 () {" '^}'
+}
+
+usage () {
+  printf 'airline — tmux-airline CLI\n\n'
+  printf 'Commands:\n'
+  _help_arms "$AIRLINE_DIR/airline" '^case ' '^esac'
+  local n
+  for n in palette segment adapter layout state status health; do
+    printf '\n'; _help_noun "$n"
+  done
+  printf '\n  use loads a bare name from a registered dir; register blesses a location.\n'
+  printf '  --transient clears a signal when you focus away from its window.\n'
+}
+
+#-----------------------------------------------------------------------------#
+# Noun dispatchers — each parses its verb and calls the api.sh function behind it.
+# The `#| …` markers on the arms are the help source; keep arms thin (route + the
+# odd bit of "then render/apply" sequencing, no logic).
+#-----------------------------------------------------------------------------#
+
+cmd_state () {
+  local verb="${1:-}"; shift || true
+  case "$verb" in
+    suspend) _state_set 1 ;;   #| mute the palette + trap the prefix (session dormant)
+    resume)  _state_set 0 ;;   #| restore vibrant colours + release the prefix
+    toggle)  if [[ "$(prv_get_global "$AIRLINE_KEY_SUSPENDED")" == 1 ]]; then _state_set 0; else _state_set 1; fi ;;   #| flip active/suspended
+    show)    _state_word ;;    #| print the current state (active | suspended)
+    ""|-h|--help|help) _help_noun state ;;
+    *) die "unknown state command: $verb" ;;
+  esac
+}
+
+cmd_status () {
+  local verb="${1:-}"; shift || true
+  case "$verb" in
+    set)   _signal_set   status _status_level_valid "$@" ;;   #| <key> <active|result|attention> [--transient] [-t <win>]
+    clear) _signal_clear status "$@" ;;                       #| <key> [-t <win>]
+    show)  _signal_show  status "$@" ;;                       #| [<key>] [-t <win>] — a window's app-status
+    ""|-h|--help|help) _help_noun status ;;
+    *) die "unknown status command: $verb" ;;
+  esac
+}
+
+cmd_health () {
+  local verb="${1:-}"; shift || true
+  case "$verb" in
+    set)   _signal_set   health _health_severity_valid "$@" ;;   #| <key> <ok|alert|stress> [--transient] [-t <win>]
+    clear) _signal_clear health "$@" ;;                          #| <key> [-t <win>]
+    show)  _signal_show  health "$@" ;;                          #| [<key>] [-t <win>] — a window's health
+    ""|-h|--help|help) _help_noun health ;;
+    *) die "unknown health command: $verb" ;;
+  esac
+}
+
+cmd_palette () {
+  # A palette element is a public option (@airline-<element>); override one directly
+  # with `set -g` or swap the whole set with `use`. Like segment, the per-element write
+  # path is read-only here — `show` is the discovery surface (bare for humans,
+  # `show <field>` a raw value for scripts; `show name` is the active-palette read).
+  local verb="${1:-}"; shift || true
+  case "$verb" in
+    show)      _palette_show "$@" ;;                    #| [name|<element>] — summary, or one field raw (`show name` for scripts)
+    use)       _load_config palette "$@"; _apply ;;     #| <name> — load a palette (re-applies the layout)
+    available) _path_available palette ;;               #| the palettes you can `use` (on the path)
+    register)  _register palette "$@" ;;                #| <dir> — add a palette search dir
+    ""|-h|--help|help) _help_noun palette ;;
+    *) die "unknown palette command: $verb" ;;
+  esac
+}
+
+cmd_segment () {
+  # A segment is a public option; write it directly with `set -g` (from a layout or your
+  # own config). This noun is read-only — `show` is the discovery surface (bare `show`
+  # lists every slot).
+  local verb="${1:-}"; shift || true
+  case "$verb" in
+    show)  _static_show  "segment-" _segment_slot_valid AIRLINE_SEGMENT_SLOTS "$@" ;;   #| [<slot>] — read one or all (segments are written with `set -g`, not here)
+    ""|-h|--help|help) _help_noun segment ;;
+    *) die "unknown segment command: $verb" ;;
+  esac
+}
+
+cmd_adapter () {
+  local verb="${1:-}"; shift || true
+  case "$verb" in
+    use)       _apply_adapter "$@"; _render ;;      #| <name> — apply the palette to a plugin
+    load)      _load_adapter "$@"; _render ;;       #| <path> — apply a one-off adapter script
+    show)      _adapter_show ;;                     #| the applied adapters, one per line
+    available) _path_available adapter ;;           #| the adapters you can `use` (on the path)
+    register)  _register adapter "$@" ;;            #| <dir> — add an adapter search dir
+    ""|-h|--help|help) _help_noun adapter ;;
+    *) die "unknown adapter command: $verb" ;;
+  esac
+}
+
+cmd_layout () {
+  local verb="${1:-}"; shift || true
+  case "$verb" in
+    use)       _layout_use "$@"; render || true ;;   #| <name> — run a composition (adapters + segments)
+    load)      _layout_load "$@"; render || true ;;  #| <path> — run a one-off layout script (records it)
+    show)      _layout_show "$@" ;;                   #| [name|path] — the active layout (summary, or one field raw)
+    available) _path_available layout ;;              #| the layouts you can `use` (on the path)
+    register)  _register layout "$@" ;;               #| <dir> — add a layout search dir
+    ""|-h|--help|help) _help_noun layout ;;
+    *) die "unknown layout command: $verb" ;;
+  esac
+}
+
+#-----------------------------------------------------------------------------#
+# Dispatch — top-level verbs. Config/dynamic nouns delegate to their cmd_<noun>
+# parser above; the rest call the api.sh behaviour function directly.
+#-----------------------------------------------------------------------------#
 cmd="${1:-}"; shift || true
 case "$cmd" in
-  init)     cmd_init    "$@" ;;   #| seed defaults, register search paths, publish the CLI handle; then render
-  apply)    cmd_apply   "$@" ;;   #| re-apply the layout and render from the source of truth
-  show)     cmd_show    ;;        #| print the active configuration
+  init)     _init       "$@" ;;   #| seed defaults, register search paths, publish the CLI handle; then render
+  apply)    _apply           ;;   #| re-apply the layout and render from the source of truth
+  show)     _show_config     ;;   #| print the active configuration
   state)    cmd_state   "$@" ;;
   status)   cmd_status  "$@" ;;
   health)   cmd_health  "$@" ;;
@@ -41,7 +175,7 @@ case "$cmd" in
   segment)  cmd_segment "$@" ;;
   adapter)  cmd_adapter "$@" ;;
   layout)   cmd_layout  "$@" ;;
-  _unfocus) cmd_unfocus "$@" ;;   # internal: pane-focus-out hook callback
+  _unfocus) _unfocus    "$@" ;;   # internal: pane-focus-out hook callback
   ""|-h|--help|help) usage ;;
   *) die "unknown command: $cmd (try: airline help)" ;;
 esac

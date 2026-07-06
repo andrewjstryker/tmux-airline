@@ -44,17 +44,6 @@ load_render() {
   _use_fake_readback
 }
 
-# Source the api layer (api.sh) on the in-memory fake — lets the CLI command
-# handlers be exercised in-process (the CLI itself is just dispatch) with no server.
-load_api() {
-  export AIRLINE_DIR="$PROJECT_ROOT"
-  source "$PROJECT_ROOT/test/fake-tmux.sh"
-  source "$PROJECT_ROOT/collections.sh"
-  source "$PROJECT_ROOT/render.sh"
-  source "$PROJECT_ROOT/api.sh"
-  _use_fake_readback
-}
-
 # Point the readback helpers at the in-process fake store. The real get_option/wopt
 # (below) shell out to a tmux server; on the fake path there is none, so a layer
 # test reads the very options the code under test just wrote, through tmux.sh's own

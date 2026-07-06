@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 #
-# api.sh — the CLI command handlers (the logic behind every verb).
+# api.sh — the behaviour behind every verb, as pure functions.
 #
-# `airline` is just the parser/dispatcher; the work lives here. Each handler owns
-# input validation (the one place input is checked — against render.sh's predicates)
-# and then drives the layers: opt_* / coll_* to mutate state, `render` to produce the
-# bar. Sourced on top of tmux.sh + collections.sh + render.sh.
+# This layer holds NO argument parsing, dispatch, or help: that is the CLI's job and
+# lives entirely in `airline`. Here are the functions `airline` calls once it has
+# parsed a command — each owns input validation (the one place input is checked,
+# against render.sh's predicates) and then drives the layers below (opt_* / coll_* to
+# mutate state, `render` to produce the bar). Sourced on top of tmux.sh +
+# collections.sh + render.sh.
 #
-# The verb grammar splits on the state model. Dynamic nouns (status, health) are live
-# and scriptable: `set X v` / `clear X` / `show [X]` — write + re-project a badge +
+# The verb grammar (in `airline`) splits on the state model these functions implement.
+# Dynamic nouns (status, health) are live and scriptable: set + re-project a badge +
 # redraw. Static config nouns (palette, segment) are read-only at the CLI: their values
 # are public @airline-* options the user writes the idiomatic tmux way (`set -g`, a
-# palette file, `.tmux.conf`) — no `set`/`clear`, only `show` for discovery; `apply`
+# palette file, `.tmux.conf`); we only *read* them back for discovery, and `apply`
 # bakes whatever those options currently hold.
 
 # shellcheck shell=bash
@@ -22,35 +24,6 @@ if ! declare -F render >/dev/null; then
 fi
 
 die () { printf 'airline: %s\n' "$*" >&2; exit 2; }
-
-# Self-documenting help. Each documented case arm carries its own one-line help as a
-# trailing `#| <args> — note` marker (see the dispatcher and the cmd_* handlers). Help
-# is extracted from the source with sed — no separate text to keep in sync — and, like
-# `show`, iterates the top-level commands then recurses into each noun.
-
-# Print a source range's #|-annotated arms as "  verb   help". <file> <start> <end>.
-_help_arms () {
-  sed -n "/$2/,/$3/{ s/^[[:space:]]*\([a-zA-Z_][a-zA-Z0-9_-]*\))[^#]*#|[[:space:]]*\(.*\)/\1\t\2/p; }" "$1" \
-    | while IFS=$'\t' read -r v d; do printf '  %-9s %s\n' "$v" "$d"; done
-}
-
-# One noun's verbs — the recursion target (also `<noun> help`).
-_help_noun () {   # <noun>
-  printf '%s:\n' "$1"
-  _help_arms "$AIRLINE_DIR/api.sh" "^cmd_$1 () {" '^}'
-}
-
-usage () {
-  printf 'airline — tmux-airline CLI\n\n'
-  printf 'Commands:\n'
-  _help_arms "$AIRLINE_DIR/airline" '^case ' '^esac'
-  local n
-  for n in palette segment adapter layout state status health; do
-    printf '\n'; _help_noun "$n"
-  done
-  printf '\n  use loads a bare name from a registered dir; register blesses a location.\n'
-  printf '  --transient clears a signal when you focus away from its window.\n'
-}
 
 # One "label   value" row — the single home for the `show` column width, so every
 # noun's show and the top-level summary align identically.
@@ -69,9 +42,10 @@ _segments_unset () {
   return 0
 }
 
-# Bootstrap. Publish the CLI path and, on first run, seed defaults behind a sentinel
-# (without clobbering user config or runtime state on a reload); then render.
-cmd_init () {
+# Bootstrap (the `init` command). Publish the CLI path and, on first run, seed defaults
+# behind a sentinel (without clobbering user config or runtime state on a reload); then
+# render.
+_init () {
   # The CLI path is the ONE published (public) option — the bootstrap handle, since a
   # script can't call the API to discover where the API lives. Everything else about
   # airline's state is read through the CLI, never a private option. Airline binds no
@@ -100,22 +74,22 @@ cmd_init () {
 # local _AIRLINE_DEFER that dynamic scoping makes visible to the nested use handlers).
 _render () { [[ -n "${_AIRLINE_DEFER:-}" ]] && return 0; render || true; }
 
-# apply: re-run the active layout (re-applies its adapters against the current palette
-# and re-sets its segments), then render. This is the re-apply engine — a palette swap is
-# `palette use X` (or a raw set) followed by apply.
-cmd_apply () {
+# The `apply` command: re-run the active layout (re-applies its adapters against the
+# current palette and re-sets its segments), then render. This is the re-apply engine —
+# a palette swap is `palette use X` (or a raw set) followed by apply.
+_apply () {
   local lay; lay="$(prv_get_global layout)"
   [[ -n "$lay" && -n "$(_layout_file "$lay")" ]] && _apply_layout "$lay"
   render || true
 }
 
-# Top-level `airline show`: the active configuration. The non-noun globals first (the
-# bootstrap handle, lifecycle state, and the search paths), then a recursion into each
-# CONFIG noun's own `show` — the noun reports its own active state, so nothing is printed
-# twice (a palette/layout name shows once, inside its section). The dynamic per-window
-# nouns (status/health) are NOT global config, so they're excluded — inspect them with
-# `status show` / `health show`.
-cmd_show () {
+# The top-level `show` command: the active configuration. The non-noun globals first
+# (the bootstrap handle, lifecycle state, and the search paths), then each CONFIG noun's
+# own bare `show` — the noun reports its own active state, so nothing is printed twice (a
+# palette/layout name shows once, inside its section). The dynamic per-window nouns
+# (status/health) are NOT global config, so they're excluded — inspect them with
+# `status show` / `health show`. Mirrors exactly what each `<noun> show` prints bare.
+_show_config () {
   _show_row cli   "$(pub_get cli)"              # the one public (bootstrap) handle
   _show_row state "$(_state_word)"              # lifecycle (active | suspended)
   printf '\npaths:\n'                           # where `use` resolves, priority order
@@ -123,10 +97,10 @@ cmd_show () {
   for k in palette adapter layout; do
     _show_row "$k" "$(coll_members_global "$(_path_ns "$k")")"
   done
-  printf '\npalette:\n'; cmd_palette show
-  printf '\nsegment:\n'; cmd_segment show
-  printf '\nadapter:\n'; cmd_adapter show
-  printf '\nlayout:\n';  cmd_layout show
+  printf '\npalette:\n'; _palette_show
+  printf '\nsegment:\n'; _static_show "segment-" _segment_slot_valid AIRLINE_SEGMENT_SLOTS
+  printf '\nadapter:\n'; _adapter_show
+  printf '\nlayout:\n';  _layout_show
 }
 
 #-----------------------------------------------------------------------------#
@@ -350,18 +324,6 @@ _state_set () {   # <1=suspended|0=active>
   render || true
 }
 
-cmd_state () {
-  local verb="${1:-}"; shift || true
-  case "$verb" in
-    suspend) _state_set 1 ;;   #| mute the palette + trap the prefix (session dormant)
-    resume)  _state_set 0 ;;   #| restore vibrant colours + release the prefix
-    toggle)  if [[ "$(prv_get_global "$AIRLINE_KEY_SUSPENDED")" == 1 ]]; then _state_set 0; else _state_set 1; fi ;;   #| flip active/suspended
-    show)    _state_word ;;    #| print the current state (active | suspended)
-    ""|-h|--help|help) _help_noun state ;;
-    *) die "unknown state command: $verb" ;;
-  esac
-}
-
 #-----------------------------------------------------------------------------#
 # Transient (consume-on-view)
 #-----------------------------------------------------------------------------#
@@ -371,8 +333,9 @@ _ensure_unfocus_hook () {
   hook_set "pane-focus-out[90]" "run-shell -b \"$AIRLINE_DIR/airline _unfocus #{window_id}\""
 }
 
-# Drop every transient contributor on <window>, then re-project both badges once.
-cmd_unfocus () {
+# The internal `_unfocus` hook callback. Drop every transient contributor on <window>,
+# then re-project both badges once.
+_unfocus () {
   local win="${1:-}"; [[ -n "$win" ]] || return 0
   local changed="" ns key f1 f2
   for ns in status health; do
@@ -442,28 +405,6 @@ _signal_show () {   # <ns> [<key>] [-t <win>]
   done
 }
 
-cmd_status () {
-  local verb="${1:-}"; shift || true
-  case "$verb" in
-    set)   _signal_set   status _status_level_valid "$@" ;;   #| <key> <active|result|attention> [--transient] [-t <win>]
-    clear) _signal_clear status "$@" ;;                       #| <key> [-t <win>]
-    show)  _signal_show  status "$@" ;;                       #| [<key>] [-t <win>] — a window's app-status
-    ""|-h|--help|help) _help_noun status ;;
-    *) die "unknown status command: $verb" ;;
-  esac
-}
-
-cmd_health () {
-  local verb="${1:-}"; shift || true
-  case "$verb" in
-    set)   _signal_set   health _health_severity_valid "$@" ;;   #| <key> <ok|alert|stress> [--transient] [-t <win>]
-    clear) _signal_clear health "$@" ;;                          #| <key> [-t <win>]
-    show)  _signal_show  health "$@" ;;                          #| [<key>] [-t <win>] — a window's health
-    ""|-h|--help|help) _help_noun health ;;
-    *) die "unknown health command: $verb" ;;
-  esac
-}
-
 #-----------------------------------------------------------------------------#
 # Static config nouns — palette & segment (public @airline-* options, read-only here)
 #-----------------------------------------------------------------------------#
@@ -496,34 +437,6 @@ _palette_show () {   # [name|<element>]
   _static_show "" _palette_element_valid AIRLINE_PALETTE_ELEMENTS "$x"
 }
 
-cmd_palette () {
-  # A palette element is a public option (@airline-<element>); override one directly
-  # with `set -g` or swap the whole set with `use`. Like segment, the per-element write
-  # path is read-only here — `show` is the discovery surface (bare for humans,
-  # `show <field>` a raw value for scripts; `show name` is the active-palette read).
-  local verb="${1:-}"; shift || true
-  case "$verb" in
-    show)      _palette_show "$@" ;;                    #| [name|<element>] — summary, or one field raw (`show name` for scripts)
-    use)       _load_config palette "$@"; cmd_apply ;;  #| <name> — load a palette (re-applies the layout)
-    available) _path_available palette ;;               #| the palettes you can `use` (on the path)
-    register)  _register palette "$@" ;;                #| <dir> — add a palette search dir
-    ""|-h|--help|help) _help_noun palette ;;
-    *) die "unknown palette command: $verb" ;;
-  esac
-}
-
-cmd_segment () {
-  # A segment is a public option; write it directly with `set -g` (from a layout or your
-  # own config). This noun is read-only — `show` is the discovery surface (bare `show`
-  # lists every slot).
-  local verb="${1:-}"; shift || true
-  case "$verb" in
-    show)  _static_show  "segment-" _segment_slot_valid AIRLINE_SEGMENT_SLOTS "$@" ;;   #| [<slot>] — read one or all (segments are written with `set -g`, not here)
-    ""|-h|--help|help) _help_noun segment ;;
-    *) die "unknown segment command: $verb" ;;
-  esac
-}
-
 # adapter show: iterate the active set — the adapters currently applied (recorded by
 # every `use`/`load`), one per line. Bare-only, unlike palette/status: an adapter is a
 # valueless name, so there is no per-member `show <x>` value to return. This is the
@@ -531,32 +444,6 @@ cmd_segment () {
 # *could* apply is a different axis — `adapter available`, over the search path.)
 _adapter_show () {
   local a; for a in $(coll_members_global adapters); do printf '%s\n' "$a"; done
-}
-
-cmd_adapter () {
-  local verb="${1:-}"; shift || true
-  case "$verb" in
-    use)       _apply_adapter "$@"; _render ;;      #| <name> — apply the palette to a plugin
-    load)      _load_adapter "$@"; _render ;;       #| <path> — apply a one-off adapter script
-    show)      _adapter_show ;;                     #| the applied adapters, one per line
-    available) _path_available adapter ;;           #| the adapters you can `use` (on the path)
-    register)  _register adapter "$@" ;;            #| <dir> — add an adapter search dir
-    ""|-h|--help|help) _help_noun adapter ;;
-    *) die "unknown adapter command: $verb" ;;
-  esac
-}
-
-cmd_layout () {
-  local verb="${1:-}"; shift || true
-  case "$verb" in
-    use)       _layout_use "$@"; render || true ;;   #| <name> — run a composition (adapters + segments)
-    load)      _layout_load "$@"; render || true ;;  #| <path> — run a one-off layout script (records it)
-    show)      _layout_show "$@" ;;                   #| [name|path] — the active layout (summary, or one field raw)
-    available) _path_available layout ;;              #| the layouts you can `use` (on the path)
-    register)  _register layout "$@" ;;               #| <dir> — add a layout search dir
-    ""|-h|--help|help) _help_noun layout ;;
-    *) die "unknown layout command: $verb" ;;
-  esac
 }
 
 # vim: ft=bash
