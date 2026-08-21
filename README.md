@@ -16,12 +16,15 @@ Features:
   per-window badges
 - **Adapters** that recolor tmux-cpu, tmux-battery, tmux-online-status, and
   tmux-prefix-highlight from the active palette
+- Session-wide widget **problems**, reduced to one extreme-right warning with
+  full diagnostics available through the CLI
 - Suspend/resume for nested tmux sessions
 
 ## Installation
 
 This plugin requires **tmux 3.0+** and Bash 4+ (for associative arrays), and
-has no other external dependencies.
+has no other external dependencies. It is tested on tmux 3.4 and uses tmux
+features available from 3.0 onward.
 
 > **tmux 3.0** is needed for the format comparison operators (`#{==:…}`,
 > `#{?…}` over user options) that drive the per-window entry color and the
@@ -75,7 +78,7 @@ Palettes and segments are **static config** — plain `@airline-*` tmux options
 you set the idiomatic way; the CLI only reads them back for discovery, and
 `airline apply` bakes whatever they hold into the bar. Layouts and adapters are
 **dynamic** — scripts the CLI executes. Per-window **badges** (status/health)
-are live signals plugins raise at runtime.
+and session-wide **problems** are live signals plugins and widgets raise at runtime.
 
 ## Nested sessions (suspend/resume)
 
@@ -365,10 +368,38 @@ window's transient signals — sticky ones are untouched — and enables
 Because color and badges live on different layers, a window can show a mode
 color, a health glyph, and a status glyph all at once without contention.
 
+## Session problems
+
+An airline-aware widget can fail gracefully and report why through the
+session-scoped `problem` API. Problems are keyed contributors with a severity
+and message. Airline retains every contributor for inspection, reduces them
+with the same `ok < alert < stress` ordering as health, and shows one aggregate
+glyph at the extreme right. No problems (or only `ok`) renders nothing.
+
+```shell
+session="$(tmux display-message -p '#{session_id}')"
+
+if ! command -v sensors >/dev/null 2>&1; then
+  airline problem set cpu alert "required program 'sensors' was not found" -t "$session"
+  printf '?'
+  exit 0
+fi
+
+airline problem clear cpu -t "$session"
+```
+
+Several widgets may report independently; clearing the worst problem naturally
+downgrades the aggregate to the next severity. `problem show` lists every key,
+severity, and message. `problem show <key>` returns that problem as a raw,
+tab-delimited `severity<TAB>message` tuple. Background widgets should pass an
+explicit session target because “current session” may be ambiguous outside a
+pane.
+
 ## The `airline` CLI
 
 One entry point drives everything. Top-level verbs plus a handful of nouns, each
-with its own verbs. `-t <window>` scopes which window a command targets.
+with its own verbs. `-t` targets a window for status/health and a session for
+problem.
 
 ```
 airline init                 # seed defaults + publish @airline-cli, then render (binds nothing)
@@ -382,6 +413,7 @@ airline layout   show [name|path] | available | use <name> | load <path> | regis
 airline adapter  show | available | use <name> | load <path> | register <dir>
 airline status   set <key> <level>    [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
 airline health   set <key> <severity> [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
+airline problem  set <key> <severity> <message> [-t <session>] | clear <key> [-t <session>] | show [<key>] [-t <session>]
 airline state    suspend | resume | toggle | show
 ```
 
