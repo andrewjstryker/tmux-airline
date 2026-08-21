@@ -1,12 +1,10 @@
 # shellcheck project configuration.
 
-# SC1091: airline.tmux and the `airline` CLI source sibling scripts by runtime
-# path (scripts/*.sh, plugins/*). shellcheck can't follow those statically and
-# we don't want it to — the files are checked on their own. Don't-follow policy.
-disable=SC1091
-
-# SC2120/SC2119: load_theme takes an optional theme name. Production calls it
-# with no argument (it falls back to the @airline-theme option); the test
-# harness passes one. shellcheck only sees the in-file (zero-arg) calls and
-# flags the optional parameter. The design is intentional.
-disable=SC2119,SC2120
+# SC1091: runtime paths locate sibling layers and user-selected helpers; every
+# shipped file is checked independently by the Makefile.
+# SC2119/SC2120: argument-bearing calls into api.sh live in the separately
+# checked `airline` CLI, so ShellCheck sees only the zero-argument internal calls.
+# SC2317: sourced library guards use `return ... || exit` so they fail cleanly
+# both when sourced and when invoked directly; ShellCheck sees the exit as
+# unreachable when analyzing a file in only one of those contexts.
+disable=SC1091,SC2119,SC2120,SC2317

@@ -1,4 +1,5 @@
 # adapters/prefix-highlight — apply the palette to tmux-prefix-highlight (dynamic).
+# shellcheck shell=bash
 #
 # A bash snippet sourced by `adapter use prefix-highlight` with PALETTE populated.
 # A highlight block that owns its own background (the active colour), like a badge.
