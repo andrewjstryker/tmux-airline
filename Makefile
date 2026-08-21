@@ -2,12 +2,14 @@
 
 .PHONY: test lint
 
+SHELLCHECK_SOURCES := airline airline.tmux $(wildcard *.sh adapters/* helpers/* layouts/*)
+
 test:
 	bats test/
 
 lint:
 	@if command -v shellcheck >/dev/null; then \
-	  shellcheck airline airline.tmux *.sh scripts/*.sh scripts/plugins/*.sh; \
+	  shellcheck $(SHELLCHECK_SOURCES); \
 	else \
 	  echo "shellcheck not installed; skipping"; \
 	fi
