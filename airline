@@ -9,8 +9,8 @@
 # functions; the decision of which to call — the grammar — lives here.
 #
 # Grammar: a few top-level verbs (init/apply/show/…) plus four config nouns
-# (palette/segment/adapter/layout) and two dynamic ones (status/health), each with its
-# own verb set. Every noun's verbs live in a cmd_<noun> dispatcher below; help is
+# (palette/segment/adapter/layout) and three dynamic ones (status/health/problem),
+# each with its own verb set. Every noun's verbs live in a cmd_<noun> dispatcher below; help is
 # generated from the `#| …` markers on the case arms, so the grammar documents itself.
 
 set -u
@@ -58,7 +58,7 @@ usage () {
   printf 'Commands:\n'
   _help_arms "$AIRLINE_DIR/airline" '^case ' '^esac'
   local n
-  for n in palette segment adapter layout state status health; do
+  for n in palette segment adapter layout state status health problem; do
     printf '\n'; _help_noun "$n"
   done
   printf '\n  use loads a bare name from a registered dir; register blesses a location.\n'
@@ -102,6 +102,17 @@ cmd_health () {
     show)  _signal_show  health "$@" ;;                          #| [<key>] [-t <win>] — a window's health
     ""|-h|--help|help) _help_noun health ;;
     *) die "unknown health command: $verb" ;;
+  esac
+}
+
+cmd_problem () {
+  local verb="${1:-}"; shift || true
+  case "$verb" in
+    set)   _problem_set   "$@" ;;   #| <key> <ok|alert|stress> <message> [-t <session>]
+    clear) _problem_clear "$@" ;;   #| <key> [-t <session>]
+    show)  _problem_show  "$@" ;;   #| [<key>] [-t <session>] — session widget problems
+    ""|-h|--help|help) _help_noun problem ;;
+    *) die "unknown problem command: $verb" ;;
   esac
 }
 
@@ -171,6 +182,7 @@ case "$cmd" in
   state)    cmd_state   "$@" ;;
   status)   cmd_status  "$@" ;;
   health)   cmd_health  "$@" ;;
+  problem)  cmd_problem "$@" ;;
   palette)  cmd_palette "$@" ;;
   segment)  cmd_segment "$@" ;;
   adapter)  cmd_adapter "$@" ;;
