@@ -12,7 +12,7 @@ Status of this document:
    *Static* config is **public** `@airline-*` options a user sets directly, the
    idiomatic tmux way. *Dynamic* state is **private** `@airline--*` options only
    airline writes, at runtime, through the CLI. The CLI speaks domain terms
-   (`status`, `health`) for the dynamic part and owns the lifecycle
+   (`status`, `health`, `problem`) for the dynamic part and owns the lifecycle
    (`init`, `apply`, `use`); it does not wrap the static part — `set -g @airline-*`
    is the API for that.
 2. **One render path.** Whatever moves the source of truth — a user editing an
@@ -20,8 +20,8 @@ Status of this document:
    `render`, invoked by `apply`. There is no second, divergent way to build or
    repaint the bar. (This is the rule the old `main()` / `_airline_rebuild` split
    violated, which is why a palette change only half-repainted.)
-3. **The middle is logic.** Composition — the badge reduce (status and health
-   both collapse many contributors to one mark), segment-slot assembly, render
+3. **The middle is logic.** Composition — badge reduction (status, health, and
+   problem each collapse many contributors to one mark), segment-slot assembly, render
    expressions, palette application — is expressed in domain terms and never calls
    tmux directly.
 4. **No runtime enforcement.** Bash gives us one global namespace and no
@@ -55,7 +55,7 @@ regressing. Treat these as a checklist as code migrates:
 | `airline` | **CLI — parser & dispatcher.** The entry users / `airline.tmux` / plugins call. Holds no logic: points the mechanical layer at the tmux server, sources the stack, and routes argv to an `api.sh` handler. | no | `api.sh` (+ the layers) |
 | `api.sh` | **Command handlers — the API logic.** One handler per verb; owns input **validation** (the only place input is checked, against `render.sh`'s predicates), then drives the layers — `opt_*` / `coll_*` to mutate, `render` to produce the bar. | no | `render.sh`, `collections.sh`, `tmux.sh` |
 | `render.sh` | **Composition.** Loads the palette into `PALETTE` and implements `render` (what `apply` runs) — producing the bar (`status-left/right`, window formats, `*-style`, pane, clock) from the public `@airline-*` inputs and private `@airline--*` state. Owns the shared vocabulary — slot/element names, the rendering constants (glyphs, chevrons, name template), and the predicates the CLI validates against. *Trusts* its inputs. | **no** | `collections.sh`, `tmux.sh` |
-| `collections.sh` | **Collections (status & health only).** A registry (explicit key list) + per-key tuples over options, split with bash `IFS` — the "0 or more" shape behind the status and health contributors that each reduce to one badge. Pure bash on `opt_*`; no direct tmux calls, no domain terms. Segments are *not* collections. | no (via `tmux.sh`) | `tmux.sh` |
+| `collections.sh` | **Collections.** A registry (explicit key list) + per-key tuples over options, split with bash `IFS` — the "0 or more" shape behind window status/health and session problem contributors. Each collection reduces to one badge. Pure bash on `opt_*`; no direct tmux calls or domain terms. Segments are *not* collections. | no (via `tmux.sh`) | `tmux.sh` |
 | `tmux.sh` | **Mechanical + namespace policy.** The *sole* caller of the `tmux` binary: scoped option get/set/unset, redraw, `source-file`, hooks, binds. Also the *sole* owner of the `@airline-` / `@airline--` prefixes — the `pub_*` / `prv_*` accessors and `prv_name` builder, so every layer above names airline options by bare key. | **yes (only here)** | — |
 | `palettes/*` | **Built-in palettes** *(static config).* Plain tmux files of `set -g @airline-<element> <color>` lines, loaded by `palette use` (`source-file`). Config, not production shell — it sets *public* options the idiomatic way. | sets public options (sourced by `use`) | — |
 | *(segment)* | **Not a shipped/loadable kind, and write-only-by-option.** A segment is just a public option `@airline-segment-<slot>`, set with `set -g` — by the user, or by a layout (`$AIRLINE_TMUX set -g @airline-segment-<slot> …`). No `segments/*` dir, no `segment use`/`set`/`clear` — the CLI noun is read-only (`show`). | sets public options | — |
@@ -70,7 +70,7 @@ Notes:
   airline abstraction. So `collections.sh` sits *above* `tmux.sh`, built on its
   `opt_*` functions. Because it makes no direct tmux calls it stays *off* the lint
   allowlist, leaving `tmux.sh` the genuinely sole tmux caller.
-- **Only status and health are collections.** They hold 0-or-more dynamic entries.
+- **Only status, health, and problem are collections.** They hold 0-or-more dynamic entries.
   Segments are a *fixed* set of named slots — plain keyed `opt_*`, no collection,
   no registry. Palettes are files. Don't grow the collection abstraction back over
   things that aren't variable-cardinality.
@@ -101,7 +101,7 @@ graph TD
     ENTRY --> CLI
     CLI --> API["api.sh<br/><i>command handlers</i>"]
     API --> LOGIC["render.sh<br/><i>composition logic</i>"]
-    API --> COLL["collections.sh<br/><i>status/health · search paths</i>"]
+    API --> COLL["collections.sh<br/><i>status/health/problem · search paths</i>"]
     LOGIC --> COLL
     LOGIC --> MECH["tmux.sh<br/><i>mechanical — sole tmux caller</i>"]
     API --> MECH
@@ -133,7 +133,7 @@ split is the spine of the whole design:
 | kind | who writes | examples |
 |------|-----------|----------|
 | **Public** `@airline-*` — the **contract** | user config (`set -g`) *and* airline's one published read | palette colors · `@airline-segment-<slot>` · `@airline-cli` (the bootstrap handle) |
-| **Private** `@airline--*` — **internal** | **airline** (runtime) | `--status[-key]` · `--health[-key]` · `--badge-status` · `--badge-health` · `--suspended` · active selections (`--palette` · `--layout`) · active adapter set (`--adapters`) · search paths (`--path-<kind>`) |
+| **Private** `@airline--*` — **internal** | **airline** (runtime) | window `--status[-key]` / `--health[-key]` · session `--problem[-key]` · projected `--badge-*` scalars · `--suspended` · active selections (`--palette` · `--layout`) · active adapter set (`--adapters`) · search paths (`--path-<kind>`) |
 | **Composed output** (native tmux opts) | **airline** | at `apply` | `status-left/right` · `window-status-*` · `*-style` · pane borders · `clock-mode-color` |
 | **Constant** (bash) | **nobody** (source) | — | glyphs · chevrons · name template · palette-token list · status ladder · severity ranking · slot→tier table |
 
@@ -171,7 +171,7 @@ the whole source of truth and renders it into the composed output:
 graph LR
     INIT(["init"]):::verb -- "seed defaults" --> S
     USER(["user: set -g @airline-*"]):::ext -- "stage (static)" --> S
-    EVT(["status / health set"]):::verb -- "write private (dynamic)" --> S
+    EVT(["status / health / problem set"]):::verb -- "write private (dynamic)" --> S
     subgraph IN["source of truth"]
         S["public @airline-*<br/>private @airline--*"]
     end
@@ -247,7 +247,7 @@ What calls what:
   runs `apply` when ready (so several edits batch into one render).
 - `palette use <name>` → `source-file` the conf then `apply`; `layout use <name>` →
   run its composition then render (adapters re-applied against the current palette).
-- a runtime event (`status set`, `health set`) → private contributor write +
+- a runtime event (`status set`, `health set`, `problem set`) → private contributor write +
   re-project the badge scalar + redraw, no `apply`.
 - a `.tmux.conf` → sets public `@airline-*` directly, then `run-shell
   "#{@airline-cli} apply"` (or relies on the entry point's `init`).
@@ -297,9 +297,9 @@ an **in-memory fake** — no server to spawn and kill per test.
   `opt_setif_*`, `opt_getor_*`, the scope wrappers, and all of `collections.sh` /
   `render.sh` — runs unmodified and under test) and replaces **only** the leaf
   cores (`_opt_show` / `_opt_write` / `_opt_clear`) and the standalone verbs
-  (`redraw`, `current_window`, `source_file`, `hook_*`, `key_*`) with bash
+  (`redraw`, `current_window`, `current_session`, `source_file`, `hook_*`, `key_*`) with bash
   associative arrays. It models only the leaf *store* semantics — empty-when-unset,
-  overwrite, remove, window/global independence, spaces survive — and nothing more
+  overwrite, remove, global/session/window independence, spaces survive — and nothing more
   (no `#{?…}` evaluation, no redraw side effect), because the layer tests assert on
   the composed format **strings**, never on tmux evaluating them.
 
@@ -330,7 +330,7 @@ not wrap the mutation in `run`.
 
 The public, stable contract. `airline` is the **parser/dispatcher**; the handlers
 live in `api.sh`. Argument detail lives in `airline help`; this section fixes the
-*grammar*. (The `-t <window>` flag scopes *which window* a command targets.)
+*grammar*. (`-t` targets a window for status/health and a session for problem.)
 
 ### Top-level verbs (whole-system, no noun)
 
@@ -347,8 +347,9 @@ truth. `init` publishes only `@airline-cli` and binds no keys — a user wires t
 
 ### Nouns and their verbs
 
-Two families. The **signal** nouns (status/health) are per-window dynamic state with
-`set`/`clear`/`show`. The **config** nouns (palette/segment/adapter/layout) share a
+Two families. The **signal** nouns are dynamic state with `set`/`clear`/`show`:
+status/health are per-window, while problem is per-session. The **config** nouns
+(palette/segment/adapter/layout) share a
 uniform `use <name>` / `register <dir>`; the two *static* ones (palette, segment) are
 otherwise **read-only** — their atoms (elements, slots) are written with `set -g`, so
 they add only `show`, not `set`/`clear`.
@@ -356,6 +357,7 @@ they add only `show`, not `set`/`clear`.
 ```
 airline status   set <key> <level> [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
 airline health   set <key> <severity> [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
+airline problem  set <key> <severity> <message> [-t <session>] | clear <key> [-t <session>] | show [<key>] [-t <session>]
 airline palette  show [name|<element>] | available | use <name> | register <dir>   *(elements written with `set -g @airline-<element>`)*
 airline segment  show [<slot>]          *(read-only; write with `set -g @airline-segment-<slot>`)*
 airline adapter  show | available | use <name> | load <path> | register <dir>
@@ -390,7 +392,7 @@ nested-session API, with the keybinding left to the user.
 The grammar splits on the state model. `set`/`clear` live only on the **dynamic**
 nouns; the **static** nouns are read-only at the CLI:
 
-| verb | meaning | dynamic (status/health) | static (palette/segment) |
+| verb | meaning | dynamic (status/health/problem) | static (palette/segment) |
 |------|---------|-------------------------|------------------------|
 | `set X v` | write option X | **live** — write the private tuple, re-project the badge, redraw (gated) | — *(write with `set -g @airline-*`)* |
 | `clear X` | remove option X | live | — *(unset with `set -gu @airline-*`)* |
@@ -411,7 +413,7 @@ that applies `PALETTE` → the plugin's options; `layout use` runs a composition
   return the selection name (this is the old `palette current`, folded into the pattern).
   It's called `name` — not `active` — because `active` is already a palette element; the
   selection field must not collide with the closed element/slot vocabularies. Layout also
-  exposes `path` (its resolved file). The non-loadable nouns (segment, status, health)
+  exposes `path` (its resolved file). The non-loadable nouns (segment, status, health, problem)
   have no selection, so no `name` field — bare `show` is just their atoms. `state` is a
   degenerate scalar: one value, so bare `show` *is* the value and there's no qualified form.
 - **`adapter show` is the active set — a list, and bare-only.** Adapter is the one
@@ -428,8 +430,9 @@ that applies `PALETTE` → the plugin's options; `layout use` runs a composition
   layout, or `.tmux.conf`) and `apply` bakes them. A CLI `set` would be a validating
   wrapper over `set -g` that bought nothing the render didn't already give — so we
   don't ship one. `show` stays because reading state back *is* worth a verb (discovery).
-- **`-t <window>`** scopes which window a *dynamic* command targets (status/health
-  are per-window); the static nouns are global.
+- **`-t <target>`** scopes a dynamic command: a window for status/health and a
+  session for problem. Omit it for the current window/session; background widgets
+  should pass their session explicitly. The static nouns are global.
 
 There is **no `config` noun** — its former scalars (`tmpl-window`, glyphs) are
 constants now (see *Static config*).
@@ -553,18 +556,18 @@ _opt_write () { tmux set-option   -q  "$@"; }   # _opt_write <scope…> <name> <
 _opt_clear () { tmux set-option   -qu "$@"; }   # _opt_clear <scope…> <name>
 ```
 
-Public matrix — five verbs × two scopes (`global`, `window`):
+Public matrix — five verbs × three scopes (`global`, `session`, `window`):
 
-| Verb | global | window | Purpose |
-|------|--------|--------|---------|
-| get   | `opt_get_global <name>` | `opt_get_window <win> <name>` | echo value, empty if unset |
-| getor | `opt_getor_global <name> <def>` | `opt_getor_window <win> <name> <def>` | echo value, or default if unset |
-| set   | `opt_set_global <name> <val>` | `opt_set_window <win> <name> <val>` | write (always) |
-| setif | `opt_setif_global <name> <val>` | `opt_setif_window <win> <name> <val>` | set-if-needed — write only when changed; **exit 0 = changed** |
-| unset | `opt_unset_global <name>` | `opt_unset_window <win> <name>` | remove |
+| Verb | global | session | window | Purpose |
+|------|--------|---------|--------|---------|
+| get   | `opt_get_global <name>` | `opt_get_session <session> <name>` | `opt_get_window <win> <name>` | echo value, empty if unset |
+| getor | `opt_getor_global <name> <def>` | `opt_getor_session <session> <name> <def>` | `opt_getor_window <win> <name> <def>` | echo value, or default if unset |
+| set   | `opt_set_global <name> <val>` | `opt_set_session <session> <name> <val>` | `opt_set_window <win> <name> <val>` | write (always) |
+| setif | `opt_setif_global <name> <val>` | `opt_setif_session <session> <name> <val>` | `opt_setif_window <win> <name> <val>` | set-if-needed; **exit 0 = changed** |
+| unset | `opt_unset_global <name>` | `opt_unset_session <session> <name>` | `opt_unset_window <win> <name>` | remove |
 
-Window functions always take an explicit window id; "current" is resolved by the
-caller via `current_window`.
+Session and window functions take explicit targets; "current" is resolved by the
+caller through `current_session` or `current_window`.
 
 ### Airline namespaces (`pub_*` / `prv_*`)
 
@@ -579,11 +582,12 @@ that writes the literal — so every layer above is prefix-free (Invariant **B**
 | `pub_get <key>` / `pub_set <key> <val>` / `pub_unset <key>` | `opt_*_global` on `@airline-<key>` | public static config (always global) |
 | `prv_name <key>` | `printf @airline--<key>` | build a private option *name* — for composition (`collections`) and format embedding (the badge `#{?…}` selectors) |
 | `prv_get_global <key>` / `prv_set_global <key> <val>` | `opt_*_global` on `@airline--<key>` | private state, global scope (`suspended`, `defaults-done`, active selections) |
+| `prv_get_session <session> <key>` / `prv_setif_session <session> <key> <val>` / `prv_unset_session <session> <key>` | `opt_*_session` on `@airline--<key>` | private state, session scope (the aggregate problem badge) |
 | `prv_get_window <win> <key>` / `prv_setif_window <win> <key> <val>` / `prv_unset_window <win> <key>` | `opt_*_window` on `@airline--<key>` | private state, window scope (the `badge-*` scalars) |
 
 The surface is deliberately asymmetric: public is read by computed bare keys at
 global scope and never embedded, so it needs accessors only; private is reached by a
-few stable keys, embedded by name in selectors, and spans both scopes, so it adds the
+few stable keys, embedded by name in selectors, and spans all three scopes, so it adds the
 `prv_name` builder. No `pub_name` — nothing composes or embeds a public name.
 
 ### Standalone verbs (distinct subcommands)
@@ -593,17 +597,18 @@ few stable keys, embedded by name in selectors, and spans both scopes, so it add
 | `redraw` | `refresh-client -S` | force a bar re-eval (no client → harmless) |
 | `source_file <path>` | `source-file` | load a tmux config file — the engine behind `use` (palettes/segments are tmux files) |
 | `current_window` | `display-message -p '#{window_id}'` | resolve "current" for window-scoped callers |
+| `current_session` | `display-message -p '#{session_id}'` | resolve "current" for session-scoped callers |
 | `hook_set <spec> <cmd>` / `hook_unset <spec>` | `set-hook -g` / `-gu` | the focus-out consume-on-view hook |
 | `key_bind <table> <key> <cmd>` / `key_unbind <table> <key>` | `bind-key` / `unbind-key` | key-binding primitive (airline binds none itself; available to callers) |
 
-## Collections (`collections.sh`) — status and health only
+## Collections (`collections.sh`)
 
-status and health each hold *0 or more* dynamic contributors per window — jobs and
-agents reporting an app state or a health severity — which tmux's flat option store
-has no concept of. `collections.sh` adds exactly that, and **only** for these two;
-segments are not a collection (they're fixed slots — see the CLI section). No tmux
-calls (built on `opt_*`), no domain knowledge: `status` / `health` arrive as the
-`ns` argument.
+Status and health each hold *0 or more* dynamic contributors per window — jobs and
+agents reporting an app state or health severity. Problem holds *0 or more* widget
+failures per session. Tmux's flat option store has no collection concept, so
+`collections.sh` supplies it for these three dynamic nouns. Segments are not a
+collection (they're fixed slots — see the CLI section). No tmux calls (built on
+`opt_*`) and no domain knowledge: namespace arrives as the `ns` argument.
 
 Two storage shapes, each a single-delimiter string split with bash `IFS`/`read` —
 no awk, no jq, no subprocess on the hot path:
@@ -623,34 +628,36 @@ Rules:
   discover entries by globbing/parsing `@airline--*` option names. Keys are only
   ever *constructed* from `(ns, key)`, so a key may contain `-`.
 - **One delimiter per option.** Registry = space-delimited names; tuple =
-  tab-delimited fields. Every field is controlled-vocabulary or a flag (a token, a
-  severity, a `--transient` marker) — none is free text, so none can contain a tab.
+  tab-delimited fields. Problem messages may contain spaces but not tabs; the other
+  fields are controlled vocabulary or flags (a token, severity, transient marker).
   Fixed arity: `set` writes the whole tuple, so field positions stay stable.
 - **Storage ≠ render — always project.** A collection holds airline's bookkeeping;
-  the bar never references a tuple directly. Both badges are **aggregates** — a
-  reduce over the window's contributors that a tmux format can't compute — so each
-  is *projected* to a per-window scalar at `set`/`clear` time: health's max severity
-  to `@airline--badge-health` (compose's `health_project`), status's precedence-winning
-  level to `@airline--badge-status` (`status_project`). Both scalars sit OUTSIDE the
-  collection namespaces (`@airline--status*` / `@airline--health*`) — the status
+  the bar never references a tuple directly. All three badges are **aggregates** — a
+  reduce that a tmux format can't compute — so each is projected at `set`/`clear`:
+  health's max severity to `@airline--badge-health` (`health_project`), status's
+  precedence winner to `@airline--badge-status` (`status_project`), and a session's
+  worst widget problem to `@airline--badge-problem` (`problem_project`). The scalars
+  sit OUTSIDE their collection namespaces (`@airline--status*`, `@airline--health*`,
+  `@airline--problem*`) — the status
   registry *is* `@airline--status`, so the badge can't reuse that name — and the badge
-  reads its scalar live through a token→color selector. This is what makes status and
-  health symmetric.
+  reads its scalar live through a token→color selector. Status/health flank each
+  window name; the problem scalar drives one renderer-owned extreme-right badge.
   Because render always goes through the projected scalar, a contributor tuple may
   carry extra fields — a `--transient` flag beside the token — without ever
   reviving the old hazard of a multi-field tuple becoming the live render reference.
 
-`coll_*` mirror `opt_*`'s scope suffix (`_global` / `_window <win>`). Ops:
+`coll_*` mirror `opt_*`'s scope suffix (`_global`, `_session`, `_window`). Ops:
 `register` / `unregister` / `has` (key-list membership), `members` (the list),
 `get` / `set` (the per-key tuple), and `reduce` (the badge winner). `set`
 auto-registers (a tuple for a non-member would be unreachable), and `unregister`
 also unsets the tuple. (The CLI exposes no `status register`/`unregister` — `set`
 auto-registers — but the collection primitives stay general.) `reduce` stays
-domain-free by taking the ranking **as data**: the same op serves both badges,
-`coll_reduce_window <win> health "ok alert stress"` for severity and
-`coll_reduce_window <win> status "active result attention"` for app status, each
-returning the highest-ranked first-field value among the members (empty if none
-rank). The "none → blank badge" decision is the caller's, not the collection's.
+domain-free by taking the ranking **as data**: the same op serves health
+(`coll_reduce_window <win> health "ok alert stress"`), status
+(`coll_reduce_window <win> status "active result attention"`), and widget problems
+(`coll_reduce_session <session> problem "ok alert stress"`). Each returns the
+highest-ranked first-field value among its members (empty if none rank). The
+"none → blank badge" decision is the caller's, not the collection's.
 Pure bash, zero-dependency.
 
 **The status ladder.** Where health's tokens *are* severities, status tokens are
