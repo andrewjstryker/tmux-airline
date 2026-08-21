@@ -38,6 +38,11 @@ opt_get_global   () { _opt_show  -g "$1"; }
 opt_set_global   () { _opt_write -g "$1" "$2"; }
 opt_unset_global () { _opt_clear -g "$1"; }
 
+# --- session scope (explicit session id/name) ---
+opt_get_session   () { _opt_show  -t "$1" "$2"; }
+opt_set_session   () { _opt_write -t "$1" "$2" "$3"; }
+opt_unset_session () { _opt_clear -t "$1" "$2"; }
+
 # --- window scope (explicit window id; "current" is resolved by the caller) ---
 opt_get_window   () { _opt_show  -w -t "$1" "$2"; }
 opt_set_window   () { _opt_write -w -t "$1" "$2" "$3"; }
@@ -47,6 +52,10 @@ opt_unset_window () { _opt_clear -w -t "$1" "$2"; }
 opt_getor_global () {
   local v; v="$(opt_get_global "$1")"
   if [[ -n $v ]]; then printf '%s' "$v"; else printf '%s' "$2"; fi
+}
+opt_getor_session () {
+  local v; v="$(opt_get_session "$1" "$2")"
+  if [[ -n $v ]]; then printf '%s' "$v"; else printf '%s' "$3"; fi
 }
 opt_getor_window () {
   local v; v="$(opt_get_window "$1" "$2")"
@@ -60,6 +69,10 @@ opt_getor_window () {
 opt_setif_global () {
   [[ "$(opt_get_global "$1")" == "$2" ]] && return 1
   opt_set_global "$1" "$2"
+}
+opt_setif_session () {
+  [[ "$(opt_get_session "$1" "$2")" == "$3" ]] && return 1
+  opt_set_session "$1" "$2" "$3"
 }
 opt_setif_window () {
   [[ "$(opt_get_window "$1" "$2")" == "$3" ]] && return 1
@@ -83,7 +96,7 @@ opt_setif_window () {
 #   * public is read/written by computed bare keys, always at global scope, and is
 #     never embedded in a format — so it needs accessors only, no name builder.
 #   * private is reached through a few stable keys AND embedded by name inside tmux
-#     #{?…} selectors (the badges), and spans global + window scope — so it needs a
+#     #{?…} selectors (the badges), and spans global/session/window scope — so it needs a
 #     name builder (prv_name) plus scoped accessors.
 
 # --- public (always global) ---
@@ -96,9 +109,12 @@ pub_unset () { opt_unset_global "@airline-$1"; }        # <key>
 # option name in a live selector with it. The single home for the @airline-- prefix.
 prv_name () { printf '@airline--%s' "$1"; }             # <key> → option name
 
-# --- private accessors (global and window scope) ---
+# --- private accessors (global, session, and window scope) ---
 prv_get_global   () { opt_get_global   "@airline--$1"; }            # <key>
 prv_set_global   () { opt_set_global   "@airline--$1" "$2"; }       # <key> <value>
+prv_get_session   () { opt_get_session   "$1" "@airline--$2"; }       # <session> <key>
+prv_setif_session () { opt_setif_session "$1" "@airline--$2" "$3"; } # <session> <key> <value>
+prv_unset_session () { opt_unset_session "$1" "@airline--$2"; }       # <session> <key>
 prv_get_window   () { opt_get_window   "$1" "@airline--$2"; }       # <win> <key>
 prv_setif_window () { opt_setif_window "$1" "@airline--$2" "$3"; }  # <win> <key> <value>
 prv_unset_window () { opt_unset_window "$1" "@airline--$2"; }       # <win> <key>
@@ -118,6 +134,10 @@ source_file () { tmux source-file "$1"; }
 # The id (@n) of the window the caller is acting in — lets window-scoped callers
 # resolve "current" to an explicit id before calling opt_*_window.
 current_window () { tmux display-message -p '#{window_id}'; }
+
+# The id ($n) of the session the caller is acting in. Session-scoped APIs accept
+# an explicit target, but use this when invoked interactively without one.
+current_session () { tmux display-message -p '#{session_id}'; }
 
 # Hooks (the pane-focus-out consume-on-view callback). <spec> is a full hook
 # name, optionally indexed, e.g. "pane-focus-out[90]".

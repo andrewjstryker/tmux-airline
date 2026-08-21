@@ -62,14 +62,13 @@ declare -ga AIRLINE_PALETTE_TOKENS=(active alert stress ok special monitor copy 
 declare -ga AIRLINE_SEVERITIES=(ok alert stress)
 
 # PRIVATE state — BARE keys into the private (@airline--) namespace; the prefix is
-# tmux.sh's (prv_name / prv_*), so render never spells it. These name the window-
-# scoped scalars the two badges render: each is a reduction airline projects from its
-# collection at set/clear time (status_project / health_project), read live by the
-# window format through a token→color selector. The private namespace keeps them
-# clear of the collection keys (status*, health*) AND of any public element a user
-# sets, so nothing can collide with a badge scalar.
+# tmux.sh's (prv_name / prv_*), so render never spells it. Status and health are
+# window-scoped projections; problem is a session-scoped projection rendered at
+# the extreme right. Each is reduced from its contributor collection at
+# set/clear time and read live through a token→color selector.
 AIRLINE_KEY_STATUS='badge-status'        # left badge:  reduced app-status level
 AIRLINE_KEY_HEALTH='badge-health'        # right badge: reduced health severity
+AIRLINE_KEY_PROBLEM='badge-problem'      # session badge: reduced widget problem severity
 AIRLINE_KEY_SUSPENDED='suspended'        # private flag: dim palette for nested sessions
 # SC2034: these two are consumed by the `airline` CLI (init), which sources this
 # file — shellcheck can't trace the cross-file use.
@@ -100,6 +99,7 @@ AIRLINE_TMPL_WINDOW='#I:#W'   # window-name template (index:name)
 # AIRLINE_GLYPH_* are the fallback for an unknown token (never hit in practice).
 AIRLINE_GLYPH_STATUS='●'      # status fallback
 AIRLINE_GLYPH_HEALTH='▲'      # health fallback
+AIRLINE_GLYPH_PROBLEM='▲'     # session problem fallback
 # SC2034: read via nameref in _glyph_expr, which shellcheck can't trace.
 # shellcheck disable=SC2034
 declare -gA AIRLINE_STATUS_GLYPH=([active]='○' [result]='●' [attention]='◆')  # watch → done → needs-you
@@ -208,6 +208,7 @@ _build_status_right () {
     out+="$(_chev_left "$prev_bg" "$bg")#[fg=$fg,bg=$bg] $(pub_get "segment-${active[i]}") "
     prev_bg="$bg"
   done
+  out+="$(_problem_expr "$prev_bg")"
   printf '%s' "$out"
 }
 
@@ -296,6 +297,21 @@ _glyph_expr () {   # <option-name> <fallback-glyph> <map-array-name>
 # terminals vary in honoring blink. Pair with a trailing `#[noblink]` so it can't leak.
 _blink_when () { printf '#{?#{==:#{%s},%s},#[blink],}' "$1" "$2"; }   # <option> <token>
 
+# Session problem badge: one renderer-owned indicator at the extreme right. It
+# inherits the final right-side background (inner-bg when there are no segments).
+# The session scalar resolves independently per session and the expression
+# collapses to zero width when no widget reports a problem.
+_problem_expr () {
+  local bg="$1" problem_opt
+  problem_opt="$(prv_name "$AIRLINE_KEY_PROBLEM")"
+  printf '#{?%s,#[fg=%s]#[bg=%s]%s%s#[noblink] ,}' \
+    "$problem_opt" \
+    "$(_palette_token_expr "$problem_opt" "${PALETTE[primary]}")" \
+    "$bg" \
+    "$(_blink_when "$problem_opt" stress)" \
+    "$(_glyph_expr "$problem_opt" "$AIRLINE_GLYPH_PROBLEM" AIRLINE_HEALTH_GLYPH)"
+}
+
 # Project a window's reduced collection value into its badge scalar: the highest-
 # ranked entry among the window's contributors, or clear when none rank. Called by
 # `status`/`health` `set`/`clear` at runtime; the window format reads the scalar
@@ -326,6 +342,20 @@ health_project () {   # <win>
   else
     [[ -n "$(prv_get_window "$win" "$AIRLINE_KEY_HEALTH")" ]] || return 1
     prv_unset_window "$win" "$AIRLINE_KEY_HEALTH"
+  fi
+}
+
+# Problem: session-scoped widget problems use the health severity ladder and
+# reduce to one overall badge. An `ok`/none result is visually healthy (blank).
+problem_project () {   # <session>
+  local session="$1" max
+  max="$(coll_reduce_session "$session" problem "${AIRLINE_SEVERITIES[*]}")"
+  case "$max" in stress|alert) ;; *) max="" ;; esac
+  if [[ -n "$max" ]]; then
+    prv_setif_session "$session" "$AIRLINE_KEY_PROBLEM" "$max"
+  else
+    [[ -n "$(prv_get_session "$session" "$AIRLINE_KEY_PROBLEM")" ]] || return 1
+    prv_unset_session "$session" "$AIRLINE_KEY_PROBLEM"
   fi
 }
 

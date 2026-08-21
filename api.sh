@@ -10,8 +10,8 @@
 # collections.sh + render.sh.
 #
 # The verb grammar (in `airline`) splits on the state model these functions implement.
-# Dynamic nouns (status, health) are live and scriptable: set + re-project a badge +
-# redraw. Static config nouns (palette, segment) are read-only at the CLI: their values
+# Dynamic nouns (status, health, problem) are live and scriptable: set + re-project a
+# badge + redraw. Static config nouns (palette, segment) are read-only at the CLI: their values
 # are public @airline-* options the user writes the idiomatic tmux way (`set -g`, a
 # palette file, `.tmux.conf`); we only *read* them back for discovery, and `apply`
 # bakes whatever those options currently hold.
@@ -87,8 +87,8 @@ _apply () {
 # (the bootstrap handle, lifecycle state, and the search paths), then each CONFIG noun's
 # own bare `show` — the noun reports its own active state, so nothing is printed twice (a
 # palette/layout name shows once, inside its section). The dynamic per-window nouns
-# (status/health) are NOT global config, so they're excluded — inspect them with
-# `status show` / `health show`. Mirrors exactly what each `<noun> show` prints bare.
+# (status/health/problem) are NOT global config, so they're excluded — inspect them
+# through their own `show` commands. Mirrors exactly what each `<noun> show` prints bare.
 _show_config () {
   _show_row cli   "$(pub_get cli)"              # the one public (bootstrap) handle
   _show_row state "$(_state_word)"              # lifecycle (active | suspended)
@@ -360,7 +360,11 @@ _signal_set () {   # <ns> <validator> <key> <value> [--transient] [-t <win>]
   while (( $# )); do
     case "$1" in
       --transient) transient=1; shift ;;
-      -t)          win="${2:-}"; shift 2 ;;
+      -t)
+        [[ $# -ge 2 && -n "$2" ]] || die "$ns set: -t requires <window>"
+        win="$2"
+        shift 2
+        ;;
       *)           pos+=("$1"); shift ;;
     esac
   done
@@ -378,7 +382,14 @@ _signal_clear () {   # <ns> <key> [-t <win>]
   local ns="$1"; shift
   local key="" win=""
   while (( $# )); do
-    case "$1" in -t) win="${2:-}"; shift 2 ;; *) key="$1"; shift ;; esac
+    case "$1" in
+      -t)
+        [[ $# -ge 2 && -n "$2" ]] || die "$ns clear: -t requires <window>"
+        win="$2"
+        shift 2
+        ;;
+      *) key="$1"; shift ;;
+    esac
   done
   [[ -n "$key" ]] || die "$ns clear: need <key>"
   [[ -n "$win" ]] || win="$(current_window)"
@@ -391,7 +402,14 @@ _signal_show () {   # <ns> [<key>] [-t <win>]
   local ns="$1"; shift
   local key="" win="" f1 f2 k
   while (( $# )); do
-    case "$1" in -t) win="${2:-}"; shift 2 ;; *) key="$1"; shift ;; esac
+    case "$1" in
+      -t)
+        [[ $# -ge 2 && -n "$2" ]] || die "$ns show: -t requires <window>"
+        win="$2"
+        shift 2
+        ;;
+      *) key="$1"; shift ;;
+    esac
   done
   [[ -n "$win" ]] || win="$(current_window)"
   if [[ -n "$key" ]]; then
@@ -402,6 +420,77 @@ _signal_show () {   # <ns> [<key>] [-t <win>]
   for k in $(coll_members_window "$win" "$ns"); do
     IFS=$'\t' read -r f1 f2 <<< "$(coll_get_window "$win" "$ns" "$k")"
     _show_row "$k" "$f1${f2:+  (transient)}"
+  done
+}
+
+#-----------------------------------------------------------------------------#
+# Session problems — cooperating widgets report graceful-degradation details.
+#-----------------------------------------------------------------------------#
+
+_problem_set () {   # <key> <severity> <message...> [-t <session>]
+  local session="" key severity message; local -a pos=()
+  while (( $# )); do
+    case "$1" in
+      -t)
+        [[ $# -ge 2 && -n "$2" ]] || die "problem set: -t requires <session>"
+        session="$2"
+        shift 2
+        ;;
+      *) pos+=("$1"); shift ;;
+    esac
+  done
+  key="${pos[0]:-}"; severity="${pos[1]:-}"; message="${pos[*]:2}"
+  [[ -n "$key" ]] || die "problem set: need <key>"
+  [[ "$key" != *[[:space:]]* ]] || die "problem set: key must not contain whitespace"
+  _health_severity_valid "$severity" || die "problem set: invalid severity '$severity'"
+  [[ -n "$message" ]] || die "problem set: need <message>"
+  [[ "$message" != *$'\t'* ]] || die "problem set: message must not contain a tab"
+  [[ -n "$session" ]] || session="$(current_session)"
+  coll_set_session "$session" problem "$key" "$severity" "$message"
+  problem_project "$session" && redraw
+  return 0
+}
+
+_problem_clear () {   # <key> [-t <session>]
+  local key="" session=""
+  while (( $# )); do
+    case "$1" in
+      -t)
+        [[ $# -ge 2 && -n "$2" ]] || die "problem clear: -t requires <session>"
+        session="$2"
+        shift 2
+        ;;
+      *) key="$1"; shift ;;
+    esac
+  done
+  [[ -n "$key" ]] || die "problem clear: need <key>"
+  [[ -n "$session" ]] || session="$(current_session)"
+  coll_unregister_session "$session" problem "$key"
+  problem_project "$session" && redraw
+  return 0
+}
+
+_problem_show () {   # [<key>] [-t <session>]
+  local key="" session="" tuple severity message k
+  while (( $# )); do
+    case "$1" in
+      -t)
+        [[ $# -ge 2 && -n "$2" ]] || die "problem show: -t requires <session>"
+        session="$2"
+        shift 2
+        ;;
+      *) key="$1"; shift ;;
+    esac
+  done
+  [[ -n "$session" ]] || session="$(current_session)"
+  if [[ -n "$key" ]]; then
+    coll_get_session "$session" problem "$key"
+    return 0
+  fi
+  for k in $(coll_members_session "$session" problem); do
+    tuple="$(coll_get_session "$session" problem "$k")"
+    IFS=$'\t' read -r severity message <<< "$tuple"
+    _show_row "$k" "$severity${message:+  $message}"
   done
 }
 
