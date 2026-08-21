@@ -56,6 +56,12 @@ _use_fake_readback() {
     [[ "${1:-}" == -t ]] && { win="$2"; shift 2; }
     opt_get_window "$win" "$name"
   }
+  sopt() {
+    local name="$1"; shift
+    local session="$_FAKE_SESSION"
+    [[ "${1:-}" == -t ]] && { session="$2"; shift 2; }
+    opt_get_session "$session" "$name"
+  }
 }
 
 # Read a global tmux option value from the isolated server
@@ -68,6 +74,13 @@ get_option() {
 wopt() {
   local name="$1"; shift
   $TMUX -L "$_bats_socket" show-options -wqv "$@" "$name"
+}
+
+# Read a session option from the isolated server (current session unless a target
+# follows, e.g. sopt @airline--badge-problem -t '$2').
+sopt() {
+  local name="$1"; shift
+  $TMUX -L "$_bats_socket" show-options -qv "$@" "$name"
 }
 
 # Resolve a built section through the isolated tmux server. Section templates

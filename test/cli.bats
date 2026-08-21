@@ -379,6 +379,20 @@ setup() {
   assert_output "active"
 }
 
+@test "signal commands reject -t without a window target" {
+  run airline status set build active -t
+  assert_failure
+  assert_output --partial "status set: -t requires <window>"
+
+  run airline status clear build -t
+  assert_failure
+  assert_output --partial "status clear: -t requires <window>"
+
+  run airline status show -t
+  assert_failure
+  assert_output --partial "status show: -t requires <window>"
+}
+
 # --- health (dynamic noun) --------------------------------------------------
 
 @test "health set/clear drives the health badge" {
@@ -395,6 +409,58 @@ setup() {
   airline init
   run airline health set disk warpspeed
   assert_failure
+}
+
+# --- problem (session-scoped widget failures) -------------------------------
+
+@test "problem contributors reduce to one session badge and recover independently" {
+  airline init
+  session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
+  airline problem set cpu alert "required program 'sensors' was not found" -t "$session"
+  airline problem set battery stress "battery query timed out" -t "$session"
+  run sopt @airline--badge-problem -t "$session"
+  assert_output "stress"
+  run $TMUX -L "$_bats_socket" display-message -p -t "$session" '#{E:status-right}'
+  assert_output --partial "▲"       # the session scalar drives the extreme-right glyph
+
+  $TMUX -L "$_bats_socket" new-session -d -s other
+  other="$($TMUX -L "$_bats_socket" display-message -p -t other '#{session_id}')"
+  run sopt @airline--badge-problem -t "$other"
+  assert_output ""                  # no server-global leakage into another session
+  run $TMUX -L "$_bats_socket" display-message -p -t "$other" '#{E:status-right}'
+  refute_output --partial "▲"
+
+  run airline problem show -t "$session"
+  assert_output --partial "cpu"
+  assert_output --partial "sensors"
+  assert_output --partial "battery"
+  assert_output --partial "battery query timed out"
+
+  airline problem clear battery -t "$session"
+  run sopt @airline--badge-problem -t "$session"
+  assert_output "alert"
+  airline problem clear cpu -t "$session"
+  run sopt @airline--badge-problem -t "$session"
+  assert_output ""
+}
+
+@test "problem show KEY returns its severity and message as a raw tuple" {
+  airline init
+  session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
+  airline problem set cpu alert "sensors missing" -t "$session"
+  run airline problem show cpu -t "$session"
+  assert_output "$(printf 'alert\tsensors missing')"
+}
+
+@test "problem set validates severity, message, and session target" {
+  airline init
+  run airline problem set cpu bogus "bad severity"
+  assert_failure
+  run airline problem set cpu alert
+  assert_failure
+  run airline problem show -t
+  assert_failure
+  assert_output --partial "problem show: -t requires <session>"
 }
 
 # --- transient (consume-on-view) --------------------------------------------

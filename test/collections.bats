@@ -4,9 +4,8 @@ load test_helper/bats-support/load
 load test_helper/bats-assert/load
 load helper
 
-# collections.sh — the dynamic keyed-tuple store for status and health. Mechanical
-# and domain-free: ns and the severity ordering are arguments, so the tests drive
-# it with arbitrary names.
+# collections.sh — the dynamic keyed-tuple store. Mechanical and domain-free: ns
+# and severity ordering are arguments, so tests drive it with arbitrary names.
 #
 # Runs on the in-memory fake (load_collections) — no tmux server, so override the
 # real-server setup/teardown from helper.bash with no-ops.
@@ -115,17 +114,30 @@ teardown() { :; }
 
 # --- scope independence -----------------------------------------------------
 
-@test "global and window collections are independent" {
+@test "global, session, and window collections are independent" {
   load_collections
   win="$(current_window)"
+  session="$(current_session)"
   coll_set_global status build "●" 20
+  coll_set_session "$session" status build stress "session problem"
   coll_set_window "$win" status build ok
   run coll_members_global status
   assert_output "build"
   run coll_get_global status build
   assert_output "$(printf '●\t20')"
+  run coll_get_session "$session" status build
+  assert_output "$(printf 'stress\tsession problem')"
   run coll_get_window "$win" status build
   assert_output "ok"
+}
+
+@test "session collection reduces the highest-ranked first field" {
+  load_collections
+  session="$(current_session)"
+  coll_set_session "$session" problem cpu alert "sensors missing"
+  coll_set_session "$session" problem battery stress "query timed out"
+  run coll_reduce_session "$session" problem "ok alert stress"
+  assert_output "stress"
 }
 
 # --- reduce (max by supplied ordering) --------------------------------------

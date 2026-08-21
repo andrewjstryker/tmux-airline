@@ -63,6 +63,45 @@ load helper
   assert_output "b"
 }
 
+# --- scalar options: session ------------------------------------------------
+
+@test "opt_set_session / opt_get_session round-trip at session scope" {
+  load_tmux
+  session="$(current_session)"
+  opt_set_session "$session" @airline-problem alert
+  run opt_get_session "$session" @airline-problem
+  assert_output "alert"
+}
+
+@test "session and global scopes are independent" {
+  load_tmux
+  session="$(current_session)"
+  opt_set_global @airline-problem ok
+  opt_set_session "$session" @airline-problem stress
+  run opt_get_global @airline-problem
+  assert_output "ok"
+  run opt_get_session "$session" @airline-problem
+  assert_output "stress"
+}
+
+@test "opt_unset_session removes a session option" {
+  load_tmux
+  session="$(current_session)"
+  opt_set_session "$session" @airline-problem alert
+  opt_unset_session "$session" @airline-problem
+  run opt_get_session "$session" @airline-problem
+  assert_output ""
+}
+
+@test "opt_setif_session gates on change" {
+  load_tmux
+  session="$(current_session)"
+  run opt_setif_session "$session" @airline-problem alert
+  assert_success
+  run opt_setif_session "$session" @airline-problem alert
+  assert_failure
+}
+
 # --- scalar options: window -------------------------------------------------
 
 @test "opt_set_window / opt_get_window round-trip at window scope" {
@@ -108,6 +147,12 @@ load helper
   load_tmux
   run current_window
   assert_output --regexp '^@[0-9]+$'
+}
+
+@test "current_session returns a session id" {
+  load_tmux
+  run current_session
+  assert_output --regexp '^\$[0-9]+$'
 }
 
 @test "redraw is harmless with no attached client" {

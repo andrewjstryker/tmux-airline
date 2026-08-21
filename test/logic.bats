@@ -75,7 +75,7 @@ _seed_palette() {
   assert_output --partial "bg=colour234"   # chevron into the inner-bg window list
 }
 
-@test "an all-empty side composes to nothing" {
+@test "an all-empty left side composes to nothing" {
   load_render
   _seed_palette
   run _build_status_left
@@ -296,6 +296,46 @@ _seed_palette() {
   coll_unregister_window "$win" health net
   health_project "$win"
   run opt_get_window "$win" @airline--badge-health
+  assert_output ""
+}
+
+# --- session problems: contributors reduce to one overall badge -------------
+
+@test "problem badge is renderer-owned at the extreme right" {
+  load_render
+  _seed_palette
+  opt_set_global @airline-segment-right-out OUT
+  run _build_status_right
+  [[ "$output" == *" OUT "*"@airline--badge-problem"* ]]
+  assert_output --partial "bg=colour238"   # inherits the final outer block
+  assert_output --partial "alert},△"
+  assert_output --partial "stress},▲"
+  assert_output --partial "stress},#[blink]"
+}
+
+@test "problem_project reduces session contributors to the worst severity" {
+  load_render
+  session="$(current_session)"
+  coll_set_session "$session" problem cpu alert "sensors missing"
+  coll_set_session "$session" problem battery stress "query timed out"
+  problem_project "$session"
+  run opt_get_session "$session" @airline--badge-problem
+  assert_output "stress"
+}
+
+@test "problem_project downgrades and clears as problems recover" {
+  load_render
+  session="$(current_session)"
+  coll_set_session "$session" problem cpu alert "sensors missing"
+  coll_set_session "$session" problem battery stress "query timed out"
+  problem_project "$session"
+  coll_unregister_session "$session" problem battery
+  problem_project "$session"
+  run opt_get_session "$session" @airline--badge-problem
+  assert_output "alert"
+  coll_unregister_session "$session" problem cpu
+  problem_project "$session"
+  run opt_get_session "$session" @airline--badge-problem
   assert_output ""
 }
 
