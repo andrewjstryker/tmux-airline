@@ -29,6 +29,7 @@ a non-obvious boundary described here.
 | File | Responsibility | Direct `tmux` calls? |
 |------|----------------|:-------------------:|
 | `airline.tmux` | TPM / `run-shell` entry point; invokes `init` through the CLI | no |
+| `bin/airline` | Installable PATH shim; resolves the active CLI through `@airline-cli` | bootstrap lookup only |
 | `airline` | Parses the public grammar and delegates each command once to `api_*` | no |
 | `api.sh` | Resolves context, validates input, and orchestrates commands | no |
 | `render.sh` | Owns domain vocabulary and composes the bar | no |
@@ -59,9 +60,10 @@ graph TD
 
 The important boundaries are:
 
-- Only `tmux.sh` invokes the `tmux` binary or spells the `@airline-` and
-  `@airline--` prefixes. Higher layers address airline options by bare key through
-  `pub_*` and `prv_*` accessors.
+- Within the application layers, only `tmux.sh` invokes the `tmux` binary or spells
+  the `@airline-` and `@airline--` prefixes. The installable PATH shim is an external
+  consumer: like a plugin, it makes one bootstrap lookup of `@airline-cli`. Higher
+  layers address airline options by bare key through `pub_*` and `prv_*` accessors.
 - `collections.sh` is an airline abstraction above tmux's flat option store. It is
   used only for status, health, problem, adapter membership, and search paths.
   Fixed segment slots are scalar options, not collections.
@@ -295,8 +297,9 @@ private scalar in a tmux format. There is no private-global accessor.
 
 `test/architecture.bats` enforces three build-time rules:
 
-- **A — tmux ownership:** only `tmux.sh` invokes the `tmux` binary. Test shims and
-  inert tmux configuration are explicit exclusions.
+- **A — tmux ownership:** only `tmux.sh` invokes the `tmux` binary inside the
+  application. The external PATH shim, test shims, and inert tmux configuration are
+  explicit exclusions.
 - **B — namespace ownership:** only `tmux.sh` constructs literal `@airline-` and
   `@airline--` names in shell code. Palette and segment configuration spell public
   names because those names are the external contract.

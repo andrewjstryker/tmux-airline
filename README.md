@@ -62,6 +62,26 @@ tmux source-file ~/.tmux.conf
 `airline.tmux` initializes the plugin and exposes the `airline` CLI. It binds
 **no keys** — you wire your own where needed (see *Nested sessions* below).
 
+### Put `airline` on your PATH
+
+From the plugin directory, install its small launcher into `~/.local/bin`:
+
+```shell
+make install
+```
+
+Ensure `~/.local/bin` is on your `PATH`. To use another location, set `PREFIX`
+or `BINDIR`:
+
+```shell
+make install PREFIX="$HOME"
+make install BINDIR="$HOME/bin"
+```
+
+The launcher finds the active plugin through tmux, so it keeps working if TPM
+moves the plugin directory. Tmux-airline must be initialized in the tmux server;
+otherwise the launcher prints an actionable error.
+
 ## Core concepts
 
 Four things, driven by one `airline` CLI:

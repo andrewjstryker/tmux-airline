@@ -27,10 +27,11 @@ set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Production shell the lint governs — including adapters/* (bash snippets that must
-# reach tmux only through opt_*). Data/interpreted files (palettes/, segments/,
-# layouts/) are not shell and aren't scanned; the test tree drives an isolated server
-# through a shim, so it isn't either. Globs that match nothing drop out (nullglob).
+# Application shell the lint governs — including adapters/* (bash snippets that must
+# reach tmux only through opt_*). The installable bin/airline shim is an external
+# bootstrap consumer, so its one @airline-cli lookup is outside this layer check.
+# Data/interpreted files (palettes/, layouts/) and the test tree are not scanned.
+# Globs that match nothing drop out (nullglob).
 _sources () {
   shopt -s nullglob
   local f
