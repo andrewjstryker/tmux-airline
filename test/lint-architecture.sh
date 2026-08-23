@@ -7,7 +7,7 @@
 # and gate it in CI next to shellcheck. test/architecture.bats wraps this so it
 # runs in the normal `bats test/` suite; `make lint` can call it directly too.
 #
-# Two invariants, both grep-able:
+# Three invariants, all grep-able:
 #
 #   A — only tmux.sh invokes the `tmux` binary. Allowlist: tmux.sh. Everything
 #       else reaches tmux only through tmux.sh's opt_* / verb functions.
@@ -17,8 +17,10 @@
 #       options by BARE key through those, so a literal @airline- option name in
 #       any other source is a layering violation. (Palette/segment data files spell
 #       @airline- — that is the public contract — but they aren't scanned.)
+#   C — airline's parser delegates only to public api_* functions. Its own _help_*
+#       helpers are parser mechanics; all other private behaviour stays in api.sh.
 #
-# Usage: test/lint-architecture.sh [A|B|all]   (default: all)
+# Usage: test/lint-architecture.sh [A|B|C|all]   (default: all)
 # Exit:  0 = clean, 1 = violations (printed, one per line), 2 = bad usage.
 
 set -u
@@ -84,13 +86,25 @@ _check_b () {
   return $rc
 }
 
+# Invariant C — no private behaviour call from the CLI parser. Ignore the two
+# parser-owned help helpers; internal command names do not have call syntax.
+_check_c () {
+  local hits
+  hits="$(grep -nE '(^|[^[:alnum:]_])_[a-zA-Z][a-zA-Z0-9_]*([[:space:]]|;)' "$ROOT/airline" \
+    | grep -vE '_help_(arms|noun)' || true)"
+  [[ -z "$hits" ]] && return 0
+  printf 'C: airline:%s\n' "$hits"
+  return 1
+}
+
 main () {
   local which="${1:-all}" rc=0
   case "$which" in
     A)   _check_a || rc=1 ;;
     B)   _check_b || rc=1 ;;
-    all) _check_a || rc=1; _check_b || rc=1 ;;
-    *)   printf 'usage: %s [A|B|all]\n' "$0" >&2; exit 2 ;;
+    C)   _check_c || rc=1 ;;
+    all) _check_a || rc=1; _check_b || rc=1; _check_c || rc=1 ;;
+    *)   printf 'usage: %s [A|B|C|all]\n' "$0" >&2; exit 2 ;;
   esac
   return $rc
 }

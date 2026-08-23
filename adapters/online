@@ -4,5 +4,5 @@
 # A bash snippet sourced by `adapter use online` with PALETTE populated.
 # Layout slot content: #{online_status}
 
-opt_set_global @online_icon  "#[fg=${PALETTE[primary]}]●"
-opt_set_global @offline_icon "#[fg=${PALETTE[stress]}]●"
+opt_set_session "$AIRLINE_SESSION" @online_icon  "#[fg=${PALETTE[primary]}]●"
+opt_set_session "$AIRLINE_SESSION" @offline_icon "#[fg=${PALETTE[stress]}]●"

@@ -60,7 +60,18 @@ _fake_key () {
 #-----------------------------------------------------------------------------#
 # Leaf overrides — the three private cores tmux.sh bottoms out in.
 #-----------------------------------------------------------------------------#
-_opt_show  () { printf '%s' "${_FAKE_OPT["$(_fake_key "$@")"]-}"; }   # <scope…> <name>
+_opt_show  () {   # <scope…> <name>; raw scope only (policy handles inheritance)
+  local key
+  key="$(_fake_key "$@")"
+  if [[ -v "_FAKE_OPT[$key]" ]]; then
+    printf '%s' "${_FAKE_OPT[$key]}"
+  fi
+}
+_opt_list () {
+  local key name
+  key="$(_fake_key "$@")"; name="${*: -1}"
+  [[ -v "_FAKE_OPT[$key]" ]] && printf '%s %q' "$name" "${_FAKE_OPT[$key]}"
+}
 _opt_write () { _FAKE_OPT["$(_fake_key "$@")"]="${*: -1}"; }         # <scope…> <name> <value>
 _opt_clear () { unset "_FAKE_OPT[$(_fake_key "$@")]"; }
 
@@ -70,6 +81,7 @@ _opt_clear () { unset "_FAKE_OPT[$(_fake_key "$@")]"; }
 redraw         () { (( _FAKE_REDRAWS++ )) || true; }
 current_window () { printf '%s' "$_FAKE_WIN"; }
 current_session () { printf '%s' "$_FAKE_SESSION"; }
+resolve_session () { printf '%s' "$1"; }
 hook_set       () { _FAKE_HOOK["$1"]="$2"; }
 hook_unset     () { unset "_FAKE_HOOK[$1]"; }
 key_bind       () { _FAKE_BIND["$1 $2"]="$3"; }
@@ -92,6 +104,22 @@ source_file () {   # <file>
     name="${t[$i]:-}"; val="${t[$((i+1))]:-}"
     [[ -n "$name" ]] && _FAKE_OPT["g\037$name"]="$val"
   done < "$1"
+}
+
+# Session-targeted palette source. Palette commands omit -g, so their public
+# options land in the selected session while ordinary source_file retains the
+# global configuration-file behavior above.
+source_file_session () {   # <session> <file>
+  local session="$1" file="$2" line trimmed name val; local -a t
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    trimmed="${line#"${line%%[![:space:]]*}"}"
+    [[ -z "$trimmed" || "${trimmed:0:1}" == '#' || "$trimmed" == *=* ]] && continue
+    eval "t=($trimmed)" 2>/dev/null || continue
+    local i=1
+    [[ "${t[1]:-}" == -g ]] && i=2
+    name="${t[$i]:-}"; val="${t[$((i+1))]:-}"
+    [[ -n "$name" ]] && _FAKE_OPT["$(_fake_key -t "$session" "$name")"]="$val"
+  done < "$file"
 }
 
 # vim: ft=bash

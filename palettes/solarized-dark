@@ -21,33 +21,33 @@ cyan="colour6"
 green="colour2"
 
 # status line "normal" background colors
-set-option -g @airline-outer-bg "$base00"
-set-option -g @airline-middle-bg "$base01"
-set-option -g @airline-inner-bg "$base02"
+set-option @airline-outer-bg "$base00"
+set-option @airline-middle-bg "$base01"
+set-option @airline-inner-bg "$base02"
 
 # "normal" content colors
-set-option -g @airline-secondary "$base0"
-set-option -g @airline-primary "$base1"
-set-option -g @airline-emphasized "$base2"
+set-option @airline-secondary "$base0"
+set-option @airline-primary "$base1"
+set-option @airline-emphasized "$base2"
 
 # highlight active elements
-set-option -g @airline-active "$yellow"
+set-option @airline-active "$yellow"
 
 # highlight special conditions
-set-option -g @airline-special "$magenta"
+set-option @airline-special "$magenta"
 
 # highlight alert/active conditions
-set-option -g @airline-alert "$orange"
+set-option @airline-alert "$orange"
 
 # highlight high stress conditions
-set-option -g @airline-stress "$red"
+set-option @airline-stress "$red"
 
 # highlight success / completion conditions
-set-option -g @airline-ok "$green"
+set-option @airline-ok "$green"
 
 # tmux modes
-set-option -g @airline-zoom "$violet"
-set-option -g @airline-copy "$blue"
-set-option -g @airline-monitor "$cyan"
+set-option @airline-zoom "$violet"
+set-option @airline-copy "$blue"
+set-option @airline-monitor "$cyan"
 
 # vim: ft=tmux

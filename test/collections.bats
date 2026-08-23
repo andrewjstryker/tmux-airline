@@ -134,10 +134,10 @@ teardown() { :; }
 @test "session collection reduces the highest-ranked first field" {
   load_collections
   session="$(current_session)"
-  coll_set_session "$session" problem cpu alert "sensors missing"
-  coll_set_session "$session" problem battery stress "query timed out"
-  run coll_reduce_session "$session" problem "ok alert stress"
-  assert_output "stress"
+  coll_set_session "$session" problem cpu warn "sensors missing"
+  coll_set_session "$session" problem battery fail "query timed out"
+  run coll_reduce_session "$session" problem "ok warn fail"
+  assert_output "fail"
 }
 
 # --- reduce (max by supplied ordering) --------------------------------------
@@ -146,10 +146,10 @@ teardown() { :; }
   load_collections
   win="$(current_window)"
   coll_set_window "$win" health cpu ok
-  coll_set_window "$win" health disk alert
-  coll_set_window "$win" health net stress
-  run coll_reduce_window "$win" health "ok alert stress"
-  assert_output "stress"
+  coll_set_window "$win" health disk warn
+  coll_set_window "$win" health net fail
+  run coll_reduce_window "$win" health "ok warn fail"
+  assert_output "fail"
 }
 
 @test "reduce ignores values absent from the order, picks max of the rest" {
@@ -157,16 +157,16 @@ teardown() { :; }
   win="$(current_window)"
   coll_set_window "$win" health cpu ok
   coll_set_window "$win" health disk weird   # not in the ranking
-  coll_set_window "$win" health net alert
-  run coll_reduce_window "$win" health "ok alert stress"
-  assert_output "alert"
+  coll_set_window "$win" health net warn
+  run coll_reduce_window "$win" health "ok warn fail"
+  assert_output "warn"
 }
 
 @test "reduce is empty when no member carries a ranked value" {
   load_collections
   win="$(current_window)"
   coll_set_window "$win" health cpu unknown
-  run coll_reduce_window "$win" health "ok alert stress"
+  run coll_reduce_window "$win" health "ok warn fail"
   assert_output ""
 }
 
@@ -175,7 +175,7 @@ teardown() { :; }
   win="$(current_window)"
   # second field is a transient flag; ranking must ignore it
   coll_set_window "$win" health cpu ok 1
-  coll_set_window "$win" health net alert
-  run coll_reduce_window "$win" health "ok alert stress"
-  assert_output "alert"
+  coll_set_window "$win" health net warn
+  run coll_reduce_window "$win" health "ok warn fail"
+  assert_output "warn"
 }

@@ -8,6 +8,6 @@
 #
 # Layout slot content: #{cpu_fg_color}#{cpu_icon}
 
-opt_set_global @cpu_low_fg_color    "${PALETTE[secondary]}"
-opt_set_global @cpu_medium_fg_color "${PALETTE[alert]}"
-opt_set_global @cpu_high_fg_color   "${PALETTE[stress]}"
+opt_set_session "$AIRLINE_SESSION" @cpu_low_fg_color    "${PALETTE[secondary]}"
+opt_set_session "$AIRLINE_SESSION" @cpu_medium_fg_color "${PALETTE[alert]}"
+opt_set_session "$AIRLINE_SESSION" @cpu_high_fg_color   "${PALETTE[stress]}"

@@ -13,9 +13,8 @@
 #     mutators are silent.
 #   * A few private cores (_opt_*) make the actual tmux call; the public
 #     functions are thin wrappers that bake in scope.
-#   * A function exists only for a tmux subcommand that is NOT an option:
-#     built-in options (prefix, key-table, status-left, …) go through
-#     opt_set_global / opt_unset_global like any other option.
+#   * A function exists only for a tmux subcommand that is NOT an option. Built-in
+#     options go through the opt_* accessor matching their native ownership.
 #
 # Modern Bash (4.3+) is assumed.
 
@@ -30,6 +29,7 @@
 # thus no SC2086 to disable).
 
 _opt_show  () { tmux show-options -qv "$@"; }   # <scope…> <name>
+_opt_list  () { tmux show-options -q  "$@"; }   # same, retaining name/presence
 _opt_write () { tmux set-option   -q  "$@"; }   # <scope…> <name> <value>
 _opt_clear () { tmux set-option   -qu "$@"; }   # <scope…> <name>
 
@@ -42,6 +42,7 @@ opt_unset_global () { _opt_clear -g "$1"; }
 opt_get_session   () { _opt_show  -t "$1" "$2"; }
 opt_set_session   () { _opt_write -t "$1" "$2" "$3"; }
 opt_unset_session () { _opt_clear -t "$1" "$2"; }
+opt_has_session   () { [[ -n "$(_opt_list -t "$1" "$2")" ]]; }
 
 # --- window scope (explicit window id; "current" is resolved by the caller) ---
 opt_get_window   () { _opt_show  -w -t "$1" "$2"; }
@@ -93,26 +94,31 @@ opt_setif_window () {
 # violation.
 #
 # The surface is intentionally asymmetric, shaped by how each tier is used:
-#   * public is read/written by computed bare keys, always at global scope, and is
-#     never embedded in a format — so it needs accessors only, no name builder.
-#   * private is reached through a few stable keys AND embedded by name inside tmux
-#     #{?…} selectors (the badges), and spans global/session/window scope — so it needs a
-#     name builder (prv_name) plus scoped accessors.
+#   * public values are user-configured global defaults with optional session-local
+#     runtime overrides; they are never embedded by a constructed name.
+#   * private state is airline-owned and scoped to its actual owner: session or
+#     window. Stable badge names are embedded in tmux #{?…} selectors.
 
-# --- public (always global) ---
+# --- public configuration: global defaults plus session-local overrides ---
 pub_get   () { opt_get_global   "@airline-$1"; }        # <key>
 pub_set   () { opt_set_global   "@airline-$1" "$2"; }   # <key> <value>
 pub_unset () { opt_unset_global "@airline-$1"; }        # <key>
+pub_get_session   () {   # <session> <key>; local override, then global config default
+  local name="@airline-$2"
+  if opt_has_session "$1" "$name"; then opt_get_session "$1" "$name"
+  else opt_get_global "$name"; fi
+}
+pub_set_session   () { opt_set_session   "$1" "@airline-$2" "$3"; } # <session> <key> <value>
+pub_unset_session () { opt_unset_session "$1" "@airline-$2"; }       # <session> <key>
 
 # --- private: name builder (for composition / format embedding, not get/set) ---
 # collections builds its <ns> / <ns>-<key> scheme on this; render embeds a badge
 # option name in a live selector with it. The single home for the @airline-- prefix.
 prv_name () { printf '@airline--%s' "$1"; }             # <key> → option name
 
-# --- private accessors (global, session, and window scope) ---
-prv_get_global   () { opt_get_global   "@airline--$1"; }            # <key>
-prv_set_global   () { opt_set_global   "@airline--$1" "$2"; }       # <key> <value>
+# --- private accessors (session and window scope; never global) ---
 prv_get_session   () { opt_get_session   "$1" "@airline--$2"; }       # <session> <key>
+prv_set_session   () { opt_set_session   "$1" "@airline--$2" "$3"; } # <session> <key> <value>
 prv_setif_session () { opt_setif_session "$1" "@airline--$2" "$3"; } # <session> <key> <value>
 prv_unset_session () { opt_unset_session "$1" "@airline--$2"; }       # <session> <key>
 prv_get_window   () { opt_get_window   "$1" "@airline--$2"; }       # <win> <key>
@@ -130,14 +136,25 @@ redraw () { tmux refresh-client -S 2>/dev/null || true; }
 
 # Load a tmux source file (used for palette files).
 source_file () { tmux source-file "$1"; }
+source_file_session () { tmux source-file -t "$1" "$2"; }
 
 # The id (@n) of the window the caller is acting in — lets window-scoped callers
 # resolve "current" to an explicit id before calling opt_*_window.
 current_window () { tmux display-message -p '#{window_id}'; }
 
-# The id ($n) of the session the caller is acting in. Session-scoped APIs accept
-# an explicit target, but use this when invoked interactively without one.
-current_session () { tmux display-message -p '#{session_id}'; }
+# Ask tmux to resolve any valid target (session, window, or pane) to its owning
+# session id. This keeps target grammar and current-context rules inside tmux.
+resolve_session () { tmux display-message -p -t "$1" '#{session_id}'; }
+
+# The id ($n) of the session the caller is acting in. A process launched from a
+# pane receives TMUX_PANE from tmux, so give that native target back to tmux for an
+# unambiguous resolution. Commands without a pane retain tmux's normal current/
+# most-recent context rules.
+current_session () {
+  if [[ -n "${TMUX_PANE:-}" ]]; then resolve_session "$TMUX_PANE"
+  else tmux display-message -p '#{session_id}'
+  fi
+}
 
 # Hooks (the pane-focus-out consume-on-view callback). <spec> is a full hook
 # name, optionally indexed, e.g. "pane-focus-out[90]".

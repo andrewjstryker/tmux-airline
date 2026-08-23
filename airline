@@ -66,18 +66,17 @@ usage () {
 }
 
 #-----------------------------------------------------------------------------#
-# Noun dispatchers — each parses its verb and calls the api.sh function behind it.
-# The `#| …` markers on the arms are the help source; keep arms thin (route + the
-# odd bit of "then render/apply" sequencing, no logic).
+# Noun dispatchers — each parses its verb and makes exactly one public api.sh call.
+# The `#| …` markers on the arms are the help source.
 #-----------------------------------------------------------------------------#
 
 cmd_state () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    suspend) _state_set 1 ;;   #| mute the palette + trap the prefix (session dormant)
-    resume)  _state_set 0 ;;   #| restore vibrant colours + release the prefix
-    toggle)  if [[ "$(prv_get_global "$AIRLINE_KEY_SUSPENDED")" == 1 ]]; then _state_set 0; else _state_set 1; fi ;;   #| flip active/suspended
-    show)    _state_word ;;    #| print the current state (active | suspended)
+    suspend) api_state_suspend ;;   #| mute the palette + trap the prefix (session dormant)
+    resume)  api_state_resume ;;    #| restore vibrant colours + release the prefix
+    toggle)  api_state_toggle ;;    #| flip active/suspended
+    show)    api_state_show ;;      #| print the current state (active | suspended)
     ""|-h|--help|help) _help_noun state ;;
     *) die "unknown state command: $verb" ;;
   esac
@@ -86,9 +85,9 @@ cmd_state () {
 cmd_status () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    set)   _signal_set   status _status_level_valid "$@" ;;   #| <key> <active|result|attention> [--transient] [-t <win>]
-    clear) _signal_clear status "$@" ;;                       #| <key> [-t <win>]
-    show)  _signal_show  status "$@" ;;                       #| [<key>] [-t <win>] — a window's app-status
+    set)   api_status_set "$@" ;;   #| <key> <active|result|attention> [--transient] [-t <win>]
+    clear) api_status_clear "$@" ;; #| <key> [-t <win>]
+    show)  api_status_show "$@" ;;  #| [<key>] [-t <win>] — a window's app-status
     ""|-h|--help|help) _help_noun status ;;
     *) die "unknown status command: $verb" ;;
   esac
@@ -97,9 +96,9 @@ cmd_status () {
 cmd_health () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    set)   _signal_set   health _health_severity_valid "$@" ;;   #| <key> <ok|alert|stress> [--transient] [-t <win>]
-    clear) _signal_clear health "$@" ;;                          #| <key> [-t <win>]
-    show)  _signal_show  health "$@" ;;                          #| [<key>] [-t <win>] — a window's health
+    set)   api_health_set "$@" ;;   #| <key> <ok|warn|fail> [--transient] [-t <win>]
+    clear) api_health_clear "$@" ;; #| <key> [-t <win>]
+    show)  api_health_show "$@" ;;  #| [<key>] [-t <win>] — a window's health
     ""|-h|--help|help) _help_noun health ;;
     *) die "unknown health command: $verb" ;;
   esac
@@ -108,37 +107,37 @@ cmd_health () {
 cmd_problem () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    set)   _problem_set   "$@" ;;   #| <key> <ok|alert|stress> <message> [-t <session>]
-    clear) _problem_clear "$@" ;;   #| <key> [-t <session>]
-    show)  _problem_show  "$@" ;;   #| [<key>] [-t <session>] — session widget problems
+    set)   api_problem_set "$@" ;;   #| <key> <ok|warn|fail> [<message>] [-t <session>]
+    clear) api_problem_clear "$@" ;; #| <key> [-t <session>]
+    show)  api_problem_show "$@" ;;  #| [<key>] [-t <session>] — session widget problems
     ""|-h|--help|help) _help_noun problem ;;
     *) die "unknown problem command: $verb" ;;
   esac
 }
 
 cmd_palette () {
-  # A palette element is a public option (@airline-<element>); override one directly
-  # with `set -g` or swap the whole set with `use`. Like segment, the per-element write
-  # path is read-only here — `show` is the discovery surface (bare for humans,
+  # A palette element is a public option (@airline-<element>). `set -g` supplies a
+  # user default; `use` installs a session override for the whole set. Like segment,
+  # the per-element CLI path is read-only — `show` is the discovery surface (bare for humans,
   # `show <field>` a raw value for scripts; `show name` is the active-palette read).
   local verb="${1:-}"; shift || true
   case "$verb" in
-    show)      _palette_show "$@" ;;                    #| [name|<element>] — summary, or one field raw (`show name` for scripts)
-    use)       _load_config palette "$@"; _apply ;;     #| <name> — load a palette (re-applies the layout)
-    available) _path_available palette ;;               #| the palettes you can `use` (on the path)
-    register)  _register palette "$@" ;;                #| <dir> — add a palette search dir
+    show)      api_palette_show "$@" ;;      #| [name|<element>] — summary, or one field raw (`show name` for scripts)
+    use)       api_palette_use "$@" ;;       #| <name> — load a palette (re-applies the layout)
+    available) api_palette_available ;;      #| the palettes you can `use` (on the path)
+    register)  api_palette_register "$@" ;; #| <dir> — add a palette search dir
     ""|-h|--help|help) _help_noun palette ;;
     *) die "unknown palette command: $verb" ;;
   esac
 }
 
 cmd_segment () {
-  # A segment is a public option; write it directly with `set -g` (from a layout or your
-  # own config). This noun is read-only — `show` is the discovery surface (bare `show`
-  # lists every slot).
+  # A segment is a public option. Users provide defaults with `set -g`; layouts write
+  # explicit session overrides. This noun is read-only — `show` is the discovery
+  # surface (bare `show` lists every slot).
   local verb="${1:-}"; shift || true
   case "$verb" in
-    show)  _static_show  "segment-" _segment_slot_valid AIRLINE_SEGMENT_SLOTS "$@" ;;   #| [<slot>] — read one or all (segments are written with `set -g`, not here)
+    show) api_segment_show "$@" ;;   #| [<slot>] — read one or all
     ""|-h|--help|help) _help_noun segment ;;
     *) die "unknown segment command: $verb" ;;
   esac
@@ -147,11 +146,11 @@ cmd_segment () {
 cmd_adapter () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    use)       _apply_adapter "$@"; _render ;;      #| <name> — apply the palette to a plugin
-    load)      _load_adapter "$@"; _render ;;       #| <path> — apply a one-off adapter script
-    show)      _adapter_show ;;                     #| the applied adapters, one per line
-    available) _path_available adapter ;;           #| the adapters you can `use` (on the path)
-    register)  _register adapter "$@" ;;            #| <dir> — add an adapter search dir
+    use)       api_adapter_use "$@" ;;       #| <name> — apply the palette to a plugin
+    load)      api_adapter_load "$@" ;;      #| <path> — apply a one-off adapter script
+    show)      api_adapter_show ;;           #| the applied adapters, one per line
+    available) api_adapter_available ;;      #| the adapters you can `use` (on the path)
+    register)  api_adapter_register "$@" ;; #| <dir> — add an adapter search dir
     ""|-h|--help|help) _help_noun adapter ;;
     *) die "unknown adapter command: $verb" ;;
   esac
@@ -160,11 +159,11 @@ cmd_adapter () {
 cmd_layout () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    use)       _layout_use "$@"; render || true ;;   #| <name> — run a composition (adapters + segments)
-    load)      _layout_load "$@"; render || true ;;  #| <path> — run a one-off layout script (records it)
-    show)      _layout_show "$@" ;;                   #| [name|path] — the active layout (summary, or one field raw)
-    available) _path_available layout ;;              #| the layouts you can `use` (on the path)
-    register)  _register layout "$@" ;;               #| <dir> — add a layout search dir
+    use)       api_layout_use "$@" ;;       #| <name> — run a composition (adapters + segments)
+    load)      api_layout_load "$@" ;;      #| <path> — run a one-off layout script (records it)
+    show)      api_layout_show "$@" ;;      #| [name|path] — the active layout (summary, or one field raw)
+    available) api_layout_available ;;      #| the layouts you can `use` (on the path)
+    register)  api_layout_register "$@" ;; #| <dir> — add a layout search dir
     ""|-h|--help|help) _help_noun layout ;;
     *) die "unknown layout command: $verb" ;;
   esac
@@ -176,9 +175,9 @@ cmd_layout () {
 #-----------------------------------------------------------------------------#
 cmd="${1:-}"; shift || true
 case "$cmd" in
-  init)     _init       "$@" ;;   #| seed defaults, register search paths, publish the CLI handle; then render
-  apply)    _apply           ;;   #| re-apply the layout and render from the source of truth
-  show)     _show_config     ;;   #| print the active configuration
+  init)     api_init    "$@" ;;   #| seed defaults, register search paths, publish the CLI handle; then render
+  apply)    api_apply   "$@" ;;   #| re-apply the layout and render from the source of truth
+  show)     api_show    "$@" ;;   #| print the active configuration
   state)    cmd_state   "$@" ;;
   status)   cmd_status  "$@" ;;
   health)   cmd_health  "$@" ;;
@@ -187,7 +186,8 @@ case "$cmd" in
   segment)  cmd_segment "$@" ;;
   adapter)  cmd_adapter "$@" ;;
   layout)   cmd_layout  "$@" ;;
-  _unfocus) _unfocus    "$@" ;;   # internal: pane-focus-out hook callback
+  _init-session) api_init_session "$@" ;; # internal: after-new-session hook callback
+  _unfocus) api_unfocus "$@" ;;           # internal: pane-focus-out hook callback
   ""|-h|--help|help) usage ;;
   *) die "unknown command: $cmd (try: airline help)" ;;
 esac

@@ -18,7 +18,7 @@ if ! declare -F opt_get_global >/dev/null; then
   printf 'render.sh: load tmux.sh first\n' >&2
   return 1 2>/dev/null || exit 1
 fi
-if ! declare -F coll_get_global >/dev/null; then
+if ! declare -F coll_get_session >/dev/null; then
   printf 'render.sh: load collections.sh first\n' >&2
   return 1 2>/dev/null || exit 1
 fi
@@ -50,16 +50,16 @@ declare -ga AIRLINE_PALETTE_ELEMENTS=(
   active special ok alert stress zoom copy monitor
 )
 
-# Palette tokens: roles whose NAME is also a valid runtime signal value — a health
-# severity, a window mode. The health badge selector maps a stored token to its
-# baked color through this list (token name == role name). The status badge does
-# NOT use this — its levels are semantic and map through AIRLINE_STATUS_COLOR below.
+# Palette tokens: roles whose NAME is also a valid runtime signal value — currently
+# the window modes. Condition and status levels are semantic, so their selectors
+# map levels to palette roles through the tables below.
 # (Not the positional backgrounds or text weights, which a signal never names.)
 declare -ga AIRLINE_PALETTE_TOKENS=(active alert stress ok special monitor copy zoom)
 
-# Health severities, low→high — handed to coll_reduce as the ranking, so the
-# collection layer stays severity-agnostic.
-declare -ga AIRLINE_SEVERITIES=(ok alert stress)
+# Health/problem levels, low→high. Both protocols share this operational ladder;
+# their only semantic difference is scope (window vs session).
+declare -ga AIRLINE_CONDITION_LEVELS=(ok warn fail)
+declare -gA AIRLINE_CONDITION_COLOR=([ok]=ok [warn]=alert [fail]=stress)
 
 # PRIVATE state — BARE keys into the private (@airline--) namespace; the prefix is
 # tmux.sh's (prv_name / prv_*), so render never spells it. Status and health are
@@ -67,8 +67,8 @@ declare -ga AIRLINE_SEVERITIES=(ok alert stress)
 # the extreme right. Each is reduced from its contributor collection at
 # set/clear time and read live through a token→color selector.
 AIRLINE_KEY_STATUS='badge-status'        # left badge:  reduced app-status level
-AIRLINE_KEY_HEALTH='badge-health'        # right badge: reduced health severity
-AIRLINE_KEY_PROBLEM='badge-problem'      # session badge: reduced widget problem severity
+AIRLINE_KEY_HEALTH='badge-health'        # right badge: reduced window condition level
+AIRLINE_KEY_PROBLEM='badge-problem'      # session badge: reduced problem level
 AIRLINE_KEY_SUSPENDED='suspended'        # private flag: dim palette for nested sessions
 # SC2034: these two are consumed by the `airline` CLI (init), which sources this
 # file — shellcheck can't trace the cross-file use.
@@ -104,7 +104,7 @@ AIRLINE_GLYPH_PROBLEM='▲'     # session problem fallback
 # shellcheck disable=SC2034
 declare -gA AIRLINE_STATUS_GLYPH=([active]='○' [result]='●' [attention]='◆')  # watch → done → needs-you
 # shellcheck disable=SC2034
-declare -gA AIRLINE_HEALTH_GLYPH=([alert]='△' [stress]='▲')                    # escalating warning
+declare -gA AIRLINE_HEALTH_GLYPH=([warn]='△' [fail]='▲')                      # degraded → broken
 
 # Boundary validators — pure predicates the CLI calls before it stores anything.
 _segment_slot_valid () {
@@ -119,8 +119,8 @@ _status_level_valid () {
   local l; for l in "${AIRLINE_STATUS_LEVELS[@]}"; do [[ "$l" == "$1" ]] && return 0; done
   return 1
 }
-_health_severity_valid () {
-  local s; for s in "${AIRLINE_SEVERITIES[@]}"; do [[ "$s" == "$1" ]] && return 0; done
+_condition_level_valid () {
+  local s; for s in "${AIRLINE_CONDITION_LEVELS[@]}"; do [[ "$s" == "$1" ]] && return 0; done
   return 1
 }
 
@@ -137,9 +137,11 @@ declare -gA PALETTE
 _palette_load () {
   local el
   for el in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
-    PALETTE[$el]="$(pub_get "$el")"
+    PALETTE[$el]="$(pub_get_session "$AIRLINE_SESSION" "$el")"
   done
-  if [[ "$(prv_get_global "$AIRLINE_KEY_SUSPENDED")" == 1 ]]; then _palette_suspend; fi
+  if [[ "$(prv_get_session "$AIRLINE_SESSION" "$AIRLINE_KEY_SUSPENDED")" == 1 ]]; then
+    _palette_suspend
+  fi
 }
 
 _palette_suspend () {
@@ -178,7 +180,7 @@ _active_slots () {
   local slot
   local -n slots="AIRLINE_SLOTS_${1^^}"
   for slot in "${slots[@]}"; do
-    [[ -n "$(pub_get "segment-$slot")" ]] && printf '%s\n' "$slot"
+    [[ -n "$(pub_get_session "$AIRLINE_SESSION" "segment-$slot")" ]] && printf '%s\n' "$slot"
   done
 }
 
@@ -192,7 +194,7 @@ _build_status_left () {
     bg="${PALETTE[${AIRLINE_SLOT_TIER[${active[i]}]}-bg]}"
     if (( i+1 < n )); then next_bg="${PALETTE[${AIRLINE_SLOT_TIER[${active[i+1]}]}-bg]}"
     else                   next_bg="${PALETTE[inner-bg]}"; fi
-    out+="#[fg=$fg,bg=$bg] $(pub_get "segment-${active[i]}") $(_chev_right "$bg" "$next_bg")"
+    out+="#[fg=$fg,bg=$bg] $(pub_get_session "$AIRLINE_SESSION" "segment-${active[i]}") $(_chev_right "$bg" "$next_bg")"
   done
   printf '%s' "$out"
 }
@@ -205,7 +207,7 @@ _build_status_right () {
   local n=${#active[@]}
   for (( i=0; i<n; i++ )); do
     bg="${PALETTE[${AIRLINE_SLOT_TIER[${active[i]}]}-bg]}"
-    out+="$(_chev_left "$prev_bg" "$bg")#[fg=$fg,bg=$bg] $(pub_get "segment-${active[i]}") "
+    out+="$(_chev_left "$prev_bg" "$bg")#[fg=$fg,bg=$bg] $(pub_get_session "$AIRLINE_SESSION" "segment-${active[i]}") "
     prev_bg="$bg"
   done
   out+="$(_problem_expr "$prev_bg")"
@@ -253,16 +255,16 @@ _window_mode_pick () {   # <in-mode> <none>
 #   status : app-status contributors (ns "status") reduced by the level ladder into
 #            the AIRLINE_KEY_STATUS scalar; the left badge shows one glyph in that
 #            level's color, or nothing when no contributor reports.
-#   health : health contributors (ns "health") reduced to the max severity into the
+#   health : health contributors (ns "health") reduced to the worst level into the
 #            AIRLINE_KEY_HEALTH scalar; the right badge shows one glyph in that
-#            severity's color, or nothing when healthy.
+#            level's color, or nothing when healthy.
 # The colors are baked here at compose time; WHICH color shows is a live #{?…}
 # selector tmux re-evaluates per window — the selector leg of the render model.
 # The side (left vs right) tells the two badges apart, so their colors may overlap.
 
 # A live expression mapping a token-valued option to its baked palette color, falling
 # back to <fallback> when the option is empty or holds an unknown token. Used for
-# health, whose tokens (severities) ARE palette role names — token maps to PALETTE[token].
+# window modes, whose tokens are palette role names.
 _palette_token_expr () {   # <option-name> <fallback-color>
   local option="$1" expr="$2" tok
   for tok in "${AIRLINE_PALETTE_TOKENS[@]}"; do
@@ -281,6 +283,16 @@ _status_token_expr () {   # <option-name> <fallback-color>
   printf '%s' "$expr"
 }
 
+# Health and problem share operational levels whose names are deliberately not
+# palette roles: warn → alert color, fail → stress color.
+_condition_token_expr () {   # <option-name> <fallback-color>
+  local option="$1" expr="$2" level
+  for level in "${AIRLINE_CONDITION_LEVELS[@]}"; do
+    expr="#{?#{==:#{$option},$level},${PALETTE[${AIRLINE_CONDITION_COLOR[$level]}]},$expr}"
+  done
+  printf '%s' "$expr"
+}
+
 # Live selector mapping <option>'s token to a GLYPH via the named assoc map; <fallback>
 # when empty/unknown. One level (token → glyph) — the shape channel that runs
 # alongside the color selectors so each badge state is distinct without color.
@@ -293,7 +305,7 @@ _glyph_expr () {   # <option-name> <fallback-glyph> <map-array-name>
 }
 
 # A `#[blink]` directive when <option> holds <token>, else nothing — the "watchable"
-# cue (status `active`, health `stress`). Best-effort: tmux emits the attribute but
+# cue (status `active`, condition `fail`). Best-effort: tmux emits the attribute but
 # terminals vary in honoring blink. Pair with a trailing `#[noblink]` so it can't leak.
 _blink_when () { printf '#{?#{==:#{%s},%s},#[blink],}' "$1" "$2"; }   # <option> <token>
 
@@ -306,9 +318,9 @@ _problem_expr () {
   problem_opt="$(prv_name "$AIRLINE_KEY_PROBLEM")"
   printf '#{?%s,#[fg=%s]#[bg=%s]%s%s#[noblink] ,}' \
     "$problem_opt" \
-    "$(_palette_token_expr "$problem_opt" "${PALETTE[primary]}")" \
+    "$(_condition_token_expr "$problem_opt" "${PALETTE[primary]}")" \
     "$bg" \
-    "$(_blink_when "$problem_opt" stress)" \
+    "$(_blink_when "$problem_opt" fail)" \
     "$(_glyph_expr "$problem_opt" "$AIRLINE_GLYPH_PROBLEM" AIRLINE_HEALTH_GLYPH)"
 }
 
@@ -335,8 +347,8 @@ status_project () {   # <win>
 # Health: a clean badge means healthy, so an `ok`/none reduce projects as blank.
 health_project () {   # <win>
   local win="$1" max
-  max="$(coll_reduce_window "$win" health "${AIRLINE_SEVERITIES[*]}")"
-  case "$max" in stress|alert) ;; *) max="" ;; esac
+  max="$(coll_reduce_window "$win" health "${AIRLINE_CONDITION_LEVELS[*]}")"
+  case "$max" in fail|warn) ;; *) max="" ;; esac
   if [[ -n "$max" ]]; then
     prv_setif_window "$win" "$AIRLINE_KEY_HEALTH" "$max"
   else
@@ -345,12 +357,12 @@ health_project () {   # <win>
   fi
 }
 
-# Problem: session-scoped widget problems use the health severity ladder and
+# Problem: session-scoped widget problems use the shared condition ladder and
 # reduce to one overall badge. An `ok`/none result is visually healthy (blank).
 problem_project () {   # <session>
   local session="$1" max
-  max="$(coll_reduce_session "$session" problem "${AIRLINE_SEVERITIES[*]}")"
-  case "$max" in stress|alert) ;; *) max="" ;; esac
+  max="$(coll_reduce_session "$session" problem "${AIRLINE_CONDITION_LEVELS[*]}")"
+  case "$max" in fail|warn) ;; *) max="" ;; esac
   if [[ -n "$max" ]]; then
     prv_setif_session "$session" "$AIRLINE_KEY_PROBLEM" "$max"
   else
@@ -385,10 +397,10 @@ set_window_formats () {
   local status_expr
   status_expr="#{?$status_opt,#[fg=$(_status_token_expr "$status_opt" "${PALETTE[primary]}")]$(_blink_when "$status_opt" active)$(_glyph_expr "$status_opt" "$AIRLINE_GLYPH_STATUS" AIRLINE_STATUS_GLYPH)#[noblink] ,}"
 
-  # Health badge (right of the name): a per-severity shape in the severity's color,
-  # blinking while `stress` (critical).
+  # Health badge (right of the name): a per-level shape in the level's color,
+  # blinking while `fail`.
   local health_expr
-  health_expr="#{?$health_opt, #[fg=$(_palette_token_expr "$health_opt" "${PALETTE[primary]}")]$(_blink_when "$health_opt" stress)$(_glyph_expr "$health_opt" "$AIRLINE_GLYPH_HEALTH" AIRLINE_HEALTH_GLYPH)#[noblink],}"
+  health_expr="#{?$health_opt, #[fg=$(_condition_token_expr "$health_opt" "${PALETTE[primary]}")]$(_blink_when "$health_opt" fail)$(_glyph_expr "$health_opt" "$AIRLINE_GLYPH_HEALTH" AIRLINE_HEALTH_GLYPH)#[noblink],}"
 
   opt_setif_global window-status-separator " " && changed=0
   # inactive: the whole tab fills with the mode color (flat inner-bg when no mode).
@@ -414,18 +426,22 @@ set_window_formats () {
 # job. Idempotent and redraw-gated: it rewrites only options whose value changed
 # (opt_setif_*) and redraws once iff any did. Returns 0 when something changed
 # (a redraw happened), 1 when the bar was already current.
-render () {
+render () {   # <session>
+  local AIRLINE_SESSION="$1"
   _palette_load
   local changed=1
   opt_setif_global pane-border-style         "fg=${PALETTE[primary]}"                       && changed=0
   opt_setif_global pane-active-border-style   "fg=${PALETTE[active]}"                        && changed=0
-  opt_setif_global display-panes-color        "${PALETTE[primary]}"                          && changed=0
-  opt_setif_global display-panes-active-color "${PALETTE[active]}"                           && changed=0
-  opt_setif_global status-style               "fg=${PALETTE[secondary]} bg=${PALETTE[inner-bg]}" && changed=0
-  opt_setif_global status-left-style          "fg=${PALETTE[primary]} bg=${PALETTE[outer-bg]}"   && changed=0
-  opt_setif_global status-right-style         "fg=${PALETTE[primary]} bg=${PALETTE[outer-bg]}"   && changed=0
-  opt_setif_global status-left                "$(_build_status_left)"                      && changed=0
-  opt_setif_global status-right               "$(_build_status_right)"                     && changed=0
+  opt_setif_session "$AIRLINE_SESSION" display-panes-color        "${PALETTE[primary]}" && changed=0
+  opt_setif_session "$AIRLINE_SESSION" display-panes-active-color "${PALETTE[active]}"  && changed=0
+  opt_setif_session "$AIRLINE_SESSION" status-style \
+    "fg=${PALETTE[secondary]} bg=${PALETTE[inner-bg]}" && changed=0
+  opt_setif_session "$AIRLINE_SESSION" status-left-style \
+    "fg=${PALETTE[primary]} bg=${PALETTE[outer-bg]}" && changed=0
+  opt_setif_session "$AIRLINE_SESSION" status-right-style \
+    "fg=${PALETTE[primary]} bg=${PALETTE[outer-bg]}" && changed=0
+  opt_setif_session "$AIRLINE_SESSION" status-left  "$(_build_status_left)"  && changed=0
+  opt_setif_session "$AIRLINE_SESSION" status-right "$(_build_status_right)" && changed=0
   opt_setif_global clock-mode-color           "${PALETTE[special]}"                          && changed=0
   set_window_formats && changed=0
   [[ $changed -eq 0 ]] && redraw

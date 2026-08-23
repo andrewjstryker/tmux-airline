@@ -116,7 +116,7 @@ _coll_set () {       # <scope> <target> <ns> <key> <field…> register + write t
 }
 
 # Reduce the collection to the highest-ranked first-field value among its members.
-# <order> is a space-delimited ranking, low→high (e.g. "ok alert stress"); the
+# <order> is a space-delimited ranking, low→high (e.g. "ok warn fail"); the
 # winner is the member whose first tuple field ranks highest. Values absent from
 # <order> are ignored; empty result when no member carries a ranked value. The
 # ranking is passed in as data — collections owns no severity vocabulary.

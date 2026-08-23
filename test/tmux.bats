@@ -155,6 +155,13 @@ load helper
   assert_output --regexp '^\$[0-9]+$'
 }
 
+@test "resolve_session lets tmux map a pane target to its session" {
+  load_tmux
+  pane="$(tmux display-message -p '#{pane_id}')"
+  run resolve_session "$pane"
+  assert_output --regexp '^\$[0-9]+$'
+}
+
 @test "redraw is harmless with no attached client" {
   load_tmux
   run redraw

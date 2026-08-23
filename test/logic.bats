@@ -95,7 +95,7 @@ _seed_palette() {
   load_render
   _seed_palette
   opt_set_global @airline-segment-left-out X
-  opt_set_global @airline--suspended 1
+  opt_set_session "$AIRLINE_SESSION" @airline--suspended 1
   _palette_load
   run _build_status_left
   refute_output --partial "bg=colour238"   # outer dimmed to inner-bg
@@ -190,14 +190,14 @@ _seed_palette() {
   assert_output --partial "active},#[blink]"   # active = watchable
 }
 
-@test "health badge maps each severity to a distinct glyph; stress blinks" {
+@test "health badge maps each level to a distinct glyph; fail blinks" {
   load_render
   _seed_palette
   set_window_formats
   run get_option window-status-format
-  assert_output --partial "alert},△"
-  assert_output --partial "stress},▲"
-  assert_output --partial "stress},#[blink]"   # stress = critical
+  assert_output --partial "warn},△"
+  assert_output --partial "fail},▲"
+  assert_output --partial "fail},#[blink]"
 }
 
 @test "window-status-format places status left of the name and health right" {
@@ -255,18 +255,18 @@ _seed_palette() {
   _seed_palette
   set_window_formats
   run get_option window-status-format
-  assert_output --partial "@airline--badge-health"   # the projected reduced-severity scalar
+  assert_output --partial "@airline--badge-health"   # the projected reduced-level scalar
 }
 
-@test "health_project reduces contributors to the max severity scalar" {
+@test "health_project reduces contributors to the worst level scalar" {
   load_render
   win="$(current_window)"
   coll_set_window "$win" health cpu ok
-  coll_set_window "$win" health disk alert
-  coll_set_window "$win" health net stress
+  coll_set_window "$win" health disk warn
+  coll_set_window "$win" health net fail
   health_project "$win"
   run opt_get_window "$win" @airline--badge-health
-  assert_output "stress"
+  assert_output "fail"
 }
 
 @test "health_project leaves a blank badge when only ok reports" {
@@ -281,17 +281,17 @@ _seed_palette() {
 @test "health_project signals change via exit status (gate a redraw)" {
   load_render
   win="$(current_window)"
-  coll_set_window "$win" health net stress
-  rc=0; health_project "$win" || rc=$?   # unset -> stress : changed
+  coll_set_window "$win" health net fail
+  rc=0; health_project "$win" || rc=$?   # unset -> fail : changed
   assert_equal "$rc" 0
-  rc=0; health_project "$win" || rc=$?   # stress -> stress : no change
+  rc=0; health_project "$win" || rc=$?   # fail -> fail : no change
   assert_equal "$rc" 1
 }
 
 @test "health_project clears the badge when the worst contributor is removed" {
   load_render
   win="$(current_window)"
-  coll_set_window "$win" health net stress
+  coll_set_window "$win" health net fail
   health_project "$win"
   coll_unregister_window "$win" health net
   health_project "$win"
@@ -308,31 +308,31 @@ _seed_palette() {
   run _build_status_right
   [[ "$output" == *" OUT "*"@airline--badge-problem"* ]]
   assert_output --partial "bg=colour238"   # inherits the final outer block
-  assert_output --partial "alert},△"
-  assert_output --partial "stress},▲"
-  assert_output --partial "stress},#[blink]"
+  assert_output --partial "warn},△"
+  assert_output --partial "fail},▲"
+  assert_output --partial "fail},#[blink]"
 }
 
-@test "problem_project reduces session contributors to the worst severity" {
+@test "problem_project reduces session contributors to the worst level" {
   load_render
   session="$(current_session)"
-  coll_set_session "$session" problem cpu alert "sensors missing"
-  coll_set_session "$session" problem battery stress "query timed out"
+  coll_set_session "$session" problem cpu warn "sensors missing"
+  coll_set_session "$session" problem battery fail "query timed out"
   problem_project "$session"
   run opt_get_session "$session" @airline--badge-problem
-  assert_output "stress"
+  assert_output "fail"
 }
 
 @test "problem_project downgrades and clears as problems recover" {
   load_render
   session="$(current_session)"
-  coll_set_session "$session" problem cpu alert "sensors missing"
-  coll_set_session "$session" problem battery stress "query timed out"
+  coll_set_session "$session" problem cpu warn "sensors missing"
+  coll_set_session "$session" problem battery fail "query timed out"
   problem_project "$session"
   coll_unregister_session "$session" problem battery
   problem_project "$session"
   run opt_get_session "$session" @airline--badge-problem
-  assert_output "alert"
+  assert_output "warn"
   coll_unregister_session "$session" problem cpu
   problem_project "$session"
   run opt_get_session "$session" @airline--badge-problem
@@ -344,8 +344,8 @@ _seed_palette() {
 @test "render bakes the chrome styles from the palette" {
   load_render
   _seed_palette
-  render
-  run get_option status-style
+  render "$AIRLINE_SESSION"
+  run sopt status-style
   assert_output --partial "fg=colour245"   # secondary
   assert_output --partial "bg=colour234"   # inner-bg
   run get_option pane-active-border-style
@@ -359,17 +359,17 @@ _seed_palette() {
   _seed_palette
   opt_set_global @airline-segment-left-out "LOAD"
   opt_set_global @airline-segment-right-out "TIME"
-  render
-  run get_option status-left
+  render "$AIRLINE_SESSION"
+  run sopt status-left
   assert_output --partial "LOAD"
-  run get_option status-right
+  run sopt status-right
   assert_output --partial "TIME"
 }
 
 @test "render composes the window formats too" {
   load_render
   _seed_palette
-  render
+  render "$AIRLINE_SESSION"
   run get_option window-status-format
   assert_output --partial "#I:#W"
 }
@@ -378,8 +378,8 @@ _seed_palette() {
   load_render
   _seed_palette
   opt_set_global @airline-segment-left-out "LOAD"
-  rc=0; render || rc=$?   # first call: everything changes
+  rc=0; render "$AIRLINE_SESSION" || rc=$?   # first call: everything changes
   assert_equal "$rc" 0
-  rc=0; render || rc=$?   # identical state: nothing changes
+  rc=0; render "$AIRLINE_SESSION" || rc=$?   # identical state: nothing changes
   assert_equal "$rc" 1
 }

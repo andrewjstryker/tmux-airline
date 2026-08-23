@@ -22,6 +22,10 @@ load_tmux() {
   tmux() { $TMUX -L "$_bats_socket" "$@"; }
   export -f tmux
   source "$PROJECT_ROOT/tmux.sh"
+  # The test process may itself live in an unrelated tmux server. Give the
+  # isolated server's native pane context to functions that resolve "current".
+  TMUX_PANE="$(tmux display-message -p -t bats '#{pane_id}')"
+  export TMUX_PANE
 }
 
 # Source the collections layer (collections.sh) on the in-memory fake — no tmux
@@ -38,6 +42,7 @@ load_collections() {
 # Source the render layer (render.sh) on the in-memory fake — no tmux server.
 load_render() {
   export AIRLINE_DIR="$PROJECT_ROOT"
+  export AIRLINE_SESSION='s1'
   source "$PROJECT_ROOT/test/fake-tmux.sh"
   source "$PROJECT_ROOT/collections.sh"
   source "$PROJECT_ROOT/render.sh"
@@ -94,7 +99,19 @@ resolve() {
 # process, so the helper's exported tmux() function does not reach it; point it
 # at the bats socket via the AIRLINE_TMUX seam instead.
 airline() {
-  AIRLINE_DIR="$PROJECT_ROOT" AIRLINE_TMUX="$TMUX -L $_bats_socket" \
+  local pane
+  pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
+  TMUX_PANE="$pane" AIRLINE_DIR="$PROJECT_ROOT" AIRLINE_TMUX="$TMUX -L $_bats_socket" \
+    "$PROJECT_ROOT/airline" "$@"
+}
+
+# Run a config/control-plane command from a pane in an explicit session. TMUX_PANE is
+# the same native context tmux supplies to real pane child processes.
+airline_session() {
+  local session="$1"; shift
+  local pane
+  pane="$($TMUX -L "$_bats_socket" display-message -p -t "$session" '#{pane_id}')"
+  TMUX_PANE="$pane" AIRLINE_DIR="$PROJECT_ROOT" AIRLINE_TMUX="$TMUX -L $_bats_socket" \
     "$PROJECT_ROOT/airline" "$@"
 }
 
