@@ -59,11 +59,10 @@ Then reload:
 tmux source-file ~/.tmux.conf
 ```
 
-`airline.tmux` runs `airline init`, which publishes the CLI path, registers the
-built-in search paths, and applies a default palette + layout on first run. It
-binds **no keys** — you wire your own (see below).
+`airline.tmux` initializes the plugin and exposes the `airline` CLI. It binds
+**no keys** — you wire your own where needed (see *Nested sessions* below).
 
-## How it fits together
+## Core concepts
 
 Four things, driven by one `airline` CLI:
 
@@ -74,11 +73,10 @@ Four things, driven by one `airline` CLI:
 | **layout**  | A composition that fills the slots (and picks adapters)           | `layout use`                  |
 | **adapter** | A bridge that paints a third-party plugin from the palette        | `layout` (or `adapter use`)   |
 
-Palettes and segments are **static config** — plain `@airline-*` tmux options
-you set the idiomatic way; the CLI only reads them back for discovery, and
-`airline apply` bakes whatever they hold into the bar. Layouts and adapters are
-**dynamic** — scripts the CLI executes. Per-window **badges** (status/health)
-and session-wide **problems** are live signals plugins and widgets raise at runtime.
+Choose a palette for the colors and a layout for the arrangement. Override an
+individual palette role or segment slot with a normal tmux option, then run
+`airline apply`. Plugins and widgets can use status, health, and problem signals
+to report live state without rebuilding the bar.
 
 ## Nested sessions (suspend/resume)
 
@@ -100,10 +98,7 @@ bind -T root F12 run "#{@airline-cli} state toggle"
 bind -T off  F12 run "#{@airline-cli} state toggle"
 ```
 
-Under the hood `suspend` sets tmux's `prefix` to `None` and `key-table` to `off`
-(so only your `off`-table bindings fire) and derives a flat look from the
-palette; `resume` restores both. Inspect the axis with `airline state show`
-(`active` | `suspended`).
+Inspect the current state with `airline state show` (`active` | `suspended`).
 
 ## Palettes
 
@@ -174,9 +169,14 @@ set -g @airline-stress "colour196"
 airline apply
 ```
 
-A palette file is just a tmux source file of `set -g @airline-<role> <color>`
-lines (see `palettes/default`). To add your own, drop a file in a directory,
-bless it, and `use` it — a name you register shadows a shipped one:
+Options set with `set -g` are configuration defaults inherited by every session.
+`palette use` creates overrides only in the invoking session, so changing one
+session does not recolor another.
+
+A custom palette is a tmux file containing
+`set-option @airline-<role> <color>` lines; `palettes/default` is a complete
+example. Put the file in a directory, register that directory, and select the
+palette by filename. A registered name shadows a shipped one:
 
 ```tmux
 airline palette register ~/.config/airline/palettes
@@ -245,8 +245,16 @@ layout owns exactly the arrangement it declares. To build your own, write a
 script that sets `@airline-segment-*` options (and calls `airline adapter use`),
 then `register` its directory and `use` it — the same model as palettes.
 
-The **window-list entry** itself is fixed as `#I:#W` (index:name) — a rendering
-constant, styled by the window colors below rather than a segment.
+Layout scripts receive their target in `AIRLINE_SESSION`; use it for direct
+option writes:
+
+```bash
+$AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-left-out '#S'
+airline adapter use cpu
+```
+
+The **window-list entry** itself is fixed as `#I:#W` (index:name) and styled by
+the window colors below rather than configured as a segment.
 
 ## Plugin adapters
 
@@ -273,6 +281,15 @@ adapter available` (what's on the path).
 
 ## Window list signals
 
+### Targets and scope
+
+Airline follows tmux's normal scopes:
+
+- Options set with `set -g @airline-*` are defaults for every session.
+- `palette use` and `layout use` affect the invoking session.
+- Status and health belong to a window; `-t` accepts a pane or window target.
+- Problems belong to a session; background jobs should pass `-t <session>`.
+
 A window entry has three layers, owned by two parties. **airline** owns the
 entry's *color* (the name itself); **plugins** speak through two *badges* that
 flank the name. They never collide.
@@ -297,11 +314,8 @@ order, **tmux modes** over the **baseline** (focused / last / normal):
 | The active pane is in **copy mode**| `copy`    |
 | `monitor-activity` is **on**       | `monitor` |
 
-The focused window is drawn reverse-video, so this single signal color renders
-as the name **foreground** on inactive windows and as the highlight
-**background** on the focused one — the chevrons follow it, so focus is never
-lost. Precedence is **zoom > copy > monitor**; with no mode, the
-normal/last/activity/bell styling applies.
+Precedence is **zoom > copy > monitor**. With no mode, the normal focused, last,
+activity, and bell styling applies.
 
 ### Badges (plugin-owned): the `airline` CLI
 
@@ -335,21 +349,25 @@ airline status show                  # keys + current values
 Levels are `active` / `result` / `attention`; `result` outranks `active`. A
 window with no status contributor shows nothing.
 
-**Health** (right) — a single severity glyph reduced from any number of
+**Health** (right) — a single condition glyph reduced from any number of
 contributors; airline shows the **worst**. `ok` (or no contributor) shows
 **nothing** — a clean right side means healthy:
 
 ```tmux
-airline health set ctx stress        # ▲ critical (red)
-airline health set build alert       # △ degraded (amber)
-# badge now shows one glyph at the max severity (stress)
-airline health clear ctx             # drops to alert
+airline health set ctx fail          # ▲ broken (red)
+airline health set build warn        # △ degraded but running (amber)
+# badge now shows one glyph at the worst level (fail)
+airline health set ctx ok            # recovery clears ctx; drops to warn
 airline health show                  # contributors + reduced result
 ```
 
-Severities are `ok` / `alert` / `stress` (green / amber / red). Glyphs are fixed
-(a distinct shape per state, so badges stay legible without color). All badge
-commands accept `-t <target>` to act on a window other than the current one.
+Health and problem share the levels `ok < warn < fail`. `ok` means normal and
+clears that contributor, so it is equivalent to `clear <key>`. `warn` means the
+component degraded gracefully and can keep working; `fail` means it could not
+recover and is broken. `warn` uses the palette's amber `alert` role; `fail` uses
+its red `stress` role. Glyphs are fixed (a distinct shape per visible state, so
+badges stay legible without color). All badge commands accept `-t <target>` to
+act on a window other than the current one.
 
 **Consume-on-view (`--transient`).** By default the setter owns clearing — a
 badge stays until something clears it. For a state whose setter can't observe
@@ -358,12 +376,10 @@ that you've *seen* it (a finished job, an agent waiting for input), set it
 
 ```tmux
 airline status set agent result --transient   # clears when you leave the window
-airline health set build stress --transient
+airline health set build fail --transient
 ```
 
-airline registers a single `pane-focus-out` hook (idempotently) that clears that
-window's transient signals — sticky ones are untouched — and enables
-`focus-events`, so the feature works without extra setup.
+Transient signals clear after you leave the window; sticky ones are untouched.
 
 Because color and badges live on different layers, a window can show a mode
 color, a health glyph, and a status glyph all at once without contention.
@@ -371,16 +387,18 @@ color, a health glyph, and a status glyph all at once without contention.
 ## Session problems
 
 An airline-aware widget can fail gracefully and report why through the
-session-scoped `problem` API. Problems are keyed contributors with a severity
+session-scoped `problem` API. Problems are keyed contributors with a level
 and message. Airline retains every contributor for inspection, reduces them
-with the same `ok < alert < stress` ordering as health, and shows one aggregate
-glyph at the extreme right. No problems (or only `ok`) renders nothing.
+with the same `ok < warn < fail` model as health, and shows one aggregate glyph
+at the extreme right. The concept is the same; only the scope differs: health
+belongs to a window, while problems belong to a session. No problems renders
+nothing, and setting a problem to `ok` clears it without requiring a message.
 
 ```shell
 session="$(tmux display-message -p '#{session_id}')"
 
 if ! command -v sensors >/dev/null 2>&1; then
-  airline problem set cpu alert "required program 'sensors' was not found" -t "$session"
+  airline problem set cpu warn "required program 'sensors' was not found" -t "$session"
   printf '?'
   exit 0
 fi
@@ -389,9 +407,9 @@ airline problem clear cpu -t "$session"
 ```
 
 Several widgets may report independently; clearing the worst problem naturally
-downgrades the aggregate to the next severity. `problem show` lists every key,
-severity, and message. `problem show <key>` returns that problem as a raw,
-tab-delimited `severity<TAB>message` tuple. Background widgets should pass an
+downgrades the aggregate to the next level. `problem show` lists every key,
+level, and message. `problem show <key>` returns that problem as a raw,
+tab-delimited `level<TAB>message` tuple. Background widgets should pass an
 explicit session target because “current session” may be ambiguous outside a
 pane.
 
@@ -402,8 +420,8 @@ with its own verbs. `-t` targets a window for status/health and a session for
 problem.
 
 ```
-airline init                 # seed defaults + publish @airline-cli, then render (binds nothing)
-airline apply                # re-apply the layout and render from the current source of truth
+airline init                 # initialize airline (normally called by airline.tmux)
+airline apply                # re-apply the selected layout and current configuration
 airline show                 # print the active configuration
 airline help                 # usage (also -h / --help, and <noun> help)
 
@@ -412,25 +430,22 @@ airline segment  show [<slot>]                 # read-only; write with set -g @a
 airline layout   show [name|path] | available | use <name> | load <path> | register <dir>
 airline adapter  show | available | use <name> | load <path> | register <dir>
 airline status   set <key> <level>    [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
-airline health   set <key> <severity> [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
-airline problem  set <key> <severity> <message> [-t <session>] | clear <key> [-t <session>] | show [<key>] [-t <session>]
+airline health   set <key> <ok|warn|fail> [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
+airline problem  set <key> <ok|warn|fail> [<message>] [-t <session>] | clear <key> [-t <session>] | show [<key>] [-t <session>]
 airline state    suspend | resume | toggle | show
 ```
 
 Two conventions run through it:
 
-- **`use` vs `register`.** `use <name>` loads a bare name from a blessed
-  directory; `register <dir>` blesses one (and shadows shipped names). `load
+- **`use` vs `register`.** `use <name>` loads a bare name from a registered
+  directory; `register <dir>` adds one (and lets it shadow shipped names). `load
   <path>` runs a one-off file by path (adapters and layouts only).
 - **`show`.** Bare `show` is a human summary; `show <field>` prints one raw
   value, newline-terminated, safe for `$(…)`. `available` lists the catalog a
   `use` can pick from. Editing a color or segment option is free; the bar
   re-renders on the next `apply` (or `use`, which ends in one).
 
-## Testing
+## Development
 
-Tests use [bats-core](https://github.com/bats-core/bats-core):
-
-```shell
-bats test/
-```
+For the architecture, internal boundaries, design rationale, and testing strategy,
+see [DESIGN.md](DESIGN.md).
