@@ -415,29 +415,34 @@ belongs to a window, while problems belong to a session. No problems renders
 nothing, and setting a problem to `ok` clears it without requiring a message.
 
 ```shell
-session="$(tmux display-message -p '#{session_id}')"
+# Invoke the widget from a tmux format as: #(my-widget '#{session_id}')
+session="${1:?widget requires its tmux session id}"
 
 if ! command -v sensors >/dev/null 2>&1; then
-  airline problem set cpu warn "required program 'sensors' was not found" -t "$session"
+  airline problem set "$session" cpu warn "required program 'sensors' was not found"
   printf '?'
   exit 0
 fi
 
-airline problem clear cpu -t "$session"
+airline problem clear "$session" cpu
 ```
 
 Several widgets may report independently; clearing the worst problem naturally
-downgrades the aggregate to the next level. `problem show` lists every key,
-level, and message. `problem show <key>` returns that problem as a raw,
-tab-delimited `level<TAB>message` tuple. Background widgets should pass an
-explicit session target because “current session” may be ambiguous outside a
-pane.
+downgrades the aggregate to the next level. Mutations require their session as
+the first argument and never propagate through linked windows. Two sessions may
+encounter and clear the same underlying problem independently.
+
+Bare `problem show` lists problems from every session, grouped by canonical
+session id. `problem show <session>` narrows the listing, and `problem show
+<session> <key>` returns one problem as a raw, tab-delimited
+`level<TAB>message` tuple. Tmux status formats can supply the precise evaluation
+context as `#{session_id}`; callers do not need to infer it from `TMUX_PANE`.
 
 ## The `airline` CLI
 
 One entry point drives everything. Top-level verbs plus a handful of nouns, each
-with its own verbs. `-t` targets a window for status/health and a session for
-problem.
+with its own verbs. `-t` targets a window for status/health. Problem mutations
+instead take their owning session as a required first argument.
 
 ```
 airline init                 # initialize airline (normally called by airline.tmux)
@@ -451,7 +456,7 @@ airline layout   show [name|path] | available | use <name> | load <path> | regis
 airline adapter  show | available | use <name> | load <path> | register <dir>
 airline status   set <key> <level>    [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
 airline health   set <key> <ok|warn|fail> [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
-airline problem  set <key> <ok|warn|fail> [<message>] [-t <session>] | clear <key> [-t <session>] | show [<key>] [-t <session>]
+airline problem  set <session> <key> <ok|warn|fail> [<message>] | clear <session> <key> | show [<session> [<key>]]
 airline state    suspend | resume | toggle | show
 ```
 

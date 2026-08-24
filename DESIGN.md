@@ -203,9 +203,9 @@ airline status   set <key> <level> [--transient] [-t <window>]
 airline health   set <key> <ok|warn|fail> [--transient] [-t <window>]
                  clear <key> [-t <window>]
                  show [<key>] [-t <window>]
-airline problem  set <key> <ok|warn|fail> [<message>] [-t <session>]
-                 clear <key> [-t <session>]
-                 show [<key>] [-t <session>]
+airline problem  set <session> <key> <ok|warn|fail> [<message>]
+                 clear <session> <key>
+                 show [<session> [<key>]]
 
 airline palette  show [name|<element>] | available | use <name> | register <dir>
 airline segment  show [<slot>]
@@ -231,8 +231,9 @@ are public.
   also exposes its resolved path.
 - `adapter show` lists the active adapter set, one name per line. `available` is a
   separate catalog of what could be selected.
-- `-t` accepts a window target for status and health and a session target for
-  problem. A pane target is valid where tmux can resolve its owning window.
+- `-t` accepts a window target for status and health. A pane target is valid where
+  tmux can resolve its owning window. Problem mutations instead require a session
+  as their first positional argument; a bare problem show reads every session.
 - `state` is the active/suspended axis. Suspension derives a muted palette and traps
   the prefix; airline itself installs no key binding.
 
@@ -268,6 +269,18 @@ Collection rules:
 Health and problem share the condition ladder `ok < warn < fail`. `ok` or absence is
 normal and invisible; `warn` maps to `alert`; `fail` maps to `stress`. Health is
 window-scoped and may be transient. Problem is session-scoped and retains a message.
+Problems are encountered and cleared independently by each session; linked windows
+do not propagate or synchronize them. Airline canonicalizes the caller-supplied
+session and mutates only that scope.
+
+Dynamic collection operations run in owner-scoped transactions: status and health
+serialize by `(window, namespace)`, while problems serialize by `(session,
+namespace)`. The registry, contributor tuple, reduction, and projected badge
+therefore form one logical mutation even when background evaluations overlap.
+`tmux.sh` owns the transaction mechanism and cleanup; the API only declares the
+owner, namespace, and operation that must be atomic. Identical problem sets and
+absent clears skip both storage writes and redraws. Widgets may report their current
+capability on every evaluation so stale semantic observations converge.
 
 Status uses `active < result < attention`: ongoing work, a result to inspect, and a
 request for input. These map to `active`, `ok`, and `alert`. Status and health are
