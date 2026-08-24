@@ -146,6 +146,16 @@ current_window () { tmux display-message -p '#{window_id}'; }
 # session id. This keeps target grammar and current-context rules inside tmux.
 resolve_session () { tmux display-message -p -t "$1" '#{session_id}'; }
 
+# Resolve a SESSION target specifically. display-message accepts a pane target, so
+# append tmux's session/window separator and let the empty window component select
+# that session's current window. This prevents a problem command from accidentally
+# treating a pane/window target as its required session input.
+resolve_session_target () { tmux display-message -p -t "$1:" '#{session_id}'; }
+
+# Canonical ids for every live session, one per line. Used by cross-session reads;
+# mutations always resolve and touch exactly one caller-supplied session.
+list_sessions () { tmux list-sessions -F '#{session_id}'; }
+
 # The id ($n) of the session the caller is acting in. A process launched from a
 # pane receives TMUX_PANE from tmux, so give that native target back to tmux for an
 # unambiguous resolution. Commands without a pane retain tmux's normal current/
@@ -160,6 +170,12 @@ current_session () {
 # name, optionally indexed, e.g. "pane-focus-out[90]".
 hook_set   () { tmux set-hook -g  "$1" "$2"; }
 hook_unset () { tmux set-hook -gu "$1"; }
+
+# Server-coordinated advisory locks. A dynamic collection mutation spans several
+# tmux commands (registry + tuple + projection), so callers use these to keep one
+# logical transaction from interleaving with another.
+lock_acquire () { tmux wait-for -L "$1"; }
+lock_release () { tmux wait-for -U "$1"; }
 
 # Key bindings — a primitive for callers; airline itself binds no keys (a user wires
 # their own, e.g. `bind F12 run "#{@airline-cli} state toggle"`). <table> is a key-table.
