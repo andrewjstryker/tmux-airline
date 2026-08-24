@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# A named HTTP composition with useful local defaults and optional replacements.
+
+airline_runner_metadata () {   # <declare-function>
+  local declare="$1"
+  "$declare" summary 'Monitor one or more HTTP endpoints'
+  "$declare" usage '[<endpoint>...]'
+}
+
+airline_runner_configure () {   # <configure-function> [<endpoint>...]
+  local configure="$1"; shift
+  local -a endpoints=("$@")
+  if (( ${#endpoints[@]} == 0 )); then
+    endpoints=(
+      http://localhost/health/live
+      http://localhost/health/ready
+    )
+  fi
+  "$configure" classify basic
+  "$configure" probe http "${endpoints[@]}"
+}

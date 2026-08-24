@@ -13,13 +13,13 @@
 # Dynamic nouns (status, health, problem) are live and scriptable: set + re-project a
 # badge + redraw. Static config nouns (palette, segment) are read-only at the CLI;
 # runner adds process-lifecycle orchestration over those existing signals. Users
-# provide global defaults through `.tmux.conf`; palette/layout/runner selections
-# create session overrides. We read the effective values and `apply` bakes rendered
-# configuration while runner updates remain live.
+# provide global defaults through `.tmux.conf`; palette/layout selections create
+# session overrides. We read the effective values and `apply` bakes rendered
+# configuration while ephemeral runner updates remain live.
 
 # shellcheck shell=bash
 
-if ! declare -F runner_impl_load >/dev/null; then
+if ! declare -F runner_classifier_load >/dev/null; then
   printf 'api.sh: load runner.sh (and its layers) first\n' >&2
   return 1 2>/dev/null || exit 1
 fi
@@ -102,11 +102,10 @@ _init () {   # <session>
   _path_register_self "$session" palette "$AIRLINE_DIR/palettes"
   _path_register_self "$session" adapter "$AIRLINE_DIR/adapters"
   _path_register_self "$session" layout  "$AIRLINE_DIR/layouts"
+  _path_register_self "$session" classifier "$AIRLINE_DIR/classifiers"
+  _path_register_self "$session" filter "$AIRLINE_DIR/filters"
+  _path_register_self "$session" probe "$AIRLINE_DIR/probes"
   _path_register_self "$session" runner  "$AIRLINE_DIR/runners"
-
-  # Runner is an independent session selection. Seed it whenever absent so an
-  # upgrade from a pre-runner release is complete even if defaults-done already exists.
-  [[ -n "$(prv_get_session "$session" runner)" ]] || _runner_use "$session" basic
 
   # First run only (sentinel): apply the default of each axis the user hasn't set —
   # the default PALETTE if no palette is present, the default LAYOUT (which brings its
@@ -147,20 +146,19 @@ _show_config () {   # <session>
   local session="$1"
   _show_row cli   "$(pub_get cli)"              # the one public (bootstrap) handle
   _show_row state "$(_state_word "$session")"  # lifecycle (active | suspended)
-  printf '\npaths:\n'                           # where `use` resolves, priority order
+  printf '\npaths:\n'                           # catalog resolution, priority order
   local k
-  for k in palette adapter layout runner; do
+  for k in palette adapter layout classifier filter probe runner; do
     _show_row "$k" "$(coll_members_session "$session" "$(_path_ns "$k")")"
   done
   printf '\npalette:\n'; _palette_show "$session"
   printf '\nsegment:\n'; _static_show "$session" "segment-" _segment_slot_valid AIRLINE_SEGMENT_SLOTS
   printf '\nadapter:\n'; _adapter_show "$session"
   printf '\nlayout:\n';  _layout_show "$session"
-  printf '\nrunner:\n';  _runner_show "$session"
 }
 
 #-----------------------------------------------------------------------------#
-# Search path — the `use` mechanism (notes.md §use)
+# Search paths — registered catalogs and the `use` mechanism
 #-----------------------------------------------------------------------------#
 # Each config kind (palette, layout/segment, adapter) has an ordered search PATH of
 # directories, stored via collections.sh: the kind's registry list IS the path, in
@@ -190,7 +188,7 @@ _path_resolve () {   # <session> <kind> <name>
   done
 }
 
-# List every bare name resolvable on the kind's path — the catalog `use` chooses from.
+# List every bare name resolvable on the kind's path — the catalog selection surface.
 # One name per line, deduped in path order (a shadowing user dir collapses with the
 # shipped name it overrides). The read-side counterpart to _path_resolve; the shared
 # core of every noun's `available` verb (palette / adapter / layout).
@@ -383,50 +381,66 @@ _layout_show () {   # <session> [name|path]
 }
 
 #-----------------------------------------------------------------------------#
-# Runner — common process lifecycle + loadable interpretation
+# Runner catalogs and ephemeral composition of classifier, filter, and probe elements
 #-----------------------------------------------------------------------------#
 
-# Resolve a runner handle exactly like a layout handle: bare selections remain
-# relocatable on the registered path; explicit loads are recorded as absolute paths.
-_runner_file () {   # <session> <handle> → file (empty if unresolved)
-  local session="$1" handle="$2"
-  if [[ "$handle" == */* ]]; then [[ -f "$handle" ]] && printf '%s' "$handle"
-  else _path_resolve "$session" runner "$handle"; fi
+_runner_element_file () {   # <session> <kind> <bare-name>
+  local session="$1" kind="$2" name="$3"
+  [[ "$kind" == classify ]] && kind=classifier
+  _path_resolve "$session" "$kind" "$name"
 }
 
-_runner_select () {   # <session> <handle>
-  local session="$1" handle="$2" file
-  file="$(_runner_file "$session" "$handle")"
-  [[ -n "$file" ]] || die "runner: '$handle' not found"
-  runner_impl_valid "$file" || die "runner: '$handle' does not define a valid classifier"
-  prv_set_session "$session" runner "$handle"
-}
-
-_runner_use () {   # <session> <name>
-  local session="$1" name="${2:-}"
-  [[ -n "$name" ]] || die "runner use: need <name>"
-  [[ "$name" != */* ]] || die "runner use: '$name' — bare name (or 'runner load <path>')"
-  _runner_select "$session" "$name"
-}
-
-_runner_load () {   # <session> <path>
-  local session="$1" path="${2:-}" abs
-  [[ -n "$path" ]] || die "runner load: need <path>"
-  abs="$(_abspath "$path")"
-  [[ -f "$abs" ]] || die "runner load: no such file: $path"
-  _runner_select "$session" "$abs"
-}
-
-_runner_show () {   # <session> [name|path]
-  local session="$1" x="${2:-}" handle
-  handle="$(prv_get_session "$session" runner)"
-  case "$x" in
-    name) printf '%s\n' "$handle" ;;
-    path) printf '%s\n' "$(_runner_file "$session" "$handle")" ;;
-    "")   _show_row name "$handle"
-          _show_row path "$(_runner_file "$session" "$handle")" ;;
-    *)    die "runner show: unknown field '$x' (name | path)" ;;
+_runner_element_show () {   # <session> <classifier|filter|probe> <name>
+  local session="$1" kind="$2" name="${3:-}" file summary usage="" interval=""
+  [[ -n "$name" ]] || die "$kind show: need <name>"
+  [[ "$name" != */* ]] || die "$kind show: need a bare name"
+  file="$(_path_resolve "$session" "$kind" "$name")"
+  [[ -n "$file" ]] || die "$kind show: '$name' not found on the $kind path"
+  case "$kind" in
+    classifier)
+      runner_classifier_load "$file" || die "classifier show: '$name' is invalid"
+      summary="$AIRLINE_CLASSIFIER_SUMMARY"
+      ;;
+    filter)
+      runner_filter_load "$file" || die "filter show: '$name' is invalid"
+      summary="$AIRLINE_FILTER_SUMMARY"
+      ;;
+    probe)
+      runner_probe_load "$file" || die "probe show: '$name' is invalid"
+      summary="$AIRLINE_PROBE_SUMMARY"
+      usage="$AIRLINE_PROBE_USAGE"
+      interval="${AIRLINE_RUNNER_PROBE_INTERVAL:-5} seconds"
+      ;;
   esac
+  _show_row name "$name"
+  _show_row summary "$summary"
+  [[ "$kind" == probe ]] && _show_row arguments "${usage:-none}"
+  [[ "$kind" == probe ]] && _show_row interval "$interval"
+  _show_row path "$file"
+}
+
+_runner_definition_show () {   # <session> <name> [<runner-arg>...]
+  local session="$1" name="${2:-}" file probe_args=""; shift 2 || true
+  [[ -n "$name" ]] || die "runner show: need <name>"
+  [[ "$name" != */* ]] || die "runner show: need a bare name"
+  file="$(_path_resolve "$session" runner "$name")"
+  [[ -n "$file" ]] || die "runner show: '$name' not found on the runner path"
+  runner_definition_load "$file" || die "runner show: '$name' is invalid"
+  runner_definition_metadata || die "runner show: '$name' has invalid metadata"
+  runner_definition_configure "$@" || die "runner show: '$name' produced an invalid configuration"
+  if (( ${#AIRLINE_RUNNER_CONFIG_PROBE_ARGS[@]} )); then
+    printf -v probe_args '%q ' "${AIRLINE_RUNNER_CONFIG_PROBE_ARGS[@]}"
+    probe_args="${probe_args% }"
+  fi
+  _show_row name "$name"
+  _show_row summary "$AIRLINE_RUNNER_SUMMARY"
+  _show_row arguments "${AIRLINE_RUNNER_USAGE:-none}"
+  _show_row classifier "${AIRLINE_RUNNER_CONFIG_CLASSIFIER:-basic}"
+  _show_row filter "${AIRLINE_RUNNER_CONFIG_FILTER:-none}"
+  [[ -n "$AIRLINE_RUNNER_CONFIG_FILTER_MERGE" ]] && _show_row filter-input merged-stderr
+  _show_row probe "${AIRLINE_RUNNER_CONFIG_PROBE:-none}"
+  [[ -n "$probe_args" ]] && _show_row probe-args "$probe_args"
+  _show_row path "$file"
 }
 
 _runner_problem () {   # <session> <key> <ok|warn|fail> [<message>]
@@ -439,10 +453,14 @@ _runner_problem () {   # <session> <key> <ok|warn|fail> [<message>]
 # collide here; their tmux contributors are pane-qualified below.
 AIRLINE_RUNNER_SESSION=""
 AIRLINE_RUNNER_WINDOW=""
-AIRLINE_RUNNER_KEY=""
+AIRLINE_RUNNER_FILTER_KEY=""
 AIRLINE_RUNNER_FILTER_PROBLEM=""
+AIRLINE_RUNNER_FILTER_LAST=""
+AIRLINE_RUNNER_PROBE_KEY=""
+AIRLINE_RUNNER_PROBE_PROBLEM=""
+AIRLINE_RUNNER_PROBE_LAST=""
 
-_runner_problem_key () {   # <handle> <load|classify|filter>
+_runner_problem_key () {   # <element> <load|classify|filter|probe>
   local name="${1##*/}"
   name="${name//[^a-zA-Z0-9_-]/-}"
   printf 'airline-runner-%s-%s' "$name" "$2"
@@ -456,8 +474,29 @@ _runner_filter_report () {   # <ok|warn|fail>
     return 1
   fi
   _runner_problem "$AIRLINE_RUNNER_SESSION" "$AIRLINE_RUNNER_FILTER_PROBLEM" ok ""
+  [[ "$condition" == "$AIRLINE_RUNNER_FILTER_LAST" ]] && return 0
+  AIRLINE_RUNNER_FILTER_LAST="$condition"
   _signal_set health _condition_level_valid ok \
-    "$AIRLINE_RUNNER_KEY" "$condition" -t "$AIRLINE_RUNNER_WINDOW"
+    "$AIRLINE_RUNNER_FILTER_KEY" "$condition" -t "$AIRLINE_RUNNER_WINDOW"
+}
+
+_runner_probe_report () {   # <ok|warn|fail>
+  local condition="${1:-}"
+  if ! _condition_level_valid "$condition"; then
+    _runner_problem "$AIRLINE_RUNNER_SESSION" "$AIRLINE_RUNNER_PROBE_PROBLEM" fail \
+      "runner probe emitted invalid condition '${condition}'"
+    return 1
+  fi
+  _runner_problem "$AIRLINE_RUNNER_SESSION" "$AIRLINE_RUNNER_PROBE_PROBLEM" ok ""
+  [[ "$condition" == "$AIRLINE_RUNNER_PROBE_LAST" ]] && return 0
+  AIRLINE_RUNNER_PROBE_LAST="$condition"
+  _signal_set health _condition_level_valid ok \
+    "$AIRLINE_RUNNER_PROBE_KEY" "$condition" -t "$AIRLINE_RUNNER_WINDOW"
+}
+
+_runner_probe_error () {
+  _runner_problem "$AIRLINE_RUNNER_SESSION" "$AIRLINE_RUNNER_PROBE_PROBLEM" fail \
+    "runner probe failed or emitted an invalid condition"
 }
 
 _runner_finish () {   # <condition> <window> <key>
@@ -474,112 +513,342 @@ _runner_finish () {   # <condition> <window> <key>
   esac
 }
 
+# Parsed runner specification. The CLI composes at most one element of each type for
+# one operation. Probe arguments end at the next recognized runner option, at `--`
+# for run, or at argv exhaustion for watch.
+AIRLINE_RUNNER_PLACEMENT=here
+AIRLINE_RUNNER_CLASSIFIER=""
+AIRLINE_RUNNER_FILTER=""
+AIRLINE_RUNNER_FILTER_MERGE=""
+AIRLINE_RUNNER_PROBE=""
+AIRLINE_RUNNER_PROBE_ARGS=()
+AIRLINE_RUNNER_COMMAND=()
+AIRLINE_RUNNER_INVOCATION_ARGV=()
+
+# A leading bare name selects a catalogued composition. Its arguments are passed to
+# the definition's configure function; run still uses `--` to delimit the command.
+# Leading placement options are invocation concerns and never enter the definition.
+# An otherwise option-leading invocation is the existing ad-hoc form.
+_runner_expand_named () {   # <session> <run|watch> [invocation...]
+  local session="$1" mode="$2" name file boundary=""; shift 2
+  local -a placement=() extra=() command=()
+  AIRLINE_RUNNER_INVOCATION_ARGV=()
+
+  while [[ "${1:-}" == --here || "${1:-}" == --pane || "${1:-}" == --window ]]; do
+    placement+=("$1"); shift
+  done
+
+  if (( $# == 0 )) || [[ "$1" == --* ]]; then
+    AIRLINE_RUNNER_INVOCATION_ARGV=("${placement[@]}" "$@")
+    return 0
+  fi
+
+  name="$1"; shift
+  [[ "$name" != */* ]] || die "runner $mode: runner must be a bare name"
+  file="$(_path_resolve "$session" runner "$name")"
+  [[ -n "$file" ]] || die "runner $mode: runner '$name' not found"
+  runner_definition_load "$file" || die "runner $mode: runner '$name' is invalid"
+  runner_definition_metadata || die "runner $mode: runner '$name' has invalid metadata"
+
+  if [[ "$mode" == run ]]; then
+    while (( $# )); do
+      if [[ "$1" == -- ]]; then
+        boundary=1; shift; command=("$@"); break
+      fi
+      extra+=("$1"); shift
+    done
+    [[ -n "$boundary" && ${#command[@]} -gt 0 ]] || \
+      die "runner run: named runner '$name' needs -- <command>"
+    runner_definition_configure "${extra[@]}" || \
+      die "runner run: runner '$name' produced an invalid configuration"
+    runner_definition_project run
+    AIRLINE_RUNNER_INVOCATION_ARGV=(
+      "${placement[@]}" "${AIRLINE_RUNNER_DEFINITION_ARGV[@]}" -- "${command[@]}"
+    )
+  else
+    runner_definition_configure "$@" || \
+      die "runner watch: runner '$name' produced an invalid configuration"
+    if ! runner_definition_project watch; then
+      die "runner watch: runner '$name' has no probe"
+    fi
+    AIRLINE_RUNNER_INVOCATION_ARGV=(
+      "${placement[@]}" "${AIRLINE_RUNNER_DEFINITION_ARGV[@]}"
+    )
+  fi
+}
+
+_runner_spec_token () {
+  case "${1:-}" in
+    --here|--pane|--window|--classify|--filter|--probe|--) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+_runner_parse () {   # <run|watch> [spec...]
+  local mode="$1"; shift
+  AIRLINE_RUNNER_PLACEMENT=here
+  AIRLINE_RUNNER_CLASSIFIER=""
+  AIRLINE_RUNNER_FILTER=""
+  AIRLINE_RUNNER_FILTER_MERGE=""
+  AIRLINE_RUNNER_PROBE=""
+  AIRLINE_RUNNER_PROBE_ARGS=()
+  AIRLINE_RUNNER_COMMAND=()
+
+  while (( $# )); do
+    case "$1" in
+      --here)   AIRLINE_RUNNER_PLACEMENT=here; shift ;;
+      --pane)   AIRLINE_RUNNER_PLACEMENT=pane; shift ;;
+      --window) AIRLINE_RUNNER_PLACEMENT=window; shift ;;
+      --classify)
+        [[ "$mode" == run ]] || die "runner watch: --classify is not applicable"
+        [[ -z "$AIRLINE_RUNNER_CLASSIFIER" ]] || die "runner run: classifier already specified"
+        [[ $# -ge 2 && -n "$2" ]] || die "runner run: --classify requires <name>"
+        AIRLINE_RUNNER_CLASSIFIER="$2"; shift 2 ;;
+      --filter)
+        [[ "$mode" == run ]] || die "runner watch: --filter is not applicable"
+        [[ -z "$AIRLINE_RUNNER_FILTER" ]] || die "runner run: filter already specified"
+        [[ $# -ge 2 && -n "$2" ]] || die "runner run: --filter requires <name>"
+        AIRLINE_RUNNER_FILTER="$2"; shift 2
+        if [[ "${1:-}" == --merge-stderr ]]; then AIRLINE_RUNNER_FILTER_MERGE=1; shift; fi
+        ;;
+      --probe)
+        [[ -z "$AIRLINE_RUNNER_PROBE" ]] || die "runner $mode: probe already specified"
+        [[ $# -ge 2 && -n "$2" ]] || die "runner $mode: --probe requires <name>"
+        AIRLINE_RUNNER_PROBE="$2"; shift 2
+        while (( $# )) && ! _runner_spec_token "$1"; do
+          AIRLINE_RUNNER_PROBE_ARGS+=("$1"); shift
+        done
+        ;;
+      --)
+        [[ "$mode" == run ]] || die "runner watch: unexpected -- (watch ends at end of arguments)"
+        shift; AIRLINE_RUNNER_COMMAND=("$@"); break ;;
+      --merge-stderr) die "runner $mode: --merge-stderr must immediately follow --filter <name>" ;;
+      *) die "runner $mode: unknown option '$1'" ;;
+    esac
+  done
+
+  if [[ "$mode" == run ]]; then
+    [[ ${#AIRLINE_RUNNER_COMMAND[@]} -gt 0 ]] || die "runner run: need -- <command>"
+    [[ -n "$AIRLINE_RUNNER_CLASSIFIER" ]] || AIRLINE_RUNNER_CLASSIFIER=basic
+  else
+    [[ -n "$AIRLINE_RUNNER_PROBE" ]] || die "runner watch: need --probe <name> [<arg>...]"
+  fi
+}
+
+_runner_validate_spec () {   # <session> <run|watch>
+  local session="$1" mode="$2" file
+  if [[ "$mode" == run ]]; then
+    file="$(_runner_element_file "$session" classify "$AIRLINE_RUNNER_CLASSIFIER")" || \
+      die "runner run: classifier '$AIRLINE_RUNNER_CLASSIFIER' not found"
+    runner_classifier_valid "$file" || die "runner run: classifier '$AIRLINE_RUNNER_CLASSIFIER' is invalid"
+    if [[ -n "$AIRLINE_RUNNER_FILTER" ]]; then
+      file="$(_runner_element_file "$session" filter "$AIRLINE_RUNNER_FILTER")" || \
+        die "runner run: filter '$AIRLINE_RUNNER_FILTER' not found"
+      runner_filter_valid "$file" || die "runner run: filter '$AIRLINE_RUNNER_FILTER' is invalid"
+    fi
+  fi
+  if [[ -n "$AIRLINE_RUNNER_PROBE" ]]; then
+    file="$(_runner_element_file "$session" probe "$AIRLINE_RUNNER_PROBE")" || \
+      die "runner $mode: probe '$AIRLINE_RUNNER_PROBE' not found"
+    runner_probe_valid "$file" || die "runner $mode: probe '$AIRLINE_RUNNER_PROBE' is invalid"
+  fi
+}
+
+AIRLINE_RUNNER_SPEC_ARGV=()
+_runner_normalize_spec () {   # <run|watch>
+  local mode="$1"
+  AIRLINE_RUNNER_SPEC_ARGV=()
+  [[ "$mode" == run ]] && AIRLINE_RUNNER_SPEC_ARGV+=(--classify "$AIRLINE_RUNNER_CLASSIFIER")
+  if [[ -n "$AIRLINE_RUNNER_FILTER" ]]; then
+    AIRLINE_RUNNER_SPEC_ARGV+=(--filter "$AIRLINE_RUNNER_FILTER")
+    [[ -n "$AIRLINE_RUNNER_FILTER_MERGE" ]] && AIRLINE_RUNNER_SPEC_ARGV+=(--merge-stderr)
+  fi
+  if [[ -n "$AIRLINE_RUNNER_PROBE" ]]; then
+    AIRLINE_RUNNER_SPEC_ARGV+=(--probe "$AIRLINE_RUNNER_PROBE" "${AIRLINE_RUNNER_PROBE_ARGS[@]}")
+  fi
+  [[ "$mode" == run ]] && AIRLINE_RUNNER_SPEC_ARGV+=(-- "${AIRLINE_RUNNER_COMMAND[@]}")
+}
+
 # Run one command in the calling pane. The process is started as a child so airline
 # can observe it; explicit stdin inheritance preserves current-pane interaction and
-# stdout/stderr remain connected directly to the pane. A live filter obtains its own
-# evidence and reports normalized state through the callback—it never consumes the
-# command's terminal stream.
-_runner_execute () {   # <session> <handle> <retain:0|1> -- <command> [<arg>...]
-  local session="$1" handle="$2" retain="$3" file pane win key load_problem classify_problem filter_problem
-  local child_pid filter_pid="" rc=0 signal="" condition
-  shift 3
-  [[ "${1:-}" == -- ]] || die "runner: internal command boundary missing"
-  shift
-  [[ $# -gt 0 ]] || die "runner run: need <command>"
+# stdout/stderr remain visible in the pane. A filter gets a tee'd copy of its declared
+# stream; a probe performs sequential periodic observations without overlapping.
+_runner_execute () {   # <session> <retain:0|1>; uses parsed run specification
+  local session="$1" retain="$2" file pane win key filter_key probe_key
+  local load_problem classify_problem filter_problem probe_problem streams=""
+  local child_pid filter_pid="" probe_pid="" rc=0 signal="" condition
 
   pane="$(current_pane)"
   win="$(resolve_window "$pane")"
   key="runner-${pane#%}"
-  load_problem="$(_runner_problem_key "$handle" load)"
-  classify_problem="$(_runner_problem_key "$handle" classify)"
-  filter_problem="$(_runner_problem_key "$handle" filter)"
+  filter_key="$key-filter"
+  probe_key="$key-probe"
+  load_problem="$(_runner_problem_key "$AIRLINE_RUNNER_CLASSIFIER" load)"
+  classify_problem="$(_runner_problem_key "$AIRLINE_RUNNER_CLASSIFIER" classify)"
+  filter_problem="$(_runner_problem_key "$AIRLINE_RUNNER_FILTER" filter)"
+  probe_problem="$(_runner_problem_key "$AIRLINE_RUNNER_PROBE" probe)"
   [[ "$retain" == 1 ]] && runner_retain_pane "$pane"
 
-  file="$(_runner_file "$session" "$handle")"
-  if [[ -z "$file" ]] || ! runner_impl_load "$file"; then
-    printf 'airline: runner %q is unavailable or invalid\n' "$handle" >&2
-    _runner_problem "$session" "$load_problem" fail "runner '$handle' is unavailable or invalid"
-    return 2
+  file="$(_runner_element_file "$session" classify "$AIRLINE_RUNNER_CLASSIFIER")"
+  runner_classifier_load "$file" || return 2
+  if [[ -n "$AIRLINE_RUNNER_FILTER" ]]; then
+    file="$(_runner_element_file "$session" filter "$AIRLINE_RUNNER_FILTER")"
+    runner_filter_load "$file" || return 2
+  fi
+  if [[ -n "$AIRLINE_RUNNER_PROBE" ]]; then
+    file="$(_runner_element_file "$session" probe "$AIRLINE_RUNNER_PROBE")"
+    runner_probe_load "$file" || return 2
   fi
   _runner_problem "$session" "$load_problem" ok ""
 
   _signal_set health _condition_level_valid ok "$key" ok -t "$win"
+  _signal_set health _condition_level_valid ok "$filter_key" ok -t "$win"
+  _signal_set health _condition_level_valid ok "$probe_key" ok -t "$win"
   _signal_set status _status_level_valid "" "$key" active -t "$win"
 
-  # The wrapper remains the foreground pane process. Its child explicitly inherits
-  # stdin and shares the terminal; running it asynchronously gives a live filter the
-  # PID without routing command output through a pipe.
-  "$@" <&0 &
+  if [[ -n "$AIRLINE_RUNNER_FILTER" ]]; then
+    streams=stdout
+    if ! runner_stream_prepare "$streams"; then
+      runner_stream_cleanup
+      _runner_problem "$session" "$filter_problem" fail "runner filter '$AIRLINE_RUNNER_FILTER' could not prepare"
+      return 2
+    fi
+    trap runner_stream_cleanup EXIT
+  fi
+
+  # Launch before opening the tee readers: a selected FIFO blocks the child briefly,
+  # allowing airline to obtain its PID for the filter contract.
+  case "$streams:$AIRLINE_RUNNER_FILTER_MERGE" in
+    stdout:1) "${AIRLINE_RUNNER_COMMAND[@]}" <&0 > "$AIRLINE_RUNNER_STREAM_COMMAND" 2>&1 & ;;
+    stdout:)  "${AIRLINE_RUNNER_COMMAND[@]}" <&0 > "$AIRLINE_RUNNER_STREAM_COMMAND" & ;;
+    :)        "${AIRLINE_RUNNER_COMMAND[@]}" <&0 & ;;
+  esac
   child_pid=$!
 
   AIRLINE_RUNNER_SESSION="$session"
   AIRLINE_RUNNER_WINDOW="$win"
-  AIRLINE_RUNNER_KEY="$key"
+  AIRLINE_RUNNER_FILTER_KEY="$filter_key"
   AIRLINE_RUNNER_FILTER_PROBLEM="$filter_problem"
-  if runner_impl_has_filter; then
-    runner_impl_filter_start "$child_pid" _runner_filter_report "$@"
+  AIRLINE_RUNNER_FILTER_LAST=""
+  AIRLINE_RUNNER_PROBE_KEY="$probe_key"
+  AIRLINE_RUNNER_PROBE_PROBLEM="$probe_problem"
+  AIRLINE_RUNNER_PROBE_LAST=""
+  if [[ -n "$AIRLINE_RUNNER_FILTER" ]]; then
+    runner_filter_start "$child_pid" _runner_filter_report "$AIRLINE_RUNNER_STREAM_INPUT"
     filter_pid="$AIRLINE_RUNNER_FILTER_PID"
+    runner_stream_start
+  fi
+  if [[ -n "$AIRLINE_RUNNER_PROBE" ]]; then
+    runner_probe_start "$child_pid" _runner_probe_report _runner_probe_error \
+      "${AIRLINE_RUNNER_PROBE_ARGS[@]}"
+    probe_pid="$AIRLINE_RUNNER_PROBE_PID"
   fi
 
   wait "$child_pid" || rc=$?
-  if ! runner_impl_filter_stop "$filter_pid"; then
-    _runner_problem "$session" "$filter_problem" fail "runner '$handle' filter failed"
+  runner_probe_stop "$probe_pid"
+  if [[ -n "$filter_pid" ]]; then
+    runner_stream_wait || true
   fi
+  if ! runner_filter_wait "$filter_pid"; then
+    _runner_problem "$session" "$filter_problem" fail "runner filter '$AIRLINE_RUNNER_FILTER' failed"
+  fi
+  if [[ -n "$streams" ]]; then
+    runner_stream_cleanup
+    trap - EXIT
+  fi
+  _signal_set health _condition_level_valid ok "$filter_key" ok -t "$win"
+  _signal_set health _condition_level_valid ok "$probe_key" ok -t "$win"
   (( rc > 128 )) && signal="$((rc - 128))"
 
-  if condition="$(runner_impl_classify "$rc" "$signal")"; then
+  if condition="$(runner_classifier_run "$rc" "$signal")"; then
     _runner_problem "$session" "$classify_problem" ok ""
   else
     condition=fail
     _runner_problem "$session" "$classify_problem" fail \
-      "runner '$handle' classifier failed or emitted an invalid condition"
+      "runner classifier '$AIRLINE_RUNNER_CLASSIFIER' failed or emitted an invalid condition"
   fi
   _runner_finish "$condition" "$win" "$key"
   return "$rc"
 }
 
-_runner_run () {   # <session> [--here|--pane|--window] [--with <name>] -- <command>...
-  local session="$1" placement=here handle="" boundary="" pane cwd file spawned; shift
-  while (( $# )); do
-    case "$1" in
-      --here)   placement=here; shift ;;
-      --pane)   placement=pane; shift ;;
-      --window) placement=window; shift ;;
-      --with)
-        [[ $# -ge 2 && -n "$2" ]] || die "runner run: --with requires <name>"
-        [[ "$2" != */* ]] || die "runner run: --with accepts a bare name"
-        handle="$2"; shift 2 ;;
-      --) boundary=1; shift; break ;;
-      *) die "runner run: unknown option '$1' (command must follow --)" ;;
-    esac
-  done
-  [[ -n "$boundary" && $# -gt 0 ]] || die "runner run: need -- <command>"
-  [[ -n "$handle" ]] || handle="$(prv_get_session "$session" runner)"
-  [[ -n "$handle" ]] || die "runner run: no runner selected"
-  file="$(_runner_file "$session" "$handle")"
-  if [[ -z "$file" ]] || ! runner_impl_valid "$file"; then
-    _runner_problem "$session" "$(_runner_problem_key "$handle" load)" fail \
-      "runner '$handle' is unavailable or invalid"
-    die "runner run: '$handle' is unavailable or invalid"
-  fi
+_runner_invoke () {   # <session> <run|watch> [spec...]
+  local session="$1" mode="$2" pane cwd spawned; shift 2
+  _runner_expand_named "$session" "$mode" "$@"
+  _runner_parse "$mode" "${AIRLINE_RUNNER_INVOCATION_ARGV[@]}"
+  _runner_validate_spec "$session" "$mode"
+  _runner_normalize_spec "$mode"
 
-  case "$placement" in
-    here) _runner_execute "$session" "$handle" 0 -- "$@" ;;
+  case "$AIRLINE_RUNNER_PLACEMENT" in
+    here)
+      if [[ "$mode" == run ]]; then _runner_execute "$session" 0
+      else _runner_watch_execute "$session" 0; fi
+      ;;
     pane|window)
       pane="$(current_pane)"; cwd="$(current_path)"
-      if [[ "$placement" == pane ]]; then
+      if [[ "$AIRLINE_RUNNER_PLACEMENT" == pane ]]; then
         spawned="$(runner_open_pane "$pane" "$cwd" env \
           "AIRLINE_DIR=$AIRLINE_DIR" "AIRLINE_TMUX=${AIRLINE_TMUX:-tmux}" \
-          "$AIRLINE_DIR/airline" _run "$handle" -- "$@")"
+          "$AIRLINE_DIR/airline" "_$mode" "${AIRLINE_RUNNER_SPEC_ARGV[@]}")"
       else
         spawned="$(runner_open_window "$session" "$cwd" env \
           "AIRLINE_DIR=$AIRLINE_DIR" "AIRLINE_TMUX=${AIRLINE_TMUX:-tmux}" \
-          "$AIRLINE_DIR/airline" _run "$handle" -- "$@")"
+          "$AIRLINE_DIR/airline" "_$mode" "${AIRLINE_RUNNER_SPEC_ARGV[@]}")"
       fi
+      # Arm retention from both sides of the spawn boundary. The child does it
+      # before validation; the parent closes the scheduler race before a very
+      # short-lived child can be reaped under load.
       runner_retain_pane "$spawned"
       printf '%s\n' "$spawned"
       ;;
   esac
+}
+
+# Watch external state without manufacturing a placeholder command.
+_runner_watch_execute () {   # <session> <retain:0|1>; uses parsed watch specification
+  local session="$1" retain="$2" file pane win key probe_key probe_problem
+  local interval watch_pid="$BASHPID" watch_rc=0 sleep_pid=""
+
+  pane="$(current_pane)"
+  win="$(resolve_window "$pane")"
+  key="runner-${pane#%}-watch"
+  probe_key="$key-probe"
+  probe_problem="$(_runner_problem_key "$AIRLINE_RUNNER_PROBE" probe)"
+  [[ "$retain" == 1 ]] && runner_retain_pane "$pane"
+
+  file="$(_runner_element_file "$session" probe "$AIRLINE_RUNNER_PROBE")"
+  runner_probe_load "$file" || return 2
+  _runner_problem "$session" "$(_runner_problem_key "$AIRLINE_RUNNER_PROBE" load)" ok ""
+
+  AIRLINE_RUNNER_SESSION="$session"
+  AIRLINE_RUNNER_WINDOW="$win"
+  AIRLINE_RUNNER_PROBE_KEY="$probe_key"
+  AIRLINE_RUNNER_PROBE_PROBLEM="$probe_problem"
+  AIRLINE_RUNNER_PROBE_LAST=""
+  interval="${AIRLINE_RUNNER_PROBE_INTERVAL:-5}"
+
+  _signal_set health _condition_level_valid ok "$probe_key" ok -t "$win"
+  _signal_set status _status_level_valid "" "$key" active -t "$win"
+
+  trap 'watch_rc=130; [[ -n "$sleep_pid" ]] && kill "$sleep_pid" 2>/dev/null || true' INT
+  trap 'watch_rc=143; [[ -n "$sleep_pid" ]] && kill "$sleep_pid" 2>/dev/null || true' TERM
+  trap 'watch_rc=129; [[ -n "$sleep_pid" ]] && kill "$sleep_pid" 2>/dev/null || true' HUP
+  while (( watch_rc == 0 )); do
+    if runner_probe_once "$watch_pid" "${AIRLINE_RUNNER_PROBE_ARGS[@]}"; then
+      _runner_probe_report "$AIRLINE_RUNNER_PROBE_CONDITION"
+    else
+      _runner_probe_error
+    fi
+    (( watch_rc == 0 )) || break
+    sleep "$interval" &
+    sleep_pid=$!
+    wait "$sleep_pid" 2>/dev/null || true
+    sleep_pid=""
+  done
+  trap - INT TERM HUP
+
+  _signal_clear health "$probe_key" -t "$win"
+  _signal_clear status "$key" -t "$win"
+  return "$watch_rc"
 }
 
 # The active/suspended state. `suspend` mutes the palette (the derived flat look, via
@@ -953,19 +1222,38 @@ api_layout_show () { local s; s="$(_require_current_session)"; _layout_show "$s"
 api_layout_available () { local s; s="$(_require_current_session)"; _path_available "$s" layout; }
 api_layout_register () { local s; s="$(_require_current_session)"; _register "$s" layout "$@"; }
 
-api_runner_use () { local s; s="$(_require_current_session)"; _runner_use "$s" "$@"; }
-api_runner_load () { local s; s="$(_require_current_session)"; _runner_load "$s" "$@"; }
-api_runner_show () { local s; s="$(_require_current_session)"; _runner_show "$s" "$@"; }
+api_classifier_show () { local s; s="$(_require_current_session)"; _runner_element_show "$s" classifier "$@"; }
+api_classifier_available () { local s; s="$(_require_current_session)"; _path_available "$s" classifier; }
+api_classifier_register () { local s; s="$(_require_current_session)"; _register "$s" classifier "$@"; }
+api_filter_show () { local s; s="$(_require_current_session)"; _runner_element_show "$s" filter "$@"; }
+api_filter_available () { local s; s="$(_require_current_session)"; _path_available "$s" filter; }
+api_filter_register () { local s; s="$(_require_current_session)"; _register "$s" filter "$@"; }
+api_probe_show () { local s; s="$(_require_current_session)"; _runner_element_show "$s" probe "$@"; }
+api_probe_available () { local s; s="$(_require_current_session)"; _path_available "$s" probe; }
+api_probe_register () { local s; s="$(_require_current_session)"; _register "$s" probe "$@"; }
+
+api_runner_show () { local s; s="$(_require_current_session)"; _runner_definition_show "$s" "$@"; }
 api_runner_available () { local s; s="$(_require_current_session)"; _path_available "$s" runner; }
 api_runner_register () { local s; s="$(_require_current_session)"; _register "$s" runner "$@"; }
-api_runner_run () { local s; s="$(_require_current_session)"; _runner_run "$s" "$@"; }
+api_runner_run () { local s; s="$(_require_current_session)"; _runner_invoke "$s" run "$@"; }
+api_runner_watch () { local s; s="$(_require_current_session)"; _runner_invoke "$s" watch "$@"; }
 
-api_runner_exec () {   # <handle> -- <command>...; internal spawned-pane entry
-  local s handle="${1:-}"
-  [[ -n "$handle" ]] || die "_run: need <runner>"
-  shift
+api_runner_exec () {   # <normalized-run-spec...>; internal spawned-pane entry
+  local s
   s="$(_require_current_session)"
-  _runner_execute "$s" "$handle" 1 "$@"
+  runner_retain_pane "$(current_pane)"
+  _runner_parse run "$@"
+  _runner_validate_spec "$s" run
+  _runner_execute "$s" 0
+}
+
+api_runner_watch_exec () {   # <normalized-watch-spec...>; internal spawned-pane entry
+  local s
+  s="$(_require_current_session)"
+  runner_retain_pane "$(current_pane)"
+  _runner_parse watch "$@"
+  _runner_validate_spec "$s" watch
+  _runner_watch_execute "$s" 0
 }
 
 api_unfocus () { _unfocus "$@"; }

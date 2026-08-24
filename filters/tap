@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# A small TAP observer: an unsuccessful assertion warns while more tests may run;
+# completion with any unsuccessful assertion, or a bailout, fails health.
+
+# shellcheck disable=SC2034 # runner.sh consumes catalog metadata
+AIRLINE_FILTER_SUMMARY='Interpret top-level TAP assertions and bailouts'
+
+airline_runner_filter () {   # <pid> <report-function>
+  local _pid="$1" report="$2" line plan="" seen=0 failed=0 final=0
+  shopt -s nocasematch
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" =~ ^Bail[[:space:]]out! ]]; then
+      "$report" fail
+      failed=1
+      final=1
+    elif [[ "$line" =~ ^1\.\.([0-9]+)([[:space:]]|$) ]]; then
+      plan="${BASH_REMATCH[1]}"
+    elif [[ "$line" =~ ^not[[:space:]]+ok([[:space:]]|$) ]]; then
+      (( seen += 1 ))
+      if [[ ! "$line" =~ \#[[:space:]]*(TODO|SKIP)([[:space:]]|$) ]]; then
+        failed=1
+        "$report" warn
+      fi
+    elif [[ "$line" =~ ^ok([[:space:]]|$) ]]; then
+      (( seen += 1 ))
+    fi
+
+    if (( failed && ! final )) && [[ -n "$plan" ]] && (( seen >= plan )); then
+      "$report" fail
+      final=1
+    fi
+  done
+
+  if (( failed && ! final )); then
+    "$report" fail
+  fi
+}

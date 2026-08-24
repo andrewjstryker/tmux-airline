@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # The portable floor: successful exit is healthy; every other termination failed.
 
+# shellcheck disable=SC2034 # runner.sh consumes catalog metadata
+AIRLINE_CLASSIFIER_SUMMARY='Map exit zero to ok and every other termination to fail'
+
 airline_runner_classify () {   # <exit-status> <signal>
   local status="$1" signal="$2"
   if [[ "$status" == 0 && -z "$signal" ]]; then printf 'ok\n'

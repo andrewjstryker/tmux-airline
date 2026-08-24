@@ -61,7 +61,7 @@ usage () {
   printf 'Commands:\n'
   _help_arms "$AIRLINE_DIR/airline" '^case ' '^esac'
   local n
-  for n in palette segment adapter layout runner state status health problem lock; do
+  for n in palette segment adapter layout classifier filter probe runner state status health problem lock; do
     printf '\n'; _help_noun "$n"
   done
   printf '\n  use loads a bare name from a registered dir; register blesses a location.\n'
@@ -182,15 +182,47 @@ cmd_layout () {
   esac
 }
 
+cmd_classifier () {
+  local verb="${1:-}"; shift || true
+  case "$verb" in
+    show)      api_classifier_show "$@" ;;      #| <name> — summary, contract, and resolved path
+    available) api_classifier_available ;;      #| the classifiers available to runner run
+    register)  api_classifier_register "$@" ;; #| <dir> — add a classifier search dir
+    ""|-h|--help|help) _help_noun classifier ;;
+    *) die "unknown classifier command: $verb" ;;
+  esac
+}
+
+cmd_filter () {
+  local verb="${1:-}"; shift || true
+  case "$verb" in
+    show)      api_filter_show "$@" ;;      #| <name> — summary, contract, and resolved path
+    available) api_filter_available ;;      #| the filters available to runner run
+    register)  api_filter_register "$@" ;; #| <dir> — add a filter search dir
+    ""|-h|--help|help) _help_noun filter ;;
+    *) die "unknown filter command: $verb" ;;
+  esac
+}
+
+cmd_probe () {
+  local verb="${1:-}"; shift || true
+  case "$verb" in
+    show)      api_probe_show "$@" ;;      #| <name> — summary, arguments, interval, and resolved path
+    available) api_probe_available ;;      #| the probes available to runner run/watch
+    register)  api_probe_register "$@" ;; #| <dir> — add a probe search dir
+    ""|-h|--help|help) _help_noun probe ;;
+    *) die "unknown probe command: $verb" ;;
+  esac
+}
+
 cmd_runner () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    use)       api_runner_use "$@" ;;       #| <name> — select the session's default runner
-    load)      api_runner_load "$@" ;;      #| <path> — select a one-off runner implementation
-    show)      api_runner_show "$@" ;;      #| [name|path] — the selected runner (summary, or one field raw)
-    available) api_runner_available ;;       #| the runners you can `use` (on the path)
-    register)  api_runner_register "$@" ;;  #| <dir> — add a runner search dir
-    run)       api_runner_run "$@" ;;        #| [--here|--pane|--window] [--with <name>] -- <command> [<arg>...]
+    show)      api_runner_show "$@" ;;       #| <name> [<arg>...] — one named composition with resolved defaults
+    available) api_runner_available ;;       #| the named runner compositions on the path
+    register)  api_runner_register "$@" ;;  #| <dir> — add a runner-composition search dir
+    run)       api_runner_run "$@" ;;        #| [--here|--pane|--window] [<runner>] [composition] -- <command>...
+    watch)     api_runner_watch "$@" ;;      #| [--here|--pane|--window] [<runner>] [composition] — probe until interrupted
     ""|-h|--help|help) _help_noun runner ;;
     *) die "unknown runner command: $verb" ;;
   esac
@@ -214,10 +246,14 @@ case "$cmd" in
   segment)  cmd_segment "$@" ;;
   adapter)  cmd_adapter "$@" ;;
   layout)   cmd_layout  "$@" ;;
+  classifier) cmd_classifier "$@" ;;
+  filter)     cmd_filter "$@" ;;
+  probe)      cmd_probe "$@" ;;
   runner)   cmd_runner  "$@" ;;
   _init-session) api_init_session "$@" ;; # internal: after-new-session hook callback
   _unfocus) api_unfocus "$@" ;;           # internal: pane-focus-out hook callback
   _run)     api_runner_exec "$@" ;;        # internal: spawned-pane runner callback
+  _watch)   api_runner_watch_exec "$@" ;;  # internal: spawned-pane watcher callback
   ""|-h|--help|help) usage ;;
   *) die "unknown command: $cmd (try: airline help)" ;;
 esac

@@ -25,9 +25,9 @@ a non-obvious boundary described here.
    refresh the client.
 8. **Observe at the richest available boundary.** Interactive programs that expose
    lifecycle callbacks publish status and health through the signal API directly.
-   Airline's runner is the lower-fidelity floor for non-interactive processes: it
-   owns launch mechanics and delegates program-specific interpretation to a
-   registered runner implementation.
+   Airline's runner is the lower-fidelity floor for non-interactive lifecycles: it
+   owns command launch or probe-only watching and delegates domain interpretation
+   to independently registered classifier, filter, and probe elements.
 
 ## Architecture
 
@@ -38,13 +38,16 @@ a non-obvious boundary described here.
 | `airline` | Parses the public grammar and delegates each command once to `api_*` | no |
 | `api.sh` | Resolves context, validates input, and orchestrates commands | no |
 | `render.sh` | Owns domain vocabulary and composes the bar | no |
-| `runner.sh` | Loads and validates runner implementations; owns their function contract | no |
+| `runner.sh` | Loads and validates runner catalogs and element contracts | no |
 | `collections.sh` | Stores and reduces variable-cardinality state | no |
 | `tmux.sh` | Mechanical operations and airline namespace policy | **yes; sole caller** |
 | `palettes/*` | Declarative public color configuration | sourced by `tmux.sh` |
 | `adapters/*` | Applies palette roles to third-party plugin options | no |
 | `layouts/*` | Composes adapters and segment-slot values | no |
-| `runners/*` | Classifies process exits and optionally filters live process evidence | no |
+| `classifiers/*` | Interprets process termination | no |
+| `filters/*` | Interprets a copied command-output stream | no |
+| `probes/*` | Performs one bounded external observation | no |
+| `runners/*` | Names a run or watch composition | no |
 | `helpers/*` | Bash helpers for layout scripts; not public airline API | no |
 
 ```mermaid
@@ -60,7 +63,7 @@ graph TD
     API --> MECH[tmux.sh]
     LOGIC --> MECH
     COLL --> MECH
-    API -. load .-> FILES[palettes · adapters · layouts · runners]
+    API -. load .-> FILES[palettes · adapters · layouts · runner catalogs]
     MECH ==> TMUX([tmux server]):::ext
 
     classDef ext fill:#eee,stroke:#999,color:#333,font-style:italic;
@@ -108,7 +111,7 @@ when present, otherwise the global default.
 Private state exists at its native owner:
 
 - status and health contributors and their projected badges are window-scoped;
-- problems, selections (including the default runner), guards, paths, suspension,
+- problems, palette/layout selections, guards, paths, suspension,
   and adapter membership are session-scoped;
 - there is no private-global state.
 
@@ -160,35 +163,43 @@ only what must be baked.
 
 ## Configuration kinds
 
-There are four loadable kinds and one plain-option kind:
+There are seven catalog kinds and one plain-option kind:
 
 | Kind | Representation | Lifecycle |
 |------|----------------|-----------|
 | **palette** | targetless tmux config containing public color options | `use` sources it into a session, records it, then applies |
 | **adapter** | Bash snippet mapping `PALETTE` roles to plugin options | `use` or `load` executes it and records active membership |
 | **layout** | shell composition invoking adapters and setting segment slots | `use` or `load` clears slots, executes it, records it, then renders |
-| **runner** | process-result classifier with an optional live-state filter | `use` or `load` selects the session default; `run` launches with that implementation |
+| **classifier** | trusted shell mapping process termination to a condition | selected by `runner run` |
+| **filter** | trusted shell interpreting a copied command-output stream | selected by `runner run` |
+| **probe** | trusted shell performing one bounded observation | selected by `runner run` or `watch` |
+| **runner** | named run/watch composition over those primitives | expanded for one invocation |
 | **segment** | public `@airline-segment-<slot>` option | set directly or by a layout; not loadable |
 
-For palette, adapter, layout, and runner:
+Every catalog has an ordered registered search path. `available` lists resolvable
+bare names and `register <dir>` prepends a trusted location. Palette, adapter, and
+layout additionally provide `use`; classifier, filter, probe, and runner provide
+`show <name>` for static metadata and the resolved path.
+
+For palette, adapter, and layout:
 
 - `register <dir>` prepends a trusted search location;
 - `available` lists resolvable bare names, deduplicated in search order;
 - `use <name>` accepts a bare name and resolves it only within registered paths.
 
-`load <path>` is the explicit operation for executable adapter, layout, and runner
-files. `layout load` stores the absolute path because `apply` must re-run it from any
-working directory. `runner load` likewise stores the absolute path because later
-invocations may begin in another directory. Adapter loading is one-shot for
+`load <path>` is the explicit operation for executable adapter and layout files.
+`layout load` stores the absolute path because `apply` must re-run it from any
+working directory. Adapter loading is one-shot for
 reapplication purposes: the layout is the durable lifecycle unit and must invoke
 its adapters again.
 
 Palette and segment configuration need no `load` verb. They are ordinary tmux
 configuration, so `source-file` followed by `apply` is the native one-off workflow.
 
-Adapters, layouts, and runners are ordinary trusted shell, not a mini-language.
-Registration and explicit loading are the trust boundaries. Nested airline calls
-defer rendering so a complete layout produces at most one redraw.
+Adapters, layouts, runner primitives, and runner compositions are ordinary trusted
+shell. Registration and explicit adapter/layout loading are the trust boundaries.
+Nested airline calls defer rendering so a complete layout produces at most one
+redraw.
 
 A segment may reference a palette foreground role live, but must not set a
 background. Render owns each block background and its matching chevrons; allowing a
@@ -224,8 +235,13 @@ airline palette  show [name|<element>] | available | use <name> | register <dir>
 airline segment  show [<slot>]
 airline adapter  show | available | use <name> | load <path> | register <dir>
 airline layout   show [name|path] | available | use <name> | load <path> | register <dir>
-airline runner   show [name|path] | available | use <name> | load <path> | register <dir>
-                 run [--here|--pane|--window] [--with <name>] -- <command> [<arg>...]
+airline classifier show <name> | available | register <dir>
+airline filter     show <name> | available | register <dir>
+airline probe      show <name> | available | register <dir>
+airline runner   show <name> [<arg>...] | available | register <dir>
+                 run [--here|--pane|--window] [<runner>] [--classify <name>]
+                     [--filter <name> [--merge-stderr]] [--probe <name> [<arg>...]] -- <command>...
+                 watch [--here|--pane|--window] [<runner>] --probe <name> [<arg>...]
 airline state    suspend | resume | toggle | show
 
 airline _unfocus <window-id>
@@ -240,16 +256,19 @@ are public.
   truth. There are no per-noun apply commands.
 - `set` and `clear` belong to dynamic signal nouns. Static palette elements and
   segment slots are written with `set -g @airline-*` and removed with `set -gu`.
-- Bare `<noun> show` produces a labeled human summary. Qualified `show <field>`
-  prints one raw, newline-terminated value suitable for scripts.
-- `palette show name`, `layout show name`, and `runner show name` expose their active
-  selection. Layout and runner also expose their resolved path.
+- Stateful nouns use bare `show` for a labeled human summary and qualified fields
+  for raw scripting reads. Catalog-only classifier, filter, probe, and runner use
+  `show <name>` to describe one resolvable implementation.
+- `palette show name` and `layout show name` expose their active selection. Layout
+  also exposes its resolved path.
 - `adapter show` lists the active adapter set, one name per line. `available` is a
   separate catalog of what could be selected.
-- `runner use` selects a session default; `runner run --with` overrides it for one
-  invocation. Placement is independent of implementation: `--here` uses the current
-  pane, while `--pane` and `--window` create tmux topology through the common runner
-  core.
+- Runner elements compose only for one invocation. A leading bare runner name
+  expands a catalogued composition; an option-leading invocation remains ad hoc.
+  Named compositions contain monitoring configuration but never the command.
+  `run` defaults to classifier `basic`; `watch` requires a probe. `--here` is the
+  explicit placement default, while `--pane` and `--window` create tmux topology
+  through the common runner core.
 - `-t` accepts a window target for status and health. A pane target is valid where
   tmux can resolve its owning window. Problem mutations instead require a session
   as their first positional argument; a bare problem show reads every session.
@@ -263,21 +282,68 @@ adding a parallel configuration API.
 
 ## Process runner
 
-The runner is airline's floor for non-interactive processes. Interactive programs
+The runner is airline's floor for non-interactive lifecycles. Interactive programs
 such as coding agents expose richer lifecycle callbacks and should call the public
 `status` and `health` API directly; wrapping them in a runner would discard useful
-information only to reconstruct it from terminal output. An independently managed
-external service likewise belongs to a monitor plugin that drives `health`
-directly. The runner applies when airline launches or accompanies a process whose
-portable interface is its output and eventual termination.
+information only to reconstruct it. Airline can either launch a process with `run`
+or own a probe-only observation lifecycle with `watch`. The latter makes a remote,
+independently managed service observable without inventing a null local job.
 
 The runner separates fixed mechanics from program-specific interpretation:
 
 | Owner | Responsibility |
 |-------|----------------|
-| **airline core** | select placement, launch and wait, preserve terminal I/O, retain spawned panes/windows, maintain contributor identity, validate observations, project status/health, and return the child's exit status |
-| **runner implementation** | classify terminal status and, for a long-lived process, optionally filter runtime evidence into a current health condition |
-| **command** | perform the work and explain itself through its normal terminal output |
+| **airline core** | select placement, own the run/watch lifecycle, preserve command I/O, retain spawned panes/windows, maintain contributor identity, validate observations, project status/health, and return a run child's exit status |
+| **runner elements** | independently classify termination, interpret a stream, or probe external state |
+| **command** | when using `run`, perform the work and explain itself through its normal terminal output |
+
+Classifier, filter, and probe are first-class catalogs. Each implementation carries
+a one-line summary; probes also declare their argument usage. `show <name>` exposes
+that metadata and its resolved path without running an observation.
+
+A runner catalog entry is syntactic composition over those primitives:
+
+```bash
+airline_runner_metadata() { # <declare-function>
+  local declare="$1"
+  "$declare" summary 'Monitor a TAP-producing test command'
+  "$declare" usage ''
+}
+
+airline_runner_configure() { # <configure-function> [<runner-arg>...]
+  local configure="$1"; shift
+  "$configure" classify basic
+  "$configure" filter tap
+}
+```
+
+Both functions call core-owned callbacks; stdout is not a protocol. Metadata accepts
+exactly one `summary` and one `usage`. Configuration accepts at most one each of
+`classify`, `filter`, and `probe`; the callback preserves probe argument boundaries
+and validates every declaration. Arguments following a named runner are
+passed to `airline_runner_configure`, allowing definitions to supply useful defaults
+or accept replacements.
+
+```bash
+"$configure" classify <name>
+"$configure" filter <name> [merge-stderr]
+"$configure" probe <name> [<arg>...]
+```
+
+The result is one complete monitoring composition. `run` consumes classifier,
+filter, and probe; `watch` projects the probe and fails when none was configured.
+Placement belongs exclusively to the `run`/`watch` invocation and is never part of
+a catalog entry. There is no runner mode declaration or separate watcher protocol. The
+catalog stores monitoring policy only: commands, working directories, environment
+setup, scheduling, retries, and restart policy do not belong in a runner definition.
+
+```sh
+airline runner run tap -- bats --formatter tap test/
+airline runner watch http http://localhost/health
+```
+
+There is no active runner selection. A named definition configures one invocation
+and then uses exactly the same validation and lifecycle path as inline composition.
 
 Airline does not prepare or rewrite the command and does not describe its result.
 An executable that cannot launch already writes the authoritative error and exits
@@ -289,9 +355,10 @@ launcher policy, not an implementation hook.
 
 ### Classification
 
-Every runner provides a terminal classifier. It receives objective termination
+Every run has one terminal classifier; `basic` is implicit unless another is named.
+It receives objective termination
 facts (exit status and terminating signal) once and returns exactly one validated
-condition: `ok`, `warn`, or `fail`. The shipped `basic` runner maps exit zero to
+condition: `ok`, `warn`, or `fail`. The shipped `basic` classifier maps exit zero to
 `ok` and every nonzero exit or signal to `fail`. A program-specific implementation
 exists only where that program assigns richer meaning to termination, such as a
 dedicated exit code for "no tests collected" that should be `warn` rather than
@@ -315,46 +382,94 @@ child's original exit status rather than replacing it with the classification.
 The concrete trusted-shell contract is:
 
 ```bash
+AIRLINE_CLASSIFIER_SUMMARY='Interpret this program termination'
+
 airline_runner_classify() { # <exit-status> <signal>
   # Print exactly one of: ok, warn, fail
 }
 ```
 
-### Live filtering
+### Live observation
 
 A long-lived process may become unhealthy and later repair itself without exiting.
-Such a runner may also provide a live filter. The filter examines domain-specific
-evidence—for example a log stream or an API response—and reports its current state as
-`ok`, `warn`, or `fail` zero or more times while the process remains active. It
-reports state, not transitions: repeated observations are safe, and a later `ok`
-clears the filter's health contributor after recovery.
+One run invocation may additionally select a filter, a probe, or both. Each reports
+current state as `ok`, `warn`, or `fail` while the
+process remains active. Reports are state, not transitions: repeated observations
+are safe, and a later `ok` clears that observer's health contributor after recovery.
 
 Airline owns the observation lifecycle and validates and projects each value, but it
 does not know what a Kubernetes readiness state, server log message, or recovery
-event means. The implementation owns both the evidence source and its domain
-interpretation. The transport used to observe a stream or perform a periodic probe
-is an implementation concern as long as command output remains available in the
-pane and the filter emits the normalized condition vocabulary.
+event means. The implementation owns domain interpretation; core supplies only the
+small mechanics that are common across implementations.
 
-A filter is useful only when meaningful health can change during a process's life.
-Finite jobs normally need only their terminal classifier. A server runner may use
-both: its filter reports health while it runs and its classifier interprets its
-eventual exit.
-
-The optional filter receives the live child PID, a core-owned reporting function,
-and the original command argv:
+A filter reads a tee'd copy of stdout by default. `--merge-stderr` applies ordinary
+`2>&1` semantics before the tee. The filter consumes through EOF and calls the
+supplied reporter when its interpretation changes:
 
 ```bash
-airline_runner_filter() { # <pid> <report-function> [<command> <arg>...]
-  local pid="$1" report="$2"; shift 2
-  # Inspect domain evidence, then call: "$report" ok|warn|fail
+AIRLINE_FILTER_SUMMARY='Interpret this command output'
+
+airline_runner_filter() { # <pid> <report-function>
+  local pid="$1" report="$2"
+  while IFS= read -r line; do
+    # Interpret line, then call: "$report" ok|warn|fail
+  done
 }
 ```
 
-The filter runs in an airline-owned background subshell and is stopped after the
-child exits. It obtains its own evidence from logs, files, or APIs; airline does not
-pipe, capture, or parse the command's terminal stream. This keeps stdout, stderr,
-and stdin attached directly to the pane.
+A probe is justified when a bounded API or state query provides current information
+that the process does not write to its selected output streams. The implementation
+defines one observation; airline invokes it sequentially at the declared interval,
+never overlaps calls, and stops the loop when the child exits or a watcher is
+interrupted:
+
+```bash
+AIRLINE_RUNNER_PROBE_INTERVAL=5
+AIRLINE_PROBE_SUMMARY='Query current service health'
+AIRLINE_PROBE_USAGE='<endpoint> [<endpoint>...]'
+
+airline_runner_probe() { # <lifecycle-pid> <report-function> [<arg>...]
+  local pid="$1" report="$2"
+  # Perform one bounded query, write user-facing evidence to stdout, and call:
+  # "$report" ok|warn|fail
+}
+```
+
+The probe must bound its own I/O. Airline supplies no persistence, retries beyond
+the next scheduled observation, restart policy, or general job management. A
+nonzero probe exit, no reporter calls, or an invalid reported value is an integration
+problem; a valid later result clears it. Airline reduces multiple reports from one
+invocation to their worst condition. Probe stdout is an uninterpreted human channel:
+airline passes it to the pane and assigns no meaning to its format. During `run` it
+bypasses the command-output tee, so a selected filter cannot observe it. During
+`watch` it is the visible polling transcript. Filter and probe use independent
+health contributors.
+
+`runner watch` owns a probe lifecycle without launching a command:
+
+```sh
+airline runner watch --probe http http://localhost/health
+airline runner watch --window --probe http endpoint1 endpoint2
+```
+
+Its status remains `active` until interruption, then clears; there is no fabricated
+terminal result to classify. The probe's first argument is the local airline watcher
+PID, useful only as lifecycle identity—it is not the remote service PID. Probe
+arguments continue to end-of-argv for `watch`; only `run` needs `--` to separate its
+command. `--here` explicitly spells the default placement. A plugin
+that already owns richer scheduling or callbacks may still drive the public health
+API directly; that is an alternative integration shape, not a remote/local boundary.
+
+Finite jobs normally need only classification, though a test protocol can use a
+filter to expose failures before the suite exits. The shipped `tap` filter observes
+top-level TAP output: an ordinary `not ok` warns while the suite can continue, and
+completion with a failure or `Bail out!` fails. TODO/SKIP failures are ignored.
+Servers launched by `run` may use a filter, a probe, or both before classification
+at eventual exit. Remote services may use a probe-only watch. The shipped `http`
+probe accepts one or more endpoints, writes the condition, HTTP status, and endpoint
+for each check, reports `ok` for each 2xx response and `fail` otherwise through its
+callback, and leaves their worst-case reduction to airline. Its stdout format is a
+shipped convention, not a core protocol.
 
 A command failure, including an unavailable executable, is a job result and is not
 an airline problem. Airline does not copy command diagnostics into problems.

@@ -16,8 +16,8 @@ Features:
   per-window badges
 - **Adapters** that recolor tmux-cpu, tmux-battery, tmux-online-status, and
   tmux-prefix-highlight from the active palette
-- Extensible process **runners** with exit classification, optional live health
-  filtering, and current-pane/new-pane/new-window placement
+- Discoverable process **runner catalogs** with exit classifiers, stream filters,
+  state probes, named run/watch compositions, and pane/window placement
 - Session-wide widget **problems**, reduced to one extreme-right warning with
   full diagnostics available through the CLI
 - Suspend/resume for nested tmux sessions
@@ -94,7 +94,7 @@ Five things, driven by one `airline` CLI:
 | **segment** | One powerline block's content, in a fixed slot                    | a layout, or `set -g`         |
 | **layout**  | A composition that fills the slots (and picks adapters)           | `layout use`                  |
 | **adapter** | A bridge that paints a third-party plugin from the palette        | `layout` (or `adapter use`)   |
-| **runner**  | A launcher plus program-specific process interpretation           | `runner run`                  |
+| **runner**  | An ephemeral run/watch composition over monitoring primitives     | `runner run`, `runner watch`  |
 
 Choose a palette for the colors and a layout for the arrangement. Override an
 individual palette role or segment slot with a normal tmux option, then run
@@ -306,10 +306,20 @@ adapter available` (what's on the path).
 
 Interactive programs with lifecycle hooks should call airline's `status` and
 `health` API directly. A runner is the lower-fidelity floor for non-interactive
-commands that expose only terminal output, live observable state, and an eventual
-exit status.
+lifecycles: `run` launches a command, while `watch` polls external state without
+requiring a placeholder local job.
 
-Airline ships the `basic` runner and selects it on initialization:
+Airline ships `basic` as the implicit classifier, `tap` as a stream filter, and
+`http` as a probe. Each is a first-class catalog with its own discovery commands:
+
+```sh
+airline classifier available
+airline classifier show basic
+airline filter show tap
+airline probe show http
+```
+
+Elements compose only for one invocation:
 
 ```sh
 airline runner run -- make test
@@ -321,6 +331,36 @@ The default `--here` runs synchronously in the current pane, streams terminal I/
 and returns the command's original exit status. `--pane` and `--window` launch in
 new tmux topology and print the new pane id; spawned panes are retained after exit
 so their output and native tmux exit status remain available until dismissed.
+
+A probe-only implementation can watch a remote service until interrupted:
+
+```sh
+airline runner watch --probe http http://localhost/health
+airline runner watch --window --probe http endpoint1 endpoint2
+```
+
+Frequently used compositions can be named. Airline ships `tap` as a run
+composition and `http` as a watch composition:
+
+```sh
+airline runner available
+airline runner show tap
+airline runner run tap -- bats --formatter tap test/
+airline runner watch http http://localhost/health
+```
+
+A runner catalog entry contains monitoring configuration, never the command. It is
+expanded for that invocation and does not become active session state. With no
+arguments, the shipped `http` runner checks
+`http://localhost/health/live` and `http://localhost/health/ready`; supplied
+endpoints replace those defaults.
+
+While watching, status is `active` and probe reports drive health. Stopping the
+watch clears both; there is no artificial command exit to classify.
+
+`--here` is the explicit spelling of the default placement; `--pane` and `--window`
+are alternatives. Probe arguments continue to end-of-argv for `watch`. For `run`,
+the bare `--` separates the airline specification from the command.
 
 This lifecycle monitoring is independent of tmux's standard terminal monitoring.
 Airline observes a process it runs: whether it is active, its changing health, and
@@ -339,15 +379,18 @@ runner's normalized result onto its existing channels:
 | `fail` | `attention` | `fail` |
 
 Completion signals are transient. A command explains itself in its pane; airline
-does not rewrite the command, parse its terminal output, or manufacture another
-description.
+does not rewrite the command or manufacture another description. A selected filter
+may interpret a copied output stream solely to project live health.
 
-### Runner implementations
+### Runner elements
 
-Runner implementations are trusted shell files on a registered search path. Every
-runner classifies the terminal result:
+Runner elements are trusted shell files in independently registered `classifiers/`,
+`filters/`, and `probes/` catalogs. `run` uses the `basic` classifier unless an
+explicit `--classify` is supplied. A classifier looks like:
 
 ```bash
+AIRLINE_CLASSIFIER_SUMMARY='Interpret pytest termination'
+
 airline_runner_classify() { # <exit-status> <signal>
   case "$1" in
     0) printf 'ok\n' ;;
@@ -357,34 +400,136 @@ airline_runner_classify() { # <exit-status> <signal>
 }
 ```
 
-Register and select it like other loadable airline kinds, or override the selected
-runner for one invocation:
+Register an implementation in its corresponding catalog, then compose one invocation:
 
 ```sh
-airline runner register ~/.config/airline/runners
-airline runner use pytest
+airline classifier register ~/.config/airline/classifiers
 airline runner run -- pytest
-airline runner run --with basic -- make test
+airline runner run --classify pytest -- make test
 ```
 
-A server or other long-lived process may additionally define a live filter:
+A filter receives a tee'd copy of stdout by default. `--merge-stderr` applies
+ordinary `2>&1` semantics before the tee:
 
 ```bash
-airline_runner_filter() { # <pid> <report-function> [<command> <arg>...]
-  local pid="$1" report="$2"; shift 2
-  while kill -0 "$pid" 2>/dev/null; do
-    # Inspect a log, file, or API without consuming the command's terminal output.
-    condition="$(current_condition)" || return
-    "$report" "$condition" # ok | warn | fail; later ok reports recovery
-    sleep 5
+AIRLINE_FILTER_SUMMARY='Interpret top-level TAP output'
+
+airline_runner_filter() { # <pid> <report-function>
+  local pid="$1" report="$2"
+  while IFS= read -r line; do
+    # Interpret line, then report ok | warn | fail; later ok reports recovery.
   done
 }
 ```
 
-Airline owns the filter lifecycle, validates every report, and projects health.
-The implementation owns its evidence and domain semantics. Programs managed
-independently of the launched process are monitor plugins instead; they should call
-the health API directly.
+Airline ships `tap` as the filtering example. It warns when a
+top-level TAP assertion fails, fails when the unsuccessful plan completes or the
+stream bails out, and leaves TODO/SKIP failures alone:
+
+```sh
+airline runner run --filter tap -- bats --formatter tap test/
+```
+
+A long-lived process can instead define a probe when an API or other state source
+contains useful current information absent from its logs:
+
+```bash
+AIRLINE_RUNNER_PROBE_INTERVAL=5
+AIRLINE_PROBE_SUMMARY='Check service health endpoints'
+AIRLINE_PROBE_USAGE='<endpoint> [<endpoint>...]'
+
+airline_runner_probe() { # <lifecycle-pid> <report-function> [<arg>...]
+  local pid="$1" report="$2"
+  # Make one bounded query, write useful results to stdout, and call:
+  # "$report" ok|warn|fail
+}
+```
+
+Probe stdout is uninterpreted user output. Airline writes it to the pane but never
+parses it; formats such as `ok 204 <endpoint>` are conventions implementations may
+adopt, not part of the protocol. Health observations travel only through the
+reporter callback. During `run`, probe stdout bypasses the command-output tee, so a
+selected filter sees only command output. During `watch`, probe stdout supplies the
+visible polling transcript.
+
+The shipped `http` probe checks one or more endpoints uniformly:
+
+```sh
+airline runner watch --probe http \
+  http://localhost/health/live \
+  http://localhost/health/ready
+```
+
+The equivalent shipped named composition is shorter:
+
+```sh
+airline runner watch http \
+  http://localhost/health/live \
+  http://localhost/health/ready
+```
+
+At least one URL is required. For each endpoint the probe writes its condition,
+HTTP status, and URL to stdout. Each 2xx response reports `ok`; every other response
+or connection failure reports `fail`. Airline ignores the displayed text and
+reduces the callback reports to the worst condition. Each request has a two-second
+connection timeout and a five-second total timeout. Missing `curl` or invalid
+arguments use the problem API.
+
+Airline runs one probe at a time, schedules the next after the interval, and stops
+on process exit (`run`) or interruption (`watch`). It validates observations and
+projects filter and probe health independently. The probe owns timeouts and domain
+semantics; airline does not add persistence, restart policy, or general job
+management. A probe that exits nonzero, calls no reporter, or reports an invalid
+value creates a problem until a valid observation recovers it. Under `watch`, the
+PID argument identifies the local watcher lifecycle, not the remote service.
+
+### Named runner compositions
+
+Runner definitions are trusted shell files in the independently registered
+`runners/` catalog. Two required functions build a validated composition:
+
+```bash
+airline_runner_metadata() { # <declare-function>
+  local declare="$1"
+  "$declare" summary 'Monitor a TAP-producing test command'
+  "$declare" usage ''
+}
+
+airline_runner_configure() { # <configure-function> [<runner-arg>...]
+  local configure="$1"; shift
+  "$configure" classify basic
+  "$configure" filter tap
+}
+```
+
+The metadata callback accepts `summary` and `usage`. The configuration callback
+accepts `classify`, `filter`, and `probe` declarations, validates their
+arity and cardinality, and preserves probe arguments as argv. It cannot specify `--`
+or a command. Unexpected callback fields, duplicates, or stdout make the definition
+invalid.
+
+```bash
+"$configure" classify <name>
+"$configure" filter <name> [merge-stderr]
+"$configure" probe <name> [<arg>...]
+```
+
+Arguments supplied after a named runner are passed to its configuration function.
+A definition can therefore provide defaults while allowing replacements. `run` uses
+the complete configuration; `watch` uses only the probe, failing when the runner has
+none. Placement remains an option on the `run` or `watch` invocation and cannot be
+stored in a runner. There is no runner mode or separate watcher definition.
+Register and inspect compositions like every other catalog:
+
+```sh
+airline runner register ~/.config/airline/runners
+airline runner available
+airline runner show my-tests
+```
+
+A plugin that already owns richer scheduling or callbacks may instead call the
+health API directly. That is an alternative to `watch`, not a distinction based on
+whether the observed service is local or remote.
 
 ## Window list signals
 
@@ -559,8 +704,13 @@ airline palette  show [name|<element>] | available | use <name> | register <dir>
 airline segment  show [<slot>]                 # read-only; write with set -g @airline-segment-<slot>
 airline layout   show [name|path] | available | use <name> | load <path> | register <dir>
 airline adapter  show | available | use <name> | load <path> | register <dir>
-airline runner   show [name|path] | available | use <name> | load <path> | register <dir>
-                 run [--here|--pane|--window] [--with <name>] -- <command> [<arg>...]
+airline classifier show <name> | available | register <dir>
+airline filter     show <name> | available | register <dir>
+airline probe      show <name> | available | register <dir>
+airline runner   show <name> [<arg>...] | available | register <dir>
+                 run [--here|--pane|--window] [<runner>] [--classify <name>]
+                     [--filter <name> [--merge-stderr]] [--probe <name> [<arg>...]] -- <command>...
+                 watch [--here|--pane|--window] [<runner>] [--probe <name> [<arg>...]]
 airline status   set <key> <level>    [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
 airline health   set <key> <ok|warn|fail> [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
 airline problem  set <session> <key> <ok|warn|fail> [<message>] | clear <session> <key> | show [<session> [<key>]]
@@ -570,13 +720,15 @@ airline state    suspend | resume | toggle | show
 
 Two conventions run through it:
 
-- **`use` vs `register`.** `use <name>` loads a bare name from a registered
-  directory; `register <dir>` adds one (and lets it shadow shipped names). `load
-  <path>` selects or runs a one-off file by path (adapters, layouts, and runners).
+- **`use` vs `register`.** `use <name>` loads a bare configuration name from a
+  registered directory; `register <dir>` adds one (and lets it shadow shipped
+  names). `load <path>` runs a one-off adapter or layout file. Classifier, filter,
+  probe, and runner each have an independent registered catalog.
 - **`show`.** Bare `show` is a human summary; `show <field>` prints one raw
   value, newline-terminated, safe for `$(…)`. `available` lists the catalog a
-  `use` can pick from. Editing a color or segment option is free; the bar
-  re-renders on the next `apply` (or `use`, which ends in one).
+  `use` can pick from. Catalog-only runner nouns instead use `show <name>` for an
+  implementation's summary, usage, and path. Editing a color or segment option is
+  free; the bar re-renders on the next `apply` (or `use`, which ends in one).
 
 ## Development
 

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# A named composition for TAP-producing test commands.
+
+airline_runner_metadata () {   # <declare-function>
+  local declare="$1"
+  "$declare" summary 'Monitor a TAP-producing test command'
+  "$declare" usage ''
+}
+
+airline_runner_configure () {   # <configure-function>
+  local configure="$1"; shift
+  (( $# == 0 )) || return 2
+  "$configure" classify basic
+  "$configure" filter tap
+}

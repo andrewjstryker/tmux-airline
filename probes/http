@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Show one polling result per endpoint and report its condition separately. The
+# human-readable stdout format is a convention; airline does not interpret it.
+
+# shellcheck disable=SC2034 # runner.sh consumes catalog metadata
+AIRLINE_PROBE_SUMMARY='Check one or more HTTP endpoints'
+# shellcheck disable=SC2034 # runner.sh consumes catalog metadata
+AIRLINE_PROBE_USAGE='<endpoint> [<endpoint>...]'
+
+# shellcheck disable=SC2034 # runner.sh consumes this contract declaration
+AIRLINE_RUNNER_PROBE_INTERVAL=5
+
+airline_runner_probe () {   # <lifecycle-pid> <report-function> <endpoint> [<endpoint>...]
+  local _pid="$1" report="$2" endpoint code; shift 2
+  (( $# > 0 )) || return 2
+  command -v curl >/dev/null 2>&1 || return 127
+
+  for endpoint in "$@"; do
+    code="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+      --connect-timeout 2 --max-time 5 -- "$endpoint")" || code=""
+    if [[ "$code" =~ ^2[0-9][0-9]$ ]]; then
+      printf 'ok %s %s\n' "$code" "$endpoint"
+      "$report" ok
+    else
+      printf 'fail %s %s\n' "${code:-000}" "$endpoint"
+      "$report" fail
+    fi
+  done
+}
