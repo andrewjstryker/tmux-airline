@@ -107,9 +107,9 @@ cmd_health () {
 cmd_problem () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    set)   api_problem_set "$@" ;;   #| <key> <ok|warn|fail> [<message>] [-t <session>]
-    clear) api_problem_clear "$@" ;; #| <key> [-t <session>]
-    show)  api_problem_show "$@" ;;  #| [<key>] [-t <session>] — session widget problems
+    set)   api_problem_set "$@" ;;   #| <session> <key> <ok|warn|fail> [<message>]
+    clear) api_problem_clear "$@" ;; #| <session> <key>
+    show)  api_problem_show "$@" ;;  #| [<session> [<key>]] — all sessions, one session, or one problem
     ""|-h|--help|help) _help_noun problem ;;
     *) die "unknown problem command: $verb" ;;
   esac
