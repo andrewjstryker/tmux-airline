@@ -188,6 +188,7 @@ load helper
 transaction_result () { printf '%s' "$1"; return "$2"; }
 transaction_mark () { printf '%s' "${2:-done}" > "$1"; }
 transaction_hold () { : > "$1"; tmux wait-for "$2"; }
+transaction_spin () { : > "$1"; while :; do :; done; }
 transaction_exit () { exit "$1"; }
 transaction_nested () { with_session_transaction "$1" problem transaction_result nested 0; }
 
@@ -229,8 +230,8 @@ wait_for_file () {
 @test "scoped transaction releases its lock when its process is terminated" {
   load_tmux
   session="$(current_session)"
-  ready="$BATS_TMPDIR/ready-signal-$BATS_TEST_NUMBER"
-  reused="$BATS_TMPDIR/reused-signal-$BATS_TEST_NUMBER"
+  ready="$BATS_TEST_TMPDIR/ready-signal"
+  reused="$BATS_TEST_TMPDIR/reused-signal"
   export PROJECT_ROOT
   export TMUX_TEST_BIN="$TMUX" TMUX_TEST_SOCKET="$_bats_socket"
 
@@ -241,7 +242,13 @@ wait_for_file () {
     with_session_transaction "$1" problem spin "$2"
   ' _ "$session" "$ready" & transaction_pid=$!
   wait_for_file "$ready"
-  kill -TERM "$transaction_pid"
+  record="$(transaction_list)"
+  IFS=$'\t' read -r scope owner namespace state owner_pid _ <<< "$record"
+  assert_equal "$scope" session
+  assert_equal "$owner" "$session"
+  assert_equal "$namespace" problem
+  assert_equal "$state" active
+  kill -TERM "$owner_pid"
   transaction_status=0
   wait "$transaction_pid" || transaction_status=$?
   assert_equal "$transaction_status" 143
@@ -256,6 +263,65 @@ wait_for_file () {
   [[ -e "$reused" ]]
 }
 
+@test "transaction list detects a SIGKILL-stale lock and clear recovers it" {
+  load_tmux
+  session="$(current_session)"
+  ready="$BATS_TEST_TMPDIR/ready-stale"
+
+  with_session_transaction "$session" problem transaction_spin "$ready" & transaction_pid=$!
+  wait_for_file "$ready"
+  record="$(transaction_list)"
+  IFS=$'\t' read -r scope owner namespace state owner_pid age <<< "$record"
+  assert_equal "$scope" session
+  assert_equal "$owner" "$session"
+  assert_equal "$namespace" problem
+  assert_equal "$state" active
+  [[ "$age" =~ ^[0-9]+$ ]]
+
+  kill -KILL "$owner_pid"
+  wait "$transaction_pid" 2>/dev/null || true
+  record="$(transaction_list)"
+  IFS=$'\t' read -r _ _ _ state stale_pid _ <<< "$record"
+  assert_equal "$state" stale
+  assert_equal "$stale_pid" "$owner_pid"
+
+  run transaction_clear session "$session" problem
+  assert_success
+  run transaction_list
+  assert_output ""
+  run with_session_transaction "$session" problem transaction_result recovered 0
+  assert_success
+  assert_output "recovered"
+}
+
+@test "transaction clear refuses absent and active locks" {
+  load_tmux
+  session="$(current_session)"
+  ready="$BATS_TEST_TMPDIR/ready-live"
+  release="release-live-$BATS_TEST_NUMBER"
+
+  run transaction_clear session "$session" problem
+  assert_failure 3
+  with_session_transaction "$session" problem transaction_hold "$ready" "$release" & holder=$!
+  wait_for_file "$ready"
+  run transaction_clear session "$session" problem
+  assert_failure 4
+  tmux wait-for -S "$release"
+  wait "$holder"
+}
+
+@test "transaction subshell leaves caller traps unchanged" {
+  load_tmux
+  session="$(current_session)"
+  trap 'printf caller-int >/dev/null' INT
+  before="$(trap -p INT)"
+
+  with_session_transaction "$session" problem transaction_result ignored 0 >/dev/null
+  after="$(trap -p INT)"
+  assert_equal "$after" "$before"
+  trap - INT
+}
+
 @test "same owner and namespace serialize session and window transactions" {
   load_tmux
   session="$(current_session)"
@@ -264,8 +330,8 @@ wait_for_file () {
 
   for spec in "with_session_transaction $session problem" "with_window_transaction $win status"; do
     read -r wrapper target ns <<< "$spec"
-    ready="$BATS_TMPDIR/ready-${wrapper}-${BATS_TEST_NUMBER}"
-    blocked="$BATS_TMPDIR/blocked-${wrapper}-${BATS_TEST_NUMBER}"
+    ready="$BATS_TEST_TMPDIR/ready-${wrapper}"
+    blocked="$BATS_TEST_TMPDIR/blocked-${wrapper}"
     release="release-${wrapper}-${BATS_TEST_NUMBER}"
 
     "$wrapper" "$target" "$ns" transaction_hold "$ready" "$release" & holder=$!
@@ -287,12 +353,12 @@ wait_for_file () {
   tmux new-session -d -s second
   second="$(resolve_session_target second)"
   win="$(current_window)"
-  ready="$BATS_TMPDIR/ready-isolation-$BATS_TEST_NUMBER"
+  ready="$BATS_TEST_TMPDIR/ready-isolation"
   release="release-isolation-$BATS_TEST_NUMBER"
-  same="$BATS_TMPDIR/same-$BATS_TEST_NUMBER"
-  other_owner="$BATS_TMPDIR/other-owner-$BATS_TEST_NUMBER"
-  other_ns="$BATS_TMPDIR/other-ns-$BATS_TEST_NUMBER"
-  other_scope="$BATS_TMPDIR/other-scope-$BATS_TEST_NUMBER"
+  same="$BATS_TEST_TMPDIR/same"
+  other_owner="$BATS_TEST_TMPDIR/other-owner"
+  other_ns="$BATS_TEST_TMPDIR/other-ns"
+  other_scope="$BATS_TEST_TMPDIR/other-scope"
 
   with_session_transaction "$session" problem transaction_hold "$ready" "$release" & holder=$!
   wait_for_file "$ready"

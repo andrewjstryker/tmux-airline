@@ -58,7 +58,7 @@ usage () {
   printf 'Commands:\n'
   _help_arms "$AIRLINE_DIR/airline" '^case ' '^esac'
   local n
-  for n in palette segment adapter layout state status health problem; do
+  for n in palette segment adapter layout state status health problem lock; do
     printf '\n'; _help_noun "$n"
   done
   printf '\n  use loads a bare name from a registered dir; register blesses a location.\n'
@@ -112,6 +112,16 @@ cmd_problem () {
     show)  api_problem_show "$@" ;;  #| [<session> [<key>]] — all sessions, one session, or one problem
     ""|-h|--help|help) _help_noun problem ;;
     *) die "unknown problem command: $verb" ;;
+  esac
+}
+
+cmd_lock () {
+  local verb="${1:-}"; shift || true
+  case "$verb" in
+    show)  api_lock_show "$@" ;;  #| list outstanding transactions and whether their owner is active or stale
+    clear) api_lock_clear "$@" ;; #| <session|window> <target> <namespace> — release one stale lock
+    ""|-h|--help|help) _help_noun lock ;;
+    *) die "unknown lock command: $verb" ;;
   esac
 }
 
@@ -182,6 +192,7 @@ case "$cmd" in
   status)   cmd_status  "$@" ;;
   health)   cmd_health  "$@" ;;
   problem)  cmd_problem "$@" ;;
+  lock)     cmd_lock    "$@" ;;
   palette)  cmd_palette "$@" ;;
   segment)  cmd_segment "$@" ;;
   adapter)  cmd_adapter "$@" ;;

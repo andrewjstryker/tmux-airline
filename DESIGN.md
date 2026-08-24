@@ -206,6 +206,8 @@ airline health   set <key> <ok|warn|fail> [--transient] [-t <window>]
 airline problem  set <session> <key> <ok|warn|fail> [<message>]
                  clear <session> <key>
                  show [<session> [<key>]]
+airline lock     show
+                 clear <session|window> <target> <namespace>
 
 airline palette  show [name|<element>] | available | use <name> | register <dir>
 airline segment  show [<slot>]
@@ -277,10 +279,15 @@ Dynamic collection operations run in owner-scoped transactions: status and healt
 serialize by `(window, namespace)`, while problems serialize by `(session,
 namespace)`. The registry, contributor tuple, reduction, and projected badge
 therefore form one logical mutation even when background evaluations overlap.
-`tmux.sh` owns the transaction mechanism and cleanup; the API only declares the
-owner, namespace, and operation that must be atomic. Identical problem sets and
-absent clears skip both storage writes and redraws. Widgets may report their current
-capability on every evaluation so stale semantic observations converge.
+`tmux.sh` owns acquisition, an atomic owner-scoped marker, cleanup, stale-owner
+detection, and recovery; the API only declares the owner, namespace, and operation
+that must be atomic. Transaction callbacks run in a subshell so transaction-local
+signal traps do not alter caller traps. `airline lock show` exposes outstanding
+markers, and `lock clear` releases only a marker whose recorded process is no longer
+alive. This diagnostic API is deliberately separate from problems, avoiding a
+circular dependency when the problem transaction itself is stuck. Identical problem
+sets and absent clears skip both storage writes and redraws. Widgets may report their
+current capability on every evaluation so stale semantic observations converge.
 
 Status uses `active < result < attention`: ongoing work, a result to inspect, and a
 request for input. These map to `active`, `ok`, and `alert`. Status and health are

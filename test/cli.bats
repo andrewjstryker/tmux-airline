@@ -629,6 +629,19 @@ setup() {
   assert_output --partial "battery"
 }
 
+@test "lock diagnostics are empty normally and clear rejects a missing lock" {
+  airline init
+  session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
+
+  run airline lock show
+  assert_success
+  assert_output ""
+
+  run airline lock clear session "$session" problem
+  assert_failure
+  assert_output --partial "no such outstanding transaction"
+}
+
 # --- transient (consume-on-view) --------------------------------------------
 
 @test "a --transient signal arms the focus hook and clears on _unfocus" {

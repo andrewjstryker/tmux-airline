@@ -595,6 +595,26 @@ _problem_show () {   # [<session> [<key>]]; bare = every session with problems
   done
 }
 
+# Transaction diagnostics. tmux.sh owns marker discovery, liveness checks, and
+# recovery; the API owns only command validation and user-facing errors.
+_lock_show () {
+  (( $# == 0 )) || die "lock show: takes no arguments"
+  transaction_list
+}
+
+_lock_clear () {   # <session|window> <target> <namespace>
+  local scope="${1:-}" target="${2:-}" namespace="${3:-}" rc=0
+  (( $# == 3 )) || die "lock clear: need <session|window> <target> <namespace>"
+  transaction_clear "$scope" "$target" "$namespace" || rc=$?
+  case "$rc" in
+    0) ;;
+    2) die "lock clear: invalid scope, target, namespace, or marker" ;;
+    3) die "lock clear: no such outstanding transaction" ;;
+    4) die "lock clear: transaction owner is still active" ;;
+    *) die "lock clear: recovery failed" ;;
+  esac
+}
+
 #-----------------------------------------------------------------------------#
 # Static config nouns — palette & segment (public @airline-* options, read-only here)
 #-----------------------------------------------------------------------------#
@@ -680,6 +700,8 @@ api_health_show () { _signal_show health "$@"; }
 api_problem_set () { _problem_set "$@"; }
 api_problem_clear () { _problem_clear "$@"; }
 api_problem_show () { _problem_show "$@"; }
+api_lock_show () { _lock_show "$@"; }
+api_lock_clear () { _lock_clear "$@"; }
 
 api_palette_show () { local s; s="$(_require_current_session)"; _palette_show "$s" "$@"; }
 api_palette_use () {

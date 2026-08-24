@@ -438,6 +438,24 @@ session id. `problem show <session>` narrows the listing, and `problem show
 `level<TAB>message` tuple. Tmux status formats can supply the precise evaluation
 context as `#{session_id}`; callers do not need to infer it from `TMUX_PANE`.
 
+### Lock recovery
+
+Airline serializes collection updates with owner-scoped tmux locks. A process
+killed with `SIGKILL` cannot run cleanup, so its lock can remain behind. The lock
+diagnostics make that rare state discoverable and recoverable:
+
+```shell
+airline lock show
+# scope<TAB>owner<TAB>namespace<TAB>active|stale<TAB>pid<TAB>age-seconds
+
+airline lock clear session '$1' problem
+airline lock clear window '@3' status
+```
+
+`lock clear` only releases a stale lock; it refuses to clear one whose recorded
+owner process is still alive. Lock recovery is separate from the problem API so
+diagnosing a stuck problem transaction never depends on acquiring that same lock.
+
 ## The `airline` CLI
 
 One entry point drives everything. Top-level verbs plus a handful of nouns, each
@@ -457,6 +475,7 @@ airline adapter  show | available | use <name> | load <path> | register <dir>
 airline status   set <key> <level>    [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
 airline health   set <key> <ok|warn|fail> [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
 airline problem  set <session> <key> <ok|warn|fail> [<message>] | clear <session> <key> | show [<session> [<key>]]
+airline lock     show | clear <session|window> <target> <namespace>
 airline state    suspend | resume | toggle | show
 ```
 

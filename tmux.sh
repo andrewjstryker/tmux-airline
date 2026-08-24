@@ -172,51 +172,83 @@ current_session () {
 hook_set   () { tmux set-hook -g  "$1" "$2"; }
 hook_unset () { tmux set-hook -gu "$1"; }
 
-# Private server-coordinated advisory-lock leaves. Higher layers use only the
-# scoped transaction functions below, never the lock mechanism directly.
-_lock_acquire () { tmux wait-for -L "$1"; }
-_lock_release () { tmux wait-for -U "$1"; }
-
 # Run one callback while holding a lock scoped to an airline state owner and
 # namespace. Higher layers declare the transaction boundary without knowing the
 # wait-for mechanism, channel naming, or cleanup rules. Transactions deliberately
 # do not nest: tmux locks are not reentrant, so nesting would deadlock.
 _AIRLINE_TRANSACTION_CHANNEL=""
+_AIRLINE_TRANSACTION_SCOPE=""
+_AIRLINE_TRANSACTION_TARGET=""
+_AIRLINE_TRANSACTION_NAMESPACE=""
+
+_transaction_marker_name () { printf '@airline--transaction-%s' "$1"; }
+
+_transaction_channel () {   # <session|window> <canonical-target> <namespace>
+  local scope="$1" target="$2" namespace="$3"
+  target="${target//[^a-zA-Z0-9_-]/_}"
+  printf 'airline-%s-%s-%s' "$scope" "$target" "$namespace"
+}
+
+# Acquire/release update the owner marker in the SAME tmux command sequence as
+# wait-for. If the shell disappears between commands, tmux still completes both,
+# so every held Airline lock remains discoverable.
+_transaction_acquire () {   # <scope> <target> <namespace> <channel> <metadata>
+  local scope="$1" target="$2" namespace="$3" channel="$4" metadata="$5"
+  local marker; marker="$(_transaction_marker_name "$namespace")"
+  case "$scope" in
+    session) tmux wait-for -L "$channel" \; set-option -q    -t "$target" "$marker" "$metadata" ;;
+    window)  tmux wait-for -L "$channel" \; set-option -q -w -t "$target" "$marker" "$metadata" ;;
+  esac || { tmux wait-for -U "$channel" 2>/dev/null || true; return 1; }
+}
+
+_transaction_release () {   # <scope> <target> <namespace> <channel>
+  local scope="$1" target="$2" namespace="$3" channel="$4"
+  local marker; marker="$(_transaction_marker_name "$namespace")"
+  case "$scope" in
+    session) tmux set-option -qu    -t "$target" "$marker" \; wait-for -U "$channel" ;;
+    window)  tmux set-option -qu -w -t "$target" "$marker" \; wait-for -U "$channel" ;;
+  esac
+}
 
 _transaction_cleanup () {
   local channel="${_AIRLINE_TRANSACTION_CHANNEL:-}"
   [[ -n "$channel" ]] || return 0
   _AIRLINE_TRANSACTION_CHANNEL=""
-  _lock_release "$channel" || true
+  _transaction_release \
+    "$_AIRLINE_TRANSACTION_SCOPE" "$_AIRLINE_TRANSACTION_TARGET" \
+    "$_AIRLINE_TRANSACTION_NAMESPACE" "$channel" || true
 }
 
-_transaction_abort () {   # <signal>
-  local signal="$1"
+_transaction_abort () {   # <exit-status>
+  local status="$1"
   _transaction_cleanup
-  trap - "$signal"
-  kill -s "$signal" "$$"
+  exit "$status"
 }
 
-_with_transaction () {   # <session|window> <target> <namespace> <callback> [<arg>...]
-  local scope="$1" target="$2" namespace="$3" callback="$4" channel rc; shift 4
+_with_transaction () (   # <session|window> <target> <namespace> <callback> [<arg>...]
+  local scope="$1" target="$2" namespace="$3" callback="$4" channel started metadata rc; shift 4
   [[ -z "${_AIRLINE_TRANSACTION_CHANNEL:-}" ]] || {
     printf 'airline: nested state transaction (%s)\n' "$_AIRLINE_TRANSACTION_CHANNEL" >&2
     return 2
   }
-  target="${target//[^a-zA-Z0-9_-]/_}"
-  namespace="${namespace//[^a-zA-Z0-9_-]/_}"
-  channel="airline-$scope-$target-$namespace"
-  _lock_acquire "$channel" || return 1
+  [[ "$namespace" =~ ^[a-zA-Z0-9_-]+$ ]] || return 2
+  channel="$(_transaction_channel "$scope" "$target" "$namespace")"
+  printf -v started '%(%s)T' -1
+  metadata="${BASHPID}:${started}"
+  _transaction_acquire "$scope" "$target" "$namespace" "$channel" "$metadata" || return 1
   _AIRLINE_TRANSACTION_CHANNEL="$channel"
+  _AIRLINE_TRANSACTION_SCOPE="$scope"
+  _AIRLINE_TRANSACTION_TARGET="$target"
+  _AIRLINE_TRANSACTION_NAMESPACE="$namespace"
   trap '_transaction_cleanup' EXIT
-  trap '_transaction_abort HUP' HUP
-  trap '_transaction_abort INT' INT
-  trap '_transaction_abort TERM' TERM
+  trap '_transaction_abort 129' HUP
+  trap '_transaction_abort 130' INT
+  trap '_transaction_abort 143' TERM
   "$callback" "$@"; rc=$?
   _transaction_cleanup
   trap - EXIT HUP INT TERM
   return "$rc"
-}
+)
 
 with_session_transaction () {   # <session> <namespace> <callback> [<arg>...]
   _with_transaction session "$@"
@@ -224,6 +256,59 @@ with_session_transaction () {   # <session> <namespace> <callback> [<arg>...]
 
 with_window_transaction () {    # <window> <namespace> <callback> [<arg>...]
   _with_transaction window "$@"
+}
+
+# Outstanding transaction markers are the observable lock registry. Output is
+# tab-delimited: <scope> <owner> <namespace> <active|stale> <pid> <age-seconds>.
+_transaction_list_owner () {   # <session|window> <target>
+  local scope="$1" target="$2" raw name metadata namespace pid started now age state
+  case "$scope" in
+    session) raw="$(_opt_list -t "$target")" ;;
+    window)  raw="$(_opt_list -w -t "$target")" ;;
+  esac
+  printf -v now '%(%s)T' -1
+  while read -r name metadata; do
+    case "$name" in @airline--transaction-*) ;; *) continue ;; esac
+    namespace="${name#@airline--transaction-}"
+    pid="${metadata%%:*}"; started="${metadata#*:}"
+    [[ "$pid" =~ ^[0-9]+$ && "$started" =~ ^[0-9]+$ ]] || continue
+    if kill -0 "$pid" 2>/dev/null; then state=active; else state=stale; fi
+    age=$(( now >= started ? now - started : 0 ))
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$scope" "$target" "$namespace" "$state" "$pid" "$age"
+  done <<< "$raw"
+}
+
+transaction_list () {
+  local target seen=" "
+  for target in $(list_sessions); do _transaction_list_owner session "$target"; done
+  for target in $(tmux list-windows -a -F '#{window_id}'); do
+    case "$seen" in *" $target "*) continue ;; esac
+    seen+="$target "
+    _transaction_list_owner window "$target"
+  done
+}
+
+# Clear one STALE marker and its wait-for channel. A live owner is never forcibly
+# unlocked: its later cleanup could otherwise release a successor's lock.
+transaction_clear () {   # <session|window> <target> <namespace>
+  local scope="$1" target="$2" namespace="$3" metadata pid channel marker
+  [[ "$namespace" =~ ^[a-zA-Z0-9_-]+$ ]] || return 2
+  case "$scope" in
+    session) target="$(resolve_session_target "$target")" || return 2 ;;
+    window)  target="$(resolve_window "$target")" || return 2 ;;
+    *) return 2 ;;
+  esac
+  marker="$(_transaction_marker_name "$namespace")"
+  case "$scope" in
+    session) metadata="$(opt_get_session "$target" "$marker")" ;;
+    window)  metadata="$(opt_get_window "$target" "$marker")" ;;
+  esac
+  [[ -n "$metadata" ]] || return 3
+  pid="${metadata%%:*}"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 2
+  kill -0 "$pid" 2>/dev/null && return 4
+  channel="$(_transaction_channel "$scope" "$target" "$namespace")"
+  _transaction_release "$scope" "$target" "$namespace" "$channel"
 }
 
 # Key bindings — a primitive for callers; airline itself binds no keys (a user wires
