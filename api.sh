@@ -34,17 +34,36 @@ _require_current_session () {
   printf '%s' "$session"
 }
 
+# One lock per canonical session keeps the collection's registry, tuples, and badge
+# projection coherent across concurrent background widget evaluations.
+_problem_lock_name () { printf 'airline-problem-%s' "${1#\$}"; }
+
 # Store one session problem and refresh its aggregate projection. This is the shared
-# write path for the public command and airline's own managed components. `ok` is a
-# recovery event, not retained state: it unregisters the contributor.
+# serialized write path for the public command and airline's own managed components.
+# `ok` is a recovery event, not retained state. Return 0 only when the visible badge
+# changed, allowing the public path to skip redundant redraws.
 _problem_store () {   # <session> <key> <ok|warn|fail> [<message>]
-  local session="$1" key="$2" level="$3" message="${4:-}"
+  local session="$1" key="$2" level="$3" message="${4:-}" lock tuple desired
+  local changed="" projected=1
+  lock="$(_problem_lock_name "$session")"
+  lock_acquire "$lock" || return 1
   if [[ "$level" == ok ]]; then
-    coll_unregister_session "$session" problem "$key"
+    tuple="$(coll_get_session "$session" problem "$key")"
+    if coll_has_session "$session" problem "$key" || [[ -n "$tuple" ]]; then
+      coll_unregister_session "$session" problem "$key"
+      changed=1
+    fi
   else
-    coll_set_session "$session" problem "$key" "$level" "$message"
+    tuple="$(coll_get_session "$session" problem "$key")"
+    desired="$(printf '%s\t%s' "$level" "$message")"
+    if ! coll_has_session "$session" problem "$key" || [[ "$tuple" != "$desired" ]]; then
+      coll_set_session "$session" problem "$key" "$level" "$message"
+      changed=1
+    fi
   fi
-  problem_project "$session"
+  if [[ -n "$changed" ]] && problem_project "$session"; then projected=0; fi
+  lock_release "$lock" || true
+  return "$projected"
 }
 
 # One "label   value" row — the single home for the `show` column width, so every
@@ -484,22 +503,24 @@ _signal_show () {   # <ns> [<key>] [-t <win>]
 }
 
 #-----------------------------------------------------------------------------#
-# Session problems — cooperating widgets report graceful-degradation details.
+# Session problems — cooperating widgets report failures encountered by one
+# session's configured components. Mutation requires that session as input and
+# never infers or writes another session. A bare show is intentionally server-wide.
 #-----------------------------------------------------------------------------#
 
-_problem_set () {   # <default-session> <key> <level> <message...> [-t <session>]
-  local session="$1" key level message; shift; local -a pos=()
-  while (( $# )); do
-    case "$1" in
-      -t)
-        [[ $# -ge 2 && -n "$2" ]] || die "problem set: -t requires <session>"
-        session="$2"
-        shift 2
-        ;;
-      *) pos+=("$1"); shift ;;
-    esac
-  done
-  key="${pos[0]:-}"; level="${pos[1]:-}"; message="${pos[*]:2}"
+_problem_session () {   # <verb> <session-target>
+  local verb="$1" target="${2:-}" session
+  [[ -n "$target" ]] || die "problem $verb: need <session>"
+  session="$(resolve_session_target "$target")"
+  [[ -n "$session" ]] || die "problem $verb: cannot resolve session '$target'"
+  printf '%s' "$session"
+}
+
+_problem_set () {   # <session> <key> <level> [<message...>]
+  local target="${1:-}" key="${2:-}" level="${3:-}" message session
+  shift $(( $# < 3 ? $# : 3 ))
+  message="$*"
+  session="$(_problem_session set "$target")"
   [[ -n "$key" ]] || die "problem set: need <key>"
   [[ "$key" != *[[:space:]]* ]] || die "problem set: key must not contain whitespace"
   _condition_level_valid "$level" || die "problem set: invalid level '$level'"
@@ -511,44 +532,44 @@ _problem_set () {   # <default-session> <key> <level> <message...> [-t <session>
   return 0
 }
 
-_problem_clear () {   # <default-session> <key> [-t <session>]
-  local session="$1" key=""; shift
-  while (( $# )); do
-    case "$1" in
-      -t)
-        [[ $# -ge 2 && -n "$2" ]] || die "problem clear: -t requires <session>"
-        session="$2"
-        shift 2
-        ;;
-      *) key="$1"; shift ;;
-    esac
-  done
+_problem_clear () {   # <session> <key>
+  local target="${1:-}" key="${2:-}" session
+  (( $# <= 2 )) || die "problem clear: too many arguments"
+  session="$(_problem_session clear "$target")"
   [[ -n "$key" ]] || die "problem clear: need <key>"
-  coll_unregister_session "$session" problem "$key"
-  problem_project "$session" && redraw
+  _problem_store "$session" "$key" ok "" && redraw
   return 0
 }
 
-_problem_show () {   # <default-session> [<key>] [-t <session>]
-  local session="$1" key="" tuple level message k; shift
-  while (( $# )); do
-    case "$1" in
-      -t)
-        [[ $# -ge 2 && -n "$2" ]] || die "problem show: -t requires <session>"
-        session="$2"
-        shift 2
-        ;;
-      *) key="$1"; shift ;;
-    esac
-  done
+_problem_show_session () {   # <session> [<key>] [<grouped=1>]
+  local session="$1" key="${2:-}" grouped="${3:-}" tuple level message k lock members
+  lock="$(_problem_lock_name "$session")"
+  lock_acquire "$lock" || return 1
   if [[ -n "$key" ]]; then
     coll_get_session "$session" problem "$key"
+    lock_release "$lock" || true
     return 0
   fi
-  for k in $(coll_members_session "$session" problem); do
+  members="$(coll_members_session "$session" problem)"
+  if [[ -n "$grouped" && -n "$members" ]]; then printf '%s:\n' "$session"; fi
+  for k in $members; do
     tuple="$(coll_get_session "$session" problem "$k")"
     IFS=$'\t' read -r level message <<< "$tuple"
-    _show_row "$k" "$level${message:+  $message}"
+    _show_row "${grouped:+  }$k" "$level${message:+  $message}"
+  done
+  lock_release "$lock" || true
+}
+
+_problem_show () {   # [<session> [<key>]]; bare = every session with problems
+  local target="${1:-}" key="${2:-}" session
+  (( $# <= 2 )) || die "problem show: too many arguments"
+  if [[ -n "$target" ]]; then
+    session="$(_problem_session show "$target")"
+    _problem_show_session "$session" "$key"
+    return 0
+  fi
+  for session in $(list_sessions); do
+    _problem_show_session "$session" "" 1
   done
 }
 
@@ -634,9 +655,9 @@ api_status_show () { _signal_show status "$@"; }
 api_health_set () { _signal_set health _condition_level_valid ok "$@"; }
 api_health_clear () { _signal_clear health "$@"; }
 api_health_show () { _signal_show health "$@"; }
-api_problem_set () { _problem_set "$(_require_current_session)" "$@"; }
-api_problem_clear () { _problem_clear "$(_require_current_session)" "$@"; }
-api_problem_show () { _problem_show "$(_require_current_session)" "$@"; }
+api_problem_set () { _problem_set "$@"; }
+api_problem_clear () { _problem_clear "$@"; }
+api_problem_show () { _problem_show "$@"; }
 
 api_palette_show () { local s; s="$(_require_current_session)"; _palette_show "$s" "$@"; }
 api_palette_use () {
