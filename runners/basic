@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# The portable floor: successful exit is healthy; every other termination failed.
+
+airline_runner_classify () {   # <exit-status> <signal>
+  local status="$1" signal="$2"
+  if [[ "$status" == 0 && -z "$signal" ]]; then printf 'ok\n'
+  else printf 'fail\n'; fi
+}

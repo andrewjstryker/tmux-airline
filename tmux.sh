@@ -143,6 +143,17 @@ source_file_session () { tmux source-file -t "$1" "$2"; }
 current_window () { tmux display-message -p '#{window_id}'; }
 resolve_window () { tmux display-message -p -t "$1" '#{window_id}'; }
 
+# Current pane identity and working directory for runner placement. Context remains
+# tmux's responsibility; higher layers receive canonical values only.
+current_pane () {
+  if [[ -n "${TMUX_PANE:-}" ]]; then tmux display-message -p -t "$TMUX_PANE" '#{pane_id}'
+  else tmux display-message -p '#{pane_id}'; fi
+}
+current_path () {
+  if [[ -n "${TMUX_PANE:-}" ]]; then tmux display-message -p -t "$TMUX_PANE" '#{pane_current_path}'
+  else tmux display-message -p '#{pane_current_path}'; fi
+}
+
 # Ask tmux to resolve any valid target (session, window, or pane) to its owning
 # session id. This keeps target grammar and current-context rules inside tmux.
 resolve_session () { tmux display-message -p -t "$1" '#{session_id}'; }
@@ -166,6 +177,23 @@ current_session () {
   else tmux display-message -p '#{session_id}'
   fi
 }
+
+# Runner topology. Commands are argv vectors, not shell strings: split/new-window
+# pass every argument after the fixed placement fields directly to the new pane.
+# Both creators print the new pane id so orchestration can identify its owner.
+runner_open_pane () {   # <target-pane> <cwd> <command> [<arg>...]
+  local target="$1" cwd="$2"; shift 2
+  tmux split-window -d -P -F '#{pane_id}' -c "$cwd" -t "$target" "$@"
+}
+
+runner_open_window () {   # <target-session> <cwd> <command> [<arg>...]
+  local session="$1" cwd="$2"; shift 2
+  tmux new-window -d -P -F '#{pane_id}' -c "$cwd" -t "$session:" "$@"
+}
+
+# Preserve a spawned command's pane after exit. remain-on-exit is pane-scoped, so
+# another pane in the same window keeps its ordinary lifecycle.
+runner_retain_pane () { tmux set-option -p -t "$1" remain-on-exit on; }
 
 # Hooks (the pane-focus-out consume-on-view callback). <spec> is a full hook
 # name, optionally indexed, e.g. "pane-focus-out[90]".

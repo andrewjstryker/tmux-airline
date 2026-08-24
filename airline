@@ -3,15 +3,16 @@
 # airline — the tmux-airline CLI: argument parsing, the command grammar, dispatch,
 # and help, all in one file. Read this to know the entire command surface.
 #
-# It locates the install, points the mechanical layer at the right tmux server, sources
-# the behaviour stack (tmux.sh → collections.sh → render.sh → api.sh), then parses argv
-# and calls the api.sh function behind each verb. api.sh holds the behaviour as pure
-# functions; the decision of which to call — the grammar — lives here.
+# It locates the install, points the mechanical layer at the right tmux server,
+# sources the behaviour stack
+# (tmux.sh → collections.sh → render.sh → runner.sh → api.sh), then parses argv and
+# calls the api.sh function behind each verb. api.sh holds orchestration; the decision
+# of which public entry point to call — the grammar — lives here.
 #
-# Grammar: a few top-level verbs (init/apply/show/…) plus four config nouns
-# (palette/segment/adapter/layout) and three dynamic ones (status/health/problem),
-# each with its own verb set. Every noun's verbs live in a cmd_<noun> dispatcher below; help is
-# generated from the `#| …` markers on the case arms, so the grammar documents itself.
+# Grammar: a few top-level verbs (init/apply/show/…) plus config, signal, diagnostic,
+# lifecycle, and runner nouns, each with its own verb set. Every noun's verbs live in
+# a cmd_<noun> dispatcher below; help is generated from the `#| …` markers on the
+# case arms, so the grammar documents itself.
 
 set -u
 
@@ -31,6 +32,8 @@ source "$AIRLINE_DIR/tmux.sh"
 source "$AIRLINE_DIR/collections.sh"
 # shellcheck source=render.sh
 source "$AIRLINE_DIR/render.sh"
+# shellcheck source=runner.sh
+source "$AIRLINE_DIR/runner.sh"
 # shellcheck source=api.sh
 source "$AIRLINE_DIR/api.sh"
 
@@ -58,7 +61,7 @@ usage () {
   printf 'Commands:\n'
   _help_arms "$AIRLINE_DIR/airline" '^case ' '^esac'
   local n
-  for n in palette segment adapter layout state status health problem lock; do
+  for n in palette segment adapter layout runner state status health problem lock; do
     printf '\n'; _help_noun "$n"
   done
   printf '\n  use loads a bare name from a registered dir; register blesses a location.\n'
@@ -179,6 +182,20 @@ cmd_layout () {
   esac
 }
 
+cmd_runner () {
+  local verb="${1:-}"; shift || true
+  case "$verb" in
+    use)       api_runner_use "$@" ;;       #| <name> — select the session's default runner
+    load)      api_runner_load "$@" ;;      #| <path> — select a one-off runner implementation
+    show)      api_runner_show "$@" ;;      #| [name|path] — the selected runner (summary, or one field raw)
+    available) api_runner_available ;;       #| the runners you can `use` (on the path)
+    register)  api_runner_register "$@" ;;  #| <dir> — add a runner search dir
+    run)       api_runner_run "$@" ;;        #| [--here|--pane|--window] [--with <name>] -- <command> [<arg>...]
+    ""|-h|--help|help) _help_noun runner ;;
+    *) die "unknown runner command: $verb" ;;
+  esac
+}
+
 #-----------------------------------------------------------------------------#
 # Dispatch — top-level verbs. Config/dynamic nouns delegate to their cmd_<noun>
 # parser above; the rest call the api.sh behaviour function directly.
@@ -197,8 +214,10 @@ case "$cmd" in
   segment)  cmd_segment "$@" ;;
   adapter)  cmd_adapter "$@" ;;
   layout)   cmd_layout  "$@" ;;
+  runner)   cmd_runner  "$@" ;;
   _init-session) api_init_session "$@" ;; # internal: after-new-session hook callback
   _unfocus) api_unfocus "$@" ;;           # internal: pane-focus-out hook callback
+  _run)     api_runner_exec "$@" ;;        # internal: spawned-pane runner callback
   ""|-h|--help|help) usage ;;
   *) die "unknown command: $cmd (try: airline help)" ;;
 esac

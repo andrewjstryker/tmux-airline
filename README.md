@@ -16,6 +16,8 @@ Features:
   per-window badges
 - **Adapters** that recolor tmux-cpu, tmux-battery, tmux-online-status, and
   tmux-prefix-highlight from the active palette
+- Extensible process **runners** with exit classification, optional live health
+  filtering, and current-pane/new-pane/new-window placement
 - Session-wide widget **problems**, reduced to one extreme-right warning with
   full diagnostics available through the CLI
 - Suspend/resume for nested tmux sessions
@@ -84,7 +86,7 @@ otherwise the launcher prints an actionable error.
 
 ## Core concepts
 
-Four things, driven by one `airline` CLI:
+Five things, driven by one `airline` CLI:
 
 | Concept     | What it is                                                        | You change it with            |
 |-------------|-------------------------------------------------------------------|-------------------------------|
@@ -92,6 +94,7 @@ Four things, driven by one `airline` CLI:
 | **segment** | One powerline block's content, in a fixed slot                    | a layout, or `set -g`         |
 | **layout**  | A composition that fills the slots (and picks adapters)           | `layout use`                  |
 | **adapter** | A bridge that paints a third-party plugin from the palette        | `layout` (or `adapter use`)   |
+| **runner**  | A launcher plus program-specific process interpretation           | `runner run`                  |
 
 Choose a palette for the colors and a layout for the arrangement. Override an
 individual palette role or segment slot with a normal tmux option, then run
@@ -299,6 +302,90 @@ You rarely call adapters directly — a layout invokes them — but you can:
 `airline adapter use cpu`, `airline adapter show` (what's applied), `airline
 adapter available` (what's on the path).
 
+## Process runners
+
+Interactive programs with lifecycle hooks should call airline's `status` and
+`health` API directly. A runner is the lower-fidelity floor for non-interactive
+commands that expose only terminal output, live observable state, and an eventual
+exit status.
+
+Airline ships the `basic` runner and selects it on initialization:
+
+```sh
+airline runner run -- make test
+airline runner run --pane -- npm test
+airline runner run --window -- cargo test
+```
+
+The default `--here` runs synchronously in the current pane, streams terminal I/O,
+and returns the command's original exit status. `--pane` and `--window` launch in
+new tmux topology and print the new pane id; spawned panes are retained after exit
+so their output and native tmux exit status remain available until dismissed.
+
+This lifecycle monitoring is independent of tmux's standard terminal monitoring.
+Airline observes a process it runs: whether it is active, its changing health, and
+how it exits. Tmux observes the containing terminal: activity, silence, and bells.
+The signals may overlap in directing attention to a window, but neither implies or
+configures the other. Users may invoke either system alone or combine them; runner
+placement never changes `monitor-activity`, `monitor-silence`, or `monitor-bell`.
+
+While a command runs, its window reports status `active`. On exit, airline maps the
+runner's normalized result onto its existing channels:
+
+| Result | Status | Health |
+|--------|--------|--------|
+| `ok` | `result` | clear |
+| `warn` | `attention` | `warn` |
+| `fail` | `attention` | `fail` |
+
+Completion signals are transient. A command explains itself in its pane; airline
+does not rewrite the command, parse its terminal output, or manufacture another
+description.
+
+### Runner implementations
+
+Runner implementations are trusted shell files on a registered search path. Every
+runner classifies the terminal result:
+
+```bash
+airline_runner_classify() { # <exit-status> <signal>
+  case "$1" in
+    0) printf 'ok\n' ;;
+    5) printf 'warn\n' ;; # for example, pytest collected no tests
+    *) printf 'fail\n' ;;
+  esac
+}
+```
+
+Register and select it like other loadable airline kinds, or override the selected
+runner for one invocation:
+
+```sh
+airline runner register ~/.config/airline/runners
+airline runner use pytest
+airline runner run -- pytest
+airline runner run --with basic -- make test
+```
+
+A server or other long-lived process may additionally define a live filter:
+
+```bash
+airline_runner_filter() { # <pid> <report-function> [<command> <arg>...]
+  local pid="$1" report="$2"; shift 2
+  while kill -0 "$pid" 2>/dev/null; do
+    # Inspect a log, file, or API without consuming the command's terminal output.
+    condition="$(current_condition)" || return
+    "$report" "$condition" # ok | warn | fail; later ok reports recovery
+    sleep 5
+  done
+}
+```
+
+Airline owns the filter lifecycle, validates every report, and projects health.
+The implementation owns its evidence and domain semantics. Programs managed
+independently of the launched process are monitor plugins instead; they should call
+the health API directly.
+
 ## Window list signals
 
 ### Targets and scope
@@ -472,6 +559,8 @@ airline palette  show [name|<element>] | available | use <name> | register <dir>
 airline segment  show [<slot>]                 # read-only; write with set -g @airline-segment-<slot>
 airline layout   show [name|path] | available | use <name> | load <path> | register <dir>
 airline adapter  show | available | use <name> | load <path> | register <dir>
+airline runner   show [name|path] | available | use <name> | load <path> | register <dir>
+                 run [--here|--pane|--window] [--with <name>] -- <command> [<arg>...]
 airline status   set <key> <level>    [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
 airline health   set <key> <ok|warn|fail> [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
 airline problem  set <session> <key> <ok|warn|fail> [<message>] | clear <session> <key> | show [<session> [<key>]]
@@ -483,7 +572,7 @@ Two conventions run through it:
 
 - **`use` vs `register`.** `use <name>` loads a bare name from a registered
   directory; `register <dir>` adds one (and lets it shadow shipped names). `load
-  <path>` runs a one-off file by path (adapters and layouts only).
+  <path>` selects or runs a one-off file by path (adapters, layouts, and runners).
 - **`show`.** Bare `show` is a human summary; `show <field>` prints one raw
   value, newline-terminated, safe for `$(…)`. `available` lists the catalog a
   `use` can pick from. Editing a color or segment option is free; the bar

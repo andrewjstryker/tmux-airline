@@ -5,7 +5,7 @@
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
 
-SHELLCHECK_SOURCES := airline airline.tmux bin/airline $(wildcard *.sh adapters/* helpers/* layouts/*)
+SHELLCHECK_SOURCES := airline airline.tmux bin/airline $(wildcard *.sh adapters/* helpers/* layouts/* runners/*)
 
 install:
 	install -d "$(DESTDIR)$(BINDIR)"

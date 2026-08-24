@@ -642,6 +642,182 @@ setup() {
   assert_output --partial "no such outstanding transaction"
 }
 
+# --- runner (non-interactive process lifecycle) ----------------------------
+
+@test "init selects the shipped basic runner and exposes its catalog" {
+  airline init
+
+  run airline runner show name
+  assert_output basic
+  run airline runner show path
+  assert_output --regexp '/runners/basic$'
+  run airline runner available
+  assert_line basic
+}
+
+@test "runner use/register/load follow the loadable-kind contract" {
+  airline init
+  mkdir -p "$BATS_TEST_TMPDIR/runners"
+  printf 'airline_runner_classify() { printf "warn\\n"; }\n' > "$BATS_TEST_TMPDIR/runners/custom"
+
+  airline runner register "$BATS_TEST_TMPDIR/runners"
+  airline runner use custom
+  run airline runner show name
+  assert_output custom
+
+  airline runner load "$BATS_TEST_TMPDIR/runners/custom"
+  run airline runner show path
+  assert_output --regexp '^/.*/runners/custom$'
+}
+
+@test "runner rejects an implementation without a classifier" {
+  airline init
+  mkdir -p "$BATS_TEST_TMPDIR/runners"
+  printf 'unrelated() { :; }\n' > "$BATS_TEST_TMPDIR/runners/broken"
+  airline runner register "$BATS_TEST_TMPDIR/runners"
+
+  run airline runner use broken
+  assert_failure
+  assert_output --partial "does not define a valid classifier"
+}
+
+@test "runner here streams output, returns the child status, and projects success" {
+  airline init
+  pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
+  key="runner-${pane#%}"
+
+  run airline runner run -- bash -c 'printf "job output\\n"'
+  assert_success
+  assert_output "job output"
+  run airline status show "$key"
+  assert_output result
+  run airline health show "$key"
+  assert_output ""
+}
+
+@test "runner here preserves a failed exit and projects attention plus fail" {
+  airline init
+  pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
+  key="runner-${pane#%}"
+
+  run airline runner run -- bash -c 'printf "failed output\\n"; exit 7'
+  assert_failure 7
+  assert_output "failed output"
+  run airline status show "$key"
+  assert_output attention
+  run airline health show "$key"
+  assert_output fail
+}
+
+@test "a registered classifier can interpret a nonzero exit as warn" {
+  airline init
+  pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
+  key="runner-${pane#%}"
+  mkdir -p "$BATS_TEST_TMPDIR/runners"
+  printf 'airline_runner_classify() { [[ "$1" == 5 ]] && printf "warn\\n" || printf "fail\\n"; }\n' \
+    > "$BATS_TEST_TMPDIR/runners/pytest"
+  airline runner register "$BATS_TEST_TMPDIR/runners"
+
+  run airline runner run --with pytest -- bash -c 'exit 5'
+  assert_failure 5
+  run airline status show "$key"
+  assert_output attention
+  run airline health show "$key"
+  assert_output warn
+}
+
+@test "a live filter can fail and recover health while the process stays active" {
+  airline init
+  session="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{session_id}')"
+  pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
+  key="runner-${pane#%}"
+  mkdir -p "$BATS_TEST_TMPDIR/runners"
+  printf '%s\n' \
+    'airline_runner_classify() { printf "ok\\n"; }' \
+    'airline_runner_filter() {' \
+    '  local pid="$1" report="$2"' \
+    '  "$report" fail' \
+    '  sleep 0.1' \
+    '  "$report" ok' \
+    '  while kill -0 "$pid" 2>/dev/null; do sleep 0.05; done' \
+    '}' > "$BATS_TEST_TMPDIR/runners/server"
+  airline runner register "$BATS_TEST_TMPDIR/runners"
+
+  airline runner run --with server -- bash -c 'sleep 0.8' & runner_pid=$!
+  observed=""
+  for _ in {1..100}; do
+    observed="$(airline health show "$key")"
+    [[ "$observed" == fail ]] && break
+    sleep 0.01
+  done
+  assert_equal "$observed" fail
+
+  recovered=fail
+  for _ in {1..100}; do
+    recovered="$(airline health show "$key")"
+    [[ -z "$recovered" ]] && break
+    sleep 0.01
+  done
+  assert_equal "$recovered" ""
+  run airline status show "$key"
+  assert_output active
+
+  wait "$runner_pid"
+  run airline problem show "$session" airline-runner-server-filter
+  assert_output ""
+  run airline status show "$key"
+  assert_output result
+}
+
+@test "runner pane retains failed output and native exit status" {
+  airline init
+
+  run airline runner run --pane -- bash -c 'printf "pane failure\\n"; exit 9'
+  assert_success
+  spawned="$output"
+  assert_regex "$spawned" '^%[0-9]+$'
+
+  dead=""
+  for _ in {1..200}; do
+    dead="$($TMUX -L "$_bats_socket" display-message -p -t "$spawned" '#{pane_dead}')"
+    [[ "$dead" == 1 ]] && break
+    sleep 0.01
+  done
+  assert_equal "$dead" 1
+  run $TMUX -L "$_bats_socket" display-message -p -t "$spawned" '#{pane_dead_status}'
+  assert_output 9
+  window="$($TMUX -L "$_bats_socket" display-message -p -t "$spawned" '#{window_id}')"
+  run airline status show "runner-${spawned#%}" -t "$window"
+  assert_output attention
+  run airline health show "runner-${spawned#%}" -t "$window"
+  assert_output fail
+  run $TMUX -L "$_bats_socket" capture-pane -p -t "$spawned" -S -
+  assert_output --partial "pane failure"
+}
+
+@test "runner window retains a successful result in its execution window" {
+  airline init
+
+  run airline runner run --window -- bash -c 'printf "window success\\n"'
+  assert_success
+  spawned="$output"
+  assert_regex "$spawned" '^%[0-9]+$'
+
+  dead=""
+  for _ in {1..200}; do
+    dead="$($TMUX -L "$_bats_socket" display-message -p -t "$spawned" '#{pane_dead}')"
+    [[ "$dead" == 1 ]] && break
+    sleep 0.01
+  done
+  assert_equal "$dead" 1
+  window="$($TMUX -L "$_bats_socket" display-message -p -t "$spawned" '#{window_id}')"
+  run airline status show -t "$window"
+  assert_output --partial "runner-${spawned#%}"
+  assert_output --partial result
+  run $TMUX -L "$_bats_socket" capture-pane -p -t "$spawned" -S -
+  assert_output --partial "window success"
+}
+
 # --- transient (consume-on-view) --------------------------------------------
 
 @test "a --transient signal arms the focus hook and clears on _unfocus" {

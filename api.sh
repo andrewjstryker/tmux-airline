@@ -7,18 +7,20 @@
 # underscore-prefixed helpers are private implementation. The API owns input
 # validation and drives the layers below (opt_* / coll_* to mutate state, `render`
 # to produce the bar). Sourced on top of tmux.sh +
-# collections.sh + render.sh.
+# collections.sh + render.sh + runner.sh.
 #
 # The verb grammar (in `airline`) splits on the state model these functions implement.
 # Dynamic nouns (status, health, problem) are live and scriptable: set + re-project a
-# badge + redraw. Static config nouns (palette, segment) are read-only at the CLI.
-# Users provide global defaults through `.tmux.conf`; palette/layout runtime actions
-# create session overrides. We read the effective values and `apply` bakes them.
+# badge + redraw. Static config nouns (palette, segment) are read-only at the CLI;
+# runner adds process-lifecycle orchestration over those existing signals. Users
+# provide global defaults through `.tmux.conf`; palette/layout/runner selections
+# create session overrides. We read the effective values and `apply` bakes rendered
+# configuration while runner updates remain live.
 
 # shellcheck shell=bash
 
-if ! declare -F render >/dev/null; then
-  printf 'api.sh: load render.sh (and its layers) first\n' >&2
+if ! declare -F runner_impl_load >/dev/null; then
+  printf 'api.sh: load runner.sh (and its layers) first\n' >&2
   return 1 2>/dev/null || exit 1
 fi
 
@@ -100,6 +102,11 @@ _init () {   # <session>
   _path_register_self "$session" palette "$AIRLINE_DIR/palettes"
   _path_register_self "$session" adapter "$AIRLINE_DIR/adapters"
   _path_register_self "$session" layout  "$AIRLINE_DIR/layouts"
+  _path_register_self "$session" runner  "$AIRLINE_DIR/runners"
+
+  # Runner is an independent session selection. Seed it whenever absent so an
+  # upgrade from a pre-runner release is complete even if defaults-done already exists.
+  [[ -n "$(prv_get_session "$session" runner)" ]] || _runner_use "$session" basic
 
   # First run only (sentinel): apply the default of each axis the user hasn't set —
   # the default PALETTE if no palette is present, the default LAYOUT (which brings its
@@ -142,13 +149,14 @@ _show_config () {   # <session>
   _show_row state "$(_state_word "$session")"  # lifecycle (active | suspended)
   printf '\npaths:\n'                           # where `use` resolves, priority order
   local k
-  for k in palette adapter layout; do
+  for k in palette adapter layout runner; do
     _show_row "$k" "$(coll_members_session "$session" "$(_path_ns "$k")")"
   done
   printf '\npalette:\n'; _palette_show "$session"
   printf '\nsegment:\n'; _static_show "$session" "segment-" _segment_slot_valid AIRLINE_SEGMENT_SLOTS
   printf '\nadapter:\n'; _adapter_show "$session"
   printf '\nlayout:\n';  _layout_show "$session"
+  printf '\nrunner:\n';  _runner_show "$session"
 }
 
 #-----------------------------------------------------------------------------#
@@ -371,6 +379,206 @@ _layout_show () {   # <session> [name|path]
     "")   _show_row name "$handle"
           _show_row path "$(_layout_file "$session" "$handle")" ;;
     *)    die "layout show: unknown field '$x' (name | path)" ;;
+  esac
+}
+
+#-----------------------------------------------------------------------------#
+# Runner — common process lifecycle + loadable interpretation
+#-----------------------------------------------------------------------------#
+
+# Resolve a runner handle exactly like a layout handle: bare selections remain
+# relocatable on the registered path; explicit loads are recorded as absolute paths.
+_runner_file () {   # <session> <handle> → file (empty if unresolved)
+  local session="$1" handle="$2"
+  if [[ "$handle" == */* ]]; then [[ -f "$handle" ]] && printf '%s' "$handle"
+  else _path_resolve "$session" runner "$handle"; fi
+}
+
+_runner_select () {   # <session> <handle>
+  local session="$1" handle="$2" file
+  file="$(_runner_file "$session" "$handle")"
+  [[ -n "$file" ]] || die "runner: '$handle' not found"
+  runner_impl_valid "$file" || die "runner: '$handle' does not define a valid classifier"
+  prv_set_session "$session" runner "$handle"
+}
+
+_runner_use () {   # <session> <name>
+  local session="$1" name="${2:-}"
+  [[ -n "$name" ]] || die "runner use: need <name>"
+  [[ "$name" != */* ]] || die "runner use: '$name' — bare name (or 'runner load <path>')"
+  _runner_select "$session" "$name"
+}
+
+_runner_load () {   # <session> <path>
+  local session="$1" path="${2:-}" abs
+  [[ -n "$path" ]] || die "runner load: need <path>"
+  abs="$(_abspath "$path")"
+  [[ -f "$abs" ]] || die "runner load: no such file: $path"
+  _runner_select "$session" "$abs"
+}
+
+_runner_show () {   # <session> [name|path]
+  local session="$1" x="${2:-}" handle
+  handle="$(prv_get_session "$session" runner)"
+  case "$x" in
+    name) printf '%s\n' "$handle" ;;
+    path) printf '%s\n' "$(_runner_file "$session" "$handle")" ;;
+    "")   _show_row name "$handle"
+          _show_row path "$(_runner_file "$session" "$handle")" ;;
+    *)    die "runner show: unknown field '$x' (name | path)" ;;
+  esac
+}
+
+_runner_problem () {   # <session> <key> <ok|warn|fail> [<message>]
+  _problem_store "$@" && redraw
+  return 0
+}
+
+# Globals intentionally cross the filter's background subshell boundary. Each CLI
+# invocation owns one run, so concurrent jobs live in separate processes and cannot
+# collide here; their tmux contributors are pane-qualified below.
+AIRLINE_RUNNER_SESSION=""
+AIRLINE_RUNNER_WINDOW=""
+AIRLINE_RUNNER_KEY=""
+AIRLINE_RUNNER_FILTER_PROBLEM=""
+
+_runner_problem_key () {   # <handle> <load|classify|filter>
+  local name="${1##*/}"
+  name="${name//[^a-zA-Z0-9_-]/-}"
+  printf 'airline-runner-%s-%s' "$name" "$2"
+}
+
+_runner_filter_report () {   # <ok|warn|fail>
+  local condition="${1:-}"
+  if ! _condition_level_valid "$condition"; then
+    _runner_problem "$AIRLINE_RUNNER_SESSION" "$AIRLINE_RUNNER_FILTER_PROBLEM" fail \
+      "runner filter emitted invalid condition '${condition}'"
+    return 1
+  fi
+  _runner_problem "$AIRLINE_RUNNER_SESSION" "$AIRLINE_RUNNER_FILTER_PROBLEM" ok ""
+  _signal_set health _condition_level_valid ok \
+    "$AIRLINE_RUNNER_KEY" "$condition" -t "$AIRLINE_RUNNER_WINDOW"
+}
+
+_runner_finish () {   # <condition> <window> <key>
+  local condition="$1" win="$2" key="$3"
+  case "$condition" in
+    ok)
+      _signal_set health _condition_level_valid ok "$key" ok -t "$win"
+      _signal_set status _status_level_valid "" "$key" result --transient -t "$win"
+      ;;
+    warn|fail)
+      _signal_set health _condition_level_valid ok "$key" "$condition" --transient -t "$win"
+      _signal_set status _status_level_valid "" "$key" attention --transient -t "$win"
+      ;;
+  esac
+}
+
+# Run one command in the calling pane. The process is started as a child so airline
+# can observe it; explicit stdin inheritance preserves current-pane interaction and
+# stdout/stderr remain connected directly to the pane. A live filter obtains its own
+# evidence and reports normalized state through the callback—it never consumes the
+# command's terminal stream.
+_runner_execute () {   # <session> <handle> <retain:0|1> -- <command> [<arg>...]
+  local session="$1" handle="$2" retain="$3" file pane win key load_problem classify_problem filter_problem
+  local child_pid filter_pid="" rc=0 signal="" condition
+  shift 3
+  [[ "${1:-}" == -- ]] || die "runner: internal command boundary missing"
+  shift
+  [[ $# -gt 0 ]] || die "runner run: need <command>"
+
+  pane="$(current_pane)"
+  win="$(resolve_window "$pane")"
+  key="runner-${pane#%}"
+  load_problem="$(_runner_problem_key "$handle" load)"
+  classify_problem="$(_runner_problem_key "$handle" classify)"
+  filter_problem="$(_runner_problem_key "$handle" filter)"
+  [[ "$retain" == 1 ]] && runner_retain_pane "$pane"
+
+  file="$(_runner_file "$session" "$handle")"
+  if [[ -z "$file" ]] || ! runner_impl_load "$file"; then
+    printf 'airline: runner %q is unavailable or invalid\n' "$handle" >&2
+    _runner_problem "$session" "$load_problem" fail "runner '$handle' is unavailable or invalid"
+    return 2
+  fi
+  _runner_problem "$session" "$load_problem" ok ""
+
+  _signal_set health _condition_level_valid ok "$key" ok -t "$win"
+  _signal_set status _status_level_valid "" "$key" active -t "$win"
+
+  # The wrapper remains the foreground pane process. Its child explicitly inherits
+  # stdin and shares the terminal; running it asynchronously gives a live filter the
+  # PID without routing command output through a pipe.
+  "$@" <&0 &
+  child_pid=$!
+
+  AIRLINE_RUNNER_SESSION="$session"
+  AIRLINE_RUNNER_WINDOW="$win"
+  AIRLINE_RUNNER_KEY="$key"
+  AIRLINE_RUNNER_FILTER_PROBLEM="$filter_problem"
+  if runner_impl_has_filter; then
+    runner_impl_filter_start "$child_pid" _runner_filter_report "$@"
+    filter_pid="$AIRLINE_RUNNER_FILTER_PID"
+  fi
+
+  wait "$child_pid" || rc=$?
+  if ! runner_impl_filter_stop "$filter_pid"; then
+    _runner_problem "$session" "$filter_problem" fail "runner '$handle' filter failed"
+  fi
+  (( rc > 128 )) && signal="$((rc - 128))"
+
+  if condition="$(runner_impl_classify "$rc" "$signal")"; then
+    _runner_problem "$session" "$classify_problem" ok ""
+  else
+    condition=fail
+    _runner_problem "$session" "$classify_problem" fail \
+      "runner '$handle' classifier failed or emitted an invalid condition"
+  fi
+  _runner_finish "$condition" "$win" "$key"
+  return "$rc"
+}
+
+_runner_run () {   # <session> [--here|--pane|--window] [--with <name>] -- <command>...
+  local session="$1" placement=here handle="" boundary="" pane cwd file spawned; shift
+  while (( $# )); do
+    case "$1" in
+      --here)   placement=here; shift ;;
+      --pane)   placement=pane; shift ;;
+      --window) placement=window; shift ;;
+      --with)
+        [[ $# -ge 2 && -n "$2" ]] || die "runner run: --with requires <name>"
+        [[ "$2" != */* ]] || die "runner run: --with accepts a bare name"
+        handle="$2"; shift 2 ;;
+      --) boundary=1; shift; break ;;
+      *) die "runner run: unknown option '$1' (command must follow --)" ;;
+    esac
+  done
+  [[ -n "$boundary" && $# -gt 0 ]] || die "runner run: need -- <command>"
+  [[ -n "$handle" ]] || handle="$(prv_get_session "$session" runner)"
+  [[ -n "$handle" ]] || die "runner run: no runner selected"
+  file="$(_runner_file "$session" "$handle")"
+  if [[ -z "$file" ]] || ! runner_impl_valid "$file"; then
+    _runner_problem "$session" "$(_runner_problem_key "$handle" load)" fail \
+      "runner '$handle' is unavailable or invalid"
+    die "runner run: '$handle' is unavailable or invalid"
+  fi
+
+  case "$placement" in
+    here) _runner_execute "$session" "$handle" 0 -- "$@" ;;
+    pane|window)
+      pane="$(current_pane)"; cwd="$(current_path)"
+      if [[ "$placement" == pane ]]; then
+        spawned="$(runner_open_pane "$pane" "$cwd" env \
+          "AIRLINE_DIR=$AIRLINE_DIR" "AIRLINE_TMUX=${AIRLINE_TMUX:-tmux}" \
+          "$AIRLINE_DIR/airline" _run "$handle" -- "$@")"
+      else
+        spawned="$(runner_open_window "$session" "$cwd" env \
+          "AIRLINE_DIR=$AIRLINE_DIR" "AIRLINE_TMUX=${AIRLINE_TMUX:-tmux}" \
+          "$AIRLINE_DIR/airline" _run "$handle" -- "$@")"
+      fi
+      runner_retain_pane "$spawned"
+      printf '%s\n' "$spawned"
+      ;;
   esac
 }
 
@@ -744,6 +952,21 @@ api_layout_load () {
 api_layout_show () { local s; s="$(_require_current_session)"; _layout_show "$s" "$@"; }
 api_layout_available () { local s; s="$(_require_current_session)"; _path_available "$s" layout; }
 api_layout_register () { local s; s="$(_require_current_session)"; _register "$s" layout "$@"; }
+
+api_runner_use () { local s; s="$(_require_current_session)"; _runner_use "$s" "$@"; }
+api_runner_load () { local s; s="$(_require_current_session)"; _runner_load "$s" "$@"; }
+api_runner_show () { local s; s="$(_require_current_session)"; _runner_show "$s" "$@"; }
+api_runner_available () { local s; s="$(_require_current_session)"; _path_available "$s" runner; }
+api_runner_register () { local s; s="$(_require_current_session)"; _register "$s" runner "$@"; }
+api_runner_run () { local s; s="$(_require_current_session)"; _runner_run "$s" "$@"; }
+
+api_runner_exec () {   # <handle> -- <command>...; internal spawned-pane entry
+  local s handle="${1:-}"
+  [[ -n "$handle" ]] || die "_run: need <runner>"
+  shift
+  s="$(_require_current_session)"
+  _runner_execute "$s" "$handle" 1 "$@"
+}
 
 api_unfocus () { _unfocus "$@"; }
 

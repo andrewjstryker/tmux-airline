@@ -82,6 +82,8 @@ _opt_clear () { unset "_FAKE_OPT[$(_fake_key "$@")]"; }
 redraw         () { (( _FAKE_REDRAWS++ )) || true; }
 current_window () { printf '%s' "$_FAKE_WIN"; }
 resolve_window () { printf '%s' "$1"; }
+current_pane () { printf '%%1'; }
+current_path () { printf '/tmp'; }
 current_session () { printf '%s' "$_FAKE_SESSION"; }
 resolve_session () { printf '%s' "$1"; }
 resolve_session_target () { printf '%s' "$1"; }
@@ -90,6 +92,9 @@ hook_set       () { _FAKE_HOOK["$1"]="$2"; }
 hook_unset     () { unset "_FAKE_HOOK[$1]"; }
 key_bind       () { _FAKE_BIND["$1 $2"]="$3"; }
 key_unbind     () { unset "_FAKE_BIND[$1 $2]"; }
+runner_open_pane () { printf '%%2'; }
+runner_open_window () { printf '%%2'; }
+runner_retain_pane () { :; }
 
 # API unit tests assume tmux.sh's transaction contract. Run callbacks directly so
 # the in-memory option store remains in this shell; real locking, traps, markers,

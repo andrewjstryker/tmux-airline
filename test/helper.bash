@@ -57,6 +57,7 @@ load_api() {
   source "$PROJECT_ROOT/test/fake-tmux.sh"
   source "$PROJECT_ROOT/collections.sh"
   source "$PROJECT_ROOT/render.sh"
+  source "$PROJECT_ROOT/runner.sh"
   source "$PROJECT_ROOT/api.sh"
   _use_fake_readback
 }

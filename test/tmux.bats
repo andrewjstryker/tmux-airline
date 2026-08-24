@@ -387,6 +387,25 @@ wait_for_file () {
   assert_success
 }
 
+@test "runner topology wrappers create panes/windows with argv and retain per pane" {
+  load_tmux
+  pane="$(current_pane)"
+  cwd="$(current_path)"
+
+  split="$(runner_open_pane "$pane" "$cwd" bash -c 'sleep 30')"
+  [[ "$split" =~ ^%[0-9]+$ ]]
+  run tmux display-message -p -t "$split" '#{pane_current_path}'
+  assert_output "$cwd"
+  runner_retain_pane "$split"
+  run tmux show-options -pv -t "$split" remain-on-exit
+  assert_output on
+
+  window="$(runner_open_window "$(current_session)" "$cwd" bash -c 'sleep 30')"
+  [[ "$window" =~ ^%[0-9]+$ ]]
+  run tmux display-message -p -t "$window" '#{pane_current_path}'
+  assert_output "$cwd"
+}
+
 @test "source_file loads a tmux file that sets options" {
   load_tmux
   f="$BATS_TMPDIR/airline-palette-$BATS_TEST_NUMBER"

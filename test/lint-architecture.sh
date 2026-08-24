@@ -27,15 +27,15 @@ set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Application shell the lint governs — including adapters/* (bash snippets that must
-# reach tmux only through opt_*). The installable bin/airline shim is an external
+# Application shell the lint governs — including adapters/* and runners/* (trusted
+# snippets that must reach tmux only through opt_*). The installable bin/airline shim is an external
 # bootstrap consumer, so its one @airline-cli lookup is outside this layer check.
 # Data/interpreted files (palettes/, layouts/) and the test tree are not scanned.
 # Globs that match nothing drop out (nullglob).
 _sources () {
   shopt -s nullglob
   local f
-  for f in "$ROOT"/airline "$ROOT"/airline.tmux "$ROOT"/*.sh "$ROOT"/adapters/*; do
+  for f in "$ROOT"/airline "$ROOT"/airline.tmux "$ROOT"/*.sh "$ROOT"/adapters/* "$ROOT"/runners/*; do
     printf '%s\n' "$f"
   done
 }
