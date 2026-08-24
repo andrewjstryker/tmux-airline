@@ -149,6 +149,13 @@ load helper
   assert_output --regexp '^@[0-9]+$'
 }
 
+@test "resolve_window lets tmux canonicalize a pane target" {
+  load_tmux
+  pane="$(tmux display-message -p '#{pane_id}')"
+  run resolve_window "$pane"
+  assert_output --regexp '^@[0-9]+$'
+}
+
 @test "current_session returns a session id" {
   load_tmux
   run current_session
@@ -160,6 +167,152 @@ load helper
   pane="$(tmux display-message -p '#{pane_id}')"
   run resolve_session "$pane"
   assert_output --regexp '^\$[0-9]+$'
+}
+
+@test "resolve_session_target canonicalizes a session name" {
+  load_tmux
+  run resolve_session_target bats
+  assert_output --regexp '^\$[0-9]+$'
+}
+
+@test "list_sessions returns canonical session ids" {
+  load_tmux
+  tmux new-session -d -s second
+  run list_sessions
+  assert_line --index 0 --regexp '^\$[0-9]+$'
+  assert_line --index 1 --regexp '^\$[0-9]+$'
+}
+
+# Transaction callbacks used below. They exercise tmux.sh directly; API tests assume
+# this mechanical contract and do not reproduce lock scheduling through CLI calls.
+transaction_result () { printf '%s' "$1"; return "$2"; }
+transaction_mark () { printf '%s' "${2:-done}" > "$1"; }
+transaction_hold () { : > "$1"; tmux wait-for "$2"; }
+transaction_exit () { exit "$1"; }
+transaction_nested () { with_session_transaction "$1" problem transaction_result nested 0; }
+
+wait_for_file () {
+  local file="$1"
+  for _ in {1..100}; do
+    [[ -e "$file" ]] && return 0
+    sleep 0.01
+  done
+  return 1
+}
+
+@test "scoped transaction preserves callback output/status and releases after return" {
+  load_tmux
+  session="$(current_session)"
+
+  run with_session_transaction "$session" problem transaction_result payload 7
+  assert_failure 7
+  assert_output "payload"
+  run with_session_transaction "$session" problem transaction_nested "$session"
+  assert_failure 2
+  assert_output --partial "nested state transaction"
+  run with_session_transaction "$session" problem transaction_result reused 0
+  assert_success
+  assert_output "reused"
+}
+
+@test "scoped transaction releases its lock when a callback exits" {
+  load_tmux
+  session="$(current_session)"
+
+  run with_session_transaction "$session" problem transaction_exit 9
+  assert_failure 9
+  run with_session_transaction "$session" problem transaction_result reused 0
+  assert_success
+  assert_output "reused"
+}
+
+@test "scoped transaction releases its lock when its process is terminated" {
+  load_tmux
+  session="$(current_session)"
+  ready="$BATS_TMPDIR/ready-signal-$BATS_TEST_NUMBER"
+  reused="$BATS_TMPDIR/reused-signal-$BATS_TEST_NUMBER"
+  export PROJECT_ROOT
+  export TMUX_TEST_BIN="$TMUX" TMUX_TEST_SOCKET="$_bats_socket"
+
+  bash -c '
+    tmux () { "$TMUX_TEST_BIN" -L "$TMUX_TEST_SOCKET" "$@"; }
+    source "$PROJECT_ROOT/tmux.sh"
+    spin () { : > "$1"; while :; do :; done; }
+    with_session_transaction "$1" problem spin "$2"
+  ' _ "$session" "$ready" & transaction_pid=$!
+  wait_for_file "$ready"
+  kill -TERM "$transaction_pid"
+  transaction_status=0
+  wait "$transaction_pid" || transaction_status=$?
+  assert_equal "$transaction_status" 143
+
+  run timeout -k 1 2 bash -c '
+    tmux () { "$TMUX_TEST_BIN" -L "$TMUX_TEST_SOCKET" "$@"; }
+    source "$PROJECT_ROOT/tmux.sh"
+    mark () { : > "$1"; }
+    with_session_transaction "$1" problem mark "$2"
+  ' _ "$session" "$reused"
+  assert_success
+  [[ -e "$reused" ]]
+}
+
+@test "same owner and namespace serialize session and window transactions" {
+  load_tmux
+  session="$(current_session)"
+  win="$(current_window)"
+  local wrapper target ns ready release blocked holder contender
+
+  for spec in "with_session_transaction $session problem" "with_window_transaction $win status"; do
+    read -r wrapper target ns <<< "$spec"
+    ready="$BATS_TMPDIR/ready-${wrapper}-${BATS_TEST_NUMBER}"
+    blocked="$BATS_TMPDIR/blocked-${wrapper}-${BATS_TEST_NUMBER}"
+    release="release-${wrapper}-${BATS_TEST_NUMBER}"
+
+    "$wrapper" "$target" "$ns" transaction_hold "$ready" "$release" & holder=$!
+    wait_for_file "$ready"
+    "$wrapper" "$target" "$ns" transaction_mark "$blocked" & contender=$!
+    sleep 0.1
+    [[ ! -e "$blocked" ]]
+
+    tmux wait-for -S "$release"
+    wait "$holder"
+    wait "$contender"
+    [[ -e "$blocked" ]]
+  done
+}
+
+@test "transaction locks are isolated by owner, namespace, and scope" {
+  load_tmux
+  session="$(current_session)"
+  tmux new-session -d -s second
+  second="$(resolve_session_target second)"
+  win="$(current_window)"
+  ready="$BATS_TMPDIR/ready-isolation-$BATS_TEST_NUMBER"
+  release="release-isolation-$BATS_TEST_NUMBER"
+  same="$BATS_TMPDIR/same-$BATS_TEST_NUMBER"
+  other_owner="$BATS_TMPDIR/other-owner-$BATS_TEST_NUMBER"
+  other_ns="$BATS_TMPDIR/other-ns-$BATS_TEST_NUMBER"
+  other_scope="$BATS_TMPDIR/other-scope-$BATS_TEST_NUMBER"
+
+  with_session_transaction "$session" problem transaction_hold "$ready" "$release" & holder=$!
+  wait_for_file "$ready"
+  with_session_transaction "$session" problem transaction_mark "$same" & same_pid=$!
+  with_session_transaction "$second" problem transaction_mark "$other_owner" & owner_pid=$!
+  with_session_transaction "$session" health transaction_mark "$other_ns" & ns_pid=$!
+  with_window_transaction "$win" problem transaction_mark "$other_scope" & scope_pid=$!
+
+  wait_for_file "$other_owner"
+  wait_for_file "$other_ns"
+  wait_for_file "$other_scope"
+  [[ ! -e "$same" ]]
+
+  tmux wait-for -S "$release"
+  wait "$holder"
+  wait "$same_pid"
+  wait "$owner_pid"
+  wait "$ns_pid"
+  wait "$scope_pid"
+  [[ -e "$same" ]]
 }
 
 @test "redraw is harmless with no attached client" {

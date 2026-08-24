@@ -34,19 +34,13 @@ _require_current_session () {
   printf '%s' "$session"
 }
 
-# One lock per canonical session keeps the collection's registry, tuples, and badge
-# projection coherent across concurrent background widget evaluations.
-_problem_lock_name () { printf 'airline-problem-%s' "${1#\$}"; }
-
 # Store one session problem and refresh its aggregate projection. This is the shared
-# serialized write path for the public command and airline's own managed components.
+# write path for the public command and airline's own managed components.
 # `ok` is a recovery event, not retained state. Return 0 only when the visible badge
 # changed, allowing the public path to skip redundant redraws.
-_problem_store () {   # <session> <key> <ok|warn|fail> [<message>]
-  local session="$1" key="$2" level="$3" message="${4:-}" lock tuple desired
+_problem_store_unlocked () {   # <session> <key> <ok|warn|fail> [<message>]
+  local session="$1" key="$2" level="$3" message="${4:-}" tuple desired
   local changed="" projected=1
-  lock="$(_problem_lock_name "$session")"
-  lock_acquire "$lock" || return 1
   if [[ "$level" == ok ]]; then
     tuple="$(coll_get_session "$session" problem "$key")"
     if coll_has_session "$session" problem "$key" || [[ -n "$tuple" ]]; then
@@ -62,8 +56,11 @@ _problem_store () {   # <session> <key> <ok|warn|fail> [<message>]
     fi
   fi
   if [[ -n "$changed" ]] && problem_project "$session"; then projected=0; fi
-  lock_release "$lock" || true
   return "$projected"
+}
+
+_problem_store () {   # <session> <key> <ok|warn|fail> [<message>]
+  with_session_transaction "$1" problem _problem_store_unlocked "$@"
 }
 
 # One "label   value" row — the single home for the `show` column width, so every
@@ -407,26 +404,43 @@ _ensure_unfocus_hook () {
   hook_set "pane-focus-out[90]" "run-shell -b \"$AIRLINE_DIR/airline _unfocus #{window_id}\""
 }
 
-# The internal `_unfocus` hook callback. Drop every transient contributor on <window>,
-# then re-project both badges once.
-_unfocus () {
-  local win="${1:-}"; [[ -n "$win" ]] || return 0
-  local changed="" ns key f1 f2
-  for ns in status health; do
-    for key in $(coll_members_window "$win" "$ns"); do
-      IFS=$'\t' read -r f1 f2 <<< "$(coll_get_window "$win" "$ns" "$key")"
-      [[ "$f2" == 1 ]] && { coll_unregister_window "$win" "$ns" "$key"; changed=1; }
-    done
+# Drop one namespace's transient contributors and re-project its badge. The caller
+# runs this inside that window collection's transaction.
+_unfocus_namespace_unlocked () {   # <window> <status|health>
+  local win="$1" ns="$2" changed="" key f1 f2
+  for key in $(coll_members_window "$win" "$ns"); do
+    IFS=$'\t' read -r f1 f2 <<< "$(coll_get_window "$win" "$ns" "$key")"
+    [[ "$f2" == 1 ]] && { coll_unregister_window "$win" "$ns" "$key"; changed=1; }
   done
-  [[ -n "$changed" ]] || return 0
-  status_project "$win" || true
-  health_project "$win" || true
-  redraw
+  [[ -n "$changed" ]] || return 1
+  "${ns}_project" "$win"
+}
+
+# The internal `_unfocus` hook callback. Status and health use separate locks in a
+# fixed order; each collection mutation and projection is one window transaction.
+_unfocus () {
+  local win="${1:-}" ns changed=""; [[ -n "$win" ]] || return 0
+  win="$(resolve_window "$win")"
+  for ns in status health; do
+    with_window_transaction "$win" "$ns" _unfocus_namespace_unlocked "$win" "$ns" && changed=1
+  done
+  [[ -n "$changed" ]] && redraw
+  return 0
 }
 
 #-----------------------------------------------------------------------------#
 # Dynamic nouns — status & health (live: write + re-project a badge + redraw)
 #-----------------------------------------------------------------------------#
+
+_signal_set_unlocked () {   # <ns> <clear-value|""> <key> <value> <transient> <window>
+  local ns="$1" clear_value="$2" key="$3" value="$4" transient="$5" win="$6"
+  if [[ -n "$clear_value" && "$value" == "$clear_value" ]]; then
+    coll_unregister_window "$win" "$ns" "$key"
+  else
+    coll_set_window "$win" "$ns" "$key" "$value" "$transient"
+  fi
+  "${ns}_project" "$win"
+}
 
 _signal_set () {   # <ns> <validator> <clear-value|""> <key> <value> [--transient] [-t <win>]
   local ns="$1" valid="$2" clear_value="$3"; shift 3
@@ -446,15 +460,17 @@ _signal_set () {   # <ns> <validator> <clear-value|""> <key> <value> [--transien
   [[ -n "$key" ]] || die "$ns set: need <key>"
   "$valid" "$value" || die "$ns set: invalid value '$value'"
   [[ -n "$win" ]] || win="$(current_window)"
-  if [[ -n "$clear_value" && "$value" == "$clear_value" ]]; then
-    coll_unregister_window "$win" "$ns" "$key"
-    "${ns}_project" "$win" && redraw
-    return 0
-  fi
-  coll_set_window "$win" "$ns" "$key" "$value" "$transient"
+  win="$(resolve_window "$win")"
+  with_window_transaction "$win" "$ns" _signal_set_unlocked \
+    "$ns" "$clear_value" "$key" "$value" "$transient" "$win" && redraw
   [[ -n "$transient" ]] && _ensure_unfocus_hook
-  "${ns}_project" "$win" && redraw
   return 0
+}
+
+_signal_clear_unlocked () {   # <ns> <key> <window>
+  local ns="$1" key="$2" win="$3"
+  coll_unregister_window "$win" "$ns" "$key"
+  "${ns}_project" "$win"
 }
 
 _signal_clear () {   # <ns> <key> [-t <win>]
@@ -472,14 +488,27 @@ _signal_clear () {   # <ns> <key> [-t <win>]
   done
   [[ -n "$key" ]] || die "$ns clear: need <key>"
   [[ -n "$win" ]] || win="$(current_window)"
-  coll_unregister_window "$win" "$ns" "$key"
-  "${ns}_project" "$win" && redraw
+  win="$(resolve_window "$win")"
+  with_window_transaction "$win" "$ns" _signal_clear_unlocked "$ns" "$key" "$win" && redraw
   return 0
+}
+
+_signal_show_unlocked () {   # <ns> <window> [<key>]
+  local ns="$1" win="$2" key="${3:-}" f1 f2 k
+  if [[ -n "$key" ]]; then
+    IFS=$'\t' read -r f1 _ <<< "$(coll_get_window "$win" "$ns" "$key")"
+    printf '%s\n' "$f1"
+    return 0
+  fi
+  for k in $(coll_members_window "$win" "$ns"); do
+    IFS=$'\t' read -r f1 f2 <<< "$(coll_get_window "$win" "$ns" "$k")"
+    _show_row "$k" "$f1${f2:+  (transient)}"
+  done
 }
 
 _signal_show () {   # <ns> [<key>] [-t <win>]
   local ns="$1"; shift
-  local key="" win="" f1 f2 k
+  local key="" win=""
   while (( $# )); do
     case "$1" in
       -t)
@@ -491,15 +520,8 @@ _signal_show () {   # <ns> [<key>] [-t <win>]
     esac
   done
   [[ -n "$win" ]] || win="$(current_window)"
-  if [[ -n "$key" ]]; then
-    IFS=$'\t' read -r f1 _ <<< "$(coll_get_window "$win" "$ns" "$key")"
-    printf '%s\n' "$f1"
-    return 0
-  fi
-  for k in $(coll_members_window "$win" "$ns"); do
-    IFS=$'\t' read -r f1 f2 <<< "$(coll_get_window "$win" "$ns" "$k")"
-    _show_row "$k" "$f1${f2:+  (transient)}"
-  done
+  win="$(resolve_window "$win")"
+  with_window_transaction "$win" "$ns" _signal_show_unlocked "$ns" "$win" "$key"
 }
 
 #-----------------------------------------------------------------------------#
@@ -541,13 +563,10 @@ _problem_clear () {   # <session> <key>
   return 0
 }
 
-_problem_show_session () {   # <session> [<key>] [<grouped=1>]
-  local session="$1" key="${2:-}" grouped="${3:-}" tuple level message k lock members
-  lock="$(_problem_lock_name "$session")"
-  lock_acquire "$lock" || return 1
+_problem_show_session_unlocked () {   # <session> [<key>] [<grouped=1>]
+  local session="$1" key="${2:-}" grouped="${3:-}" tuple level message k members
   if [[ -n "$key" ]]; then
     coll_get_session "$session" problem "$key"
-    lock_release "$lock" || true
     return 0
   fi
   members="$(coll_members_session "$session" problem)"
@@ -557,7 +576,10 @@ _problem_show_session () {   # <session> [<key>] [<grouped=1>]
     IFS=$'\t' read -r level message <<< "$tuple"
     _show_row "${grouped:+  }$k" "$level${message:+  $message}"
   done
-  lock_release "$lock" || true
+}
+
+_problem_show_session () {   # <session> [<key>] [<grouped=1>]
+  with_session_transaction "$1" problem _problem_show_session_unlocked "$@"
 }
 
 _problem_show () {   # [<session> [<key>]]; bare = every session with problems

@@ -35,6 +35,7 @@ source "${PROJECT_ROOT:?fake-tmux.sh: PROJECT_ROOT must be set}/tmux.sh"
 declare -gA _FAKE_OPT=()
 declare -gA _FAKE_HOOK=()
 declare -gA _FAKE_BIND=()
+declare -gA _FAKE_LOCK=()
 declare -g  _FAKE_WIN='@1'      # what current_window reports (override per test)
 declare -g  _FAKE_SESSION='s1'  # what current_session reports (override per test)
 declare -gi _FAKE_REDRAWS=0     # redraw call count (assertable if a test cares)
@@ -42,8 +43,9 @@ declare -gi _FAKE_REDRAWS=0     # redraw call count (assertable if a test cares)
 # Reset all fake state. Each test re-sources this file (via its loader), which
 # re-declares the arrays empty, so this is only needed to clear mid-test.
 fake_tmux_reset () {
-  _FAKE_OPT=(); _FAKE_HOOK=(); _FAKE_BIND=()
+  _FAKE_OPT=(); _FAKE_HOOK=(); _FAKE_BIND=(); _FAKE_LOCK=()
   _FAKE_WIN='@1'; _FAKE_SESSION='s1'; _FAKE_REDRAWS=0
+  _AIRLINE_TRANSACTION_CHANNEL=""
 }
 
 # Storage key from the scope tokens the cores receive:
@@ -80,10 +82,15 @@ _opt_clear () { unset "_FAKE_OPT[$(_fake_key "$@")]"; }
 #-----------------------------------------------------------------------------#
 redraw         () { (( _FAKE_REDRAWS++ )) || true; }
 current_window () { printf '%s' "$_FAKE_WIN"; }
+resolve_window () { printf '%s' "$1"; }
 current_session () { printf '%s' "$_FAKE_SESSION"; }
 resolve_session () { printf '%s' "$1"; }
+resolve_session_target () { printf '%s' "$1"; }
+list_sessions () { printf '%s\n' "$_FAKE_SESSION"; }
 hook_set       () { _FAKE_HOOK["$1"]="$2"; }
 hook_unset     () { unset "_FAKE_HOOK[$1]"; }
+_lock_acquire  () { _FAKE_LOCK["$1"]=1; }
+_lock_release  () { unset "_FAKE_LOCK[$1]"; }
 key_bind       () { _FAKE_BIND["$1 $2"]="$3"; }
 key_unbind     () { unset "_FAKE_BIND[$1 $2]"; }
 

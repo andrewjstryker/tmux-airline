@@ -141,6 +141,7 @@ source_file_session () { tmux source-file -t "$1" "$2"; }
 # The id (@n) of the window the caller is acting in — lets window-scoped callers
 # resolve "current" to an explicit id before calling opt_*_window.
 current_window () { tmux display-message -p '#{window_id}'; }
+resolve_window () { tmux display-message -p -t "$1" '#{window_id}'; }
 
 # Ask tmux to resolve any valid target (session, window, or pane) to its owning
 # session id. This keeps target grammar and current-context rules inside tmux.
@@ -171,11 +172,59 @@ current_session () {
 hook_set   () { tmux set-hook -g  "$1" "$2"; }
 hook_unset () { tmux set-hook -gu "$1"; }
 
-# Server-coordinated advisory locks. A dynamic collection mutation spans several
-# tmux commands (registry + tuple + projection), so callers use these to keep one
-# logical transaction from interleaving with another.
-lock_acquire () { tmux wait-for -L "$1"; }
-lock_release () { tmux wait-for -U "$1"; }
+# Private server-coordinated advisory-lock leaves. Higher layers use only the
+# scoped transaction functions below, never the lock mechanism directly.
+_lock_acquire () { tmux wait-for -L "$1"; }
+_lock_release () { tmux wait-for -U "$1"; }
+
+# Run one callback while holding a lock scoped to an airline state owner and
+# namespace. Higher layers declare the transaction boundary without knowing the
+# wait-for mechanism, channel naming, or cleanup rules. Transactions deliberately
+# do not nest: tmux locks are not reentrant, so nesting would deadlock.
+_AIRLINE_TRANSACTION_CHANNEL=""
+
+_transaction_cleanup () {
+  local channel="${_AIRLINE_TRANSACTION_CHANNEL:-}"
+  [[ -n "$channel" ]] || return 0
+  _AIRLINE_TRANSACTION_CHANNEL=""
+  _lock_release "$channel" || true
+}
+
+_transaction_abort () {   # <signal>
+  local signal="$1"
+  _transaction_cleanup
+  trap - "$signal"
+  kill -s "$signal" "$$"
+}
+
+_with_transaction () {   # <session|window> <target> <namespace> <callback> [<arg>...]
+  local scope="$1" target="$2" namespace="$3" callback="$4" channel rc; shift 4
+  [[ -z "${_AIRLINE_TRANSACTION_CHANNEL:-}" ]] || {
+    printf 'airline: nested state transaction (%s)\n' "$_AIRLINE_TRANSACTION_CHANNEL" >&2
+    return 2
+  }
+  target="${target//[^a-zA-Z0-9_-]/_}"
+  namespace="${namespace//[^a-zA-Z0-9_-]/_}"
+  channel="airline-$scope-$target-$namespace"
+  _lock_acquire "$channel" || return 1
+  _AIRLINE_TRANSACTION_CHANNEL="$channel"
+  trap '_transaction_cleanup' EXIT
+  trap '_transaction_abort HUP' HUP
+  trap '_transaction_abort INT' INT
+  trap '_transaction_abort TERM' TERM
+  "$callback" "$@"; rc=$?
+  _transaction_cleanup
+  trap - EXIT HUP INT TERM
+  return "$rc"
+}
+
+with_session_transaction () {   # <session> <namespace> <callback> [<arg>...]
+  _with_transaction session "$@"
+}
+
+with_window_transaction () {    # <window> <namespace> <callback> [<arg>...]
+  _with_transaction window "$@"
+}
 
 # Key bindings — a primitive for callers; airline itself binds no keys (a user wires
 # their own, e.g. `bind F12 run "#{@airline-cli} state toggle"`). <table> is a key-table.

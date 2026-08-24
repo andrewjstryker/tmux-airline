@@ -339,6 +339,21 @@ _seed_palette() {
   assert_output ""
 }
 
+@test "identical problem reports and absent clears do not redraw" {
+  load_api
+  session="$(current_session)"
+
+  _problem_set "$session" cpu warn "sensors missing"
+  assert_equal "$_FAKE_REDRAWS" 1
+  _problem_set "$session" cpu warn "sensors missing"
+  assert_equal "$_FAKE_REDRAWS" 1
+
+  _problem_clear "$session" cpu
+  assert_equal "$_FAKE_REDRAWS" 2
+  _problem_clear "$session" cpu
+  assert_equal "$_FAKE_REDRAWS" 2
+}
+
 # --- render: the render step -------------------------------
 
 @test "render bakes the chrome styles from the palette" {

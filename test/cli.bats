@@ -314,17 +314,18 @@ setup() {
 
 @test "a failed layout registers an internal session problem and a retry clears it" {
   airline init
+  session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
   mkdir -p "$BATS_TMPDIR/failing-layout"
   printf '#!/usr/bin/env bash\nexit 7\n' > "$BATS_TMPDIR/failing-layout/unstable"
   airline layout register "$BATS_TMPDIR/failing-layout"
   airline layout use unstable             # failure is contained so airline remains usable
-  run airline problem show airline-layout
+  run airline problem show "$session" airline-layout
   assert_output "$(printf "fail\tlayout 'unstable' exited with status 7")"
 
   printf '#!/usr/bin/env bash\n$AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-left-out "RECOVERED"\n' \
     > "$BATS_TMPDIR/failing-layout/unstable"
   airline apply
-  run airline problem show airline-layout
+  run airline problem show "$session" airline-layout
   assert_output ""
 }
 
@@ -550,8 +551,8 @@ setup() {
 @test "problem contributors reduce to one session badge and recover independently" {
   airline init
   session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
-  airline problem set cpu warn "required program 'sensors' was not found" -t "$session"
-  airline problem set battery fail "battery query timed out" -t "$session"
+  airline problem set "$session" cpu warn "required program 'sensors' was not found"
+  airline problem set "$session" battery fail "battery query timed out"
   run sopt @airline--badge-problem -t "$session"
   assert_output "fail"
   run $TMUX -L "$_bats_socket" display-message -p -t "$session" '#{E:status-right}'
@@ -564,34 +565,34 @@ setup() {
   run $TMUX -L "$_bats_socket" display-message -p -t "$other" '#{E:status-right}'
   refute_output --partial "▲"
 
-  run airline problem show -t "$session"
+  run airline problem show "$session"
   assert_output --partial "cpu"
   assert_output --partial "sensors"
   assert_output --partial "battery"
   assert_output --partial "battery query timed out"
 
-  airline problem clear battery -t "$session"
+  airline problem clear "$session" battery
   run sopt @airline--badge-problem -t "$session"
   assert_output "warn"
-  airline problem clear cpu -t "$session"
+  airline problem clear "$session" cpu
   run sopt @airline--badge-problem -t "$session"
   assert_output ""
 }
 
-@test "problem show KEY returns its level and message as a raw tuple" {
+@test "problem show SESSION KEY returns its level and message as a raw tuple" {
   airline init
   session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
-  airline problem set cpu warn "sensors missing" -t "$session"
-  run airline problem show cpu -t "$session"
+  airline problem set "$session" cpu warn "sensors missing"
+  run airline problem show "$session" cpu
   assert_output "$(printf 'warn\tsensors missing')"
 }
 
 @test "problem set ok records recovery without requiring a message" {
   airline init
   session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
-  airline problem set cpu fail "query failed" -t "$session"
-  airline problem set cpu ok -t "$session"
-  run airline problem show cpu -t "$session"
+  airline problem set "$session" cpu fail "query failed"
+  airline problem set "$session" cpu ok
+  run airline problem show "$session" cpu
   assert_output ""
   run sopt @airline--badge-problem -t "$session"
   assert_output ""
@@ -599,13 +600,33 @@ setup() {
 
 @test "problem set validates level, message, and session target" {
   airline init
-  run airline problem set cpu bogus "bad level"
+  session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
+  run airline problem set
   assert_failure
-  run airline problem set cpu warn
+  assert_output --partial "problem set: need <session>"
+  run airline problem set "$session" cpu bogus "bad level"
   assert_failure
-  run airline problem show -t
+  run airline problem set "$session" cpu warn
   assert_failure
-  assert_output --partial "problem show: -t requires <session>"
+  run airline problem clear "$session"
+  assert_failure
+  assert_output --partial "problem clear: need <key>"
+}
+
+@test "bare problem show lists problems across sessions" {
+  airline init
+  session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
+  $TMUX -L "$_bats_socket" new-session -d -s other
+  other="$($TMUX -L "$_bats_socket" display-message -p -t other '#{session_id}')"
+  airline problem set "$session" cpu warn "sensors missing"
+  airline problem set "$other" battery fail "battery unavailable"
+
+  run airline problem show
+  assert_success
+  assert_output --partial "$session:"
+  assert_output --partial "cpu"
+  assert_output --partial "$other:"
+  assert_output --partial "battery"
 }
 
 # --- transient (consume-on-view) --------------------------------------------
