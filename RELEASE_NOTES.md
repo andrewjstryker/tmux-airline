@@ -11,6 +11,10 @@ Highlights:
 - Session-wide problem reporting
 - Nested-session suspend/resume
 - Installable PATH launcher via `make install`
+- Shipped catalogs grouped by domain under `layouts/` and `runners/`
 
 This release is entirely breaking. Existing 1.x configuration and integrations
 must be updated; see the README for the new usage model.
+Repository-relative references must likewise use the new domain paths, such as
+`layouts/palettes/default`, `layouts/definitions/default`, and
+`runners/probes/http`.

@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 
-load test_helper/bats-support/load
-load test_helper/bats-assert/load
-load helper
+load ../test_helper/bats-support/load
+load ../test_helper/bats-assert/load
+load ../support/helper
 
 # Runner behavior through the real CLI and an isolated tmux server. These drive the
 # CLI as a subprocess (the `airline()` helper points it at the isolated server

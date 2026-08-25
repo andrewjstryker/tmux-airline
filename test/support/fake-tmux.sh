@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# fake-tmux.sh — an in-memory stand-in for the tmux binary, for unit tests.
+# support/fake-tmux.sh — an in-memory stand-in for the tmux binary, for unit tests.
 #
 # tmux.sh is the ONE place airline talks to tmux (Invariant A), and it bottoms out
 # in three private cores (_opt_show/_opt_write/_opt_clear) plus a few standalone

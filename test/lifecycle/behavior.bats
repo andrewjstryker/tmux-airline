@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 
-load test_helper/bats-support/load
-load test_helper/bats-assert/load
-load helper
+load ../test_helper/bats-support/load
+load ../test_helper/bats-assert/load
+load ../support/helper
 
 # Lifecycle behavior runs in-process over the mechanical fake. Real tmux semantics
 # (target resolution, hooks, rendered formats, and locking) stay in lifecycle.bats

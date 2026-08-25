@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
 
-load test_helper/bats-support/load
-load test_helper/bats-assert/load
+load ../test_helper/bats-support/load
+load ../test_helper/bats-assert/load
 
-PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 
 @test "committed completions are generated from current rendered help" {
   output_dir="$BATS_TEST_TMPDIR/generated"

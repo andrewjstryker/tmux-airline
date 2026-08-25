@@ -204,7 +204,7 @@ palette back. A named palette selection itself affects only the invoking session
 does not rewrite the global options.
 
 A custom palette is a tmux file containing
-`set-option @airline-<role> <color>` lines; `palettes/default` is a complete
+`set-option @airline-<role> <color>` lines; `layouts/palettes/default` is a complete
 example. Put the file in a directory, register that directory, and select the
 palette by filename. A registered name shadows a shipped one:
 
@@ -402,9 +402,10 @@ may interpret a copied output stream solely to project live health.
 
 ### Runner elements
 
-Runner elements are trusted shell files in independently registered `classifiers/`,
-`filters/`, and `probes/` catalogs. `run` uses the `basic` classifier unless an
-explicit `--classify` is supplied. A classifier looks like:
+Runner elements are trusted shell files in independently registered classifier,
+filter, and probe catalogs; shipped examples live under `runners/`. `run` uses the
+`basic` classifier unless an explicit `--classify` is supplied. A classifier looks
+like:
 
 ```bash
 AIRLINE_CLASSIFIER_SUMMARY='Interpret pytest termination'
@@ -503,8 +504,9 @@ PID argument identifies the local watcher lifecycle, not the remote service.
 
 ### Named runner compositions
 
-Runner definitions are trusted shell files in the independently registered
-`runners/` catalog. Two required functions build a validated composition:
+Runner definitions are trusted shell files in an independently registered catalog;
+shipped definitions live in `runners/definitions/`. Two required functions build a
+validated composition:
 
 ```bash
 airline_runner_metadata() { # <declare-function>

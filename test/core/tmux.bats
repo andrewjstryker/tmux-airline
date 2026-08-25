@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 
-load test_helper/bats-support/load
-load test_helper/bats-assert/load
-load helper
+load ../test_helper/bats-support/load
+load ../test_helper/bats-assert/load
+load ../support/helper
 
 # tmux.sh — the mechanical layer, exercised directly against an isolated server.
 

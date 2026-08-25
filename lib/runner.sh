@@ -4,22 +4,22 @@
 #
 # Elements are trusted shell selected independently for one invocation:
 #
-#   classifiers/<name>: airline_runner_classify <exit-status> <signal>
+#   runners/classifiers/<name>: airline_runner_classify <exit-status> <signal>
 #       Print exactly one of ok|warn|fail.
 #       AIRLINE_CLASSIFIER_SUMMARY describes it for `classifier show`.
 #
-#   filters/<name>: airline_runner_filter <pid> <report-function>
+#   runners/filters/<name>: airline_runner_filter <pid> <report-function>
 #       Read stdout (or merged stdout/stderr when core requests it) from stdin and
 #       call the reporter with ok|warn|fail as evidence changes.
 #       AIRLINE_FILTER_SUMMARY describes it for `filter show`.
 #
-#   probes/<name>: airline_runner_probe <lifecycle-pid> <report-function> [<arg>...]
+#   runners/probes/<name>: airline_runner_probe <lifecycle-pid> <report-function> [<arg>...]
 #       Perform one bounded observation, calling the reporter with ok|warn|fail for
 #       each condition. Stdout is uninterpreted user output. Airline reduces reports.
 #       AIRLINE_PROBE_SUMMARY and AIRLINE_PROBE_USAGE provide discovery metadata.
 #       AIRLINE_RUNNER_PROBE_INTERVAL optionally sets seconds between observations.
 #
-#   runners/<name>: airline_runner_metadata + airline_runner_configure
+#   runners/definitions/<name>: airline_runner_metadata + airline_runner_configure
 #       Declare discovery text and build one normalized monitoring composition by
 #       calling core-supplied callbacks. Run uses the full result; watch its subset.
 #

@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 
-load test_helper/bats-support/load
-load test_helper/bats-assert/load
-load helper
+load ../test_helper/bats-support/load
+load ../test_helper/bats-assert/load
+load ../support/helper
 
 setup() {
   load_render
@@ -10,7 +10,7 @@ setup() {
 }
 
 @test "basic classifier interprets successful and failed termination" {
-  runner_classifier_load "$PROJECT_ROOT/classifiers/basic"
+  runner_classifier_load "$PROJECT_ROOT/runners/classifiers/basic"
   run runner_classifier_run 0 ""
   assert_output ok
   run runner_classifier_run 7 ""
@@ -175,7 +175,7 @@ setup() {
     local url="${*: -1}"
     if [[ "$url" == *unhealthy* ]]; then printf 503; else printf 204; fi
   }
-  runner_probe_load "$PROJECT_ROOT/probes/http"
+  runner_probe_load "$PROJECT_ROOT/runners/probes/http"
   run airline_runner_probe 4321 report_state \
     http://service/one http://service/unhealthy http://service/two
   assert_output $'ok 204 http://service/one\nfail 503 http://service/unhealthy\nok 204 http://service/two'
@@ -196,7 +196,7 @@ setup() {
   output_file="$BATS_TEST_TMPDIR/tap-output"
   export output_file
   report_state() { printf '%s\n' "$1" >> "$output_file"; }
-  runner_filter_load "$PROJECT_ROOT/filters/tap"
+  runner_filter_load "$PROJECT_ROOT/runners/filters/tap"
 
   airline_runner_filter 4321 report_state <<'TAP'
 TAP version 13
@@ -213,7 +213,7 @@ TAP
   output_file="$BATS_TEST_TMPDIR/tap-output"
   export output_file
   report_state() { printf '%s\n' "$1" >> "$output_file"; }
-  runner_filter_load "$PROJECT_ROOT/filters/tap"
+  runner_filter_load "$PROJECT_ROOT/runners/filters/tap"
 
   airline_runner_filter 4321 report_state <<'TAP'
 1..2

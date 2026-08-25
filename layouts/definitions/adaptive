@@ -6,7 +6,7 @@ airline_layout_configure () {
   local declare="$1"
   local right_out="%Y-%m-%d %H:%M"
   local -a adapters=()
-  source "$AIRLINE_DIR/helpers/tpm-installed"
+  source "$AIRLINE_DIR/layouts/helpers/tpm-installed"
 
   "$declare" segment left-out  "#S"
 

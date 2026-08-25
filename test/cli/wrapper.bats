@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 
-load test_helper/bats-support/load
-load test_helper/bats-assert/load
-load helper
+load ../test_helper/bats-support/load
+load ../test_helper/bats-assert/load
+load ../support/helper
 
 setup() {
   $TMUX -L "$_bats_socket" -f /dev/null new-session -d -s bats

@@ -1,4 +1,4 @@
-# adapters/battery — apply the palette to tmux-battery's colour options (dynamic).
+# layouts/adapters/battery — apply the palette to tmux-battery's colour options (dynamic).
 # shellcheck shell=bash
 #
 # A bash snippet sourced by `adapter use battery` with PALETTE populated. Foreground

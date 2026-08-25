@@ -5,7 +5,7 @@
 # Bash has one global namespace and no visibility modifiers, so the layering is a
 # convention. We don't enforce it at runtime; we enforce it here, with a grep,
 # and gate it in CI next to shellcheck. test/architecture.bats wraps this so it
-# runs in the normal `bats test/` suite; `make lint` can call it directly too.
+# runs in the normal `make test` suite; `make lint` can call it directly too.
 #
 # Three invariants, all grep-able:
 #
@@ -31,13 +31,15 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # (trusted snippets that must reach tmux only through opt_*). The installable
 # `airline` shim is an external bootstrap consumer, so its one @airline-cli lookup
 # is outside this layer check.
-# Data/interpreted files (palettes/, layouts/) and the test tree are not scanned.
+# Declarative palettes and the test tree are not scanned.
 # Globs that match nothing drop out (nullglob).
 _sources () {
   shopt -s nullglob
   local f
-  for f in "$ROOT"/airline.tmux "$ROOT"/*.sh "$ROOT"/lib/*.sh "$ROOT"/adapters/* \
-    "$ROOT"/classifiers/* "$ROOT"/filters/* "$ROOT"/probes/* "$ROOT"/runners/*; do
+  for f in "$ROOT"/airline.tmux "$ROOT"/*.sh "$ROOT"/lib/*.sh \
+    "$ROOT"/layouts/adapters/* "$ROOT"/layouts/definitions/* "$ROOT"/layouts/helpers/* \
+    "$ROOT"/runners/classifiers/* "$ROOT"/runners/filters/* \
+    "$ROOT"/runners/probes/* "$ROOT"/runners/definitions/*; do
     printf '%s\n' "$f"
   done
 }

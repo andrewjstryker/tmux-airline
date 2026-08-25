@@ -1,10 +1,10 @@
-# helpers/tpm-installed — is a sibling tmux plugin installed?
+# layouts/helpers/tpm-installed — is a sibling tmux plugin installed?
 #
 # A bash helper for the TPM install-layout convention (plugins are cloned as named
 # sibling dirs in the plugin path), NOT part of airline's API. A layout script sources
 # it and calls `installed <repo>` to compose only what's present:
 #
-#   source "$AIRLINE_DIR/helpers/tpm-installed"
+#   source "$AIRLINE_DIR/layouts/helpers/tpm-installed"
 #   installed tmux-cpu && "$declare" adapter use cpu
 #
 # Checks the two standard locations: a sibling of airline (TPM's layout, covering a

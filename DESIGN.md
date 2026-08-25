@@ -43,14 +43,14 @@ a non-obvious boundary described here.
 | `lib/render.sh` | Owns domain vocabulary and composes the bar | no |
 | `lib/collections.sh` | Stores and reduces variable-cardinality state | no |
 | `lib/tmux.sh` | Mechanical operations and airline namespace policy | **yes; sole application caller** |
-| `palettes/*` | Declarative public color configuration | sourced by `lib/tmux.sh` |
-| `adapters/*` | Applies palette roles to third-party plugin options | no |
-| `layouts/*` | Trusted Bash definitions declaring adapters and segment values | no |
-| `classifiers/*` | Interprets process termination | no |
-| `filters/*` | Interprets a copied command-output stream | no |
-| `probes/*` | Performs one bounded external observation | no |
-| `runners/*` | Names a run or watch composition | no |
-| `helpers/*` | Bash helpers for layout scripts; not public airline API | no |
+| `layouts/palettes/*` | Declarative public color configuration | sourced by `lib/tmux.sh` |
+| `layouts/adapters/*` | Applies palette roles to third-party plugin options | no |
+| `layouts/definitions/*` | Trusted Bash definitions declaring adapters and segments | no |
+| `layouts/helpers/*` | Bash helpers for layout definitions; not public airline API | no |
+| `runners/classifiers/*` | Interprets process termination | no |
+| `runners/filters/*` | Interprets a copied command-output stream | no |
+| `runners/probes/*` | Performs one bounded external observation | no |
+| `runners/definitions/*` | Names a run or watch composition | no |
 
 ```mermaid
 graph TD
@@ -616,19 +616,20 @@ The same boundary makes most tests cheap:
 
 | Suite | Backend | Responsibility |
 |-------|---------|----------------|
-| `tmux.bats` | real tmux | pins the mechanical contract that the fake must match |
-| `collections.bats` | in-memory fake | collection storage and reduction |
-| `render.bats` | in-memory fake | observable composition and projection behavior |
-| `runner.bats` | in-memory fake | runner element contracts and mechanics |
-| `lifecycle.bats` | in-memory fake | signals, problems, state, and redraw gating |
-| `grammar.bats` | sourced CLI with spies | grammar and exactly-once delegation behavior |
-| `completions.bats` | generated shell artifacts | help/compiler drift, typed completion, and shell syntax |
-| `layout.bats` | real tmux subprocess | executable layout and primitive integration |
-| `integration-lifecycle.bats` | real tmux subprocess | lifecycle integration requiring tmux semantics |
-| `integration-runner.bats` | real tmux subprocess | runner process and topology integration |
+| `core/tmux.bats` | real tmux | pins the mechanical contract that the fake must match |
+| `core/collections.bats` | in-memory fake | collection storage and reduction |
+| `core/render.bats` | in-memory fake | observable composition and projection behavior |
+| `runner/behavior.bats` | in-memory fake | runner element contracts and mechanics |
+| `runner/integration.bats` | real tmux subprocess | runner process and topology integration |
+| `layout/integration.bats` | real tmux subprocess | executable layout and primitive integration |
+| `lifecycle/behavior.bats` | in-memory fake | signals, problems, state, and redraw gating |
+| `lifecycle/integration.bats` | real tmux subprocess | lifecycle integration requiring tmux semantics |
+| `cli/grammar.bats` | sourced CLI with spies | grammar and exactly-once delegation behavior |
+| `cli/completions.bats` | generated shell artifacts | help/compiler drift, typed completion, and shell syntax |
+| `cli/wrapper.bats` | real tmux subprocess | installed launcher discovery and delegation |
 | `architecture.bats` | static inspection | layering invariants |
 
-`test/fake-tmux.sh` sources the real mechanical wrappers and replaces only their
+`test/support/fake-tmux.sh` sources the real mechanical wrappers and replaces only their
 leaf store operations and standalone tmux verbs. It models option scope, absence,
 overwrite, removal, and preservation of spaces; it does not evaluate tmux formats.
 `make test-fast` selects the static and fake-backed suites; `make test-integration`

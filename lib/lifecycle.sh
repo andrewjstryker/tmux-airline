@@ -87,13 +87,13 @@ _init () {   # <session>
 
   # Register airline's own shipped config dirs on each loadable kind's search path.
   # (segment is not loadable — it's public options a layout sets, or the user sets.)
-  _path_register_self "$session" palette "$AIRLINE_DIR/palettes"
-  _path_register_self "$session" adapter "$AIRLINE_DIR/adapters"
-  _path_register_self "$session" layout  "$AIRLINE_DIR/layouts"
-  _path_register_self "$session" classifier "$AIRLINE_DIR/classifiers"
-  _path_register_self "$session" filter "$AIRLINE_DIR/filters"
-  _path_register_self "$session" probe "$AIRLINE_DIR/probes"
-  _path_register_self "$session" runner  "$AIRLINE_DIR/runners"
+  _path_register_self "$session" palette "$AIRLINE_DIR/layouts/palettes"
+  _path_register_self "$session" adapter "$AIRLINE_DIR/layouts/adapters"
+  _path_register_self "$session" layout  "$AIRLINE_DIR/layouts/definitions"
+  _path_register_self "$session" classifier "$AIRLINE_DIR/runners/classifiers"
+  _path_register_self "$session" filter "$AIRLINE_DIR/runners/filters"
+  _path_register_self "$session" probe "$AIRLINE_DIR/runners/probes"
+  _path_register_self "$session" runner  "$AIRLINE_DIR/runners/definitions"
 
   with_session_transaction "$session" config _init_unlocked "$session" || rc=$?
   _report_config_result "$session" "$rc" init

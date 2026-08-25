@@ -1,4 +1,4 @@
-# adapters/online — apply the palette to tmux-online-status's icon options (dynamic).
+# layouts/adapters/online — apply the palette to tmux-online-status's icon options (dynamic).
 # shellcheck shell=bash
 #
 # A bash snippet sourced by `adapter use online` with PALETTE populated.

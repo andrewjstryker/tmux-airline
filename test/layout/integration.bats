@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 
-load test_helper/bats-support/load
-load test_helper/bats-assert/load
-load helper
+load ../test_helper/bats-support/load
+load ../test_helper/bats-assert/load
+load ../support/helper
 
 # Executable layout behavior through the real CLI and an isolated tmux server.
 # These drive the CLI as a subprocess (the `airline()` helper points it at the server
@@ -24,7 +24,7 @@ write_layout() {   # <path> <configure-body>
 @test "register blesses a dir; use loads a bare name from it, then renders" {
   airline init
   mkdir -p "$BATS_TMPDIR/mypalettes"
-  cp "$PROJECT_ROOT/palettes/default" "$BATS_TMPDIR/mypalettes/custom"
+  cp "$PROJECT_ROOT/layouts/palettes/default" "$BATS_TMPDIR/mypalettes/custom"
   printf 'set @airline-inner-bg colour55\n' >> "$BATS_TMPDIR/mypalettes/custom"
   airline palette register "$BATS_TMPDIR/mypalettes"
   airline palette use custom
@@ -57,7 +57,7 @@ write_layout() {   # <path> <configure-body>
   run airline problem show "$session" airline-palette
   assert_output "$(printf "fail\tpalette 'broken' is incomplete or could not be evaluated")"
 
-  cp "$PROJECT_ROOT/palettes/default" "$BATS_TMPDIR/incomplete/broken"
+  cp "$PROJECT_ROOT/layouts/palettes/default" "$BATS_TMPDIR/incomplete/broken"
   airline palette use broken
   run airline problem show "$session" airline-palette
   assert_output ""
@@ -65,14 +65,14 @@ write_layout() {   # <path> <configure-body>
 
 @test "palette use resolves a bare name on the shipped search path" {
   airline init
-  run airline palette use light       # a shipped bare name → found on the registered palettes/ dir
+  run airline palette use light       # a shipped bare name → found in layouts/palettes
   assert_success
 }
 
 @test "register prepends: a registered dir shadows the shipped one" {
   airline init
   mkdir -p "$BATS_TMPDIR/shadow"
-  cp "$PROJECT_ROOT/palettes/default" "$BATS_TMPDIR/shadow/dark"
+  cp "$PROJECT_ROOT/layouts/palettes/default" "$BATS_TMPDIR/shadow/dark"
   printf 'set @airline-inner-bg colour42\n' >> "$BATS_TMPDIR/shadow/dark"   # same name as shipped
   airline palette register "$BATS_TMPDIR/shadow"
   airline palette use dark
@@ -513,7 +513,7 @@ write_layout() {   # <path> <configure-body>
   run airline layout show name
   assert_output "default"
   run airline layout show path
-  assert_output --partial "/layouts/default"
+  assert_output --partial "/layouts/definitions/default"
   run airline layout show
   assert_output --partial "name"
   assert_output --partial "path"

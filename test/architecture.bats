@@ -4,11 +4,11 @@ load test_helper/bats-support/load
 load test_helper/bats-assert/load
 
 # The build-time architecture lint (DESIGN.md §Enforcement), surfaced in the
-# normal `bats test/` run. The grep logic lives in test/lint-architecture.sh so
+# normal `make test` run. The grep logic lives in test/lint-architecture.sh so
 # `make lint` can call it too; this wraps it with didactic failure messages.
 #
 # Both invariants are GREEN. A — every `tmux` call goes through tmux.sh; the plugin
-# adapters (adapters/*) set their options via opt_*, not raw tmux. B — the
+# adapters (`layouts/adapters/*`) set their options via opt_*, not raw tmux. B — the
 # @airline- option prefix (both tiers) lives only in tmux.sh, behind the pub_* /
 # prv_* accessors and the prv_name builder. These are now regression guards, not a
 # worklist: a red here means a new violation crept in.

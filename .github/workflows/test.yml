@@ -1,4 +1,4 @@
-name: Tests
+name: CI
 
 on:
   push:
@@ -6,8 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   test:
+    name: Test suite
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,9 +24,10 @@ jobs:
           sudo apt-get install -y tmux bats
 
       - name: Run tests
-        run: bats test/
+        run: make test
 
   lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

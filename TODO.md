@@ -6,13 +6,6 @@ problems, and window-local status/health signals.
 
 ## Future ideas
 
-### Improve file layout clarity
-
-We should introduce some hierarchy in the file system to clearly separate code
-that is part of the airline from configuration type code. Currently, the
-latter is all flat at the top-level of the repository, making the organization
-less obvious. Further, the testing structure should follow a similar pattern.
-
 ### Palette cycling
 
 The pieces already exist: the active palette is recorded, names resolve through an

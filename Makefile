@@ -8,8 +8,16 @@ BASH_COMPLETION_DIR ?= $(PREFIX)/share/bash-completion/completions
 ZSH_COMPLETION_DIR ?= $(PREFIX)/share/zsh/site-functions
 
 SHELLCHECK_SOURCES := airline airline.sh airline.tmux scripts/generate-completions \
-	completions/airline.bash \
-	$(wildcard lib/*.sh adapters/* classifiers/* filters/* helpers/* layouts/* probes/* runners/*)
+	completions/airline.bash $(wildcard lib/*.sh layouts/adapters/* \
+	layouts/definitions/* layouts/helpers/* runners/classifiers/* runners/filters/* \
+	runners/probes/* runners/definitions/*)
+
+FAST_TESTS := test/architecture.bats test/cli/grammar.bats test/cli/completions.bats \
+	test/core/collections.bats test/core/render.bats test/runner/behavior.bats \
+	test/lifecycle/behavior.bats
+INTEGRATION_TESTS := test/lifecycle/integration.bats test/layout/integration.bats \
+	test/runner/integration.bats test/core/tmux.bats test/cli/wrapper.bats
+ALL_TESTS := $(FAST_TESTS) $(INTEGRATION_TESTS)
 
 install: check-completions
 	install -d "$(DESTDIR)$(BINDIR)"
@@ -30,24 +38,22 @@ check-completions:
 	diff -u completions/_airline "$$tmp/_airline"
 
 test:
-	bats test/
+	bats $(ALL_TESTS)
 
 test-fast:
-	bats test/architecture.bats test/grammar.bats test/completions.bats test/collections.bats \
-		test/render.bats test/runner.bats test/lifecycle.bats
+	bats $(FAST_TESTS)
 
 test-integration:
-	bats test/integration-lifecycle.bats test/layout.bats \
-		test/integration-runner.bats test/tmux.bats test/wrapper.bats
+	bats $(INTEGRATION_TESTS)
 
 test-layout:
-	bats test/layout.bats test/render.bats
+	bats test/layout/integration.bats test/core/render.bats
 
 test-lifecycle:
-	bats test/lifecycle.bats test/integration-lifecycle.bats
+	bats test/lifecycle/behavior.bats test/lifecycle/integration.bats
 
 test-runner:
-	bats test/runner.bats test/integration-runner.bats
+	bats test/runner/behavior.bats test/runner/integration.bats
 
 lint:
 	@if command -v shellcheck >/dev/null; then \

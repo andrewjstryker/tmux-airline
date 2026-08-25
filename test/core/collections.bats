@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 
-load test_helper/bats-support/load
-load test_helper/bats-assert/load
-load helper
+load ../test_helper/bats-support/load
+load ../test_helper/bats-assert/load
+load ../support/helper
 
 # collections.sh — the dynamic keyed-tuple store. Mechanical and domain-free: ns
 # and severity ordering are arguments, so tests drive it with arbitrary names.

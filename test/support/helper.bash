@@ -3,7 +3,7 @@
 # Shared test helpers for tmux-airline BATS tests
 
 TMUX=/usr/bin/tmux
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 _bats_socket="bats-airline-$$-${BATS_TEST_NUMBER}"
 
@@ -34,7 +34,7 @@ load_tmux() {
 # without a process. get_option/wopt are redirected to the in-process store.
 load_collections() {
   export AIRLINE_DIR="$PROJECT_ROOT"
-  source "$PROJECT_ROOT/test/fake-tmux.sh"
+  source "$PROJECT_ROOT/test/support/fake-tmux.sh"
   source "$PROJECT_ROOT/lib/collections.sh"
   _use_fake_readback
 }
@@ -43,7 +43,7 @@ load_collections() {
 load_render() {
   export AIRLINE_DIR="$PROJECT_ROOT"
   export AIRLINE_SESSION='s1'
-  source "$PROJECT_ROOT/test/fake-tmux.sh"
+  source "$PROJECT_ROOT/test/support/fake-tmux.sh"
   source "$PROJECT_ROOT/lib/collections.sh"
   source "$PROJECT_ROOT/lib/render.sh"
   _use_fake_readback
@@ -54,7 +54,7 @@ load_render() {
 load_lifecycle() {
   export AIRLINE_DIR="$PROJECT_ROOT"
   export AIRLINE_SESSION='s1'
-  source "$PROJECT_ROOT/test/fake-tmux.sh"
+  source "$PROJECT_ROOT/test/support/fake-tmux.sh"
   source "$PROJECT_ROOT/lib/collections.sh"
   source "$PROJECT_ROOT/lib/render.sh"
   source "$PROJECT_ROOT/lib/runner.sh"

@@ -1,4 +1,4 @@
-# adapters/cpu — apply the palette to tmux-cpu's colour options (dynamic).
+# layouts/adapters/cpu — apply the palette to tmux-cpu's colour options (dynamic).
 # shellcheck shell=bash
 #
 # A bash snippet: `adapter use cpu` sources it with PALETTE populated, so it sets
