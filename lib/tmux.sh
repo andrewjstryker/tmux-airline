@@ -37,6 +37,7 @@ _opt_clear () { tmux set-option   -qu "$@"; }   # <scope…> <name>
 opt_get_global   () { _opt_show  -g "$1"; }
 opt_set_global   () { _opt_write -g "$1" "$2"; }
 opt_unset_global () { _opt_clear -g "$1"; }
+opt_has_global   () { [[ -n "$(_opt_list -g "$1")" ]]; }
 
 # --- session scope (explicit session id/name) ---
 opt_get_session   () { _opt_show  -t "$1" "$2"; }
@@ -94,22 +95,29 @@ opt_setif_window () {
 # violation.
 #
 # The surface is intentionally asymmetric, shaped by how each tier is used:
-#   * public values are user-configured global defaults with optional session-local
-#     runtime overrides; they are never embedded by a constructed name.
+#   * public values are user-configured global input; exact session values exist
+#     only while palette/layout files are being captured.
 #   * private state is airline-owned and scoped to its actual owner: session or
 #     window. Stable badge names are embedded in tmux #{?…} selectors.
 
-# --- public configuration: global defaults plus session-local overrides ---
+# --- public configuration: durable input exists at global scope only ---
 pub_get   () { opt_get_global   "@airline-$1"; }        # <key>
 pub_set   () { opt_set_global   "@airline-$1" "$2"; }   # <key> <value>
 pub_unset () { opt_unset_global "@airline-$1"; }        # <key>
-pub_get_session   () {   # <session> <key>; local override, then global config default
-  local name="@airline-$2"
-  if opt_has_session "$1" "$name"; then opt_get_session "$1" "$name"
-  else opt_get_global "$name"; fi
-}
-pub_set_session   () { opt_set_session   "$1" "@airline-$2" "$3"; } # <session> <key> <value>
-pub_unset_session () { opt_unset_session "$1" "@airline-$2"; }       # <session> <key>
+pub_has   () { opt_has_global   "@airline-$1"; }        # <key>
+
+# Palette and layout files retain their native tmux surfaces. Airline evaluates
+# them in the target session, captures their public options, then removes them.
+# These exact-scope accessors are staging mechanics, never durable configuration.
+stage_get_session   () { opt_get_session   "$1" "@airline-$2"; }       # <session> <key>
+stage_has_session   () { opt_has_session   "$1" "@airline-$2"; }       # <session> <key>
+stage_unset_session () { opt_unset_session "$1" "@airline-$2"; }       # <session> <key>
+
+# Committed configuration is private and session-owned. Render, adapters, and the
+# CLI read this snapshot; only airline writes it.
+cfg_get_session   () { prv_get_session   "$1" "config-$2"; }       # <session> <key>
+cfg_set_session   () { prv_set_session   "$1" "config-$2" "$3"; } # <session> <key> <value>
+cfg_unset_session () { prv_unset_session "$1" "config-$2"; }       # <session> <key>
 
 # --- private: name builder (for composition / format embedding, not get/set) ---
 # collections builds its <ns> / <ns>-<key> scheme on this; render embeds a badge

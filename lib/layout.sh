@@ -2,8 +2,10 @@
 #
 # layout.sh — palette, adapter, segment, and executable-layout behavior.
 #
-# Layouts remain trusted child programs. They write public segment options through
-# AIRLINE_TMUX and delegate adapter composition through the installed airline shim.
+# Public @airline-* options are durable configuration only at global scope.
+# Palette tmux files and layout Bash programs retain their native authoring
+# surfaces, but their session-local public writes are temporary evaluation output:
+# airline captures, clears, and commits them into private session configuration.
 
 # shellcheck shell=bash
 
@@ -12,37 +14,107 @@ if ! declare -F render >/dev/null; then
   return 1 2>/dev/null || exit 1
 fi
 
-_load_config () {   # <session> <kind> <name...>
-  local session="$1" kind="$2"; shift 2
-  [[ $# -gt 0 ]] || die "$kind use: need <name>"
-  local name file
-  for name in "$@"; do                    # multi-target: later files compose over earlier
-    [[ "$name" != */* ]] || die "$kind use: '$name' — use a bare name (register a dir to add locations)"
-    file="$(_path_resolve "$session" "$kind" "$name")"
-    [[ -n "$file" ]] || die "$kind use: '$name' not found on the $kind path"
-    source_file_session "$session" "$file"
-    prv_set_session "$session" "$kind" "$name" # active selection (last wins)
+AIRLINE_CONFIG_PALETTE_FAILURE=70
+AIRLINE_CONFIG_LAYOUT_FAILURE=80
+AIRLINE_STAGE_ADAPTERS='stage-adapters'
+
+_layout_evaluating () { [[ -n "${AIRLINE_LAYOUT_SESSION:-}" ]]; }
+
+_reject_layout_reentry () {
+  _layout_evaluating || return 0
+  prv_set_session "$AIRLINE_LAYOUT_SESSION" layout-violation "$1"
+  die "layout evaluation cannot invoke $1"
+}
+
+#-----------------------------------------------------------------------------#
+# Palette evaluation and effective configuration
+#-----------------------------------------------------------------------------#
+
+_palette_stage_clear () {
+  local session="$1" element
+  for element in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
+    stage_unset_session "$session" "$element"
   done
 }
 
-# adapter use <name>: DYNAMIC — an adapter is a bash snippet that sets a plugin's
-# @<plugin>-* options from the current palette. Resolve it on the adapter path, load
-# PALETTE, then `source` the snippet (bash, not source-file) so it can read PALETTE
-# and call opt_set_session. Reached through a layout (piece C); the layout's stored
-# path is re-run on a palette change, which re-runs this and re-applies the colours.
-# Resolve <path> to an absolute path (dir resolved via cd+pwd; the file itself is
-# checked by the caller). `load` records this so a later `apply`, running from another
-# cwd, still finds it.
-_abspath () {   # <path> → absolute
+_apply_public_unlocked () {
+  local session="$1" element slot value missing=""
+  local -A palette=()
+  _AIRLINE_PALETTE_PATCHED=""
+  _AIRLINE_SEGMENTS_PATCHED=""
+
+  for element in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
+    value="$(cfg_get_session "$session" "$element")"
+    if pub_has "$element"; then
+      value="$(pub_get "$element")"
+      _AIRLINE_PALETTE_PATCHED=1
+    fi
+    if [[ -z "$value" ]]; then missing="${missing:+$missing, }$element"
+    else palette[$element]="$value"; fi
+  done
+  if [[ -n "$missing" ]]; then
+    printf 'airline: palette configuration is incomplete: missing %s\n' "$missing" >&2
+    return "$AIRLINE_CONFIG_PALETTE_FAILURE"
+  fi
+  if [[ -n "$_AIRLINE_PALETTE_PATCHED" ]]; then
+    for element in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
+      cfg_set_session "$session" "$element" "${palette[$element]}"
+    done
+    prv_unset_session "$session" palette
+  fi
+  for slot in "${AIRLINE_SEGMENT_SLOTS[@]}"; do
+    if pub_has "segment-$slot"; then
+      cfg_set_session "$session" "segment-$slot" "$(pub_get "segment-$slot")"
+      _AIRLINE_SEGMENTS_PATCHED=1
+    fi
+  done
+  [[ -z "$_AIRLINE_SEGMENTS_PATCHED" ]] || prv_unset_session "$session" layout
+}
+
+_palette_select_unlocked () {
+  local session="$1" name="$2" file element value missing="" rc=0
+  local -A captured=()
+  file="$(_path_resolve "$session" palette "$name")"
+  [[ -n "$file" ]] || return 2
+
+  _palette_stage_clear "$session"
+  source_file_session "$session" "$file" || rc=$?
+  if (( rc != 0 )); then
+    _palette_stage_clear "$session"
+    printf "airline: palette '%s' could not be evaluated\n" "$name" >&2
+    return "$AIRLINE_CONFIG_PALETTE_FAILURE"
+  fi
+  for element in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
+    if stage_has_session "$session" "$element"; then
+      value="$(stage_get_session "$session" "$element")"
+      if [[ -n "$value" ]]; then captured[$element]="$value"
+      else missing="${missing:+$missing, }$element"; fi
+    else
+      missing="${missing:+$missing, }$element"
+    fi
+  done
+  _palette_stage_clear "$session"
+  if [[ -n "$missing" ]]; then
+    printf "airline: palette '%s' is incomplete: missing %s\n" "$name" "$missing" >&2
+    return "$AIRLINE_CONFIG_PALETTE_FAILURE"
+  fi
+  for element in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
+    cfg_set_session "$session" "$element" "${captured[$element]}"
+  done
+  prv_set_session "$session" palette "$name"
+}
+
+#-----------------------------------------------------------------------------#
+# Adapters — immediate outside a layout, declarations during layout evaluation
+#-----------------------------------------------------------------------------#
+
+_abspath () {
   local dir base
   dir="$(dirname -- "$1")"; base="$(basename -- "$1")"
   printf '%s/%s' "$(cd -- "$dir" 2>/dev/null && pwd)" "$base"
 }
 
-# Run one adapter file: load PALETTE, then source the snippet so it can set the
-# plugin's @<plugin>-* options from PALETTE. The shared core of `use` and `load`.
-_source_adapter () {   # <session> <file>
-  # AIRLINE_SESSION is consumed by the sourced adapter contract.
+_source_adapter () {
   # shellcheck disable=SC2034
   local AIRLINE_SESSION="$1" file="$2"
   _palette_load
@@ -50,180 +122,207 @@ _source_adapter () {   # <session> <file>
   source "$file"
 }
 
-# adapter use <name...>: resolve each bare name on the adapter path and run it, then
-# record it in the active set (`adapters` collection) for `adapter show`.
-_apply_adapter () {   # <session> <name...>
-  local session="$1"; shift
+_apply_adapter_unlocked () {
+  local session="$1" name file; shift
   [[ $# -gt 0 ]] || die "adapter use: need <name>"
-  local name file
   for name in "$@"; do
     [[ "$name" != */* ]] || die "adapter use: '$name' — bare name (or 'adapter load <path>')"
     file="$(_path_resolve "$session" adapter "$name")"
     [[ -n "$file" ]] || die "adapter use: '$name' not found on the adapter path"
     _source_adapter "$session" "$file"
-    coll_register_session "$session" adapters "$name" # applied in this session
+    coll_set_session "$session" adapters "$name" use "$name"
   done
 }
 
-# adapter load <path>: run a one-off adapter script by path (no path walk). Unlike
-# `layout load`, the record is for DISCOVERY, not re-run: `apply` re-runs the layout,
-# which re-invokes its adapters — so we keep only the applied name (the basename) for
-# `adapter show`, not the path. A durable custom adapter lives in a layout that
-# `adapter load`s it. The user owns the file (it sources arbitrary bash).
-_load_adapter () {   # <session> <path>
-  local session="$1" path="${2:-}"; [[ -n "$path" ]] || die "adapter load: need <path>"
-  local abs; abs="$(_abspath "$path")"
+_load_adapter_unlocked () {
+  local session="$1" path="${2:-}" abs
+  [[ -n "$path" ]] || die "adapter load: need <path>"
+  abs="$(_abspath "$path")"
   [[ -f "$abs" ]] || die "adapter load: no such file: $path"
   _source_adapter "$session" "$abs"
-  coll_register_session "$session" adapters "${abs##*/}"
+  coll_set_session "$session" adapters "${abs##*/}" load "$abs"
 }
 
-# Resolve a layout HANDLE to a file: a bare name (from `use`/default) → the search
-# path; a path (from `load`, recorded absolute) → itself. The slash tells them apart —
-# reusing the invariant that names never contain '/'.
-_layout_file () {   # <session> <handle> → file (empty if unresolved)
+_staged_adapters_clear () {
+  local session="$1" key
+  for key in $(coll_members_session "$session" "$AIRLINE_STAGE_ADAPTERS"); do
+    coll_unregister_session "$session" "$AIRLINE_STAGE_ADAPTERS" "$key"
+  done
+}
+
+_stage_adapter_use () {
+  local session="$1" name file; shift
+  [[ $# -gt 0 ]] || die "adapter use: need <name>"
+  for name in "$@"; do
+    [[ "$name" != */* ]] || die "adapter use: '$name' — bare name (or 'adapter load <path>')"
+    file="$(_path_resolve "$session" adapter "$name")"
+    [[ -n "$file" ]] || die "adapter use: '$name' not found on the adapter path"
+    coll_set_session "$session" "$AIRLINE_STAGE_ADAPTERS" "$name" use "$name"
+  done
+}
+
+_stage_adapter_load () {
+  local session="$1" path="${2:-}" abs key
+  [[ -n "$path" ]] || die "adapter load: need <path>"
+  abs="$(_abspath "$path")"
+  [[ -f "$abs" ]] || die "adapter load: no such file: $path"
+  key="${abs##*/}"
+  coll_set_session "$session" "$AIRLINE_STAGE_ADAPTERS" "$key" load "$abs"
+}
+
+_clear_adapters () {
+  local session="$1" adapter
+  for adapter in $(coll_members_session "$session" adapters); do
+    coll_unregister_session "$session" adapters "$adapter"
+  done
+}
+
+_apply_staged_adapters_unlocked () {
+  local session="$1" key kind handle
+  _clear_adapters "$session"
+  for key in $(coll_members_session "$session" "$AIRLINE_STAGE_ADAPTERS"); do
+    IFS=$'\t' read -r kind handle <<< "$(coll_get_session "$session" "$AIRLINE_STAGE_ADAPTERS" "$key")"
+    case "$kind" in
+      use)  _apply_adapter_unlocked "$session" "$handle" ;;
+      load) _load_adapter_unlocked "$session" "$handle" ;;
+    esac
+  done
+  _staged_adapters_clear "$session"
+}
+
+_reapply_adapters_unlocked () {
+  local session="$1" key kind handle file
+  for key in $(coll_members_session "$session" adapters); do
+    IFS=$'\t' read -r kind handle <<< "$(coll_get_session "$session" adapters "$key")"
+    case "$kind" in
+      use)
+        file="$(_path_resolve "$session" adapter "$handle")"
+        [[ -n "$file" ]] || die "adapter use: '$handle' not found on the adapter path"
+        _source_adapter "$session" "$file"
+        ;;
+      load)
+        [[ -f "$handle" ]] || die "adapter load: no such file: $handle"
+        _source_adapter "$session" "$handle"
+        ;;
+      "")
+        # Upgrade names-only adapter membership written by pre-snapshot releases.
+        file="$(_path_resolve "$session" adapter "$key")"
+        [[ -n "$file" ]] || continue
+        _source_adapter "$session" "$file"
+        coll_set_session "$session" adapters "$key" use "$key"
+        ;;
+    esac
+  done
+}
+
+#-----------------------------------------------------------------------------#
+# Layout evaluation
+#-----------------------------------------------------------------------------#
+
+_layout_file () {
   local session="$1" handle="$2"
   if [[ "$handle" == */* ]]; then [[ -f "$handle" ]] && printf '%s' "$handle"
   else _path_resolve "$session" layout "$handle"; fi
 }
 
-# A layout is a SHELL SCRIPT. Record <handle> as active, then EXECUTE the file with
-# `airline` on PATH and AIRLINE_DIR in the env — so it composes by calling
-# `airline adapter use …` (dynamic) and writing its segment options directly with
-# `$AIRLINE_TMUX set -t "$AIRLINE_SESSION"` (segments are just options), and may
-# `source` helpers (e.g.
-# the TPM probe). `apply` re-runs the recorded handle — the re-apply engine.
-#
-# Orthogonality (a layout must not set the palette) is a CONVENTION, not enforced. The
-# re-entrancy guard makes a violation benign: while a layout runs, @airline--applying is
-# set, so a nested `apply`/`palette use` renders but does NOT re-enter the layout — no
-# apply→layout→apply loop. A failed script is contained, surfaced as a session
-# problem, and cleared automatically after a later successful application.
-_apply_layout () {   # <session> <handle>  (bare name, or absolute path from load)
-  local session="$1" handle="${2:-}" file rc=0
+_segment_stage_clear () {
+  local session="$1" slot
+  for slot in "${AIRLINE_SEGMENT_SLOTS[@]}"; do
+    stage_unset_session "$session" "segment-$slot"
+  done
+}
+
+_apply_layout_unlocked () {
+  local session="$1" handle="$2" file rc=0 slot value
   local layout_dir="$AIRLINE_DIR" layout_cli="$AIRLINE_DIR/airline.sh" layout_path="$AIRLINE_DIR:$PATH"
-  [[ "$(prv_get_session "$session" applying)" == 1 ]] && return 0
+  local -A segments=()
   file="$(_layout_file "$session" "$handle")"
-  [[ -n "$file" ]] || die "layout: '$handle' not found"
-  prv_set_session "$session" layout "$handle"
-  prv_set_session "$session" applying 1
-  _clear_segments "$session" # clean slate — the layout owns the arrangement
-  _clear_adapters "$session" # …and owns its adapter set
-  # AIRLINE_TMUX (the seam, defaulted to plain tmux) lets a layout set its segment
-  # options directly and cheaply with an explicit session target — no airline subprocess.
-  # _AIRLINE_DEFER=1 reaches the nested `airline …` calls via the env, so their renders
-  # are suppressed (_render); the caller renders ONCE after this returns.
+  [[ -n "$file" ]] || { printf "airline: layout '%s' not found\n" "$handle" >&2; return "$AIRLINE_CONFIG_LAYOUT_FAILURE"; }
+
+  _segment_stage_clear "$session"
+  _staged_adapters_clear "$session"
+  prv_unset_session "$session" layout-violation
   AIRLINE_DIR="$layout_dir" AIRLINE_CLI="$layout_cli" \
-    AIRLINE_SESSION="$session" AIRLINE_TMUX="${AIRLINE_TMUX:-tmux}" \
-    _AIRLINE_DEFER=1 PATH="$layout_path" bash "$file" || rc=$?
-  prv_set_session "$session" applying 0
-  if (( rc == 0 )); then
-    _problem_store "$session" airline-layout ok "" || true
-  else
-    _problem_store "$session" airline-layout fail "layout '$handle' exited with status $rc" || true
+    AIRLINE_SESSION="$session" AIRLINE_LAYOUT_SESSION="$session" \
+    AIRLINE_TMUX="${AIRLINE_TMUX:-tmux}" PATH="$layout_path" bash "$file" || rc=$?
+  [[ -z "$(prv_get_session "$session" layout-violation)" ]] || rc=2
+  prv_unset_session "$session" layout-violation
+  if (( rc != 0 )); then
+    _segment_stage_clear "$session"
+    _staged_adapters_clear "$session"
+    printf "airline: layout '%s' exited with status %s\n" "$handle" "$rc" >&2
+    return "$AIRLINE_CONFIG_LAYOUT_FAILURE"
   fi
-}
 
-# Unset every segment slot. The clean slate a layout starts from, so it only sets what
-# it wants and a switch leaves nothing stale. Safe because init applies a default layout
-# ONLY when no segments are set — a "define the options yourself" user never runs a
-# layout, so this never wipes their directly-set segment options.
-_clear_segments () {   # <session>
-  local session="$1" s; for s in "${AIRLINE_SEGMENT_SLOTS[@]}"; do
-    pub_set_session "$session" "segment-$s" ""
+  for slot in "${AIRLINE_SEGMENT_SLOTS[@]}"; do
+    if stage_has_session "$session" "segment-$slot"; then value="$(stage_get_session "$session" "segment-$slot")"
+    else value=""; fi
+    segments[$slot]="$value"
   done
-}
-
-# Drop every recorded active adapter — the clean slate a layout starts from, so the
-# active set reflects only what the current layout applied. Ad-hoc `adapter use` outside
-# a layout just appends; only a layout switch clears (mirrors _clear_segments).
-_clear_adapters () {   # <session>
-  local session="$1" a
-  for a in $(coll_members_session "$session" adapters); do
-    coll_unregister_session "$session" adapters "$a"
+  _segment_stage_clear "$session"
+  for slot in "${AIRLINE_SEGMENT_SLOTS[@]}"; do
+    cfg_set_session "$session" "segment-$slot" "${segments[$slot]}"
   done
+  prv_set_session "$session" layout "$handle"
+  _apply_staged_adapters_unlocked "$session"
 }
 
-# layout use <name>: curated — a bare name on the layout path.
-_layout_use () {   # <session> <name>
-  local session="$1" name="${2:-}"; [[ -n "$name" ]] || die "layout use: need <name>"
-  [[ "$name" != */* ]] || die "layout use: '$name' — bare name (or 'layout load <path>')"
-  _apply_layout "$session" "$name"
-}
+#-----------------------------------------------------------------------------#
+# Discovery
+#-----------------------------------------------------------------------------#
 
-# layout load <path>: one-off — run a layout script by path, recording the ABSOLUTE
-# path so `apply` re-runs it from any cwd.
-_layout_load () {   # <session> <path>
-  local session="$1" path="${2:-}"; [[ -n "$path" ]] || die "layout load: need <path>"
-  local abs; abs="$(_abspath "$path")"
-  [[ -f "$abs" ]] || die "layout load: no such file: $path"
-  _apply_layout "$session" "$abs"
-}
-
-# layout show: bare → the active layout summarized (its `name` and the resolved file
-# `path`, labeled — human); `show name` → the recorded handle, raw; `show path` → the
-# resolved file, raw (handy for a `load`ed layout, whose handle already IS a path).
-_layout_show () {   # <session> [name|path]
+_layout_show () {
   local session="$1" x="${2:-}" handle; handle="$(prv_get_session "$session" layout)"
   case "$x" in
     name) printf '%s\n' "$handle" ;;
     path) printf '%s\n' "$(_layout_file "$session" "$handle")" ;;
-    "")   _show_row name "$handle"
-          _show_row path "$(_layout_file "$session" "$handle")" ;;
+    "")   _show_row name "$handle"; _show_row path "$(_layout_file "$session" "$handle")" ;;
     *)    die "layout show: unknown field '$x' (name | path)" ;;
   esac
 }
 
-#-----------------------------------------------------------------------------#
-# Static config nouns — palette & segment (public @airline-* options, read-only here)
-#-----------------------------------------------------------------------------#
-# Global defaults are written the idiomatic tmux way (`set -g @airline-…` in
-# `.tmux.conf`); palette/layout runtime operations write session overrides. The CLI
-# only *reads* individual values back for discovery. `apply` bakes the effective value.
-
-# <key-prefix> is the bare-key prefix WITHIN the public namespace: "" for palette
-# (the key is the element) or "segment-" for segments. pub_* applies the @airline-
-# prefix; api never spells it.
-_static_show () {   # <session> <key-prefix> <validator> <list-array-name> [<X>]
+_static_show () {
   local session="$1" keypfx="$2" valid="$3" listname="$4" x="${5:-}"
   if [[ -n "$x" ]]; then
     "$valid" "$x" || die "show: unknown target '$x'"
-    pub_get_session "$session" "${keypfx}${x}"
+    cfg_get_session "$session" "${keypfx}${x}"
     return 0
   fi
-  local -n all="$listname"; local k
-  for k in "${all[@]}"; do
-    _show_row "$k" "$(pub_get_session "$session" "${keypfx}${k}")"
-  done
+  local -n all="$listname"; local key
+  for key in "${all[@]}"; do _show_row "$key" "$(cfg_get_session "$session" "${keypfx}${key}")"; done
 }
 
-# palette show: bare → the whole palette (its `name` field + every element, labeled —
-# a human summary, don't parse it); `show name` → the active palette name, raw (the
-# scripting read, replaces the old `current`); `show <element>` → one element, raw.
-# `name` is a VIRTUAL field: it lives in the private selection, not a public option.
-_palette_show () {   # <session> [name|<element>]
+_palette_show () {
   local session="$1" x="${2:-}"
   [[ "$x" == name ]] && { prv_get_session "$session" palette; return 0; }
   [[ -z "$x" ]] && _show_row name "$(prv_get_session "$session" palette)"
   _static_show "$session" "" _palette_element_valid AIRLINE_PALETTE_ELEMENTS "$x"
 }
 
-# adapter show: iterate the active set — the adapters currently applied (recorded by
-# every `use`/`load`), one per line. Bare-only, unlike palette/status: an adapter is a
-# valueless name, so there is no per-member `show <x>` value to return. This is the
-# MULTI-active noun — its "what's on" answer is a LIST, not a scalar `name`. (What you
-# *could* apply is a different axis — `adapter available`, over the search path.)
-_adapter_show () {   # <session>
-  local session="$1" a
-  for a in $(coll_members_session "$session" adapters); do printf '%s\n' "$a"; done
+_adapter_show () {
+  local session="$1" adapter
+  for adapter in $(coll_members_session "$session" adapters); do printf '%s\n' "$adapter"; done
 }
 
-# CLI delegation targets for layout and its primitives.
+#-----------------------------------------------------------------------------#
+# CLI behavior boundary
+#-----------------------------------------------------------------------------#
+
+_config_problem () { _problem_store "$1" "$2" "$3" "$4" || true; }
+
 layout_palette_show () { local s; s="$(_require_current_session)"; _palette_show "$s" "$@"; }
 layout_palette_use () {
-  local s; s="$(_require_current_session)"
-  _load_config "$s" palette "$@"
-  _apply "$s"
+  local s name rc=0
+  _reject_layout_reentry "palette use"
+  [[ $# -eq 1 && -n "$1" ]] || die "palette use: need exactly one <name>"
+  name="$1"; [[ "$name" != */* ]] || die "palette use: '$name' — use a bare name"
+  s="$(_require_current_session)"
+  [[ -n "$(_path_resolve "$s" palette "$name")" ]] || die "palette use: '$name' not found on the palette path"
+  with_session_transaction "$s" config _palette_use_apply_unlocked "$s" "$name" || rc=$?
+  if (( rc == AIRLINE_CONFIG_PALETTE_FAILURE )); then
+    _config_problem "$s" airline-palette fail "palette '$name' is incomplete or could not be evaluated"
+  else _config_problem "$s" airline-palette ok ""; fi
+  (( rc == 0 )) || return "$rc"
 }
 layout_palette_available () { local s; s="$(_require_current_session)"; _path_available "$s" palette; }
 layout_palette_register () { local s; s="$(_require_current_session)"; _register "$s" palette "$@"; }
@@ -234,31 +333,96 @@ layout_segment_show () {
 }
 
 layout_adapter_use () {
-  local s; s="$(_require_current_session)"
-  _apply_adapter "$s" "$@"
-  _render "$s"
+  local s rc=0
+  if _layout_evaluating; then
+    s="$AIRLINE_LAYOUT_SESSION"
+    _stage_adapter_use "$s" "$@"
+  else
+    s="$(_require_current_session)"
+    with_session_transaction "$s" config _adapter_use_render_unlocked "$s" "$@" || rc=$?
+    if (( rc == AIRLINE_CONFIG_PALETTE_FAILURE )); then
+      _config_problem "$s" airline-palette fail "adapter use could not resolve a complete palette"
+    else _config_problem "$s" airline-palette ok ""; fi
+    return "$rc"
+  fi
 }
 layout_adapter_load () {
-  local s; s="$(_require_current_session)"
-  _load_adapter "$s" "$@"
-  _render "$s"
+  local s rc=0
+  if _layout_evaluating; then
+    s="$AIRLINE_LAYOUT_SESSION"
+    _stage_adapter_load "$s" "$@"
+  else
+    s="$(_require_current_session)"
+    with_session_transaction "$s" config _adapter_load_render_unlocked "$s" "$@" || rc=$?
+    if (( rc == AIRLINE_CONFIG_PALETTE_FAILURE )); then
+      _config_problem "$s" airline-palette fail "adapter load could not resolve a complete palette"
+    else _config_problem "$s" airline-palette ok ""; fi
+    return "$rc"
+  fi
 }
 layout_adapter_show () { _adapter_show "$(_require_current_session)"; }
 layout_adapter_available () { local s; s="$(_require_current_session)"; _path_available "$s" adapter; }
 layout_adapter_register () { local s; s="$(_require_current_session)"; _register "$s" adapter "$@"; }
 
 layout_use () {
-  local s; s="$(_require_current_session)"
-  _layout_use "$s" "$@"
-  render "$s" || true
+  local s name rc=0
+  _reject_layout_reentry "layout use"
+  [[ $# -eq 1 && -n "$1" ]] || die "layout use: need exactly one <name>"
+  name="$1"; [[ "$name" != */* ]] || die "layout use: '$name' — bare name (or 'layout load <path>')"
+  s="$(_require_current_session)"
+  [[ -n "$(_path_resolve "$s" layout "$name")" ]] || die "layout use: '$name' not found"
+  with_session_transaction "$s" config _layout_use_render_unlocked "$s" "$name" || rc=$?
+  case "$rc" in
+    0) _config_problem "$s" airline-palette ok ""; _config_problem "$s" airline-layout ok "" ;;
+    "$AIRLINE_CONFIG_PALETTE_FAILURE")
+      _config_problem "$s" airline-palette fail "layout use could not resolve a complete palette" ;;
+    "$AIRLINE_CONFIG_LAYOUT_FAILURE")
+      _config_problem "$s" airline-palette ok ""
+      _config_problem "$s" airline-layout fail "layout '$name' could not be applied" ;;
+  esac
+  (( rc == 0 )) || return "$rc"
 }
 layout_load () {
-  local s; s="$(_require_current_session)"
-  _layout_load "$s" "$@"
-  render "$s" || true
+  local s path abs rc=0
+  _reject_layout_reentry "layout load"
+  [[ $# -eq 1 && -n "$1" ]] || die "layout load: need <path>"
+  path="$1"; abs="$(_abspath "$path")"; [[ -f "$abs" ]] || die "layout load: no such file: $path"
+  s="$(_require_current_session)"
+  with_session_transaction "$s" config _layout_load_render_unlocked "$s" "$abs" || rc=$?
+  case "$rc" in
+    0) _config_problem "$s" airline-palette ok ""; _config_problem "$s" airline-layout ok "" ;;
+    "$AIRLINE_CONFIG_PALETTE_FAILURE")
+      _config_problem "$s" airline-palette fail "layout load could not resolve a complete palette" ;;
+    "$AIRLINE_CONFIG_LAYOUT_FAILURE")
+      _config_problem "$s" airline-palette ok ""
+      _config_problem "$s" airline-layout fail "layout '$abs' could not be applied" ;;
+  esac
+  (( rc == 0 )) || return "$rc"
 }
 layout_show () { local s; s="$(_require_current_session)"; _layout_show "$s" "$@"; }
 layout_available () { local s; s="$(_require_current_session)"; _path_available "$s" layout; }
 layout_register () { local s; s="$(_require_current_session)"; _register "$s" layout "$@"; }
+
+_palette_use_apply_unlocked () {
+  _apply_public_unlocked "$1" &&
+    _palette_select_unlocked "$1" "$2" &&
+    _reapply_adapters_unlocked "$1" && { render "$1" || true; }
+}
+_layout_use_render_unlocked () {
+  _apply_public_unlocked "$1" &&
+    _reapply_adapters_unlocked "$1" &&
+    _apply_layout_unlocked "$1" "$2" && { render "$1" || true; }
+}
+_layout_load_render_unlocked () { _layout_use_render_unlocked "$@"; }
+_adapter_use_render_unlocked () {
+  _apply_public_unlocked "$1" &&
+    _reapply_adapters_unlocked "$1" &&
+    _apply_adapter_unlocked "$@" && { render "$1" || true; }
+}
+_adapter_load_render_unlocked () {
+  _apply_public_unlocked "$1" &&
+    _reapply_adapters_unlocked "$1" &&
+    _load_adapter_unlocked "$@" && { render "$1" || true; }
+}
 
 # vim: ft=bash

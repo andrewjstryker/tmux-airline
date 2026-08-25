@@ -10,9 +10,9 @@
 # Dynamic nouns (status, health, problem) are live and scriptable: set + re-project a
 # badge + redraw. Static config nouns (palette, segment) are read-only at the CLI;
 # runner adds process-lifecycle orchestration over those existing signals. Users
-# provide global defaults through `.tmux.conf`; palette/layout selections create
-# session overrides. We read the effective values and `apply` bakes rendered
-# configuration while ephemeral runner updates remain live.
+# provide global input through `.tmux.conf`; airline copies it into a private,
+# session-owned configuration snapshot. Palette/layout selections replace their
+# respective axis in that snapshot while ephemeral runner updates remain live.
 
 # shellcheck shell=bash
 
@@ -70,20 +70,11 @@ _show_row () { printf '%-12s %s\n' "$1" "$2"; }
 # Lifecycle
 #-----------------------------------------------------------------------------#
 
-# True when no segment slot is set yet (a fresh install) — gates default seeding.
-_segments_unset () {   # <session>
-  local session="$1" s
-  for s in "${AIRLINE_SEGMENT_SLOTS[@]}"; do
-    [[ -n "$(pub_get_session "$session" "segment-$s")" ]] && return 1
-  done
-  return 0
-}
-
 # Bootstrap (the `init` command). Publish the CLI path and, on first run, seed defaults
 # behind a sentinel (without clobbering user config or runtime state on a reload); then
 # render.
 _init () {   # <session>
-  local session="$1"
+  local session="$1" rc=0
   # The CLI path is the ONE published (public) option — the bootstrap handle, since a
   # script can't call the CLI to discover where the CLI lives. Everything else about
   # airline's state is read through the CLI, never a private option. Airline binds no
@@ -104,33 +95,60 @@ _init () {   # <session>
   _path_register_self "$session" probe "$AIRLINE_DIR/probes"
   _path_register_self "$session" runner  "$AIRLINE_DIR/runners"
 
-  # First run only (sentinel): apply the default of each axis the user hasn't set —
-  # the default PALETTE if no palette is present, the default LAYOUT (which brings its
-  # own segments) if no segments are. `default` is a name on the search path, so a
-  # user's own `default` (registered earlier) wins. Renders deferred to the final one.
-  if [[ "$(prv_get_session "$session" "$AIRLINE_KEY_DEFAULTS")" != 1 ]]; then
-    [[ -z "$(pub_get_session "$session" inner-bg)" ]] && _load_config "$session" palette default
-    _segments_unset "$session" && _apply_layout "$session" adaptive
-    prv_set_session "$session" "$AIRLINE_KEY_DEFAULTS" 1
+  with_session_transaction "$session" config _init_unlocked "$session" || rc=$?
+  _report_config_result "$session" "$rc" init
+  return "$rc"
+}
+
+_init_unlocked () {   # <session>
+  local session="$1" layout seeded=""
+  if [[ -z "$(cfg_get_session "$session" inner-bg)" ]]; then
+    _palette_select_unlocked "$session" default || return $?
+    seeded=1
   fi
+  if [[ -n "$seeded" || -z "$(prv_get_session "$session" "$AIRLINE_KEY_DEFAULTS")" ]]; then
+    layout="$(prv_get_session "$session" layout)"
+    [[ -n "$layout" ]] || layout=adaptive
+    _apply_layout_unlocked "$session" "$layout" || return $?
+  fi
+  _apply_public_unlocked "$session" || return $?
+  _reapply_adapters_unlocked "$session" || return $?
+  prv_set_session "$session" "$AIRLINE_KEY_DEFAULTS" 1
   render "$session" || true
 }
 
-# Render, unless we're mid-layout (a layout defers to one redraw at the end via a
-# local _AIRLINE_DEFER that dynamic scoping makes visible to the nested use handlers).
-_render () {   # <session>
-  [[ -n "${_AIRLINE_DEFER:-}" ]] && return 0
-  render "$1" || true
+# Copy explicitly present global public values over the private snapshot. A manual
+# palette or segment write clears the corresponding named provenance; absent globals
+# leave the committed value untouched.
+_apply_unlocked () {   # <session>
+  local session="$1"
+  _apply_public_unlocked "$session" || return $?
+  _reapply_adapters_unlocked "$session" || return $?
+  render "$session" || true
 }
 
-# The `apply` command: re-run the active layout (re-applies its adapters against the
-# current palette and re-sets its segments), then render. This is the re-apply engine —
-# a palette swap is `palette use X` (or a raw set) followed by apply.
 _apply () {   # <session>
-  local session="$1" lay
-  lay="$(prv_get_session "$session" layout)"
-  [[ -n "$lay" && -n "$(_layout_file "$session" "$lay")" ]] && _apply_layout "$session" "$lay"
-  render "$session" || true
+  local session="$1" rc=0
+  with_session_transaction "$session" config _apply_unlocked "$session" || rc=$?
+  _report_config_result "$session" "$rc" apply
+  return "$rc"
+}
+
+_report_config_result () {   # <session> <rc> <operation>
+  local session="$1" rc="$2" operation="$3"
+  case "$rc" in
+    0)
+      _problem_store "$session" airline-palette ok "" || true
+      _problem_store "$session" airline-layout ok "" || true
+      ;;
+    "$AIRLINE_CONFIG_PALETTE_FAILURE")
+      _problem_store "$session" airline-palette fail "$operation could not resolve a complete palette" || true
+      ;;
+    "$AIRLINE_CONFIG_LAYOUT_FAILURE")
+      _problem_store "$session" airline-palette ok "" || true
+      _problem_store "$session" airline-layout fail "$operation could not apply the active layout" || true
+      ;;
+  esac
 }
 
 # The top-level `show` command: the active configuration. The non-noun globals first
@@ -211,10 +229,6 @@ _register () {   # <session> <kind> <dir>
   coll_prepend_session "$session" "$(_path_ns "$kind")" "$dir"
 }
 
-# Resolve each bare name on the kind's path, source the tmux conf, record it active
-# (@airline--<kind>). NO render — the caller renders: `palette use` re-applies via
-# `apply`, so a palette swap re-runs the layout and re-colours its adapters. Only
-# `palette` is loadable now (segment is set by layouts), but the mechanism stays generic.
 # The active/suspended state. `suspend` mutes the palette (the derived flat look, via
 # _palette_load) and traps the prefix so keys pass through — the nested-session signal
 # "this tmux is dormant." `resume` restores. The flat/vibrant colour is derived, not a
@@ -458,7 +472,7 @@ _lock_clear () {   # <session|window> <target> <namespace>
 
 # CLI delegation targets. These functions are the behavior boundary behind the
 # grammar in airline.sh; they are internal implementation, not a second user API.
-lifecycle_init () { _init "$(_require_current_session)"; }
+lifecycle_init () { _reject_layout_reentry init; _init "$(_require_current_session)"; }
 lifecycle_init_session () {   # <tmux-target>; internal lifecycle hook entry
   local session
   [[ -n "${1:-}" ]] || die "_init-session: need <target>"
@@ -466,8 +480,11 @@ lifecycle_init_session () {   # <tmux-target>; internal lifecycle hook entry
   [[ -n "$session" ]] || die "cannot resolve target session: $1"
   _init "$session"
 }
-lifecycle_apply () { _apply "$(_require_current_session)"; }
-lifecycle_show () { _show_config "$(_require_current_session)"; }
+lifecycle_apply () { _reject_layout_reentry apply; _apply "$(_require_current_session)"; }
+lifecycle_show () {
+  local session; session="$(_require_current_session)"
+  with_session_transaction "$session" config _show_config "$session"
+}
 
 lifecycle_state_suspend () { _state_set "$(_require_current_session)" 1; }
 lifecycle_state_resume () { _state_set "$(_require_current_session)" 0; }

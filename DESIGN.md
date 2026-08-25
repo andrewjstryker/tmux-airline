@@ -87,13 +87,14 @@ The important boundaries are:
 - Executable layouts are trusted configuration consumers, not loaded application
   layers. They may write public `@airline-segment-*` options through the supplied
   `AIRLINE_TMUX` handle and delegate adapters through `airline`; they never access
-  private state. Their child-process writes intentionally persist in the tmux server.
+  private state. Airline captures and clears those session-public writes before
+  committing the resulting segment snapshot.
 - `lib/collections.sh` is an airline abstraction above tmux's flat option store. It is
   used only for status, health, problem, adapter membership, and search paths.
   Fixed segment slots are scalar options, not collections.
 - Palette and layout are independent axes: a palette chooses colors; a layout
-  chooses adapters and segment strings. A palette change re-runs the stored layout
-  so its adapters resolve against the new colors.
+  chooses adapters and segment strings. A palette change replays the active adapter
+  declarations against the new colors without rerunning the layout program.
 
 ## State model
 
@@ -101,8 +102,8 @@ State falls into four kinds:
 
 | Kind | Written by | Examples |
 |------|------------|----------|
-| **Public options** `@airline-*` | user defaults and airline session overrides | palette roles, segment slots, `@airline-cli` |
-| **Private options** `@airline--*` | airline at runtime | contributors, projected badges, suspension, active selections, paths |
+| **Public options** `@airline-*` | users globally; palette/layout files temporarily per session | configuration input, evaluation output, `@airline-cli` |
+| **Private options** `@airline--*` | airline at runtime | committed config, contributors, badges, selections, paths |
 | **Composed output** | `render` | `status-left/right`, window formats, styles, pane borders, clock color |
 | **Constants** | source code only | glyphs, chevrons, name template, vocabularies, precedence tables |
 
@@ -117,30 +118,37 @@ The classification is mechanical:
 
 ### Scope and inheritance
 
-A user's `set -g @airline-*` supplies a global default. Palettes and layouts install
-session-local overrides. Rendering reads the effective session value: the override
-when present, otherwise the global default.
+A user's `set -g @airline-*` supplies durable input. A configuration operation copies
+each explicitly present value over the invoking session's private snapshot. Missing
+global options do not fall back or restore anything: the committed session value stays
+unchanged. Palette and layout files use session-public options only as an evaluation
+surface; airline captures and removes those values before committing them privately.
+
+Named palette and layout operations replace their complete axis and record provenance.
+A manual palette-role patch clears the palette name; a manual segment patch clears the
+layout name. Clearing the global input later does not recover the former named value;
+the user selects that palette or layout again when they want its complete definition.
 
 Private state exists at its native owner:
 
 - status and health contributors and their projected badges are window-scoped;
 - problems, palette/layout selections, guards, paths, suspension,
-  and adapter membership are session-scoped;
+  committed configuration, and adapter declarations are session-scoped;
 - there is no private-global state.
 
 ### Apply and live updates
 
-Public inputs and private state are the source of truth. `apply` re-runs the active
-layout, allowing adapters and slots to resolve against the active palette, and then
-calls `render` over the complete state.
+The private session snapshot is the render source of truth. `apply` copies explicit
+global inputs over it, replays active adapters when colors may have changed, and calls
+`render`. It does not rerun a layout script.
 
 ```mermaid
 graph LR
-    CFG[user configuration] --> S[source of truth]
-    INIT[init / use] --> S
-    EVT[runtime signals] --> S
-    S -- apply --> OUT[composed tmux options]
-    S -- project + redraw --> LIVE[live badge selectors]
+    CFG[global user input] -- config operation --> S[private session snapshot]
+    INIT[init / named use] --> S
+    EVT[runtime signals] --> D[private runtime state]
+    D -- project + redraw --> LIVE[live badge selectors]
+    S -- render --> OUT[composed tmux options]
     OUT --> BAR[tmux status bar]
     LIVE --> BAR
 ```
@@ -148,8 +156,10 @@ graph LR
 The two update modes are deliberately different:
 
 - Configuration changes move values that must be baked into the output. A direct
-  `set -g @airline-*` stages a change; `apply` renders it. `palette use` and
-  `layout use` end in an apply automatically.
+  `set -g @airline-*` stages a change; `apply` commits and renders it. Named `use`
+  operations first consume pending global input, then replace and record their own
+  axis. Thus a pending color followed by `layout use` clears palette provenance while
+  still recording the selected layout.
 - Runtime `status`, `health`, and `problem` changes update their collections,
   project a scalar badge value, and redraw. The already-composed selector follows
   the scalar, so no apply is needed.
@@ -180,9 +190,9 @@ There are seven catalog kinds and one plain-option kind:
 
 | Kind | Representation | Lifecycle |
 |------|----------------|-----------|
-| **palette** | targetless tmux config containing public color options | `use` sources it into a session, records it, then applies |
-| **adapter** | Bash snippet mapping `PALETTE` roles to plugin options | `use` or `load` executes it and records active membership |
-| **layout** | shell composition invoking adapters and setting segment slots | `use` or `load` clears slots, executes it, records it, then renders |
+| **palette** | complete targetless tmux config containing public color options | `use` captures one file, replaces colors, records it, then renders |
+| **adapter** | Bash snippet mapping `PALETTE` roles to plugin options | `use` or `load` executes it and records a replayable declaration |
+| **layout** | shell composition invoking adapters and setting segment slots | `use` or `load` evaluates once, replaces that axis, records it, then renders |
 | **classifier** | trusted shell mapping process termination to a condition | selected by `runner run` |
 | **filter** | trusted shell interpreting a copied command-output stream | selected by `runner run` |
 | **probe** | trusted shell performing one bounded observation | selected by `runner run` or `watch` |
@@ -201,18 +211,20 @@ For palette, adapter, and layout:
 - `use <name>` accepts a bare name and resolves it only within registered paths.
 
 `load <path>` is the explicit operation for executable adapter and layout files.
-`layout load` stores the absolute path because `apply` must re-run it from any
-working directory. Adapter loading is one-shot for
-reapplication purposes: the layout is the durable lifecycle unit and must invoke
-its adapters again.
+Both record an absolute path where replay requires one. Adapter declarations are
+replayed on palette changes; layout programs are rerun only by an explicit layout
+operation.
 
-Palette and segment configuration need no `load` verb. They are ordinary tmux
-configuration, so `source-file` followed by `apply` is the native one-off workflow.
+Palette and segment configuration need no `load` verb. A custom palette is registered
+and selected by name; it must define every palette role. One-off manual changes use
+global `@airline-*` options followed by `apply`.
 
 Adapters, layouts, runner primitives, and runner compositions are ordinary trusted
 shell. Registration and explicit adapter/layout loading are the trust boundaries.
-Nested airline calls defer rendering so a complete layout produces at most one
-redraw.
+Configuration operations are serialized per session with the `config` transaction
+namespace. Nested airline configuration calls from a layout are rejected, except
+adapter declarations, which are staged for the parent evaluation. A complete layout
+therefore commits and renders as one logical operation.
 
 A segment may reference a palette foreground role live, but must not set a
 background. Render owns each block background and its matching chevrons; allowing a

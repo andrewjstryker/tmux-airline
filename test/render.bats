@@ -15,30 +15,29 @@ teardown() { :; }
 
 # --- segment-bar composition ------------------------------------------------
 
-# Seed a minimal palette directly through the option store. The public render
-# operation loads it before composing output.
+# Seed the committed private palette consumed by render.
 _seed_palette() {
-  opt_set_global @airline-outer-bg colour238
-  opt_set_global @airline-middle-bg colour236
-  opt_set_global @airline-inner-bg colour234
-  opt_set_global @airline-secondary colour245
-  opt_set_global @airline-primary colour250
-  opt_set_global @airline-emphasized colour255
-  opt_set_global @airline-active colour214
-  opt_set_global @airline-special colour134
-  opt_set_global @airline-ok colour114
-  opt_set_global @airline-alert colour208
-  opt_set_global @airline-stress colour196
-  opt_set_global @airline-zoom colour81
-  opt_set_global @airline-copy colour75
-  opt_set_global @airline-monitor colour109
+  cfg_set_session "$AIRLINE_SESSION" outer-bg colour238
+  cfg_set_session "$AIRLINE_SESSION" middle-bg colour236
+  cfg_set_session "$AIRLINE_SESSION" inner-bg colour234
+  cfg_set_session "$AIRLINE_SESSION" secondary colour245
+  cfg_set_session "$AIRLINE_SESSION" primary colour250
+  cfg_set_session "$AIRLINE_SESSION" emphasized colour255
+  cfg_set_session "$AIRLINE_SESSION" active colour214
+  cfg_set_session "$AIRLINE_SESSION" special colour134
+  cfg_set_session "$AIRLINE_SESSION" ok colour114
+  cfg_set_session "$AIRLINE_SESSION" alert colour208
+  cfg_set_session "$AIRLINE_SESSION" stress colour196
+  cfg_set_session "$AIRLINE_SESSION" zoom colour81
+  cfg_set_session "$AIRLINE_SESSION" copy colour75
+  cfg_set_session "$AIRLINE_SESSION" monitor colour109
 }
 
 @test "left bar composes non-empty slots with their tier backgrounds" {
   load_render
   _seed_palette
-  opt_set_global @airline-segment-left-out OUT
-  opt_set_global @airline-segment-left-mid MID
+  cfg_set_session "$AIRLINE_SESSION" segment-left-out OUT
+  cfg_set_session "$AIRLINE_SESSION" segment-left-mid MID
   render "$AIRLINE_SESSION"
   run sopt status-left
   assert_output --partial "bg=colour238"   # outer (left-out)
@@ -50,7 +49,7 @@ _seed_palette() {
 @test "empty slots are skipped, and the last left block chevrons to inner-bg" {
   load_render
   _seed_palette
-  opt_set_global @airline-segment-left-out ONLY   # left-mid, left-in empty
+  cfg_set_session "$AIRLINE_SESSION" segment-left-out ONLY   # left-mid, left-in empty
   render "$AIRLINE_SESSION"
   run sopt status-left
   assert_output --partial " ONLY "
@@ -69,7 +68,7 @@ _seed_palette() {
 @test "right bar composes with a leading chevron from the window list" {
   load_render
   _seed_palette
-  opt_set_global @airline-segment-right-out DATE
+  cfg_set_session "$AIRLINE_SESSION" segment-right-out DATE
   render "$AIRLINE_SESSION"
   run sopt status-right
   assert_output --partial " DATE "
@@ -79,7 +78,7 @@ _seed_palette() {
 @test "suspended dims the outer/middle backgrounds to inner-bg" {
   load_render
   _seed_palette
-  opt_set_global @airline-segment-left-out X
+  cfg_set_session "$AIRLINE_SESSION" segment-left-out X
   opt_set_session "$AIRLINE_SESSION" @airline--suspended 1
   render "$AIRLINE_SESSION"
   run sopt status-left
@@ -92,7 +91,7 @@ _seed_palette() {
 @test "window formats set the name template, mode expr, and base styles" {
   load_render
   _seed_palette
-  render ""
+  render "$AIRLINE_SESSION"
   run get_option window-status-format
   assert_output --partial "#I:#W"               # the name template
   assert_output --partial "window_zoomed_flag"  # the mode expression
@@ -106,7 +105,7 @@ _seed_palette() {
 @test "inactive window fills its background with the mode color" {
   load_render
   _seed_palette
-  render ""
+  render "$AIRLINE_SESSION"
   run get_option window-status-format
   # bg is a mode selector: zoom→81, copy→75, monitor→109, else inner-bg 234
   assert_output --partial "bg=#{?#{window_zoomed_flag},colour81"
@@ -116,7 +115,7 @@ _seed_palette() {
 @test "inactive name knocks out over a filled block, else stays primary" {
   load_render
   _seed_palette
-  render ""
+  render "$AIRLINE_SESSION"
   run get_option window-status-format
   # fg: inner-bg knockout when in any mode, primary (250) when flat
   assert_output --partial "#[fg=#{?#{window_zoomed_flag},colour234"
@@ -126,7 +125,7 @@ _seed_palette() {
 @test "active window keeps a constant active-color highlight block" {
   load_render
   _seed_palette
-  render ""
+  render "$AIRLINE_SESSION"
   run get_option window-status-current-format
   assert_output --partial "bg=colour214"          # active highlight, not a mode selector
   refute_output --partial "bg=#{?#{window_zoomed_flag}"  # active bg never varies with mode
@@ -135,7 +134,7 @@ _seed_palette() {
 @test "active window tints the name foreground by mode (knockout when none)" {
   load_render
   _seed_palette
-  render ""
+  render "$AIRLINE_SESSION"
   run get_option window-status-current-format
   # name fg is the mode color, falling back to inner-bg knockout
   assert_output --partial "#[fg=#{?#{window_zoomed_flag},colour81"
@@ -148,7 +147,7 @@ _seed_palette() {
 @test "status badge renders a selector over the projected status scalar" {
   load_render
   _seed_palette
-  render ""
+  render "$AIRLINE_SESSION"
   run get_option window-status-format
   assert_output --partial "@airline--badge-status"   # the projected reduced-level scalar
   assert_output --partial "●"                        # a badge glyph (result level)
@@ -157,7 +156,7 @@ _seed_palette() {
 @test "status badge maps each semantic level to its palette color" {
   load_render
   _seed_palette
-  render ""
+  render "$AIRLINE_SESSION"
   run get_option window-status-format
   # level→color pairs unique to the status ladder (health has no result/attention)
   assert_output --partial "result},colour114"      # result → ok
@@ -167,7 +166,7 @@ _seed_palette() {
 @test "status badge maps each level to a distinct glyph; active blinks" {
   load_render
   _seed_palette
-  render ""
+  render "$AIRLINE_SESSION"
   run get_option window-status-format
   assert_output --partial "active},○"          # a shape per level, redundant with color
   assert_output --partial "result},●"
@@ -178,7 +177,7 @@ _seed_palette() {
 @test "health badge maps each level to a distinct glyph; fail blinks" {
   load_render
   _seed_palette
-  render ""
+  render "$AIRLINE_SESSION"
   run get_option window-status-format
   assert_output --partial "warn},△"
   assert_output --partial "fail},▲"
@@ -188,7 +187,7 @@ _seed_palette() {
 @test "window-status-format places status left of the name and health right" {
   load_render
   _seed_palette
-  render ""
+  render "$AIRLINE_SESSION"
   run get_option window-status-format
   [[ "$output" == *"@airline--badge-status"*"#I:#W"*"@airline--badge-health"* ]]
 }
@@ -238,7 +237,7 @@ _seed_palette() {
 @test "health badge renders a selector over the projected reduced scalar" {
   load_render
   _seed_palette
-  render ""
+  render "$AIRLINE_SESSION"
   run get_option window-status-format
   assert_output --partial "@airline--badge-health"   # the projected reduced-level scalar
 }
@@ -289,7 +288,7 @@ _seed_palette() {
 @test "problem badge is renderer-owned at the extreme right" {
   load_render
   _seed_palette
-  opt_set_global @airline-segment-right-out OUT
+  cfg_set_session "$AIRLINE_SESSION" segment-right-out OUT
   render "$AIRLINE_SESSION"
   run sopt status-right
   [[ "$output" == *" OUT "*"@airline--badge-problem"* ]]
@@ -343,8 +342,8 @@ _seed_palette() {
 @test "render writes status-left/right from registered segments" {
   load_render
   _seed_palette
-  opt_set_global @airline-segment-left-out "LOAD"
-  opt_set_global @airline-segment-right-out "TIME"
+  cfg_set_session "$AIRLINE_SESSION" segment-left-out "LOAD"
+  cfg_set_session "$AIRLINE_SESSION" segment-right-out "TIME"
   render "$AIRLINE_SESSION"
   run sopt status-left
   assert_output --partial "LOAD"
@@ -363,7 +362,7 @@ _seed_palette() {
 @test "render is redraw-gated: a no-op second call reports no change" {
   load_render
   _seed_palette
-  opt_set_global @airline-segment-left-out "LOAD"
+  cfg_set_session "$AIRLINE_SESSION" segment-left-out "LOAD"
   rc=0; render "$AIRLINE_SESSION" || rc=$?   # first call: everything changes
   assert_equal "$rc" 0
   rc=0; render "$AIRLINE_SESSION" || rc=$?   # identical state: nothing changes

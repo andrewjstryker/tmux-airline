@@ -27,7 +27,7 @@ setup() {
 
 @test "init applies the default palette when no palette is set" {
   airline init
-  run sopt @airline-inner-bg
+  run airline palette show inner-bg
   assert_output "colour234"          # palette use default
   run sopt @airline--palette
   assert_output "default"            # recorded
@@ -48,12 +48,14 @@ setup() {
   assert_output "colour99"           # user value preserved; default not applied
 }
 
-@test "init is idempotent: a reload keeps runtime segment changes" {
+@test "init is idempotent and refreshes global segment configuration" {
   airline init
-  $TMUX -L "$_bats_socket" set -t bats @airline-segment-left-out "CUSTOM"
-  airline init                       # sentinel set → no re-seed
-  run sopt @airline-segment-left-out
+  $TMUX -L "$_bats_socket" set -g @airline-segment-left-out "CUSTOM"
+  airline init
+  run airline segment show left-out
   assert_output "CUSTOM"
+  run sopt @airline-segment-left-out
+  assert_output ""                  # layout staging never becomes durable public state
 }
 
 @test "init composes the bar (chrome + window formats)" {
@@ -86,8 +88,7 @@ setup() {
 
 @test "apply renders from the current source of truth" {
   airline init
-  # a palette element is source-of-truth (not layout-managed, so apply won't reset it)
-  $TMUX -L "$_bats_socket" set -t bats @airline-active "colour201"
+  $TMUX -L "$_bats_socket" set -g @airline-active "colour201"
   airline apply
   run get_option window-status-current-format
   assert_output --partial "colour201"

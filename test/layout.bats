@@ -19,10 +19,11 @@ setup() {
 @test "register blesses a dir; use loads a bare name from it, then renders" {
   airline init
   mkdir -p "$BATS_TMPDIR/mypalettes"
-  printf 'set @airline-inner-bg colour55\n' > "$BATS_TMPDIR/mypalettes/custom"
+  cp "$PROJECT_ROOT/palettes/default" "$BATS_TMPDIR/mypalettes/custom"
+  printf 'set @airline-inner-bg colour55\n' >> "$BATS_TMPDIR/mypalettes/custom"
   airline palette register "$BATS_TMPDIR/mypalettes"
   airline palette use custom
-  run sopt @airline-inner-bg
+  run airline palette show inner-bg
   assert_output "colour55"
   run sopt status-style
   assert_output --partial "bg=colour55"     # rendered with the new color
@@ -36,6 +37,27 @@ setup() {
   assert_failure
 }
 
+@test "an incomplete palette preserves the last good selection and raises a problem" {
+  airline init
+  session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
+  mkdir -p "$BATS_TMPDIR/incomplete"
+  printf 'set @airline-inner-bg colour55\n' > "$BATS_TMPDIR/incomplete/broken"
+  airline palette register "$BATS_TMPDIR/incomplete"
+
+  run airline palette use broken
+  assert_failure
+  assert_output --partial "is incomplete"
+  run airline palette show name
+  assert_output default
+  run airline problem show "$session" airline-palette
+  assert_output "$(printf "fail\tpalette 'broken' is incomplete or could not be evaluated")"
+
+  cp "$PROJECT_ROOT/palettes/default" "$BATS_TMPDIR/incomplete/broken"
+  airline palette use broken
+  run airline problem show "$session" airline-palette
+  assert_output ""
+}
+
 @test "palette use resolves a bare name on the shipped search path" {
   airline init
   run airline palette use light       # a shipped bare name → found on the registered palettes/ dir
@@ -45,10 +67,11 @@ setup() {
 @test "register prepends: a registered dir shadows the shipped one" {
   airline init
   mkdir -p "$BATS_TMPDIR/shadow"
-  printf 'set @airline-inner-bg colour42\n' > "$BATS_TMPDIR/shadow/dark"   # same name as shipped
+  cp "$PROJECT_ROOT/palettes/default" "$BATS_TMPDIR/shadow/dark"
+  printf 'set @airline-inner-bg colour42\n' >> "$BATS_TMPDIR/shadow/dark"   # same name as shipped
   airline palette register "$BATS_TMPDIR/shadow"
   airline palette use dark
-  run sopt @airline-inner-bg
+  run airline palette show inner-bg
   assert_output "colour42"            # the registered dark won, not the shipped colour234
 }
 
@@ -63,15 +86,73 @@ setup() {
 
 @test "a directly-set color renders after apply" {
   airline init
-  $TMUX -L "$_bats_socket" set -t bats @airline-active colour201
+  $TMUX -L "$_bats_socket" set -g @airline-active colour201
   airline apply
   run get_option window-status-current-format
   assert_output --partial "colour201"   # rendered into the bar (active highlight)
 }
 
+@test "a manual palette change clears provenance and remains after its global input is unset" {
+  airline init
+  airline palette use light
+  $TMUX -L "$_bats_socket" set -g @airline-active colour201
+  airline apply
+  run airline palette show active
+  assert_output colour201
+  run airline palette show name
+  assert_output ""
+
+  $TMUX -L "$_bats_socket" set -gu @airline-active
+  airline apply
+  run airline palette show active
+  assert_output colour201
+
+  airline palette use light
+  run airline palette show active
+  assert_output colour136
+  run airline palette show name
+  assert_output light
+}
+
+@test "a named layout consumes a pending manual color without obscuring its own provenance" {
+  airline init
+  airline palette use light
+  $TMUX -L "$_bats_socket" set -g @airline-active colour201
+
+  run airline palette show active
+  assert_output colour136             # setting input alone does not mutate the snapshot
+  run airline palette show name
+  assert_output light
+
+  airline layout use full
+  run airline palette show active
+  assert_output colour201
+  run airline palette show name
+  assert_output ""
+  run airline layout show name
+  assert_output full
+}
+
+@test "a manual segment change clears layout provenance and remains after input is unset" {
+  airline init
+  airline layout use full
+  $TMUX -L "$_bats_socket" set -g @airline-segment-right-out MANUAL
+  airline apply
+  run airline segment show right-out
+  assert_output MANUAL
+  run airline layout show name
+  assert_output ""
+
+  $TMUX -L "$_bats_socket" set -gu @airline-segment-right-out
+  airline apply
+  run airline segment show right-out
+  assert_output MANUAL
+}
+
 @test "palette show X prints one element; palette show prints all" {
   airline init
-  $TMUX -L "$_bats_socket" set -t bats @airline-active colour201
+  $TMUX -L "$_bats_socket" set -g @airline-active colour201
+  airline apply
   run airline palette show active
   assert_output "colour201"
   run airline palette show
@@ -105,13 +186,13 @@ setup() {
   airline adapter use cpu
   # behaviour, not content: cpu's low-severity fg == the palette's secondary value
   run sopt @cpu_low_fg_color
-  assert_output "$(sopt @airline-secondary)"
+  assert_output "$(airline palette show secondary)"
 }
 
 @test "adapter use re-applies literal colours on a palette change" {
   airline init
   airline adapter use cpu
-  $TMUX -L "$_bats_socket" set -t bats @airline-secondary colour99
+  $TMUX -L "$_bats_socket" set -g @airline-secondary colour99
   airline adapter use cpu                   # re-run the adapter
   run sopt @cpu_low_fg_color
   assert_output "colour99"                   # picked up the new palette value
@@ -168,20 +249,22 @@ setup() {
 @test "layout use runs the composition script and records the active layout" {
   airline init
   $TMUX -L "$_bats_socket" set -t bats @airline-segment-left-out "SCRATCH"
-  airline layout use default          # its `set -g @airline-segment-left-out "#S"` resets the slot
-  run sopt @airline-segment-left-out
+  airline layout use default
+  run airline segment show left-out
   assert_output "#S"                   # composition applied
+  run sopt @airline-segment-left-out
+  assert_output ""                     # public session staging was removed
   run sopt @airline--layout
   assert_output "default"              # recorded active
 }
 
-@test "apply re-runs the stored layout" {
+@test "apply ignores temporary session staging and preserves the committed layout" {
   airline init
   airline layout use default
   $TMUX -L "$_bats_socket" set -t bats @airline-segment-left-out "SCRATCH"
-  airline apply                        # re-runs default → sets @airline-segment-left-out
-  run sopt @airline-segment-left-out
-  assert_output "#S"                    # restored by the re-run
+  airline apply
+  run airline segment show left-out
+  assert_output "#S"                    # private snapshot was not replaced by staging
 }
 
 @test "a layout may apply an adapter; palette drives its colours" {
@@ -192,7 +275,7 @@ setup() {
   airline layout register "$BATS_TMPDIR/mylayouts"
   airline layout use withcpu
   run sopt @cpu_low_fg_color      # the adapter ran inside the layout
-  assert_output "$(sopt @airline-secondary)"
+  assert_output "$(airline palette show secondary)"
 }
 
 @test "a layout switch clears the previous layout's slots (clean slate)" {
@@ -202,24 +285,24 @@ setup() {
   printf '#!/usr/bin/env bash\n$AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-left-out "OUT"\n' > "$BATS_TMPDIR/switch/lean"
   airline layout register "$BATS_TMPDIR/switch"
   airline layout use rich
-  run sopt @airline-segment-left-mid
+  run airline segment show left-mid
   assert_output "MID"
   airline layout use lean                # lean never sets left-mid
-  run sopt @airline-segment-left-mid
+  run airline segment show left-mid
   assert_output ""                       # cleared — not stale from rich
 }
 
-@test "a layout that sets the palette does not loop (re-entrancy guard)" {
+@test "a layout cannot recursively change the selected palette" {
   airline init
   mkdir -p "$BATS_TMPDIR/loopy"
   printf '#!/usr/bin/env bash\nairline palette use light\n$AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-left-out "#S"\n' \
     > "$BATS_TMPDIR/loopy/rogue"
   airline layout register "$BATS_TMPDIR/loopy"
-  run timeout 20 env AIRLINE_TMUX="$TMUX -L $_bats_socket" AIRLINE_DIR="$PROJECT_ROOT" \
-    "$PROJECT_ROOT/airline.sh" layout use rogue
-  assert_success                         # returns (no apply→layout→apply fork-bomb)
-  run sopt @airline--applying
-  assert_output "0"                      # guard cleaned up
+  run airline layout use rogue
+  assert_failure
+  assert_output --partial "layout evaluation cannot invoke palette use"
+  run airline palette show name
+  assert_output "default"
 }
 
 @test "a failed layout registers an internal session problem and a retry clears it" {
@@ -228,27 +311,28 @@ setup() {
   mkdir -p "$BATS_TMPDIR/failing-layout"
   printf '#!/usr/bin/env bash\nexit 7\n' > "$BATS_TMPDIR/failing-layout/unstable"
   airline layout register "$BATS_TMPDIR/failing-layout"
-  airline layout use unstable             # failure is contained so airline remains usable
+  run airline layout use unstable
+  assert_failure
   run airline problem show "$session" airline-layout
-  assert_output "$(printf "fail\tlayout 'unstable' exited with status 7")"
+  assert_output "$(printf "fail\tlayout 'unstable' could not be applied")"
 
   printf '#!/usr/bin/env bash\n$AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-left-out "RECOVERED"\n' \
     > "$BATS_TMPDIR/failing-layout/unstable"
-  airline apply
+  airline layout use unstable
   run airline problem show "$session" airline-layout
   assert_output ""
 }
 
-@test "layout load runs a one-off by path and records the ABSOLUTE path for re-apply" {
+@test "layout load runs a one-off by path and records its absolute provenance" {
   airline init
   printf '#!/usr/bin/env bash\n$AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-left-out "#S"\n' > "$BATS_TMPDIR/oneoff"
   airline layout load "$BATS_TMPDIR/oneoff"
   run sopt @airline--layout
   assert_output --regexp '^/.*/oneoff$'   # absolute path recorded (not a bare name)
-  # apply re-runs the loaded layout (resets a perturbed slot)
+  # apply consumes globals, not temporary session staging
   $TMUX -L "$_bats_socket" set -t bats @airline-segment-left-out "SCRATCH"
   airline apply
-  run sopt @airline-segment-left-out
+  run airline segment show left-out
   assert_output "#S"
 }
 
@@ -258,15 +342,18 @@ setup() {
   assert_failure
 }
 
-@test "adapter load applies a one-off adapter script (palette-driven, not recorded)" {
+@test "adapter load records a one-off adapter for palette replay" {
   airline init
   printf 'opt_set_session "$AIRLINE_SESSION" @custom_fg "${PALETTE[active]}"\n' > "$BATS_TMPDIR/oneoff-adapter"
   airline adapter load "$BATS_TMPDIR/oneoff-adapter"
   run sopt @custom_fg
-  assert_output "$(sopt @airline-active)"   # applied the current palette
+  assert_output "$(airline palette show active)"   # applied the current palette
+  airline palette use light
+  run sopt @custom_fg
+  assert_output "$(airline palette show active)"   # replayed against the new palette
 }
 
-@test "palette use re-applies the active layout's adapters to the new palette" {
+@test "palette use replays the active adapters against the new palette" {
   airline init
   mkdir -p "$BATS_TMPDIR/pl"
   printf '#!/usr/bin/env bash\nairline adapter use cpu\n$AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-left-out "#S"\n' \
@@ -275,14 +362,14 @@ setup() {
   airline layout use withcpu            # cpu adapter active, coloured by the dark palette
   airline palette use light             # swap palette → must re-colour cpu
   run sopt @cpu_low_fg_color
-  assert_output "$(sopt @airline-secondary)"   # tracks light's secondary now
+  assert_output "$(airline palette show secondary)"   # tracks light's secondary now
 }
 
 @test "adapter use applies multiple plugins in one call (multi-target)" {
   airline init
   airline adapter use cpu battery       # one call, both applied
   run sopt @cpu_low_fg_color
-  assert_output "$(sopt @airline-secondary)"
+  assert_output "$(airline palette show secondary)"
   run sopt @batt_color_full_charge
   assert_success                        # battery adapter ran too (option is set)
   refute_output ""
@@ -290,7 +377,7 @@ setup() {
 
 # --- session isolation ------------------------------------------------------
 
-@test "palette, layout, adapter, and guard state are isolated by session" {
+@test "palette, layout, and adapter state are isolated by session" {
   airline init
   one="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{session_id}')"
   $TMUX -L "$_bats_socket" new-session -d -s other
@@ -298,16 +385,16 @@ setup() {
   airline_session "$other" init
 
   airline_session "$one" palette use light
-  run sopt @airline-inner-bg -t "$one"
+  run airline_session "$one" palette show inner-bg
   assert_output "colour231"
-  run sopt @airline-inner-bg -t "$other"
+  run airline_session "$other" palette show inner-bg
   assert_output "colour234"
 
   airline_session "$one" layout use minimal
   airline_session "$other" layout use default
-  run sopt @airline-segment-right-out -t "$one"
+  run airline_session "$one" segment show right-out
   assert_output ""
-  run sopt @airline-segment-right-out -t "$other"
+  run airline_session "$other" segment show right-out
   assert_output "%Y-%m-%d %H:%M"
 
   airline_session "$one" adapter use cpu
@@ -316,7 +403,6 @@ setup() {
   run sopt @cpu_low_fg_color -t "$other"
   assert_output "colour246"
 
-  $TMUX -L "$_bats_socket" set -t "$one" @airline--applying 1
   airline_session "$other" layout use minimal
   run sopt @airline--layout -t "$other"
   assert_output "minimal"
@@ -358,9 +444,9 @@ setup() {
   AIRLINE_SESSION="$other" TMUX_PANE="$pane" AIRLINE_DIR="$PROJECT_ROOT" \
     AIRLINE_TMUX="$TMUX -L $_bats_socket" "$PROJECT_ROOT/airline.sh" palette use light
 
-  run sopt @airline-inner-bg -t "$one"
+  run airline_session "$one" palette show inner-bg
   assert_output "colour231"
-  run sopt @airline-inner-bg -t "$other"
+  run airline_session "$other" palette show inner-bg
   assert_output "colour234"
 }
 

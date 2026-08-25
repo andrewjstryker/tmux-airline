@@ -2,7 +2,7 @@
 #
 # render.sh — composition: render the status bar.
 #
-# Builds the bar from the stored @airline-* state: it loads the palette and renders
+# Builds the bar from airline's committed private configuration: it loads the palette and renders
 # the segment bar, window formats, and chrome (the `render` function, driven by
 # `apply`). It also owns airline's shared vocabulary — the segment slots, palette
 # elements, and rendering constants — plus predicates validated at the CLI boundary.
@@ -137,7 +137,7 @@ declare -gA PALETTE
 _palette_load () {
   local el
   for el in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
-    PALETTE[$el]="$(pub_get_session "$AIRLINE_SESSION" "$el")"
+    PALETTE[$el]="$(cfg_get_session "$AIRLINE_SESSION" "$el")"
   done
   if [[ "$(prv_get_session "$AIRLINE_SESSION" "$AIRLINE_KEY_SUSPENDED")" == 1 ]]; then
     _palette_suspend
@@ -180,7 +180,7 @@ _active_slots () {
   local slot
   local -n slots="AIRLINE_SLOTS_${1^^}"
   for slot in "${slots[@]}"; do
-    [[ -n "$(pub_get_session "$AIRLINE_SESSION" "segment-$slot")" ]] && printf '%s\n' "$slot"
+    [[ -n "$(cfg_get_session "$AIRLINE_SESSION" "segment-$slot")" ]] && printf '%s\n' "$slot"
   done
 }
 
@@ -194,7 +194,7 @@ _build_status_left () {
     bg="${PALETTE[${AIRLINE_SLOT_TIER[${active[i]}]}-bg]}"
     if (( i+1 < n )); then next_bg="${PALETTE[${AIRLINE_SLOT_TIER[${active[i+1]}]}-bg]}"
     else                   next_bg="${PALETTE[inner-bg]}"; fi
-    out+="#[fg=$fg,bg=$bg] $(pub_get_session "$AIRLINE_SESSION" "segment-${active[i]}") $(_chev_right "$bg" "$next_bg")"
+    out+="#[fg=$fg,bg=$bg] $(cfg_get_session "$AIRLINE_SESSION" "segment-${active[i]}") $(_chev_right "$bg" "$next_bg")"
   done
   printf '%s' "$out"
 }
@@ -207,7 +207,7 @@ _build_status_right () {
   local n=${#active[@]}
   for (( i=0; i<n; i++ )); do
     bg="${PALETTE[${AIRLINE_SLOT_TIER[${active[i]}]}-bg]}"
-    out+="$(_chev_left "$prev_bg" "$bg")#[fg=$fg,bg=$bg] $(pub_get_session "$AIRLINE_SESSION" "segment-${active[i]}") "
+    out+="$(_chev_left "$prev_bg" "$bg")#[fg=$fg,bg=$bg] $(cfg_get_session "$AIRLINE_SESSION" "segment-${active[i]}") "
     prev_bg="$bg"
   done
   out+="$(_problem_expr "$prev_bg")"

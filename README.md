@@ -96,9 +96,10 @@ Five things, driven by one `airline` CLI:
 | **adapter** | A bridge that paints a third-party plugin from the palette        | `layout` (or `adapter use`)   |
 | **runner**  | An ephemeral run/watch composition over monitoring primitives     | `runner run`, `runner watch`  |
 
-Choose a palette for the colors and a layout for the arrangement. Override an
-individual palette role or segment slot with a normal tmux option, then run
-`airline apply`. Plugins and widgets can use status, health, and problem signals
+Choose a palette for the colors and a layout for the arrangement. To change an
+individual palette role or segment slot, set a global tmux option and run
+`airline apply`. Airline copies that input into the invoking session's private
+configuration. Plugins and widgets can use status, health, and problem signals
 to report live state without rebuilding the bar.
 
 ## Nested sessions (suspend/resume)
@@ -184,7 +185,7 @@ airline palette use dark
 show` prints the active palette and every role; `airline palette show name`
 prints just the active name (for scripts).
 
-Override individual roles with a normal tmux option, then re-apply:
+Change individual roles with normal global tmux options, then apply them:
 
 ```tmux
 set -g @airline-active "colour214"
@@ -192,9 +193,12 @@ set -g @airline-stress "colour196"
 airline apply
 ```
 
-Options set with `set -g` are configuration defaults inherited by every session.
-`palette use` creates overrides only in the invoking session, so changing one
-session does not recolor another.
+`apply` copies each explicitly set global role over the invoking session's private
+snapshot. This is a manual edit, so `palette show name` becomes empty. Unsetting the
+global option later stops it from being copied again; it does not reconstruct an
+older palette value. Use `palette use <name>` again when you want the complete named
+palette back. A named palette selection itself affects only the invoking session and
+does not rewrite the global options.
 
 A custom palette is a tmux file containing
 `set-option @airline-<role> <color>` lines; `palettes/default` is a complete
@@ -247,8 +251,9 @@ airline segment show right-in
 
 Usually you don't set slots by hand — a **layout** does. A layout is a script
 that fills the slots (and turns on the matching adapters) as one composition.
-`layout use` runs it and records it, so a later `palette use`/`apply` re-applies
-the same arrangement against the new colors:
+`layout use` runs it once, captures its slots and adapters, and records it. A later
+palette change repaints the recorded adapters without rerunning the layout script;
+plain `apply` copies global edits and renders the committed arrangement:
 
 ```tmux
 airline layout use minimal
@@ -264,9 +269,11 @@ airline layout available     # what's on the layout path
 | `minimal`  | A pared-down bar                                                    |
 
 Switching layouts starts from a clean slate (every slot is cleared first), so a
-layout owns exactly the arrangement it declares. To build your own, write a
-script that sets `@airline-segment-*` options (and calls `airline adapter use`),
-then `register` its directory and `use` it — the same model as palettes.
+layout owns exactly the arrangement it declares. To build your own, write a script
+that sets session `@airline-segment-*` options (and calls `airline adapter use`),
+then `register` its directory and `use` it. Those session-public writes are the
+layout's temporary output: airline captures and clears them before committing its
+private snapshot.
 
 Layout scripts receive their target in `AIRLINE_SESSION`; use it for direct
 option writes:
@@ -538,10 +545,14 @@ whether the observed service is local or remote.
 
 ### Targets and scope
 
-Airline follows tmux's normal scopes:
+Airline maps its state onto tmux's normal scopes:
 
-- Options set with `set -g @airline-*` are defaults for every session.
-- `palette use` and `layout use` affect the invoking session.
+- Options set with `set -g @airline-*` are server-wide input, copied by a later
+  configuration operation into that operation's session.
+- The committed palette, segments, layout, and adapters are private to the invoking
+  session and are read through the CLI.
+- Session-public options written while evaluating palette/layout files are cleared;
+  they are not another user configuration scope.
 - Status and health belong to a window; `-t` accepts a pane or window target.
 - Problems belong to a session; background jobs should pass `-t <session>`.
 
@@ -699,7 +710,7 @@ instead take their owning session as a required first argument.
 
 ```
 airline init                 # initialize airline (normally called by airline.tmux)
-airline apply                # re-apply the selected layout and current configuration
+airline apply                # commit global option edits and render this session
 airline show                 # print the active configuration
 airline help                 # usage (also -h / --help, and <noun> help)
 
