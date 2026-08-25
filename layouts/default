@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Default layout — dependency-free (session · host · date). No plugins, always works.
-$AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-left-out  "#S"
-$AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-right-mid "#h"
-$AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-right-out "%Y-%m-%d %H:%M"
+airline_layout_configure () {
+  local declare="$1"
+  "$declare" segment left-out  "#S"
+  "$declare" segment right-mid "#h"
+  "$declare" segment right-out "%Y-%m-%d %H:%M"
+}

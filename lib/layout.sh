@@ -3,9 +3,9 @@
 # layout.sh — palette, adapter, segment, and executable-layout behavior.
 #
 # Public @airline-* options are durable configuration only at global scope.
-# Palette tmux files and layout Bash programs retain their native authoring
-# surfaces, but their session-local public writes are temporary evaluation output:
-# airline captures, clears, and commits them into private session configuration.
+# Palette files retain tmux's native configuration surface. Layouts are trusted Bash
+# definitions with a validated declaration callback; airline collects their segments
+# and adapters before committing private session configuration.
 
 # shellcheck shell=bash
 
@@ -16,15 +16,7 @@ fi
 
 AIRLINE_CONFIG_PALETTE_FAILURE=70
 AIRLINE_CONFIG_LAYOUT_FAILURE=80
-AIRLINE_STAGE_ADAPTERS='stage-adapters'
-
-_layout_evaluating () { [[ -n "${AIRLINE_LAYOUT_SESSION:-}" ]]; }
-
-_reject_layout_reentry () {
-  _layout_evaluating || return 0
-  prv_set_session "$AIRLINE_LAYOUT_SESSION" layout-violation "$1"
-  die "layout evaluation cannot invoke $1"
-}
+AIRLINE_CONFIG_ERROR='config-error'
 
 #-----------------------------------------------------------------------------#
 # Palette evaluation and effective configuration
@@ -105,7 +97,7 @@ _palette_select_unlocked () {
 }
 
 #-----------------------------------------------------------------------------#
-# Adapters — immediate outside a layout, declarations during layout evaluation
+# Adapters
 #-----------------------------------------------------------------------------#
 
 _abspath () {
@@ -143,51 +135,11 @@ _load_adapter_unlocked () {
   coll_set_session "$session" adapters "${abs##*/}" load "$abs"
 }
 
-_staged_adapters_clear () {
-  local session="$1" key
-  for key in $(coll_members_session "$session" "$AIRLINE_STAGE_ADAPTERS"); do
-    coll_unregister_session "$session" "$AIRLINE_STAGE_ADAPTERS" "$key"
-  done
-}
-
-_stage_adapter_use () {
-  local session="$1" name file; shift
-  [[ $# -gt 0 ]] || die "adapter use: need <name>"
-  for name in "$@"; do
-    [[ "$name" != */* ]] || die "adapter use: '$name' — bare name (or 'adapter load <path>')"
-    file="$(_path_resolve "$session" adapter "$name")"
-    [[ -n "$file" ]] || die "adapter use: '$name' not found on the adapter path"
-    coll_set_session "$session" "$AIRLINE_STAGE_ADAPTERS" "$name" use "$name"
-  done
-}
-
-_stage_adapter_load () {
-  local session="$1" path="${2:-}" abs key
-  [[ -n "$path" ]] || die "adapter load: need <path>"
-  abs="$(_abspath "$path")"
-  [[ -f "$abs" ]] || die "adapter load: no such file: $path"
-  key="${abs##*/}"
-  coll_set_session "$session" "$AIRLINE_STAGE_ADAPTERS" "$key" load "$abs"
-}
-
 _clear_adapters () {
   local session="$1" adapter
   for adapter in $(coll_members_session "$session" adapters); do
     coll_unregister_session "$session" adapters "$adapter"
   done
-}
-
-_apply_staged_adapters_unlocked () {
-  local session="$1" key kind handle
-  _clear_adapters "$session"
-  for key in $(coll_members_session "$session" "$AIRLINE_STAGE_ADAPTERS"); do
-    IFS=$'\t' read -r kind handle <<< "$(coll_get_session "$session" "$AIRLINE_STAGE_ADAPTERS" "$key")"
-    case "$kind" in
-      use)  _apply_adapter_unlocked "$session" "$handle" ;;
-      load) _load_adapter_unlocked "$session" "$handle" ;;
-    esac
-  done
-  _staged_adapters_clear "$session"
 }
 
 _reapply_adapters_unlocked () {
@@ -216,7 +168,7 @@ _reapply_adapters_unlocked () {
 }
 
 #-----------------------------------------------------------------------------#
-# Layout evaluation
+# Layout definition contract and evaluation
 #-----------------------------------------------------------------------------#
 
 _layout_file () {
@@ -225,46 +177,179 @@ _layout_file () {
   else _path_resolve "$session" layout "$handle"; fi
 }
 
-_segment_stage_clear () {
-  local session="$1" slot
-  for slot in "${AIRLINE_SEGMENT_SLOTS[@]}"; do
-    stage_unset_session "$session" "segment-$slot"
+declare -gA AIRLINE_LAYOUT_CONFIG_SEGMENTS=()
+declare -gA AIRLINE_LAYOUT_CONFIG_SEGMENT_SEEN=()
+declare -gA AIRLINE_LAYOUT_CONFIG_ADAPTER_SEEN=()
+declare -ga AIRLINE_LAYOUT_CONFIG_ADAPTER_KEYS=()
+declare -ga AIRLINE_LAYOUT_CONFIG_ADAPTER_KINDS=()
+declare -ga AIRLINE_LAYOUT_CONFIG_ADAPTER_HANDLES=()
+AIRLINE_LAYOUT_CONFIG_SESSION=""
+AIRLINE_LAYOUT_CONFIG_INVALID=""
+AIRLINE_LAYOUT_CONFIG_MESSAGE=""
+
+_layout_contract_reset () {
+  AIRLINE_LAYOUT_CONFIG_SEGMENTS=()
+  AIRLINE_LAYOUT_CONFIG_SEGMENT_SEEN=()
+  AIRLINE_LAYOUT_CONFIG_ADAPTER_SEEN=()
+  AIRLINE_LAYOUT_CONFIG_ADAPTER_KEYS=()
+  AIRLINE_LAYOUT_CONFIG_ADAPTER_KINDS=()
+  AIRLINE_LAYOUT_CONFIG_ADAPTER_HANDLES=()
+  AIRLINE_LAYOUT_CONFIG_INVALID=""
+  AIRLINE_LAYOUT_CONFIG_MESSAGE=""
+}
+
+_layout_contract_reject () {
+  [[ -n "$AIRLINE_LAYOUT_CONFIG_INVALID" ]] || AIRLINE_LAYOUT_CONFIG_MESSAGE="$1"
+  AIRLINE_LAYOUT_CONFIG_INVALID=1
+  return 1
+}
+
+_layout_declare_segment () {
+  local slot="${1:-}" value="${2:-}"
+  (( $# == 2 )) || { _layout_contract_reject "segment needs exactly <slot> <value>"; return; }
+  _segment_slot_valid "$slot" || { _layout_contract_reject "unknown segment slot '$slot'"; return; }
+  [[ -z "${AIRLINE_LAYOUT_CONFIG_SEGMENT_SEEN[$slot]:-}" ]] || {
+    _layout_contract_reject "segment '$slot' was declared more than once"; return;
+  }
+  AIRLINE_LAYOUT_CONFIG_SEGMENT_SEEN[$slot]=1
+  AIRLINE_LAYOUT_CONFIG_SEGMENTS[$slot]="$value"
+}
+
+_layout_declare_adapter_use () {
+  local name file
+  (( $# > 0 )) || { _layout_contract_reject "adapter use needs <name>"; return; }
+  for name in "$@"; do
+    [[ -n "$name" && "$name" != */* ]] || {
+      _layout_contract_reject "adapter use needs bare names"; return;
+    }
+    file="$(_path_resolve "$AIRLINE_LAYOUT_CONFIG_SESSION" adapter "$name")"
+    [[ -n "$file" ]] || { _layout_contract_reject "adapter '$name' was not found"; return; }
+    [[ -z "${AIRLINE_LAYOUT_CONFIG_ADAPTER_SEEN[$name]:-}" ]] || {
+      _layout_contract_reject "adapter '$name' was declared more than once"; return;
+    }
+    AIRLINE_LAYOUT_CONFIG_ADAPTER_SEEN[$name]=1
+    AIRLINE_LAYOUT_CONFIG_ADAPTER_KEYS+=("$name")
+    AIRLINE_LAYOUT_CONFIG_ADAPTER_KINDS+=(use)
+    AIRLINE_LAYOUT_CONFIG_ADAPTER_HANDLES+=("$name")
   done
 }
 
-_apply_layout_unlocked () {
-  local session="$1" handle="$2" file rc=0 slot value
-  local layout_dir="$AIRLINE_DIR" layout_cli="$AIRLINE_DIR/airline.sh" layout_path="$AIRLINE_DIR:$PATH"
-  local -A segments=()
-  file="$(_layout_file "$session" "$handle")"
-  [[ -n "$file" ]] || { printf "airline: layout '%s' not found\n" "$handle" >&2; return "$AIRLINE_CONFIG_LAYOUT_FAILURE"; }
-
-  _segment_stage_clear "$session"
-  _staged_adapters_clear "$session"
-  prv_unset_session "$session" layout-violation
-  AIRLINE_DIR="$layout_dir" AIRLINE_CLI="$layout_cli" \
-    AIRLINE_SESSION="$session" AIRLINE_LAYOUT_SESSION="$session" \
-    AIRLINE_TMUX="${AIRLINE_TMUX:-tmux}" PATH="$layout_path" bash "$file" || rc=$?
-  [[ -z "$(prv_get_session "$session" layout-violation)" ]] || rc=2
-  prv_unset_session "$session" layout-violation
-  if (( rc != 0 )); then
-    _segment_stage_clear "$session"
-    _staged_adapters_clear "$session"
-    printf "airline: layout '%s' exited with status %s\n" "$handle" "$rc" >&2
-    return "$AIRLINE_CONFIG_LAYOUT_FAILURE"
+_layout_declare_adapter_load () {
+  local path="${1:-}" abs key
+  if (( $# != 1 )) || [[ -z "$path" ]]; then
+    _layout_contract_reject "adapter load needs exactly <path>"
+    return
   fi
+  abs="$(_abspath "$path")"
+  [[ -f "$abs" ]] || { _layout_contract_reject "adapter file '$path' was not found"; return; }
+  key="${abs##*/}"
+  [[ -z "${AIRLINE_LAYOUT_CONFIG_ADAPTER_SEEN[$key]:-}" ]] || {
+    _layout_contract_reject "adapter '$key' was declared more than once"; return;
+  }
+  AIRLINE_LAYOUT_CONFIG_ADAPTER_SEEN[$key]=1
+  AIRLINE_LAYOUT_CONFIG_ADAPTER_KEYS+=("$key")
+  AIRLINE_LAYOUT_CONFIG_ADAPTER_KINDS+=(load)
+  AIRLINE_LAYOUT_CONFIG_ADAPTER_HANDLES+=("$abs")
+}
 
-  for slot in "${AIRLINE_SEGMENT_SLOTS[@]}"; do
-    if stage_has_session "$session" "segment-$slot"; then value="$(stage_get_session "$session" "segment-$slot")"
-    else value=""; fi
-    segments[$slot]="$value"
+_layout_declare () {   # <segment|adapter> ...
+  local kind="${1:-}" verb="${2:-}"; shift || true
+  [[ -z "$AIRLINE_LAYOUT_CONFIG_INVALID" ]] || return 1
+  case "$kind" in
+    segment) _layout_declare_segment "$@" ;;
+    adapter)
+      shift || true
+      case "$verb" in
+        use)  _layout_declare_adapter_use "$@" ;;
+        load) _layout_declare_adapter_load "$@" ;;
+        *)    _layout_contract_reject "adapter needs use or load" ;;
+      esac
+      ;;
+    *) _layout_contract_reject "unknown declaration '$kind'" ;;
+  esac
+}
+
+_layout_definition_evaluate () {   # <session> <file>
+  local session="$1" file="$2" rc=0
+  AIRLINE_LAYOUT_CONFIG_SESSION="$session"
+  _layout_contract_reset
+  unset -f airline_layout_configure 2>/dev/null || true
+  airline () { _layout_contract_reject "nested airline commands are not layout declarations"; }
+  # shellcheck source=/dev/null
+  source "$file" || rc=$?
+  if (( rc == 0 )) && ! declare -F airline_layout_configure >/dev/null; then
+    _layout_contract_reject "missing airline_layout_configure"
+    rc=1
+  fi
+  if (( rc == 0 )); then
+    airline_layout_configure _layout_declare || rc=$?
+  fi
+  unset -f airline
+  [[ -z "$AIRLINE_LAYOUT_CONFIG_INVALID" ]] || rc=1
+  return "$rc"
+}
+
+_layout_adapters_apply_unlocked () {
+  local session="$1" i kind handle file
+  for (( i=0; i<${#AIRLINE_LAYOUT_CONFIG_ADAPTER_KEYS[@]}; i++ )); do
+    kind="${AIRLINE_LAYOUT_CONFIG_ADAPTER_KINDS[i]}"
+    handle="${AIRLINE_LAYOUT_CONFIG_ADAPTER_HANDLES[i]}"
+    case "$kind" in
+      use)
+        file="$(_path_resolve "$session" adapter "$handle")"
+        [[ -n "$file" ]] || return 1
+        _source_adapter "$session" "$file" || return 1
+        ;;
+      load) _source_adapter "$session" "$handle" || return 1 ;;
+    esac
   done
-  _segment_stage_clear "$session"
+}
+
+_layout_commit_unlocked () {
+  local session="$1" handle="$2" slot i
   for slot in "${AIRLINE_SEGMENT_SLOTS[@]}"; do
-    cfg_set_session "$session" "segment-$slot" "${segments[$slot]}"
+    cfg_set_session "$session" "segment-$slot" "${AIRLINE_LAYOUT_CONFIG_SEGMENTS[$slot]:-}"
+  done
+  _clear_adapters "$session"
+  for (( i=0; i<${#AIRLINE_LAYOUT_CONFIG_ADAPTER_KEYS[@]}; i++ )); do
+    coll_set_session "$session" adapters \
+      "${AIRLINE_LAYOUT_CONFIG_ADAPTER_KEYS[i]}" \
+      "${AIRLINE_LAYOUT_CONFIG_ADAPTER_KINDS[i]}" \
+      "${AIRLINE_LAYOUT_CONFIG_ADAPTER_HANDLES[i]}"
   done
   prv_set_session "$session" layout "$handle"
-  _apply_staged_adapters_unlocked "$session"
+}
+
+_layout_failure () {   # <session> <handle> <detail>
+  local session="$1" handle="$2" detail="$3" message
+  message="layout '$handle' $detail"
+  prv_set_session "$session" "$AIRLINE_CONFIG_ERROR" "$message"
+  printf 'airline: %s\n' "$message" >&2
+  return "$AIRLINE_CONFIG_LAYOUT_FAILURE"
+}
+
+_apply_layout_unlocked () {
+  local session="$1" handle="$2" file output rc=0 detail
+  file="$(_layout_file "$session" "$handle")"
+  [[ -n "$file" ]] || { _layout_failure "$session" "$handle" "was not found"; return; }
+  prv_unset_session "$session" "$AIRLINE_CONFIG_ERROR"
+  output="$(mktemp "${TMPDIR:-/tmp}/airline-layout-contract.XXXXXX")" || return 1
+  _layout_definition_evaluate "$session" "$file" > "$output" || rc=$?
+  if [[ -s "$output" ]]; then
+    AIRLINE_LAYOUT_CONFIG_MESSAGE="wrote to stdout"
+    rc=1
+  fi
+  rm -f "$output"
+  if (( rc != 0 )); then
+    detail="could not be evaluated"
+    [[ -z "$AIRLINE_LAYOUT_CONFIG_MESSAGE" ]] || detail="$AIRLINE_LAYOUT_CONFIG_MESSAGE"
+    _layout_failure "$session" "$handle" "$detail"
+    return
+  fi
+  _layout_adapters_apply_unlocked "$session" || {
+    _layout_failure "$session" "$handle" "could not apply its adapters"; return;
+  }
+  _layout_commit_unlocked "$session" "$handle"
 }
 
 #-----------------------------------------------------------------------------#
@@ -308,12 +393,21 @@ _adapter_show () {
 # CLI behavior boundary
 #-----------------------------------------------------------------------------#
 
-_config_problem () { _problem_store "$1" "$2" "$3" "$4" || true; }
+_config_problem () {
+  _problem_store "$1" "$2" "$3" "$4" && redraw
+  return 0
+}
+
+_layout_problem_message () {
+  local session="$1" handle="$2" message
+  message="$(prv_get_session "$session" "$AIRLINE_CONFIG_ERROR")"
+  if [[ -n "$message" ]]; then printf '%s' "$message"
+  else printf "layout '%s' could not be applied" "$handle"; fi
+}
 
 layout_palette_show () { local s; s="$(_require_current_session)"; _palette_show "$s" "$@"; }
 layout_palette_use () {
   local s name rc=0
-  _reject_layout_reentry "palette use"
   [[ $# -eq 1 && -n "$1" ]] || die "palette use: need exactly one <name>"
   name="$1"; [[ "$name" != */* ]] || die "palette use: '$name' — use a bare name"
   s="$(_require_current_session)"
@@ -333,32 +427,20 @@ layout_segment_show () {
 }
 
 layout_adapter_use () {
-  local s rc=0
-  if _layout_evaluating; then
-    s="$AIRLINE_LAYOUT_SESSION"
-    _stage_adapter_use "$s" "$@"
-  else
-    s="$(_require_current_session)"
-    with_session_transaction "$s" config _adapter_use_render_unlocked "$s" "$@" || rc=$?
-    if (( rc == AIRLINE_CONFIG_PALETTE_FAILURE )); then
-      _config_problem "$s" airline-palette fail "adapter use could not resolve a complete palette"
-    else _config_problem "$s" airline-palette ok ""; fi
-    return "$rc"
+  local s rc=0; s="$(_require_current_session)"
+  with_session_transaction "$s" config _adapter_use_render_unlocked "$s" "$@" || rc=$?
+  if (( rc == AIRLINE_CONFIG_PALETTE_FAILURE )); then
+    _config_problem "$s" airline-palette fail "adapter use could not resolve a complete palette"
   fi
+  return "$rc"
 }
 layout_adapter_load () {
-  local s rc=0
-  if _layout_evaluating; then
-    s="$AIRLINE_LAYOUT_SESSION"
-    _stage_adapter_load "$s" "$@"
-  else
-    s="$(_require_current_session)"
-    with_session_transaction "$s" config _adapter_load_render_unlocked "$s" "$@" || rc=$?
-    if (( rc == AIRLINE_CONFIG_PALETTE_FAILURE )); then
-      _config_problem "$s" airline-palette fail "adapter load could not resolve a complete palette"
-    else _config_problem "$s" airline-palette ok ""; fi
-    return "$rc"
+  local s rc=0; s="$(_require_current_session)"
+  with_session_transaction "$s" config _adapter_load_render_unlocked "$s" "$@" || rc=$?
+  if (( rc == AIRLINE_CONFIG_PALETTE_FAILURE )); then
+    _config_problem "$s" airline-palette fail "adapter load could not resolve a complete palette"
   fi
+  return "$rc"
 }
 layout_adapter_show () { _adapter_show "$(_require_current_session)"; }
 layout_adapter_available () { local s; s="$(_require_current_session)"; _path_available "$s" adapter; }
@@ -366,36 +448,30 @@ layout_adapter_register () { local s; s="$(_require_current_session)"; _register
 
 layout_use () {
   local s name rc=0
-  _reject_layout_reentry "layout use"
   [[ $# -eq 1 && -n "$1" ]] || die "layout use: need exactly one <name>"
   name="$1"; [[ "$name" != */* ]] || die "layout use: '$name' — bare name (or 'layout load <path>')"
   s="$(_require_current_session)"
   [[ -n "$(_path_resolve "$s" layout "$name")" ]] || die "layout use: '$name' not found"
   with_session_transaction "$s" config _layout_use_render_unlocked "$s" "$name" || rc=$?
   case "$rc" in
-    0) _config_problem "$s" airline-palette ok ""; _config_problem "$s" airline-layout ok "" ;;
+    0) _config_problem "$s" airline-layout ok "" ;;
     "$AIRLINE_CONFIG_PALETTE_FAILURE")
       _config_problem "$s" airline-palette fail "layout use could not resolve a complete palette" ;;
-    "$AIRLINE_CONFIG_LAYOUT_FAILURE")
-      _config_problem "$s" airline-palette ok ""
-      _config_problem "$s" airline-layout fail "layout '$name' could not be applied" ;;
+    *) _config_problem "$s" airline-layout fail "$(_layout_problem_message "$s" "$name")" ;;
   esac
   (( rc == 0 )) || return "$rc"
 }
 layout_load () {
   local s path abs rc=0
-  _reject_layout_reentry "layout load"
   [[ $# -eq 1 && -n "$1" ]] || die "layout load: need <path>"
   path="$1"; abs="$(_abspath "$path")"; [[ -f "$abs" ]] || die "layout load: no such file: $path"
   s="$(_require_current_session)"
   with_session_transaction "$s" config _layout_load_render_unlocked "$s" "$abs" || rc=$?
   case "$rc" in
-    0) _config_problem "$s" airline-palette ok ""; _config_problem "$s" airline-layout ok "" ;;
+    0) _config_problem "$s" airline-layout ok "" ;;
     "$AIRLINE_CONFIG_PALETTE_FAILURE")
       _config_problem "$s" airline-palette fail "layout load could not resolve a complete palette" ;;
-    "$AIRLINE_CONFIG_LAYOUT_FAILURE")
-      _config_problem "$s" airline-palette ok ""
-      _config_problem "$s" airline-layout fail "layout '$abs' could not be applied" ;;
+    *) _config_problem "$s" airline-layout fail "$(_layout_problem_message "$s" "$abs")" ;;
   esac
   (( rc == 0 )) || return "$rc"
 }

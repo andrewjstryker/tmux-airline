@@ -135,18 +135,19 @@ _apply () {   # <session>
 }
 
 _report_config_result () {   # <session> <rc> <operation>
-  local session="$1" rc="$2" operation="$3"
+  local session="$1" rc="$2" operation="$3" message
   case "$rc" in
     0)
-      _problem_store "$session" airline-palette ok "" || true
-      _problem_store "$session" airline-layout ok "" || true
+      _config_problem "$session" airline-palette ok ""
+      [[ "$operation" != init ]] || _config_problem "$session" airline-layout ok ""
       ;;
     "$AIRLINE_CONFIG_PALETTE_FAILURE")
-      _problem_store "$session" airline-palette fail "$operation could not resolve a complete palette" || true
+      _config_problem "$session" airline-palette fail "$operation could not resolve a complete palette"
       ;;
-    "$AIRLINE_CONFIG_LAYOUT_FAILURE")
-      _problem_store "$session" airline-palette ok "" || true
-      _problem_store "$session" airline-layout fail "$operation could not apply the active layout" || true
+    *)
+      message="$(prv_get_session "$session" "$AIRLINE_CONFIG_ERROR")"
+      [[ -n "$message" ]] || message="$operation could not apply a layout"
+      _config_problem "$session" airline-layout fail "$message"
       ;;
   esac
 }
@@ -472,7 +473,7 @@ _lock_clear () {   # <session|window> <target> <namespace>
 
 # CLI delegation targets. These functions are the behavior boundary behind the
 # grammar in airline.sh; they are internal implementation, not a second user API.
-lifecycle_init () { _reject_layout_reentry init; _init "$(_require_current_session)"; }
+lifecycle_init () { _init "$(_require_current_session)"; }
 lifecycle_init_session () {   # <tmux-target>; internal lifecycle hook entry
   local session
   [[ -n "${1:-}" ]] || die "_init-session: need <target>"
@@ -480,7 +481,7 @@ lifecycle_init_session () {   # <tmux-target>; internal lifecycle hook entry
   [[ -n "$session" ]] || die "cannot resolve target session: $1"
   _init "$session"
 }
-lifecycle_apply () { _reject_layout_reentry apply; _apply "$(_require_current_session)"; }
+lifecycle_apply () { _apply "$(_require_current_session)"; }
 lifecycle_show () {
   local session; session="$(_require_current_session)"
   with_session_transaction "$session" config _show_config "$session"

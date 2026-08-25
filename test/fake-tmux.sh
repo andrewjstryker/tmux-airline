@@ -102,7 +102,7 @@ runner_retain_pane () { :; }
 with_session_transaction () { local callback="$3"; shift 3; "$callback" "$@"; }
 with_window_transaction  () { local callback="$3"; shift 3; "$callback" "$@"; }
 
-# Load a tmux config file (palette / segments). Only the lines airline ships are
+# Load a tmux config file (palettes). Only the lines airline ships are
 # modelled: `set`/`set-option` with optional `-g`, then NAME VALUE. Values may be
 # quoted (e.g. "%Y-%m-%d %H:%M") or contain '#' (format strings like #S), so the
 # line is re-split with the shell — these are airline's own trusted data files.

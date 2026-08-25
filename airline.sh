@@ -130,13 +130,13 @@ cmd_lock () {
 
 cmd_palette () {
   # A palette element is a public option (@airline-<element>). `set -g` supplies a
-  # user default; `use` installs a session override for the whole set. Like segment,
+  # user input; `use` installs a private session snapshot for the whole set. Like segment,
   # the per-element CLI path is read-only — `show` is the discovery surface (bare for humans,
   # `show <field>` a raw value for scripts; `show name` is the active-palette read).
   local verb="${1:-}"; shift || true
   case "$verb" in
     show)      layout_palette_show "$@" ;;      #| [name|<element>] — summary, or one field raw (`show name` for scripts)
-    use)       layout_palette_use "$@" ;;       #| <name> — load a palette (re-applies the layout)
+    use)       layout_palette_use "$@" ;;       #| <name> — load a complete palette and repaint adapters
     available) layout_palette_available ;;      #| the palettes you can `use` (on the path)
     register)  layout_palette_register "$@" ;; #| <dir> — add a palette search dir
     ""|-h|--help|help) _help_noun palette ;;
@@ -145,9 +145,8 @@ cmd_palette () {
 }
 
 cmd_segment () {
-  # A segment is a public option. Users provide defaults with `set -g`; layouts write
-  # explicit session overrides. This noun is read-only — `show` is the discovery
-  # surface (bare `show` lists every slot).
+  # Users stage segment changes with `set -g`; validated layouts declare them through
+  # their function contract. This noun is read-only — `show` reads the private snapshot.
   local verb="${1:-}"; shift || true
   case "$verb" in
     show) layout_segment_show "$@" ;;   #| [<slot>] — read one or all

@@ -106,8 +106,8 @@ pub_set   () { opt_set_global   "@airline-$1" "$2"; }   # <key> <value>
 pub_unset () { opt_unset_global "@airline-$1"; }        # <key>
 pub_has   () { opt_has_global   "@airline-$1"; }        # <key>
 
-# Palette and layout files retain their native tmux surfaces. Airline evaluates
-# them in the target session, captures their public options, then removes them.
+# Palette files retain their native tmux surface. Airline evaluates one in the
+# target session, captures its public options, then removes them.
 # These exact-scope accessors are staging mechanics, never durable configuration.
 stage_get_session   () { opt_get_session   "$1" "@airline-$2"; }       # <session> <key>
 stage_has_session   () { opt_has_session   "$1" "@airline-$2"; }       # <session> <key>

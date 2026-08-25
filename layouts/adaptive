@@ -2,17 +2,31 @@
 # Adaptive layout (init's default) — probe each adapted plugin via the TPM install
 # convention and compose only what's present, so there are no empty blocks. Degrades to
 # the dependency-free base (session · date) when nothing is installed.
-source "$AIRLINE_DIR/helpers/tpm-installed"
+airline_layout_configure () {
+  local declare="$1"
+  local right_out="%Y-%m-%d %H:%M"
+  local -a adapters=()
+  source "$AIRLINE_DIR/helpers/tpm-installed"
 
-$AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-left-out  "#S"
-$AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-right-out "%Y-%m-%d %H:%M"
+  "$declare" segment left-out  "#S"
 
-adps=()
-installed tmux-cpu              && { $AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-right-mid "#{cpu_fg_color}#{cpu_icon}";                        adps+=(cpu);             }
-installed tmux-online-status    && { $AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-left-mid  "#{online_status}";                                 adps+=(online);          }
-installed tmux-prefix-highlight && { $AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-right-in  "#{prefix_highlight}";                              adps+=(prefix-highlight); }
-installed tmux-battery          && { $AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-right-out "%Y-%m-%d %H:%M #{battery_color_fg}#{battery_icon}"; adps+=(battery);         }
+  installed tmux-cpu && {
+    "$declare" segment right-mid "#{cpu_fg_color}#{cpu_icon}"
+    adapters+=(cpu)
+  }
+  installed tmux-online-status && {
+    "$declare" segment left-mid "#{online_status}"
+    adapters+=(online)
+  }
+  installed tmux-prefix-highlight && {
+    "$declare" segment right-in "#{prefix_highlight}"
+    adapters+=(prefix-highlight)
+  }
+  installed tmux-battery && {
+    right_out="%Y-%m-%d %H:%M #{battery_color_fg}#{battery_icon}"
+    adapters+=(battery)
+  }
 
-if [[ ${#adps[@]} -gt 0 ]]; then
-  airline adapter use "${adps[@]}"
-fi
+  "$declare" segment right-out "$right_out"
+  (( ${#adapters[@]} == 0 )) || "$declare" adapter use "${adapters[@]}"
+}

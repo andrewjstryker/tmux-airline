@@ -268,20 +268,25 @@ airline layout available     # what's on the layout path
 | `full`     | Every slot populated                                                |
 | `minimal`  | A pared-down bar                                                    |
 
-Switching layouts starts from a clean slate (every slot is cleared first), so a
-layout owns exactly the arrangement it declares. To build your own, write a script
-that sets session `@airline-segment-*` options (and calls `airline adapter use`),
-then `register` its directory and `use` it. Those session-public writes are the
-layout's temporary output: airline captures and clears them before committing its
-private snapshot.
-
-Layout scripts receive their target in `AIRLINE_SESSION`; use it for direct
-option writes:
+Switching layouts starts from a clean slate, so a layout owns exactly the arrangement
+it declares. A layout is trusted Bash with one required function. The function uses
+its callback argument to declare segments and adapters:
 
 ```bash
-$AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-left-out '#S'
-airline adapter use cpu
+airline_layout_configure () {
+  local declare="$1"
+  "$declare" segment left-out '#S'
+  "$declare" segment right-mid '#{cpu_fg_color}#{cpu_icon}'
+  "$declare" adapter use cpu
+}
 ```
+
+Airline validates the whole declaration before replacing private layout state.
+Unknown or duplicate slots, invalid adapters, nested Airline commands, and stdout
+are errors. Omitted slots are intentionally empty. Put the file in a registered
+layout directory and select it by filename. A failed selection preserves the last
+committed layout and raises the session's `airline-layout` problem; a successful
+layout selection clears it.
 
 The **window-list entry** itself is fixed as `#I:#W` (index:name) and styled by
 the window colors below rather than configured as a segment.

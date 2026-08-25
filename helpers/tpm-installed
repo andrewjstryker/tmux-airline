@@ -5,7 +5,7 @@
 # it and calls `installed <repo>` to compose only what's present:
 #
 #   source "$AIRLINE_DIR/helpers/tpm-installed"
-#   installed tmux-cpu && airline adapter use cpu
+#   installed tmux-cpu && "$declare" adapter use cpu
 #
 # Checks the two standard locations: a sibling of airline (TPM's layout, covering a
 # custom TMUX_PLUGIN_MANAGER_PATH since airline is a sibling) and the XDG plugins dir.

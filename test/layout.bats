@@ -15,6 +15,11 @@ setup() {
   $TMUX -L "$_bats_socket" -f /dev/null new-session -d -s bats
 }
 
+write_layout() {   # <path> <configure-body>
+  printf '#!/usr/bin/env bash\nairline_layout_configure () {\n  local declare="$1"\n%s\n}\n' \
+    "$2" > "$1"
+}
+
 # --- init -------------------------------------------------------------------
 @test "register blesses a dir; use loads a bare name from it, then renders" {
   airline init
@@ -223,8 +228,8 @@ setup() {
 @test "a layout switch clears the previous layout's adapter set (clean slate)" {
   airline init
   mkdir -p "$BATS_TMPDIR/adps"
-  printf '#!/usr/bin/env bash\nairline adapter use cpu\n' > "$BATS_TMPDIR/adps/withcpu"
-  printf '#!/usr/bin/env bash\n$AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-left-out "#S"\n' > "$BATS_TMPDIR/adps/bare"
+  write_layout "$BATS_TMPDIR/adps/withcpu" '  "$declare" adapter use cpu'
+  write_layout "$BATS_TMPDIR/adps/bare" '  "$declare" segment left-out "#S"'
   airline layout register "$BATS_TMPDIR/adps"
   airline layout use withcpu
   run airline adapter show
@@ -244,21 +249,21 @@ setup() {
   assert_line "minimal"
 }
 
-# --- layout (dynamic: a composition script, stored + re-applied) ------------
+# --- layout (validated Bash declaration, captured into private state) --------
 
-@test "layout use runs the composition script and records the active layout" {
+@test "layout use collects the definition without consuming session-public options" {
   airline init
   $TMUX -L "$_bats_socket" set -t bats @airline-segment-left-out "SCRATCH"
   airline layout use default
   run airline segment show left-out
   assert_output "#S"                   # composition applied
   run sopt @airline-segment-left-out
-  assert_output ""                     # public session staging was removed
+  assert_output "SCRATCH"              # layout declarations never use public staging
   run sopt @airline--layout
   assert_output "default"              # recorded active
 }
 
-@test "apply ignores temporary session staging and preserves the committed layout" {
+@test "apply ignores session-public options and preserves the committed layout" {
   airline init
   airline layout use default
   $TMUX -L "$_bats_socket" set -t bats @airline-segment-left-out "SCRATCH"
@@ -270,8 +275,9 @@ setup() {
 @test "a layout may apply an adapter; palette drives its colours" {
   airline init
   mkdir -p "$BATS_TMPDIR/mylayouts"
-  printf '#!/usr/bin/env bash\nairline adapter use cpu\n$AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-left-out "#S"\n' \
-    > "$BATS_TMPDIR/mylayouts/withcpu"
+  write_layout "$BATS_TMPDIR/mylayouts/withcpu" \
+    '  "$declare" adapter use cpu
+  "$declare" segment left-out "#S"'
   airline layout register "$BATS_TMPDIR/mylayouts"
   airline layout use withcpu
   run sopt @cpu_low_fg_color      # the adapter ran inside the layout
@@ -281,8 +287,8 @@ setup() {
 @test "a layout switch clears the previous layout's slots (clean slate)" {
   airline init
   mkdir -p "$BATS_TMPDIR/switch"
-  printf '#!/usr/bin/env bash\n$AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-left-mid "MID"\n' > "$BATS_TMPDIR/switch/rich"
-  printf '#!/usr/bin/env bash\n$AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-left-out "OUT"\n' > "$BATS_TMPDIR/switch/lean"
+  write_layout "$BATS_TMPDIR/switch/rich" '  "$declare" segment left-mid "MID"'
+  write_layout "$BATS_TMPDIR/switch/lean" '  "$declare" segment left-out "OUT"'
   airline layout register "$BATS_TMPDIR/switch"
   airline layout use rich
   run airline segment show left-mid
@@ -295,29 +301,72 @@ setup() {
 @test "a layout cannot recursively change the selected palette" {
   airline init
   mkdir -p "$BATS_TMPDIR/loopy"
-  printf '#!/usr/bin/env bash\nairline palette use light\n$AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-left-out "#S"\n' \
-    > "$BATS_TMPDIR/loopy/rogue"
+  write_layout "$BATS_TMPDIR/loopy/rogue" \
+    '  airline palette use light
+  "$declare" segment left-out "#S"'
   airline layout register "$BATS_TMPDIR/loopy"
   run airline layout use rogue
   assert_failure
-  assert_output --partial "layout evaluation cannot invoke palette use"
+  assert_output --partial "nested airline commands are not layout declarations"
   run airline palette show name
   assert_output "default"
+}
+
+@test "an invalid layout declaration preserves the last good layout and raises a problem" {
+  airline init
+  session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
+  mkdir -p "$BATS_TMPDIR/invalid-layout"
+  write_layout "$BATS_TMPDIR/invalid-layout/broken" \
+    '  "$declare" segment nowhere "INVALID"'
+  airline layout register "$BATS_TMPDIR/invalid-layout"
+
+  run airline layout use broken
+  assert_failure
+  assert_output --partial "unknown segment slot 'nowhere'"
+  run airline layout show name
+  assert_output adaptive
+  run airline problem show "$session" airline-layout
+  assert_output "$(printf "fail\tlayout 'broken' unknown segment slot 'nowhere'")"
+
+  write_layout "$BATS_TMPDIR/invalid-layout/broken" \
+    '  "$declare" segment left-out "RECOVERED"'
+  airline layout use broken
+  run airline problem show "$session" airline-layout
+  assert_output ""
+}
+
+@test "a layout rejects duplicate declarations and stdout as ambiguous output" {
+  airline init
+  mkdir -p "$BATS_TMPDIR/ambiguous-layout"
+  write_layout "$BATS_TMPDIR/ambiguous-layout/duplicate" \
+    '  "$declare" segment left-out "ONE"
+  "$declare" segment left-out "TWO"'
+  write_layout "$BATS_TMPDIR/ambiguous-layout/noisy" \
+    '  printf "not a protocol\\n"
+  "$declare" segment left-out "ONE"'
+  airline layout register "$BATS_TMPDIR/ambiguous-layout"
+
+  run airline layout use duplicate
+  assert_failure
+  assert_output --partial "declared more than once"
+  run airline layout use noisy
+  assert_failure
+  assert_output --partial "wrote to stdout"
 }
 
 @test "a failed layout registers an internal session problem and a retry clears it" {
   airline init
   session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
   mkdir -p "$BATS_TMPDIR/failing-layout"
-  printf '#!/usr/bin/env bash\nexit 7\n' > "$BATS_TMPDIR/failing-layout/unstable"
+  write_layout "$BATS_TMPDIR/failing-layout/unstable" '  return 7'
   airline layout register "$BATS_TMPDIR/failing-layout"
   run airline layout use unstable
   assert_failure
   run airline problem show "$session" airline-layout
-  assert_output "$(printf "fail\tlayout 'unstable' could not be applied")"
+  assert_output "$(printf "fail\tlayout 'unstable' could not be evaluated")"
 
-  printf '#!/usr/bin/env bash\n$AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-left-out "RECOVERED"\n' \
-    > "$BATS_TMPDIR/failing-layout/unstable"
+  write_layout "$BATS_TMPDIR/failing-layout/unstable" \
+    '  "$declare" segment left-out "RECOVERED"'
   airline layout use unstable
   run airline problem show "$session" airline-layout
   assert_output ""
@@ -325,7 +374,7 @@ setup() {
 
 @test "layout load runs a one-off by path and records its absolute provenance" {
   airline init
-  printf '#!/usr/bin/env bash\n$AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-left-out "#S"\n' > "$BATS_TMPDIR/oneoff"
+  write_layout "$BATS_TMPDIR/oneoff" '  "$declare" segment left-out "#S"'
   airline layout load "$BATS_TMPDIR/oneoff"
   run sopt @airline--layout
   assert_output --regexp '^/.*/oneoff$'   # absolute path recorded (not a bare name)
@@ -356,8 +405,9 @@ setup() {
 @test "palette use replays the active adapters against the new palette" {
   airline init
   mkdir -p "$BATS_TMPDIR/pl"
-  printf '#!/usr/bin/env bash\nairline adapter use cpu\n$AIRLINE_TMUX set -t "$AIRLINE_SESSION" @airline-segment-left-out "#S"\n' \
-    > "$BATS_TMPDIR/pl/withcpu"
+  write_layout "$BATS_TMPDIR/pl/withcpu" \
+    '  "$declare" adapter use cpu
+  "$declare" segment left-out "#S"'
   airline layout register "$BATS_TMPDIR/pl"
   airline layout use withcpu            # cpu adapter active, coloured by the dark palette
   airline palette use light             # swap palette → must re-colour cpu

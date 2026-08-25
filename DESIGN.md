@@ -45,7 +45,7 @@ a non-obvious boundary described here.
 | `lib/tmux.sh` | Mechanical operations and airline namespace policy | **yes; sole application caller** |
 | `palettes/*` | Declarative public color configuration | sourced by `lib/tmux.sh` |
 | `adapters/*` | Applies palette roles to third-party plugin options | no |
-| `layouts/*` | Trusted child programs composing adapters and public segment options | supplied handle only |
+| `layouts/*` | Trusted Bash definitions declaring adapters and segment values | no |
 | `classifiers/*` | Interprets process termination | no |
 | `filters/*` | Interprets a copied command-output stream | no |
 | `probes/*` | Performs one bounded external observation | no |
@@ -84,11 +84,9 @@ The important boundaries are:
   the `@airline-` and `@airline--` prefixes. The installable PATH shim is an external
   consumer: like a plugin, it makes one bootstrap lookup of `@airline-cli`. Higher
   layers address airline options by bare key through `pub_*` and `prv_*` accessors.
-- Executable layouts are trusted configuration consumers, not loaded application
-  layers. They may write public `@airline-segment-*` options through the supplied
-  `AIRLINE_TMUX` handle and delegate adapters through `airline`; they never access
-  private state. Airline captures and clears those session-public writes before
-  committing the resulting segment snapshot.
+- Layouts are trusted Bash definitions, not loaded application layers. Their required
+  `airline_layout_configure` function declares segments and adapters through a core
+  callback. They never receive a tmux handle, target session, or private-state access.
 - `lib/collections.sh` is an airline abstraction above tmux's flat option store. It is
   used only for status, health, problem, adapter membership, and search paths.
   Fixed segment slots are scalar options, not collections.
@@ -102,7 +100,7 @@ State falls into four kinds:
 
 | Kind | Written by | Examples |
 |------|------------|----------|
-| **Public options** `@airline-*` | users globally; palette/layout files temporarily per session | configuration input, evaluation output, `@airline-cli` |
+| **Public options** `@airline-*` | users globally; palette files temporarily per session | configuration input, palette evaluation output, `@airline-cli` |
 | **Private options** `@airline--*` | airline at runtime | committed config, contributors, badges, selections, paths |
 | **Composed output** | `render` | `status-left/right`, window formats, styles, pane borders, clock color |
 | **Constants** | source code only | glyphs, chevrons, name template, vocabularies, precedence tables |
@@ -121,8 +119,9 @@ The classification is mechanical:
 A user's `set -g @airline-*` supplies durable input. A configuration operation copies
 each explicitly present value over the invoking session's private snapshot. Missing
 global options do not fall back or restore anything: the committed session value stays
-unchanged. Palette and layout files use session-public options only as an evaluation
-surface; airline captures and removes those values before committing them privately.
+unchanged. Palette files use session-public options only as an evaluation surface;
+airline captures and removes those values before committing them privately. Layout
+declarations are collected in Bash and never enter the public option namespace.
 
 Named palette and layout operations replace their complete axis and record provenance.
 A manual palette-role patch clears the palette name; a manual segment patch clears the
@@ -192,7 +191,7 @@ There are seven catalog kinds and one plain-option kind:
 |------|----------------|-----------|
 | **palette** | complete targetless tmux config containing public color options | `use` captures one file, replaces colors, records it, then renders |
 | **adapter** | Bash snippet mapping `PALETTE` roles to plugin options | `use` or `load` executes it and records a replayable declaration |
-| **layout** | shell composition invoking adapters and setting segment slots | `use` or `load` evaluates once, replaces that axis, records it, then renders |
+| **layout** | Bash function declaring adapters and segment slots through a callback | `use` or `load` validates once, replaces that axis, records it, then renders |
 | **classifier** | trusted shell mapping process termination to a condition | selected by `runner run` |
 | **filter** | trusted shell interpreting a copied command-output stream | selected by `runner run` |
 | **probe** | trusted shell performing one bounded observation | selected by `runner run` or `watch` |
@@ -222,9 +221,11 @@ global `@airline-*` options followed by `apply`.
 Adapters, layouts, runner primitives, and runner compositions are ordinary trusted
 shell. Registration and explicit adapter/layout loading are the trust boundaries.
 Configuration operations are serialized per session with the `config` transaction
-namespace. Nested airline configuration calls from a layout are rejected, except
-adapter declarations, which are staged for the parent evaluation. A complete layout
-therefore commits and renders as one logical operation.
+namespace. A layout must define `airline_layout_configure <declare-function>` and
+remain quiet on stdout. Its callback accepts `segment <slot> <value>`, `adapter use
+<name...>`, and `adapter load <path>`. Unknown and duplicate declarations fail the
+operation; omitted segment slots are empty. Adapters are validated and applied before
+the new private segment, adapter, and provenance state is committed.
 
 A segment may reference a palette foreground role live, but must not set a
 background. Render owns each block background and its matching chevrons; allowing a
@@ -537,6 +538,15 @@ internal concern that cannot work as promised reports a problem at the appropria
 level and clears it after recovery. Problems describe the reporting component's
 capability, not the domain outcome it observes; a failed test, unhealthy server, or
 other expected result belongs to status or health instead.
+
+Configuration uses the same rule. An invalid or failed layout records the
+`airline-layout` problem, retains the last committed layout state, and clears that
+problem after a successful `layout use` or `layout load`. Palette failures are owned
+by palette selection and manual configuration application; unrelated layout or
+adapter success does not clear them. Segments have no independent problem: omission
+and an empty value are valid, while structural declaration errors belong to the
+layout that made them. Internal problem changes use the same redraw-gated path as the
+public problem API.
 
 Dynamic collection operations run in owner-scoped transactions: status and health
 serialize by `(window, namespace)`, while problems serialize by `(session,

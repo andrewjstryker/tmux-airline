@@ -122,3 +122,12 @@ teardown() { :; }
   lifecycle_problem_clear s1 cpu
   assert_equal "$_FAKE_REDRAWS" 2
 }
+
+@test "internal configuration problems use the same redraw-gated problem path" {
+  _config_problem s1 airline-layout fail "layout failed"
+  assert_equal "$_FAKE_REDRAWS" 1
+  _config_problem s1 airline-layout fail "layout failed"
+  assert_equal "$_FAKE_REDRAWS" 1
+  _config_problem s1 airline-layout ok ""
+  assert_equal "$_FAKE_REDRAWS" 2
+}
