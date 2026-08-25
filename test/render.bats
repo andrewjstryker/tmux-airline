@@ -4,7 +4,7 @@ load test_helper/bats-support/load
 load test_helper/bats-assert/load
 load helper
 
-# src/render.sh — observable composition behavior over the in-memory tmux fake.
+# lib/render.sh — observable composition behavior over the in-memory tmux fake.
 # Tests enter through render or its cross-module projection functions; private
 # builders and validators remain free to change during refactoring.
 #

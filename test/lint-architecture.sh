@@ -18,7 +18,7 @@
 #       any other source is a layering violation. (Palette/segment data files spell
 #       @airline- — that is the public contract — but they aren't scanned.)
 #   C — airline.sh's parser does not call underscore-private behavior. Its own
-#       _help_* helpers are parser mechanics; delegated behavior stays under src/.
+#       _help_* helpers are parser mechanics; delegated behavior stays under lib/.
 #
 # Usage: test/lint-architecture.sh [A|B|C|all]   (default: all)
 # Exit:  0 = clean, 1 = violations (printed, one per line), 2 = bad usage.
@@ -36,7 +36,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 _sources () {
   shopt -s nullglob
   local f
-  for f in "$ROOT"/airline.tmux "$ROOT"/*.sh "$ROOT"/src/*.sh "$ROOT"/adapters/* \
+  for f in "$ROOT"/airline.tmux "$ROOT"/*.sh "$ROOT"/lib/*.sh "$ROOT"/adapters/* \
     "$ROOT"/classifiers/* "$ROOT"/filters/* "$ROOT"/probes/* "$ROOT"/runners/*; do
     printf '%s\n' "$f"
   done

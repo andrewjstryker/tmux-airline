@@ -21,7 +21,7 @@ teardown() {
 load_tmux() {
   tmux() { $TMUX -L "$_bats_socket" "$@"; }
   export -f tmux
-  source "$PROJECT_ROOT/src/tmux.sh"
+  source "$PROJECT_ROOT/lib/tmux.sh"
   # The test process may itself live in an unrelated tmux server. Give the
   # isolated server's native pane context to functions that resolve "current".
   TMUX_PANE="$(tmux display-message -p -t bats '#{pane_id}')"
@@ -35,7 +35,7 @@ load_tmux() {
 load_collections() {
   export AIRLINE_DIR="$PROJECT_ROOT"
   source "$PROJECT_ROOT/test/fake-tmux.sh"
-  source "$PROJECT_ROOT/src/collections.sh"
+  source "$PROJECT_ROOT/lib/collections.sh"
   _use_fake_readback
 }
 
@@ -44,8 +44,8 @@ load_render() {
   export AIRLINE_DIR="$PROJECT_ROOT"
   export AIRLINE_SESSION='s1'
   source "$PROJECT_ROOT/test/fake-tmux.sh"
-  source "$PROJECT_ROOT/src/collections.sh"
-  source "$PROJECT_ROOT/src/render.sh"
+  source "$PROJECT_ROOT/lib/collections.sh"
+  source "$PROJECT_ROOT/lib/render.sh"
   _use_fake_readback
 }
 
@@ -55,11 +55,11 @@ load_lifecycle() {
   export AIRLINE_DIR="$PROJECT_ROOT"
   export AIRLINE_SESSION='s1'
   source "$PROJECT_ROOT/test/fake-tmux.sh"
-  source "$PROJECT_ROOT/src/collections.sh"
-  source "$PROJECT_ROOT/src/render.sh"
-  source "$PROJECT_ROOT/src/runner.sh"
-  source "$PROJECT_ROOT/src/layout.sh"
-  source "$PROJECT_ROOT/src/lifecycle.sh"
+  source "$PROJECT_ROOT/lib/collections.sh"
+  source "$PROJECT_ROOT/lib/render.sh"
+  source "$PROJECT_ROOT/lib/runner.sh"
+  source "$PROJECT_ROOT/lib/layout.sh"
+  source "$PROJECT_ROOT/lib/lifecycle.sh"
   _use_fake_readback
 }
 

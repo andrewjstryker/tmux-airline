@@ -18,14 +18,14 @@
 # the layer tests assert on the composed format STRINGS, never on tmux evaluating
 # them, so a faithful store is all they need.
 #
-# Load order matches production: source this instead of src/tmux.sh, then load
-# src/collections.sh and src/render.sh on top. The fake loaders do exactly that.
+# Load order matches production: source this instead of lib/tmux.sh, then load
+# lib/collections.sh and lib/render.sh on top. The fake loaders do exactly that.
 
 # shellcheck shell=bash
 
 # Bring in the real mechanical layer (definitions only — sourcing tmux.sh makes no
 # tmux call), then shadow its leaves below. Everything else stays the production code.
-source "${PROJECT_ROOT:?fake-tmux.sh: PROJECT_ROOT must be set}/src/tmux.sh"
+source "${PROJECT_ROOT:?fake-tmux.sh: PROJECT_ROOT must be set}/lib/tmux.sh"
 
 #-----------------------------------------------------------------------------#
 # In-memory backing store

@@ -9,7 +9,7 @@
 # It reaches tmux only through the mechanical layer (tmux.sh's
 # opt_*) and *trusts its inputs*; validation lives in the command behavior modules.
 #
-# Assumes src/tmux.sh is already sourced — the CLI and test harness load
+# Assumes lib/tmux.sh is already sourced — the CLI and test harness load
 # mechanical-then-logic, in that order. The guard below enforces it.
 
 # shellcheck shell=bash

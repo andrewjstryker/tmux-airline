@@ -6,7 +6,7 @@ load helper
 
 setup() {
   load_render
-  source "$PROJECT_ROOT/src/runner.sh"
+  source "$PROJECT_ROOT/lib/runner.sh"
 }
 
 @test "basic classifier interprets successful and failed termination" {

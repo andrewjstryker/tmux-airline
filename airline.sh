@@ -4,8 +4,8 @@
 # and help, all in one file. Read this to know the entire command surface.
 #
 # It locates the install, points the mechanical layer at the right tmux server,
-# sources the internal behaviour stack under src/, then parses argv and delegates
-# each command once. The CLI is the public API; src/ contains its implementation.
+# sources the internal behaviour stack under lib/, then parses argv and delegates
+# each command once. The CLI is the public API; lib/ contains its implementation.
 #
 # Grammar: a few top-level verbs (init/apply/show/…) plus config, signal, diagnostic,
 # lifecycle, and runner nouns, each with its own verb set. Every noun's verbs live in
@@ -24,18 +24,18 @@ if [[ -n "${AIRLINE_TMUX:-}" ]]; then
   tmux () { command ${AIRLINE_TMUX} "$@"; }
 fi
 
-# shellcheck source=src/tmux.sh
-source "$AIRLINE_DIR/src/tmux.sh"
-# shellcheck source=src/collections.sh
-source "$AIRLINE_DIR/src/collections.sh"
-# shellcheck source=src/render.sh
-source "$AIRLINE_DIR/src/render.sh"
-# shellcheck source=src/runner.sh
-source "$AIRLINE_DIR/src/runner.sh"
-# shellcheck source=src/layout.sh
-source "$AIRLINE_DIR/src/layout.sh"
-# shellcheck source=src/lifecycle.sh
-source "$AIRLINE_DIR/src/lifecycle.sh"
+# shellcheck source=lib/tmux.sh
+source "$AIRLINE_DIR/lib/tmux.sh"
+# shellcheck source=lib/collections.sh
+source "$AIRLINE_DIR/lib/collections.sh"
+# shellcheck source=lib/render.sh
+source "$AIRLINE_DIR/lib/render.sh"
+# shellcheck source=lib/runner.sh
+source "$AIRLINE_DIR/lib/runner.sh"
+# shellcheck source=lib/layout.sh
+source "$AIRLINE_DIR/lib/layout.sh"
+# shellcheck source=lib/lifecycle.sh
+source "$AIRLINE_DIR/lib/lifecycle.sh"
 
 #-----------------------------------------------------------------------------#
 # Help — generated from the `#| …` markers on the case arms below, so the grammar

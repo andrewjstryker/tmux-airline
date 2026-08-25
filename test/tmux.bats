@@ -237,7 +237,7 @@ wait_for_file () {
 
   bash -c '
     tmux () { "$TMUX_TEST_BIN" -L "$TMUX_TEST_SOCKET" "$@"; }
-    source "$PROJECT_ROOT/src/tmux.sh"
+    source "$PROJECT_ROOT/lib/tmux.sh"
     spin () { : > "$1"; while :; do :; done; }
     with_session_transaction "$1" problem spin "$2"
   ' _ "$session" "$ready" & transaction_pid=$!
@@ -255,7 +255,7 @@ wait_for_file () {
 
   run timeout -k 1 2 bash -c '
     tmux () { "$TMUX_TEST_BIN" -L "$TMUX_TEST_SOCKET" "$@"; }
-    source "$PROJECT_ROOT/src/tmux.sh"
+    source "$PROJECT_ROOT/lib/tmux.sh"
     mark () { : > "$1"; }
     with_session_transaction "$1" problem mark "$2"
   ' _ "$session" "$reused"
