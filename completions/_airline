@@ -23,7 +23,7 @@ _airline_children () {
 }
 _airline_usage () {
   case "$1" in
-    help) printf %s \[\<command\>\ \[\<verb\>\]\] ;;
+    help) printf %s \[\<noun\>\ \[\<verb\>\]\] ;;
     session\ init) printf %s '' ;;
     session\ apply) printf %s '' ;;
     session\ show) printf %s '' ;;

@@ -50,8 +50,9 @@ LINT="$BATS_TEST_DIRNAME/lint-architecture.sh"
   run "$LINT" C
   if [[ "$status" -ne 0 ]]; then
     {
-      echo "The airline.sh parser called private behavior. Command arms must make"
-      echo "one owner-prefixed call; orchestration belongs under lib/:"
+      echo "The CLI grammar violated its two-hop delegation contract. Public root"
+      echo "nouns must call matching cmd_<noun> dispatchers registered for help;"
+      echo "leaf arms must call one owner-prefixed implementation entry point:"
       echo
       printf '%s\n' "$output"
     } >&2

@@ -34,9 +34,10 @@ a non-obvious boundary described here.
 
 | File | Responsibility | Direct `tmux` calls? |
 |------|----------------|:-------------------:|
-| `airline.tmux` | TPM / `run-shell` entry point; invokes `airline.sh init` | no |
+| `airline.tmux` | TPM / `run-shell` entry point; invokes `airline.sh session init` | no |
 | `airline` | Installable PATH shim; resolves the active CLI through `@airline-cli` | bootstrap lookup only |
 | `airline.sh` | Public CLI: parses the grammar and delegates each command once | no |
+| `lib/help.sh` | Renders marked CLI grammar sections for help and completions | no |
 | `lib/lifecycle.sh` | Context, initialization, state, signals, problems, and locks | no |
 | `lib/layout.sh` | Palette, adapter, segment, and executable-layout behavior | no |
 | `lib/runner.sh` | Runner contracts, catalogs, mechanics, and orchestration | no |
@@ -61,6 +62,7 @@ graph TD
     CLI --> LIFE[lib/lifecycle.sh]
     CLI --> LAYOUT[lib/layout.sh]
     CLI --> RUNNER[lib/runner.sh]
+    CLI --> HELP[lib/help.sh]
     LIFE --> LOGIC[lib/render.sh]
     LAYOUT --> LOGIC
     LIFE --> COLL[lib/collections.sh]
@@ -244,7 +246,7 @@ discovery shim that resolves the active `airline.sh` through `@airline-cli`.
 airline session init
 airline session apply
 airline session show
-airline help [<command> [<verb>]]
+airline help [<noun> [<verb>]]
 
 airline status   set <status-key> <active|result|attention> [--transient] [-t <window>]
                  clear <status-key> [-t <window>]
@@ -277,11 +279,12 @@ airline _unfocus <window-id>
 `_unfocus` is an internal, CLI-reachable hook callback. All other listed commands
 are public.
 
-The parser arms are also the grammar source. Their colocated `#|` annotations
-contain usage and descriptions, and `airline help` renders those annotations
-directly. Semantic placeholders such as `<palette>`, `<layout>`, `<file>`, and
-`<window>` are part of that contract: they tell completion generation which
-catalog or shell primitive supplies a value.
+The parser arms are also the grammar source. Explicit `help:begin` / `help:end`
+markers delimit each noun without depending on function or `case` formatting;
+colocated `#|` annotations contain usage and descriptions. `lib/help.sh` renders
+those annotations directly. Semantic placeholders such as `<palette>`, `<layout>`,
+`<file>`, and `<window>` are part of that contract: they tell completion generation
+which catalog or shell primitive supplies a value.
 
 Bash and Zsh completions are compiled from the rendered help by
 `scripts/generate-completions`; they do not add a runtime inspection API or parse
@@ -608,9 +611,11 @@ private scalar in a tmux format. There is no private-global accessor.
 - **B — namespace ownership:** only `lib/tmux.sh` constructs literal `@airline-` and
   `@airline--` names in shell code. Palette and segment configuration spell public
   names because those names are the external contract.
-- **C — CLI delegation:** parser arms call one owner-prefixed implementation entry
-  (`lifecycle_*`, `layout_*`, or `runner_*`). Only parser-owned help functions bypass
-  that pattern; internal callbacks are grammar too.
+- **C — CLI delegation:** each ordinary top-level noun calls its matching
+  `cmd_<noun>` dispatcher, and that inferred noun set must exactly match the grouped
+  help registry. Each leaf arm then calls one owner-prefixed implementation entry
+  (`lifecycle_*`, `layout_*`, or `runner_*`). Help and underscore-prefixed internal
+  callbacks are the explicit root exceptions.
 
 The same boundary makes most tests cheap:
 

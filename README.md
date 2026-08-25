@@ -723,7 +723,7 @@ session as a required first argument.
 airline session init                 # initialize airline (normally called by airline.tmux)
 airline session apply                # commit global option edits and render this session
 airline session show                 # print the active configuration
-airline help [command [verb]] # all commands, one noun, or one leaf command
+airline help [noun [verb]]    # all commands, one noun, or one leaf command
 
 airline palette  show [name|<palette-element>] | list | use <palette> | register <dir>
 airline segment  show [<segment>]              # read-only; write with set -g @airline-segment-<segment>
@@ -754,7 +754,7 @@ Two conventions run through it:
   value, newline-terminated, safe for `$(…)`. `list` lists the catalog a
   `use` can pick from. Catalog-only runner nouns instead use `show <name>` for an
   implementation's summary, usage, and path. Editing a color or segment option is
-  free; the bar re-renders on the next `apply` (or `use`, which ends in one).
+  free; the bar re-renders on the next `session apply` (or `use`, which ends in one).
 
 Help is inspected through the top-level command, for example `airline help
 palette` or `airline help runner run`. Bash and Zsh completion follows the same

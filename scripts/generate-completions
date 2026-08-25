@@ -58,7 +58,7 @@ while IFS= read -r semantic; do
   case "$semantic" in
     adapter|classifier|dir|file|filter|health-key|layout|message|namespace|palette|\
       palette-element|probe|problem-key|runner|segment|session|status-key|target|window|\
-      arg|argument|command|verb) ;;
+      arg|argument|command|noun|verb) ;;
     *) printf "generate-completions: unknown help placeholder <%s>\n" "$semantic" >&2; exit 1 ;;
   esac
 done < <(grep -oE '<[a-z][a-z-]*>' "$WORK/grammar" | tr -d '<>' | sort -u)

@@ -90,21 +90,26 @@ CASES
   assert_output --partial "repaint adapters"
 }
 
+@test "help sections are explicit and independent of parser indentation" {
+  AIRLINE_HELP_SOURCE="$BATS_TEST_TMPDIR/grammar"
+  printf '%s\n' \
+    '    # help:begin sample' \
+    '      case "$verb" in' \
+    '        show) owner_show ;; #| — show the sample' \
+    '      esac' \
+    '    # help:end sample' > "$AIRLINE_HELP_SOURCE"
+
+  run _help_records sample
+  assert_success
+  assert_output $'show\t— show the sample'
+
+  run _help_records missing
+  assert_failure
+  assert_output --partial "missing help section: missing"
+}
+
 @test "noun-local help is not retained" {
   run main palette help
   assert_failure
   assert_output --partial "unknown palette command: help"
-}
-
-@test "removed top-level verbs and available aliases are rejected" {
-  local command
-  for command in init apply show; do
-    run main "$command"
-    assert_failure
-    assert_output --partial "unknown command: $command"
-  done
-
-  run main palette available
-  assert_failure
-  assert_output --partial "unknown palette command: available"
 }

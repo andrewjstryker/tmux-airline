@@ -17,8 +17,9 @@
 #       options by BARE key through those, so a literal @airline- option name in
 #       any other source is a layering violation. (Palette/segment data files spell
 #       @airline- — that is the public contract — but they aren't scanned.)
-#   C — airline.sh's parser does not call underscore-private behavior. Its own
-#       _help_* helpers are parser mechanics; delegated behavior stays under lib/.
+#   C — each public root noun delegates to its matching cmd_<noun>, the root noun
+#       set matches the help-group registry, and leaf arms delegate only to public
+#       owner-prefixed behavior under lib/.
 #
 # Usage: test/lint-architecture.sh [A|B|C|all]   (default: all)
 # Exit:  0 = clean, 1 = violations (printed, one per line), 2 = bad usage.
@@ -91,19 +92,92 @@ _check_b () {
   return $rc
 }
 
-# Invariant C — documented command arms contain exactly one owner-prefixed call,
-# and the parser makes no underscore-private behavior calls. Ignore parser-owned
-# help helpers; internal command names do not have call syntax.
+# Read the noun registry as Bash data instead of maintaining a second list in the
+# lint. Also verify that every registered noun has a dispatcher definition.
+_cli_nouns () {
+  AIRLINE_TMUX= AIRLINE_DIR="$ROOT" bash -c '
+    source "$1/airline.sh"
+    seen=" "
+    for noun in $AIRLINE_NOUNS; do
+      case "$seen" in
+        *" $noun "*) printf "C: duplicate registered noun: %s\n" "$noun" >&2; exit 1 ;;
+      esac
+      seen+="$noun "
+      declare -F "cmd_$noun" >/dev/null || {
+        printf "C: missing dispatcher function: cmd_%s\n" "$noun" >&2
+        exit 1
+      }
+    done
+    printf "%s\n" "$AIRLINE_NOUNS"
+  ' bash "$ROOT"
+}
+
+# Enforce the public root grammar without naming any forbidden commands. Between
+# the explicit root markers, every ordinary word arm must be `noun) cmd_noun "$@"`.
+# Help, option aliases for help, wildcard rejection, and underscore callbacks are
+# the deliberate top-level exceptions.
+_check_c_root () {
+  local nouns line marker arm pattern body expected expected_re seen=" " active="" rc=0 lineno=0 noun
+  nouns="$(_cli_nouns)" || return 1
+
+  while IFS= read -r line; do
+    (( lineno += 1 ))
+    marker="${line#"${line%%[![:space:]]*}"}"
+    if [[ "$marker" == '# help:begin root' ]]; then active=1; continue; fi
+    if [[ "$marker" == '# help:end root' ]]; then active=""; continue; fi
+    [[ -n "$active" && "$marker" == *')'* ]] || continue
+
+    arm="$marker"
+    pattern="${arm%%)*}"
+    body="${arm#*)}"
+    body="${body#"${body%%[![:space:]]*}"}"
+    case "$pattern" in
+      help|'""|-h|--help'|'*'|_*) continue ;;
+    esac
+    if [[ ! "$pattern" =~ ^[a-z][a-z0-9-]*$ ]]; then
+      printf 'C: airline.sh:%d: invalid public root pattern: %s\n' "$lineno" "$pattern"
+      rc=1
+      continue
+    fi
+    expected="cmd_${pattern}"
+    expected_re="^${expected}[[:space:]]+\"\\\$@\"[[:space:]]*;;[[:space:]]*$"
+    if [[ ! "$body" =~ $expected_re ]]; then
+      printf 'C: airline.sh:%d: %s must delegate exactly to %s "$@"\n' \
+        "$lineno" "$pattern" "$expected"
+      rc=1
+    fi
+    case " $nouns " in
+      *" $pattern "*) ;;
+      *) printf 'C: airline.sh:%d: unregistered public noun: %s\n' "$lineno" "$pattern"; rc=1 ;;
+    esac
+    case "$seen" in
+      *" $pattern "*) printf 'C: airline.sh:%d: duplicate root noun: %s\n' "$lineno" "$pattern"; rc=1 ;;
+    esac
+    seen+="$pattern "
+  done < "$ROOT/airline.sh"
+
+  for noun in $nouns; do
+    case "$seen" in
+      *" $noun "*) ;;
+      *) printf 'C: registered noun has no root dispatch: %s\n' "$noun"; rc=1 ;;
+    esac
+  done
+  return "$rc"
+}
+
+# Invariant C — validate both delegation hops. Documented leaf arms contain
+# exactly one owner-prefixed call, and the parser makes no underscore-private
+# behavior calls. Internal command names do not have call syntax.
 _check_c () {
   local hits arms rc=0
-  hits="$(grep -nE '(^|[^[:alnum:]_])_[a-zA-Z][a-zA-Z0-9_]*([[:space:]]|;)' "$ROOT/airline.sh" \
-    | grep -vE '_help_[a-z_]+' || true)"
+  _check_c_root || rc=1
+  hits="$(grep -nE '(^|[^[:alnum:]_])_[a-zA-Z][a-zA-Z0-9_]*([[:space:]]|;)' "$ROOT/airline.sh" || true)"
   if [[ -n "$hits" ]]; then
     printf 'C: airline.sh:%s\n' "$hits"
     rc=1
   fi
   arms="$(grep -nE '^[[:space:]]*[a-zA-Z_][a-zA-Z0-9_-]*\).*#\|' "$ROOT/airline.sh" \
-    | grep -vE '^[0-9]+:[[:space:]]*[a-zA-Z_][a-zA-Z0-9_-]*\)[[:space:]]+((lifecycle|layout|runner)_[a-zA-Z0-9_]+|_help_command)([[:space:]]+"\$@")?[[:space:]]*;;[[:space:]]*#\|' || true)"
+    | grep -vE '^[0-9]+:[[:space:]]*[a-zA-Z_][a-zA-Z0-9_-]*\)[[:space:]]+((lifecycle|layout|runner)_[a-zA-Z0-9_]+|help_command)([[:space:]]+"\$@")?[[:space:]]*;;[[:space:]]*#\|' || true)"
   if [[ -n "$arms" ]]; then
     printf 'C: airline.sh:%s\n' "$arms"
     rc=1
