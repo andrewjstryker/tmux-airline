@@ -46,12 +46,12 @@ LINT="$BATS_TEST_DIRNAME/lint-architecture.sh"
   fi
 }
 
-@test "Invariant C — the CLI delegates only to public API functions" {
+@test "Invariant C — the CLI delegates only to implementation entry points" {
   run "$LINT" C
   if [[ "$status" -ne 0 ]]; then
     {
-      echo "The airline parser called private behaviour. Public command arms must"
-      echo "make one api_* call; orchestration belongs in api.sh:"
+      echo "The airline.sh parser called private behavior. Command arms must make"
+      echo "one owner-prefixed call; orchestration belongs under src/:"
       echo
       printf '%s\n' "$output"
     } >&2

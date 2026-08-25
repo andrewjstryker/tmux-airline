@@ -13,14 +13,14 @@ setup() {
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
 
   run env TMUX_PANE="$pane" AIRLINE_TMUX="$TMUX -L $_bats_socket" \
-    "$PROJECT_ROOT/bin/airline" state show
+    "$PROJECT_ROOT/airline" state show
 
   assert_success
   assert_output "active"
 }
 
 @test "PATH shim explains when tmux-airline is not initialized" {
-  run env AIRLINE_TMUX="$TMUX -L $_bats_socket" "$PROJECT_ROOT/bin/airline" help
+  run env AIRLINE_TMUX="$TMUX -L $_bats_socket" "$PROJECT_ROOT/airline" help
 
   assert_failure
   assert_output \
@@ -30,7 +30,7 @@ setup() {
 @test "PATH shim rejects a stale configured CLI path" {
   $TMUX -L "$_bats_socket" set-option -g @airline-cli /does/not/exist
 
-  run env AIRLINE_TMUX="$TMUX -L $_bats_socket" "$PROJECT_ROOT/bin/airline" help
+  run env AIRLINE_TMUX="$TMUX -L $_bats_socket" "$PROJECT_ROOT/airline" help
 
   assert_failure
   assert_output "airline: configured CLI is not executable: /does/not/exist"

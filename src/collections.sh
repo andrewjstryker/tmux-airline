@@ -7,7 +7,7 @@
 # adds one mechanically. It is domain-free: namespace and severity ordering
 # arrive as data (see coll_reduce); it knows nothing about glyphs or severities.
 #
-# Built entirely on tmux.sh's opt_* functions — it makes NO direct tmux calls, so
+# Built entirely on src/tmux.sh's opt_* functions — it makes NO direct tmux calls, so
 # it stays OFF the architecture-lint allowlist while tmux.sh remains the sole
 # caller. Assumes tmux.sh is sourced first (the guard below enforces it).
 #
@@ -134,7 +134,7 @@ _coll_reduce () {    # <scope> <target> <ns> <order>
 }
 
 #-----------------------------------------------------------------------------#
-# Public API — mirrors opt_* scope suffixes.
+# Exported collection interface — mirrors opt_* scope suffixes.
 #-----------------------------------------------------------------------------#
 
 # --- global scope ---

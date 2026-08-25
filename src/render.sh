@@ -5,11 +5,11 @@
 # Builds the bar from the stored @airline-* state: it loads the palette and renders
 # the segment bar, window formats, and chrome (the `render` function, driven by
 # `apply`). It also owns airline's shared vocabulary — the segment slots, palette
-# elements, and rendering constants — plus the predicates the CLI validates against
-# at the boundary. It reaches tmux only through the mechanical layer (tmux.sh's
-# opt_*) and *trusts its inputs*; validation lives at the boundary (api.sh), not here.
+# elements, and rendering constants — plus predicates validated at the CLI boundary.
+# It reaches tmux only through the mechanical layer (tmux.sh's
+# opt_*) and *trusts its inputs*; validation lives in the command behavior modules.
 #
-# Assumes tmux.sh is already sourced — the CLI and the test harness load
+# Assumes src/tmux.sh is already sourced — the CLI and test harness load
 # mechanical-then-logic, in that order. The guard below enforces it.
 
 # shellcheck shell=bash

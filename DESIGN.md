@@ -14,9 +14,10 @@ a non-obvious boundary described here.
    they never construct an alternative bar.
 3. **The middle is logic.** Badge reduction, segment assembly, render expressions,
    and palette application use domain terms and do not call the `tmux` binary.
-4. **Dependencies point down.** The CLI delegates to the API; the API orchestrates
-   logic and collections; every tmux call ends in `tmux.sh`. The graph is acyclic.
-5. **Validate at the boundary; trust the interior.** Public API handlers validate
+4. **Dependencies point down.** `airline.sh` owns grammar and delegates once into
+   `src/`; internal modules orchestrate rendering and collections, and application
+   tmux calls end in `src/tmux.sh`. The graph is acyclic.
+5. **Validate at the boundary; trust the interior.** CLI behavior handlers validate
    input once. Store and composition functions operate on validated values.
 6. **Enforce architecture at build time.** Bash has no useful visibility boundary,
    so lightweight lint rules enforce layering without adding runtime machinery.
@@ -33,17 +34,18 @@ a non-obvious boundary described here.
 
 | File | Responsibility | Direct `tmux` calls? |
 |------|----------------|:-------------------:|
-| `airline.tmux` | TPM / `run-shell` entry point; invokes `init` through the CLI | no |
-| `bin/airline` | Installable PATH shim; resolves the active CLI through `@airline-cli` | bootstrap lookup only |
-| `airline` | Parses the public grammar and delegates each command once to `api_*` | no |
-| `api.sh` | Resolves context, validates input, and orchestrates commands | no |
-| `render.sh` | Owns domain vocabulary and composes the bar | no |
-| `runner.sh` | Loads and validates runner catalogs and element contracts | no |
-| `collections.sh` | Stores and reduces variable-cardinality state | no |
-| `tmux.sh` | Mechanical operations and airline namespace policy | **yes; sole caller** |
-| `palettes/*` | Declarative public color configuration | sourced by `tmux.sh` |
+| `airline.tmux` | TPM / `run-shell` entry point; invokes `airline.sh init` | no |
+| `airline` | Installable PATH shim; resolves the active CLI through `@airline-cli` | bootstrap lookup only |
+| `airline.sh` | Public CLI: parses the grammar and delegates each command once | no |
+| `src/lifecycle.sh` | Context, initialization, state, signals, problems, and locks | no |
+| `src/layout.sh` | Palette, adapter, segment, and executable-layout behavior | no |
+| `src/runner.sh` | Runner contracts, catalogs, mechanics, and orchestration | no |
+| `src/render.sh` | Owns domain vocabulary and composes the bar | no |
+| `src/collections.sh` | Stores and reduces variable-cardinality state | no |
+| `src/tmux.sh` | Mechanical operations and airline namespace policy | **yes; sole application caller** |
+| `palettes/*` | Declarative public color configuration | sourced by `src/tmux.sh` |
 | `adapters/*` | Applies palette roles to third-party plugin options | no |
-| `layouts/*` | Composes adapters and segment-slot values | no |
+| `layouts/*` | Trusted child programs composing adapters and public segment options | supplied handle only |
 | `classifiers/*` | Interprets process termination | no |
 | `filters/*` | Interprets a copied command-output stream | no |
 | `probes/*` | Performs one bounded external observation | no |
@@ -53,17 +55,24 @@ a non-obvious boundary described here.
 ```mermaid
 graph TD
     TPM([TPM / run-shell]):::ext --> ENTRY[airline.tmux]
-    EXT([users and plugins]):::ext --> CLI[airline]
-    ENTRY --> CLI
-    CLI --> API[api.sh]
-    API --> LOGIC[render.sh]
-    API --> RUNNER[runner.sh]
-    API --> COLL[collections.sh]
+    EXT([users and plugins]):::ext --> SHIM[airline]
+    ENTRY --> CLI[airline.sh]
+    SHIM --> CLI
+    CLI --> LIFE[src/lifecycle.sh]
+    CLI --> LAYOUT[src/layout.sh]
+    CLI --> RUNNER[src/runner.sh]
+    LIFE --> LOGIC[src/render.sh]
+    LAYOUT --> LOGIC
+    LIFE --> COLL[src/collections.sh]
+    LAYOUT --> COLL
+    RUNNER --> COLL
     LOGIC --> COLL
-    API --> MECH[tmux.sh]
+    LIFE --> MECH[src/tmux.sh]
+    LAYOUT --> MECH
+    RUNNER --> MECH
     LOGIC --> MECH
     COLL --> MECH
-    API -. load .-> FILES[palettes · adapters · layouts · runner catalogs]
+    LIFE -. register .-> FILES[palettes · adapters · layouts · runner catalogs]
     MECH ==> TMUX([tmux server]):::ext
 
     classDef ext fill:#eee,stroke:#999,color:#333,font-style:italic;
@@ -71,11 +80,15 @@ graph TD
 
 The important boundaries are:
 
-- Within the application layers, only `tmux.sh` invokes the `tmux` binary or spells
+- Within the application layers, only `src/tmux.sh` invokes the `tmux` binary or spells
   the `@airline-` and `@airline--` prefixes. The installable PATH shim is an external
   consumer: like a plugin, it makes one bootstrap lookup of `@airline-cli`. Higher
   layers address airline options by bare key through `pub_*` and `prv_*` accessors.
-- `collections.sh` is an airline abstraction above tmux's flat option store. It is
+- Executable layouts are trusted configuration consumers, not loaded application
+  layers. They may write public `@airline-segment-*` options through the supplied
+  `AIRLINE_TMUX` handle and delegate adapters through `airline`; they never access
+  private state. Their child-process writes intentionally persist in the tmux server.
+- `src/collections.sh` is an airline abstraction above tmux's flat option store. It is
   used only for status, health, problem, adapter membership, and search paths.
   Fixed segment slots are scalar options, not collections.
 - Palette and layout are independent axes: a palette chooses colors; a layout
@@ -205,11 +218,12 @@ A segment may reference a palette foreground role live, but must not set a
 background. Render owns each block background and its matching chevrons; allowing a
 slot to replace the background would break that seam.
 
-## CLI and API contract
+## CLI contract
 
-`airline` is a parser and dispatcher. Each successful command arm makes exactly one
-public `api_*` call; context resolution, sequencing, state access, and rendering stay
-behind that boundary.
+`airline.sh` is the public parser and dispatcher. Each successful command arm makes
+exactly one implementation call; context resolution, sequencing, state access, and
+rendering stay behind that boundary. The `airline` executable is only the installable
+discovery shim that resolves the active `airline.sh` through `@airline-cli`.
 
 ### Grammar
 
@@ -495,7 +509,7 @@ Collection rules:
 - Storage is never rendered directly. A domain-specific caller reduces the
   collection and projects the result to `badge-status`, `badge-health`, or
   `badge-problem`.
-- Reduction receives its ranking as data, keeping `collections.sh` free of status,
+- Reduction receives its ranking as data, keeping `src/collections.sh` free of status,
   health, and problem semantics.
 
 Health and problem share the condition ladder `ok < warn < fail`. `ok` or absence is
@@ -515,8 +529,8 @@ Dynamic collection operations run in owner-scoped transactions: status and healt
 serialize by `(window, namespace)`, while problems serialize by `(session,
 namespace)`. The registry, contributor tuple, reduction, and projected badge
 therefore form one logical mutation even when background evaluations overlap.
-`tmux.sh` owns acquisition, an atomic owner-scoped marker, cleanup, stale-owner
-detection, and recovery; the API only declares the owner, namespace, and operation
+`src/tmux.sh` owns acquisition, an atomic owner-scoped marker, cleanup, stale-owner
+detection, and recovery; lifecycle only declares the owner, namespace, and operation
 that must be atomic. Transaction callbacks run in a subshell so transaction-local
 signal traps do not alter caller traps. `airline lock show` exposes outstanding
 markers, and `lock clear` releases only a marker whose recorded process is no longer
@@ -531,7 +545,7 @@ distinguished by position around the window name, so sharing palette roles is sa
 
 ## Mechanical boundary
 
-`tmux.sh` is the sole integration point with tmux. Its interface follows these
+`src/tmux.sh` is the sole integration point with tmux. Its interface follows these
 conventions:
 
 - Functions use fixed positional arguments. Scope is expressed in the name, such as
@@ -553,14 +567,15 @@ private scalar in a tmux format. There is no private-global accessor.
 
 `test/architecture.bats` enforces three build-time rules:
 
-- **A — tmux ownership:** only `tmux.sh` invokes the `tmux` binary inside the
+- **A — tmux ownership:** only `src/tmux.sh` invokes the `tmux` binary inside the
   application. The external PATH shim, test shims, and inert tmux configuration are
   explicit exclusions.
-- **B — namespace ownership:** only `tmux.sh` constructs literal `@airline-` and
+- **B — namespace ownership:** only `src/tmux.sh` constructs literal `@airline-` and
   `@airline--` names in shell code. Palette and segment configuration spell public
   names because those names are the external contract.
-- **C — CLI delegation:** public parser arms call one public `api_*` entry. Only
-  parser-owned help functions and designated private callbacks bypass that pattern.
+- **C — CLI delegation:** parser arms call one owner-prefixed implementation entry
+  (`lifecycle_*`, `layout_*`, or `runner_*`). Only parser-owned help functions bypass
+  that pattern; internal callbacks are grammar too.
 
 The same boundary makes most tests cheap:
 
@@ -568,13 +583,21 @@ The same boundary makes most tests cheap:
 |-------|---------|----------------|
 | `tmux.bats` | real tmux | pins the mechanical contract that the fake must match |
 | `collections.bats` | in-memory fake | collection storage and reduction |
-| `logic.bats` | in-memory fake | composition and exact format strings |
-| `cli.bats` | real tmux subprocess | parser, dispatch, and integration behavior |
+| `render.bats` | in-memory fake | observable composition and projection behavior |
+| `runner.bats` | in-memory fake | runner element contracts and mechanics |
+| `lifecycle.bats` | in-memory fake | signals, problems, state, and redraw gating |
+| `grammar.bats` | sourced CLI with spies | grammar and exactly-once delegation behavior |
+| `layout.bats` | real tmux subprocess | executable layout and primitive integration |
+| `integration-lifecycle.bats` | real tmux subprocess | lifecycle integration requiring tmux semantics |
+| `integration-runner.bats` | real tmux subprocess | runner process and topology integration |
 | `architecture.bats` | static inspection | layering invariants |
 
 `test/fake-tmux.sh` sources the real mechanical wrappers and replaces only their
 leaf store operations and standalone tmux verbs. It models option scope, absence,
 overwrite, removal, and preservation of spaces; it does not evaluate tmux formats.
+`make test-fast` selects the static and fake-backed suites; `make test-integration`
+selects the real-tmux suites. The domain targets `test-layout`, `test-lifecycle`,
+and `test-runner` pair fast behavior with integration only where that domain needs it.
 
 ## Lessons from failed approaches
 

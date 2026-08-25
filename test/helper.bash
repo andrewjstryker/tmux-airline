@@ -21,7 +21,7 @@ teardown() {
 load_tmux() {
   tmux() { $TMUX -L "$_bats_socket" "$@"; }
   export -f tmux
-  source "$PROJECT_ROOT/tmux.sh"
+  source "$PROJECT_ROOT/src/tmux.sh"
   # The test process may itself live in an unrelated tmux server. Give the
   # isolated server's native pane context to functions that resolve "current".
   TMUX_PANE="$(tmux display-message -p -t bats '#{pane_id}')"
@@ -35,7 +35,7 @@ load_tmux() {
 load_collections() {
   export AIRLINE_DIR="$PROJECT_ROOT"
   source "$PROJECT_ROOT/test/fake-tmux.sh"
-  source "$PROJECT_ROOT/collections.sh"
+  source "$PROJECT_ROOT/src/collections.sh"
   _use_fake_readback
 }
 
@@ -44,21 +44,22 @@ load_render() {
   export AIRLINE_DIR="$PROJECT_ROOT"
   export AIRLINE_SESSION='s1'
   source "$PROJECT_ROOT/test/fake-tmux.sh"
-  source "$PROJECT_ROOT/collections.sh"
-  source "$PROJECT_ROOT/render.sh"
+  source "$PROJECT_ROOT/src/collections.sh"
+  source "$PROJECT_ROOT/src/render.sh"
   _use_fake_readback
 }
 
-# Source the complete behaviour stack on the fake store. Used where an API test
+# Source the complete behavior stack on the fake store. Used where a lifecycle test
 # needs observable redraw counts without starting a tmux server.
-load_api() {
+load_lifecycle() {
   export AIRLINE_DIR="$PROJECT_ROOT"
   export AIRLINE_SESSION='s1'
   source "$PROJECT_ROOT/test/fake-tmux.sh"
-  source "$PROJECT_ROOT/collections.sh"
-  source "$PROJECT_ROOT/render.sh"
-  source "$PROJECT_ROOT/runner.sh"
-  source "$PROJECT_ROOT/api.sh"
+  source "$PROJECT_ROOT/src/collections.sh"
+  source "$PROJECT_ROOT/src/render.sh"
+  source "$PROJECT_ROOT/src/runner.sh"
+  source "$PROJECT_ROOT/src/layout.sh"
+  source "$PROJECT_ROOT/src/lifecycle.sh"
   _use_fake_readback
 }
 
@@ -115,7 +116,7 @@ airline() {
   local pane
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
   TMUX_PANE="$pane" AIRLINE_DIR="$PROJECT_ROOT" AIRLINE_TMUX="$TMUX -L $_bats_socket" \
-    "$PROJECT_ROOT/airline" "$@"
+    "$PROJECT_ROOT/airline.sh" "$@"
 }
 
 # Run a config/control-plane command from a pane in an explicit session. TMUX_PANE is
@@ -125,7 +126,7 @@ airline_session() {
   local pane
   pane="$($TMUX -L "$_bats_socket" display-message -p -t "$session" '#{pane_id}')"
   TMUX_PANE="$pane" AIRLINE_DIR="$PROJECT_ROOT" AIRLINE_TMUX="$TMUX -L $_bats_socket" \
-    "$PROJECT_ROOT/airline" "$@"
+    "$PROJECT_ROOT/airline.sh" "$@"
 }
 
 # vim: ft=bash

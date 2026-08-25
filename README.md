@@ -734,3 +734,14 @@ Two conventions run through it:
 
 For the architecture, internal boundaries, design rationale, and testing strategy,
 see [DESIGN.md](DESIGN.md).
+
+The full suite still exercises real isolated tmux servers:
+
+```shell
+make test
+```
+
+For focused development, `make test-fast` runs only static and in-memory behavior
+tests. `make test-layout`, `make test-lifecycle`, and `make test-runner` pair tests
+with the corresponding `src/` module; `make test-integration` runs every real-tmux
+suite. Run `make lint` for ShellCheck and the architecture guards.

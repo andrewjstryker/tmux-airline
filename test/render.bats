@@ -4,37 +4,19 @@ load test_helper/bats-support/load
 load test_helper/bats-assert/load
 load helper
 
-# render.sh — the composition layer: the boundary validators (predicates the
-# CLI calls), the palette, and the segment-bar composition. render.sh trusts
-# its inputs; validation lives at the boundary, so it is exercised here only as
-# the predicates the CLI will call — not as a validate-and-store path.
+# src/render.sh — observable composition behavior over the in-memory tmux fake.
+# Tests enter through render or its cross-module projection functions; private
+# builders and validators remain free to change during refactoring.
 #
 # Runs on the in-memory fake (load_render) — no tmux server, so override the
 # real-server setup/teardown from helper.bash with no-ops.
 setup()    { :; }
 teardown() { :; }
 
-# --- boundary validators ----------------------------------------------------
-
-@test "_segment_slot_valid accepts the six slots and rejects others" {
-  load_render
-  _segment_slot_valid right-mid
-  _segment_slot_valid left-out
-  ! _segment_slot_valid middle
-  ! _segment_slot_valid ""
-}
-
-@test "_palette_element_valid accepts palette roles and rejects others" {
-  load_render
-  _palette_element_valid active
-  _palette_element_valid outer-bg
-  ! _palette_element_valid bogus
-}
-
 # --- segment-bar composition ------------------------------------------------
 
-# Seed a minimal palette directly through the option store, then load it — the
-# composition trusts these values (no validation in this layer).
+# Seed a minimal palette directly through the option store. The public render
+# operation loads it before composing output.
 _seed_palette() {
   opt_set_global @airline-outer-bg colour238
   opt_set_global @airline-middle-bg colour236
@@ -50,7 +32,6 @@ _seed_palette() {
   opt_set_global @airline-zoom colour81
   opt_set_global @airline-copy colour75
   opt_set_global @airline-monitor colour109
-  _palette_load
 }
 
 @test "left bar composes non-empty slots with their tier backgrounds" {
@@ -58,7 +39,8 @@ _seed_palette() {
   _seed_palette
   opt_set_global @airline-segment-left-out OUT
   opt_set_global @airline-segment-left-mid MID
-  run _build_status_left
+  render "$AIRLINE_SESSION"
+  run sopt status-left
   assert_output --partial "bg=colour238"   # outer (left-out)
   assert_output --partial "bg=colour236"   # middle (left-mid)
   assert_output --partial " OUT "
@@ -69,7 +51,8 @@ _seed_palette() {
   load_render
   _seed_palette
   opt_set_global @airline-segment-left-out ONLY   # left-mid, left-in empty
-  run _build_status_left
+  render "$AIRLINE_SESSION"
+  run sopt status-left
   assert_output --partial " ONLY "
   refute_output --partial "bg=colour236"   # no middle block
   assert_output --partial "bg=colour234"   # chevron into the inner-bg window list
@@ -78,7 +61,8 @@ _seed_palette() {
 @test "an all-empty left side composes to nothing" {
   load_render
   _seed_palette
-  run _build_status_left
+  render "$AIRLINE_SESSION"
+  run sopt status-left
   assert_output ""
 }
 
@@ -86,7 +70,8 @@ _seed_palette() {
   load_render
   _seed_palette
   opt_set_global @airline-segment-right-out DATE
-  run _build_status_right
+  render "$AIRLINE_SESSION"
+  run sopt status-right
   assert_output --partial " DATE "
   assert_output --partial "bg=colour238"   # outer (right-out)
 }
@@ -96,8 +81,8 @@ _seed_palette() {
   _seed_palette
   opt_set_global @airline-segment-left-out X
   opt_set_session "$AIRLINE_SESSION" @airline--suspended 1
-  _palette_load
-  run _build_status_left
+  render "$AIRLINE_SESSION"
+  run sopt status-left
   refute_output --partial "bg=colour238"   # outer dimmed to inner-bg
   assert_output --partial "bg=colour234"
 }
@@ -107,7 +92,7 @@ _seed_palette() {
 @test "window formats set the name template, mode expr, and base styles" {
   load_render
   _seed_palette
-  set_window_formats
+  render ""
   run get_option window-status-format
   assert_output --partial "#I:#W"               # the name template
   assert_output --partial "window_zoomed_flag"  # the mode expression
@@ -121,7 +106,7 @@ _seed_palette() {
 @test "inactive window fills its background with the mode color" {
   load_render
   _seed_palette
-  set_window_formats
+  render ""
   run get_option window-status-format
   # bg is a mode selector: zoom→81, copy→75, monitor→109, else inner-bg 234
   assert_output --partial "bg=#{?#{window_zoomed_flag},colour81"
@@ -131,7 +116,7 @@ _seed_palette() {
 @test "inactive name knocks out over a filled block, else stays primary" {
   load_render
   _seed_palette
-  set_window_formats
+  render ""
   run get_option window-status-format
   # fg: inner-bg knockout when in any mode, primary (250) when flat
   assert_output --partial "#[fg=#{?#{window_zoomed_flag},colour234"
@@ -141,7 +126,7 @@ _seed_palette() {
 @test "active window keeps a constant active-color highlight block" {
   load_render
   _seed_palette
-  set_window_formats
+  render ""
   run get_option window-status-current-format
   assert_output --partial "bg=colour214"          # active highlight, not a mode selector
   refute_output --partial "bg=#{?#{window_zoomed_flag}"  # active bg never varies with mode
@@ -150,7 +135,7 @@ _seed_palette() {
 @test "active window tints the name foreground by mode (knockout when none)" {
   load_render
   _seed_palette
-  set_window_formats
+  render ""
   run get_option window-status-current-format
   # name fg is the mode color, falling back to inner-bg knockout
   assert_output --partial "#[fg=#{?#{window_zoomed_flag},colour81"
@@ -163,7 +148,7 @@ _seed_palette() {
 @test "status badge renders a selector over the projected status scalar" {
   load_render
   _seed_palette
-  set_window_formats
+  render ""
   run get_option window-status-format
   assert_output --partial "@airline--badge-status"   # the projected reduced-level scalar
   assert_output --partial "●"                        # a badge glyph (result level)
@@ -172,7 +157,7 @@ _seed_palette() {
 @test "status badge maps each semantic level to its palette color" {
   load_render
   _seed_palette
-  set_window_formats
+  render ""
   run get_option window-status-format
   # level→color pairs unique to the status ladder (health has no result/attention)
   assert_output --partial "result},colour114"      # result → ok
@@ -182,7 +167,7 @@ _seed_palette() {
 @test "status badge maps each level to a distinct glyph; active blinks" {
   load_render
   _seed_palette
-  set_window_formats
+  render ""
   run get_option window-status-format
   assert_output --partial "active},○"          # a shape per level, redundant with color
   assert_output --partial "result},●"
@@ -193,7 +178,7 @@ _seed_palette() {
 @test "health badge maps each level to a distinct glyph; fail blinks" {
   load_render
   _seed_palette
-  set_window_formats
+  render ""
   run get_option window-status-format
   assert_output --partial "warn},△"
   assert_output --partial "fail},▲"
@@ -203,7 +188,7 @@ _seed_palette() {
 @test "window-status-format places status left of the name and health right" {
   load_render
   _seed_palette
-  set_window_formats
+  render ""
   run get_option window-status-format
   [[ "$output" == *"@airline--badge-status"*"#I:#W"*"@airline--badge-health"* ]]
 }
@@ -253,7 +238,7 @@ _seed_palette() {
 @test "health badge renders a selector over the projected reduced scalar" {
   load_render
   _seed_palette
-  set_window_formats
+  render ""
   run get_option window-status-format
   assert_output --partial "@airline--badge-health"   # the projected reduced-level scalar
 }
@@ -305,7 +290,8 @@ _seed_palette() {
   load_render
   _seed_palette
   opt_set_global @airline-segment-right-out OUT
-  run _build_status_right
+  render "$AIRLINE_SESSION"
+  run sopt status-right
   [[ "$output" == *" OUT "*"@airline--badge-problem"* ]]
   assert_output --partial "bg=colour238"   # inherits the final outer block
   assert_output --partial "warn},△"
@@ -337,21 +323,6 @@ _seed_palette() {
   problem_project "$session"
   run opt_get_session "$session" @airline--badge-problem
   assert_output ""
-}
-
-@test "identical problem reports and absent clears do not redraw" {
-  load_api
-  session="$(current_session)"
-
-  _problem_set "$session" cpu warn "sensors missing"
-  assert_equal "$_FAKE_REDRAWS" 1
-  _problem_set "$session" cpu warn "sensors missing"
-  assert_equal "$_FAKE_REDRAWS" 1
-
-  _problem_clear "$session" cpu
-  assert_equal "$_FAKE_REDRAWS" 2
-  _problem_clear "$session" cpu
-  assert_equal "$_FAKE_REDRAWS" 2
 }
 
 # --- render: the render step -------------------------------

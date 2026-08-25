@@ -18,14 +18,14 @@
 # the layer tests assert on the composed format STRINGS, never on tmux evaluating
 # them, so a faithful store is all they need.
 #
-# Load order matches production: source this INSTEAD of tmux.sh, then collections.sh
-# and render.sh on top. The test harness's fake loaders do exactly that.
+# Load order matches production: source this instead of src/tmux.sh, then load
+# src/collections.sh and src/render.sh on top. The fake loaders do exactly that.
 
 # shellcheck shell=bash
 
 # Bring in the real mechanical layer (definitions only — sourcing tmux.sh makes no
 # tmux call), then shadow its leaves below. Everything else stays the production code.
-source "${PROJECT_ROOT:?fake-tmux.sh: PROJECT_ROOT must be set}/tmux.sh"
+source "${PROJECT_ROOT:?fake-tmux.sh: PROJECT_ROOT must be set}/src/tmux.sh"
 
 #-----------------------------------------------------------------------------#
 # In-memory backing store
@@ -96,7 +96,7 @@ runner_open_pane () { printf '%%2'; }
 runner_open_window () { printf '%%2'; }
 runner_retain_pane () { :; }
 
-# API unit tests assume tmux.sh's transaction contract. Run callbacks directly so
+# Behavior tests assume tmux.sh's transaction contract. Run callbacks directly so
 # the in-memory option store remains in this shell; real locking, traps, markers,
 # and scheduling are exercised exhaustively by tmux.bats against a real server.
 with_session_transaction () { local callback="$3"; shift 3; "$callback" "$@"; }

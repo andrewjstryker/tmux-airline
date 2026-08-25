@@ -17,8 +17,8 @@
 #       options by BARE key through those, so a literal @airline- option name in
 #       any other source is a layering violation. (Palette/segment data files spell
 #       @airline- — that is the public contract — but they aren't scanned.)
-#   C — airline's parser delegates only to public api_* functions. Its own _help_*
-#       helpers are parser mechanics; all other private behaviour stays in api.sh.
+#   C — airline.sh's parser does not call underscore-private behavior. Its own
+#       _help_* helpers are parser mechanics; delegated behavior stays under src/.
 #
 # Usage: test/lint-architecture.sh [A|B|C|all]   (default: all)
 # Exit:  0 = clean, 1 = violations (printed, one per line), 2 = bad usage.
@@ -27,15 +27,16 @@ set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Application shell the lint governs — including adapters and runner catalogs (trusted
-# snippets that must reach tmux only through opt_*). The installable bin/airline shim is an external
-# bootstrap consumer, so its one @airline-cli lookup is outside this layer check.
+# Application shell the lint governs — including adapters and runner catalogs
+# (trusted snippets that must reach tmux only through opt_*). The installable
+# `airline` shim is an external bootstrap consumer, so its one @airline-cli lookup
+# is outside this layer check.
 # Data/interpreted files (palettes/, layouts/) and the test tree are not scanned.
 # Globs that match nothing drop out (nullglob).
 _sources () {
   shopt -s nullglob
   local f
-  for f in "$ROOT"/airline "$ROOT"/airline.tmux "$ROOT"/*.sh "$ROOT"/adapters/* \
+  for f in "$ROOT"/airline.tmux "$ROOT"/*.sh "$ROOT"/src/*.sh "$ROOT"/adapters/* \
     "$ROOT"/classifiers/* "$ROOT"/filters/* "$ROOT"/probes/* "$ROOT"/runners/*; do
     printf '%s\n' "$f"
   done
@@ -88,15 +89,24 @@ _check_b () {
   return $rc
 }
 
-# Invariant C — no private behaviour call from the CLI parser. Ignore the two
-# parser-owned help helpers; internal command names do not have call syntax.
+# Invariant C — documented command arms contain exactly one owner-prefixed call,
+# and the parser makes no underscore-private behavior calls. Ignore parser-owned
+# help helpers; internal command names do not have call syntax.
 _check_c () {
-  local hits
-  hits="$(grep -nE '(^|[^[:alnum:]_])_[a-zA-Z][a-zA-Z0-9_]*([[:space:]]|;)' "$ROOT/airline" \
+  local hits arms rc=0
+  hits="$(grep -nE '(^|[^[:alnum:]_])_[a-zA-Z][a-zA-Z0-9_]*([[:space:]]|;)' "$ROOT/airline.sh" \
     | grep -vE '_help_(arms|noun)' || true)"
-  [[ -z "$hits" ]] && return 0
-  printf 'C: airline:%s\n' "$hits"
-  return 1
+  if [[ -n "$hits" ]]; then
+    printf 'C: airline.sh:%s\n' "$hits"
+    rc=1
+  fi
+  arms="$(grep -nE '^[[:space:]]*[a-zA-Z_][a-zA-Z0-9_-]*\).*#\|' "$ROOT/airline.sh" \
+    | grep -vE '^[0-9]+:[[:space:]]*[a-zA-Z_][a-zA-Z0-9_-]*\)[[:space:]]+(lifecycle|layout|runner)_[a-zA-Z0-9_]+([[:space:]]+"\$@")?[[:space:]]*;;[[:space:]]*#\|' || true)"
+  if [[ -n "$arms" ]]; then
+    printf 'C: airline.sh:%s\n' "$arms"
+    rc=1
+  fi
+  return "$rc"
 }
 
 main () {
