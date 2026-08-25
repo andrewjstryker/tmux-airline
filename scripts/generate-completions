@@ -1,0 +1,407 @@
+#!/usr/bin/env bash
+# Generate Bash and Zsh completion artifacts from `airline help`.
+# shellcheck disable=SC2016 # This script emits shell source containing literal expansions.
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT_DIR="${1:-$ROOT/completions}"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/airline-completions.XXXXXX")"
+trap 'rm -rf "$WORK"' EXIT
+
+mkdir -p "$OUTPUT_DIR"
+AIRLINE_DIR="$ROOT" "$ROOT/airline.sh" help > "$WORK/help"
+
+# path<TAB>usage<TAB>description. Indentation and the em-dash delimiter are part
+# of rendered help's tested format; this compiler never reads airline.sh itself.
+awk '
+  function record(path, annotation, split_at, usage, description) {
+    if (annotation ~ /^— /) {
+      sub(/^— /, "", annotation)
+      print path "\t@none\t" annotation
+      return
+    }
+    split_at = index(annotation, " — ")
+    if (split_at) {
+      usage = substr(annotation, 1, split_at - 1)
+      description = substr(annotation, split_at + 3)
+    } else {
+      usage = ""
+      description = annotation
+    }
+    if (usage == "") usage = "@none"
+    if (description == "") description = "@none"
+    print path "\t" usage "\t" description
+  }
+  /^[a-z][a-z-]*:$/ {
+    group = substr($0, 1, length($0) - 1)
+    groups[++group_count] = group
+    next
+  }
+  /^  [a-zA-Z_][a-zA-Z0-9_-]*  +/ {
+    line = substr($0, 3)
+    command = line
+    sub(/ .*/, "", command)
+    annotation = line
+    sub(/^[^ ]+  +/, "", annotation)
+    path = group ? group " " command : command
+    record(path, annotation)
+  }
+  END {
+    for (i = 1; i <= group_count; i++)
+      print groups[i] "\t@none\t" groups[i] " commands"
+  }
+' "$WORK/help" > "$WORK/grammar"
+
+# Every semantic placeholder must be either completable or explicitly opaque.
+while IFS= read -r semantic; do
+  case "$semantic" in
+    adapter|classifier|dir|file|filter|health-key|layout|message|namespace|palette|\
+      palette-element|probe|problem-key|runner|segment|session|status-key|target|window|\
+      arg|argument|command|verb) ;;
+    *) printf "generate-completions: unknown help placeholder <%s>\n" "$semantic" >&2; exit 1 ;;
+  esac
+done < <(grep -oE '<[a-z][a-z-]*>' "$WORK/grammar" | tr -d '<>' | sort -u)
+
+declare -A CHILDREN=() USAGE=() DESCRIPTION=() SEEN_PARENT=()
+declare -a PATHS=() PARENTS=()
+while IFS=$'\t' read -r path usage description; do
+  [[ -n "$path" ]] || continue
+  [[ "$usage" != @none ]] || usage=""
+  [[ "$description" != @none ]] || description=""
+  PATHS+=("$path")
+  USAGE["$path"]="$usage"
+  DESCRIPTION["$path"]="$description"
+  if [[ "$path" == *" "* ]]; then
+    parent="${path%% *}"; child="${path#* }"
+  else
+    parent=""; child="$path"
+  fi
+  parent_key="${parent:-@root}"
+  CHILDREN["$parent_key"]="${CHILDREN[$parent_key]:+${CHILDREN[$parent_key]} }$child"
+  if [[ -z "${SEEN_PARENT[$parent_key]:-}" ]]; then
+    PARENTS+=("$parent_key"); SEEN_PARENT["$parent_key"]=1
+  fi
+done < "$WORK/grammar"
+
+emit_metadata () {
+  local parent path pattern
+  printf '%s\n' '# Generated from `airline help`; do not edit.'
+  printf '%s\n' '_airline_children () {' '  case "$1" in'
+  for parent in "${PARENTS[@]}"; do
+    pattern="$parent"; [[ "$pattern" != @root ]] || pattern=""
+    printf '    %q) printf %q %q ;;\n' "$pattern" '%s' "${CHILDREN[$parent]:-}"
+  done
+  printf '%s\n' '    *) return 1 ;;' '  esac' '}'
+  printf '%s\n' '_airline_usage () {' '  case "$1" in'
+  for path in "${PATHS[@]}"; do
+    printf '    %q) printf %q %q ;;\n' "$path" '%s' "${USAGE[$path]}"
+  done
+  printf '%s\n' '    *) return 1 ;;' '  esac' '}'
+  printf '%s\n' '_airline_description () {' '  case "$1" in'
+  for path in "${PATHS[@]}"; do
+    printf '    %q) printf %q %q ;;\n' "$path" '%s' "${DESCRIPTION[$path]}"
+  done
+  printf '%s\n' '    *) return 1 ;;' '  esac' '}'
+}
+
+emit_metadata > "$WORK/metadata"
+
+{
+  printf '%s\n' '# bash completion for airline' '# shellcheck shell=bash' \
+    '# shellcheck disable=SC2207 # compgen intentionally produces completion arrays.'
+  cat "$WORK/metadata"
+  cat <<'BASH_COMPLETION'
+
+_airline_dynamic () {   # <semantic-type>
+  local type="$1" noun line
+  case "$type" in
+    palette|adapter|layout|classifier|filter|probe|runner)
+      noun="$type"
+      command airline "$noun" available 2>/dev/null || true
+      ;;
+    palette-element)
+      command airline palette show 2>/dev/null | while read -r line _; do
+        [[ "$line" == name ]] || printf '%s\n' "$line"
+      done
+      ;;
+    segment) command airline segment show 2>/dev/null | while read -r line _; do printf '%s\n' "$line"; done ;;
+    status-key) command airline status show 2>/dev/null | while read -r line _; do printf '%s\n' "$line"; done ;;
+    health-key) command airline health show 2>/dev/null | while read -r line _; do printf '%s\n' "$line"; done ;;
+    session) command tmux list-sessions -F '#{session_name}' 2>/dev/null || true ;;
+    window) command tmux list-windows -a -F '#{window_id}' 2>/dev/null || true ;;
+  esac
+}
+
+_airline_values () {   # <usage-token>
+  local token="$1" part inner
+  token="${token#[}"; token="${token%]}"; token="${token%...}"
+  if [[ "$token" == '<'*'>' ]]; then
+    inner="${token#<}"; inner="${inner%>}"
+    if [[ "$inner" == *"|"* ]]; then
+      IFS='|' read -ra parts <<< "$inner"
+      printf '%s\n' "${parts[@]}"
+    else
+      _airline_dynamic "$inner"
+    fi
+  elif [[ "$token" == *"|"* ]]; then
+    IFS='|' read -ra parts <<< "$token"
+    for part in "${parts[@]}"; do _airline_values "$part"; done
+    return
+  elif [[ "$token" != -* ]]; then
+    printf '%s\n' "$token"
+  fi
+}
+
+_airline_position_token () {   # <usage> <zero-based-position>
+  local usage="$1" wanted="$2" token skip="" position=0
+  local -a syntax
+  usage="${usage//\[/}"; usage="${usage//\]/}"
+  read -ra syntax <<< "$usage"
+  for ((i=0; i<${#syntax[@]}; i++)); do
+    token="${syntax[i]}"
+    if [[ -n "$skip" ]]; then skip=""; continue; fi
+    case "$token" in
+      -t|--classify|--filter|--probe) skip=1; continue ;;
+      --|--*|-*) continue ;;
+    esac
+    if (( position == wanted )); then printf '%s' "$token"; return; fi
+    ((position++)) || true
+  done
+  [[ "$token" == *... && wanted -ge position ]] && printf '%s' "$token"
+}
+
+_airline_argument_position () {   # already-entered leaf arguments
+  local skip="" count=0 arg
+  for arg in "$@"; do
+    if [[ -n "$skip" ]]; then skip=""; continue; fi
+    case "$arg" in
+      -t|--classify|--filter|--probe) skip=1 ;;
+      --here|--pane|--window|-h|-v|--merge-stderr) ;;
+      --) ;;
+      *) ((count++)) || true ;;
+    esac
+  done
+  printf '%s' "$count"
+}
+
+_airline_option_values () {   # <usage>
+  local usage="$1" token part
+  usage="${usage//\[/}"; usage="${usage//\]/}"
+  read -ra syntax <<< "$usage"
+  for token in "${syntax[@]}"; do
+    IFS='|' read -ra parts <<< "$token"
+    for part in "${parts[@]}"; do
+      [[ "$part" == -* && "$part" != -- ]] && printf '%s\n' "$part"
+    done
+  done
+}
+
+_airline_problem_keys () {   # <session>
+  local line
+  command airline problem show "$1" 2>/dev/null | while read -r line _; do
+    printf '%s\n' "$line"
+  done
+}
+
+_airline_runner_complete () {   # <run|watch> <current> <prior-args...>
+  local mode="$1" current="$2" previous="" arg; shift 2
+  (( $# == 0 )) || previous="${!#}"
+  for arg in "$@"; do
+    if [[ "$arg" == -- ]]; then
+      [[ "$mode" == run ]] && compopt -o default
+      return
+    fi
+  done
+  case "$previous" in
+    --classify) COMPREPLY=( $(compgen -W "$(_airline_dynamic classifier)" -- "$current") ); return ;;
+    --filter)   COMPREPLY=( $(compgen -W "$(_airline_dynamic filter)" -- "$current") ); return ;;
+    --probe)    COMPREPLY=( $(compgen -W "$(_airline_dynamic probe)" -- "$current") ); return ;;
+  esac
+  local options='--here --pane --window -h -v --probe'
+  [[ "$mode" == run ]] && options+=' --classify --filter --merge-stderr --'
+  if [[ "$current" == -* ]]; then
+    COMPREPLY=( $(compgen -W "$options" -- "$current") )
+  elif (( $# == 0 )); then
+    COMPREPLY=( $(compgen -W "$(_airline_dynamic runner) $options" -- "$current") )
+  fi
+}
+
+_airline_completion () {
+  local current="${COMP_WORDS[COMP_CWORD]}" top="${COMP_WORDS[1]:-}" verb path usage previous token position
+  local -a prior
+  COMPREPLY=()
+  if (( COMP_CWORD == 1 )); then
+    COMPREPLY=( $(compgen -W "$(_airline_children '')" -- "$current") )
+    return
+  fi
+  if [[ "$top" == help ]]; then
+    if (( COMP_CWORD == 2 )); then
+      COMPREPLY=( $(compgen -W "$(_airline_children '')" -- "$current") )
+    elif (( COMP_CWORD == 3 )); then
+      COMPREPLY=( $(compgen -W "$(_airline_children "${COMP_WORDS[2]}")" -- "$current") )
+    fi
+    return
+  fi
+  if [[ -n "$(_airline_children "$top")" ]]; then
+    if (( COMP_CWORD == 2 )); then
+      COMPREPLY=( $(compgen -W "$(_airline_children "$top")" -- "$current") )
+      return
+    fi
+    verb="${COMP_WORDS[2]}"; path="$top $verb"; prior=("${COMP_WORDS[@]:3:COMP_CWORD-3}")
+  else
+    path="$top"; prior=("${COMP_WORDS[@]:2:COMP_CWORD-2}")
+  fi
+  if [[ "$path" == 'runner run' || "$path" == 'runner watch' ]]; then
+    _airline_runner_complete "$verb" "$current" "${prior[@]}"
+    return
+  fi
+  usage="$(_airline_usage "$path")" || return
+  previous=""; (( ${#prior[@]} == 0 )) || previous="${prior[-1]}"
+  case "$previous" in
+    -t) COMPREPLY=( $(compgen -W "$(_airline_dynamic window)" -- "$current") ); return ;;
+  esac
+  case "$current" in
+    -*) COMPREPLY=( $(compgen -W "$(_airline_option_values "$usage")" -- "$current") ); return ;;
+  esac
+  position="$(_airline_argument_position "${prior[@]}")"
+  if [[ "$path" == 'problem set' || "$path" == 'problem clear' || "$path" == 'problem show' ]] &&
+     (( position == 1 )); then
+    COMPREPLY=( $(compgen -W "$(_airline_problem_keys "${prior[0]}")" -- "$current") )
+    return
+  fi
+  if [[ "$path" == 'lock clear' ]]; then
+    if (( position == 1 )); then
+      COMPREPLY=( $(compgen -W "$(_airline_dynamic "${prior[0]}")" -- "$current") )
+      return
+    elif (( position == 2 )); then
+      [[ "${prior[0]}" == session ]] && token='config problem' || token='status health'
+      COMPREPLY=( $(compgen -W "$token" -- "$current") )
+      return
+    fi
+  fi
+  token="$(_airline_position_token "$usage" "$position")"
+  case "$token" in
+    *'<file>'*) compopt -o filenames; COMPREPLY=( $(compgen -f -- "$current") ) ;;
+    *'<dir>'*)  compopt -o filenames; COMPREPLY=( $(compgen -d -- "$current") ) ;;
+    *'<command>'*) compopt -o default ;;
+    *) COMPREPLY=( $(compgen -W "$(_airline_values "$token") $(_airline_option_values "$usage")" -- "$current") ) ;;
+  esac
+}
+
+complete -F _airline_completion airline
+BASH_COMPLETION
+} > "$OUTPUT_DIR/airline.bash"
+
+{
+  printf '%s\n' '#compdef airline' '# zsh completion for airline'
+  cat "$WORK/metadata"
+  cat <<'ZSH_COMPLETION'
+
+_airline_zsh_dynamic () {
+  local type="$1" noun
+  case "$type" in
+    palette|adapter|layout|classifier|filter|probe|runner)
+      command airline "$type" available 2>/dev/null
+      ;;
+    palette-element) command airline palette show 2>/dev/null | awk '$1 != "name" {print $1}' ;;
+    segment) command airline segment show 2>/dev/null | awk '{print $1}' ;;
+    status-key) command airline status show 2>/dev/null | awk '{print $1}' ;;
+    health-key) command airline health show 2>/dev/null | awk '{print $1}' ;;
+    session) command tmux list-sessions -F '#{session_name}' 2>/dev/null ;;
+    window) command tmux list-windows -a -F '#{window_id}' 2>/dev/null ;;
+  esac
+}
+
+_airline_zsh_problem_keys () {
+  command airline problem show "$1" 2>/dev/null | awk '{print $1}'
+}
+
+_airline_zsh_describe_children () {
+  local parent="$1" child
+  local -a values
+  for child in ${=_airline_children "$parent"}; do
+    values+=("$child:$(_airline_description "${parent:+$parent }$child")")
+  done
+  _describe 'airline command' values
+}
+
+_airline_zsh () {
+  local top="${words[2]:-}" verb path previous semantic
+  if (( CURRENT == 2 )); then _airline_zsh_describe_children ''; return; fi
+  if [[ "$top" == help ]]; then
+    if (( CURRENT == 3 )); then _airline_zsh_describe_children ''; return; fi
+    if (( CURRENT == 4 )); then _airline_zsh_describe_children "${words[3]}"; return; fi
+    return
+  fi
+  if [[ -n "$(_airline_children "$top")" ]]; then
+    if (( CURRENT == 3 )); then _airline_zsh_describe_children "$top"; return; fi
+    verb="${words[3]}"; path="$top $verb"
+  else
+    path="$top"
+  fi
+  previous="${words[CURRENT-1]:-}"
+  case "$previous" in
+    --classify) compadd ${(@f)$(_airline_zsh_dynamic classifier)}; return ;;
+    --filter) compadd ${(@f)$(_airline_zsh_dynamic filter)}; return ;;
+    --probe) compadd ${(@f)$(_airline_zsh_dynamic probe)}; return ;;
+    -t) compadd ${(@f)$(_airline_zsh_dynamic window)}; return ;;
+  esac
+  if [[ "$path" == 'runner run' || "$path" == 'runner watch' ]]; then
+    if (( ${words[(I)--]} )); then [[ "$path" == 'runner run' ]] && _normal; return; fi
+    local -a runner_options=(--here --pane --window -h -v --probe)
+    [[ "$path" == 'runner run' ]] && runner_options+=(--classify --filter --merge-stderr --)
+    if [[ "$PREFIX" == -* ]]; then compadd -- $runner_options
+    elif (( CURRENT == 4 )); then compadd ${(@f)$(_airline_zsh_dynamic runner)} $runner_options
+    fi
+    return
+  fi
+  case "$path" in
+    'status set')
+      if (( CURRENT == 4 )); then semantic=status-key
+      elif (( CURRENT == 5 )); then compadd active result attention; return
+      fi
+      ;;
+    'status clear'|'status show') (( CURRENT == 4 )) && semantic=status-key ;;
+    'health set')
+      if (( CURRENT == 4 )); then semantic=health-key
+      elif (( CURRENT == 5 )); then compadd ok warn fail; return
+      fi
+      ;;
+    'health clear'|'health show') (( CURRENT == 4 )) && semantic=health-key ;;
+    'problem set')
+      if (( CURRENT == 4 )); then semantic=session
+      elif (( CURRENT == 5 )); then compadd ${(@f)$(_airline_zsh_problem_keys "${words[4]}")}; return
+      elif (( CURRENT == 6 )); then compadd ok warn fail; return
+      fi
+      ;;
+    'problem clear'|'problem show')
+      if (( CURRENT == 4 )); then semantic=session
+      elif (( CURRENT == 5 )); then compadd ${(@f)$(_airline_zsh_problem_keys "${words[4]}")}; return
+      fi
+      ;;
+    'lock clear')
+      if (( CURRENT == 4 )); then compadd session window; return
+      elif (( CURRENT == 5 )); then compadd ${(@f)$(_airline_zsh_dynamic "${words[4]}")}; return
+      elif (( CURRENT == 6 )); then
+        [[ "${words[4]}" == session ]] && compadd config problem || compadd status health
+        return
+      fi
+      ;;
+    'palette use') semantic=palette ;; 'adapter use') semantic=adapter ;;
+    'layout use') semantic=layout ;; 'classifier show') semantic=classifier ;;
+    'filter show') semantic=filter ;; 'probe show') semantic=probe ;;
+    'runner show') semantic=runner ;;
+    'palette show') compadd name ${(@f)$(_airline_zsh_dynamic palette-element)}; return ;;
+    'layout show') compadd name path; return ;;
+    'segment show') semantic=segment ;;
+    *' register') _files -/; return ;; *' load') _files; return ;;
+  esac
+  [[ -z "$semantic" ]] || compadd ${(@f)$(_airline_zsh_dynamic "$semantic")}
+}
+
+compdef _airline_zsh airline
+ZSH_COMPLETION
+} > "$OUTPUT_DIR/_airline"
+
+chmod 0644 "$OUTPUT_DIR/airline.bash" "$OUTPUT_DIR/_airline"

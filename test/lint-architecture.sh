@@ -95,13 +95,13 @@ _check_b () {
 _check_c () {
   local hits arms rc=0
   hits="$(grep -nE '(^|[^[:alnum:]_])_[a-zA-Z][a-zA-Z0-9_]*([[:space:]]|;)' "$ROOT/airline.sh" \
-    | grep -vE '_help_(arms|noun)' || true)"
+    | grep -vE '_help_[a-z_]+' || true)"
   if [[ -n "$hits" ]]; then
     printf 'C: airline.sh:%s\n' "$hits"
     rc=1
   fi
   arms="$(grep -nE '^[[:space:]]*[a-zA-Z_][a-zA-Z0-9_-]*\).*#\|' "$ROOT/airline.sh" \
-    | grep -vE '^[0-9]+:[[:space:]]*[a-zA-Z_][a-zA-Z0-9_-]*\)[[:space:]]+(lifecycle|layout|runner)_[a-zA-Z0-9_]+([[:space:]]+"\$@")?[[:space:]]*;;[[:space:]]*#\|' || true)"
+    | grep -vE '^[0-9]+:[[:space:]]*[a-zA-Z_][a-zA-Z0-9_-]*\)[[:space:]]+((lifecycle|layout|runner)_[a-zA-Z0-9_]+|_help_command)([[:space:]]+"\$@")?[[:space:]]*;;[[:space:]]*#\|' || true)"
   if [[ -n "$arms" ]]; then
     printf 'C: airline.sh:%s\n' "$arms"
     rc=1

@@ -244,31 +244,31 @@ discovery shim that resolves the active `airline.sh` through `@airline-cli`.
 airline init
 airline apply
 airline show
-airline help
+airline help [<command> [<verb>]]
 
-airline status   set <key> <level> [--transient] [-t <window>]
-                 clear <key> [-t <window>]
-                 show [<key>] [-t <window>]
-airline health   set <key> <ok|warn|fail> [--transient] [-t <window>]
-                 clear <key> [-t <window>]
-                 show [<key>] [-t <window>]
-airline problem  set <session> <key> <ok|warn|fail> [<message>]
-                 clear <session> <key>
-                 show [<session> [<key>]]
+airline status   set <status-key> <active|result|attention> [--transient] [-t <window>]
+                 clear <status-key> [-t <window>]
+                 show [<status-key>] [-t <window>]
+airline health   set <health-key> <ok|warn|fail> [--transient] [-t <window>]
+                 clear <health-key> [-t <window>]
+                 show [<health-key>] [-t <window>]
+airline problem  set <session> <problem-key> <ok|warn|fail> [<message>]
+                 clear <session> <problem-key>
+                 show [<session> [<problem-key>]]
 airline lock     show
                  clear <session|window> <target> <namespace>
 
-airline palette  show [name|<element>] | available | use <name> | register <dir>
-airline segment  show [<slot>]
-airline adapter  show | available | use <name> | load <path> | register <dir>
-airline layout   show [name|path] | available | use <name> | load <path> | register <dir>
-airline classifier show <name> | available | register <dir>
-airline filter     show <name> | available | register <dir>
-airline probe      show <name> | available | register <dir>
-airline runner   show <name> [<arg>...] | available | register <dir>
-                 run [--here|--pane [-h|-v]|--window] [<runner>] [--classify <name>]
-                     [--filter <name> [--merge-stderr]] [--probe <name> [<arg>...]] -- <command>...
-                 watch [--here|--pane [-h|-v]|--window] [<runner>] --probe <name> [<arg>...]
+airline palette  show [name|<palette-element>] | available | use <palette> | register <dir>
+airline segment  show [<segment>]
+airline adapter  show | available | use <adapter>... | load <file> | register <dir>
+airline layout   show [name|path] | available | use <layout> | load <file> | register <dir>
+airline classifier show <classifier> | available | register <dir>
+airline filter     show <filter> | available | register <dir>
+airline probe      show <probe> | available | register <dir>
+airline runner   show <runner> [<arg>...] | available | register <dir>
+                 run [--here|--pane [-h|-v]|--window] [<runner>] [--classify <classifier>]
+                     [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]] -- <command>...
+                 watch [--here|--pane [-h|-v]|--window] [<runner>] [--probe <probe> [<arg>...]]
 airline state    suspend | resume | toggle | show
 
 airline _unfocus <window-id>
@@ -276,6 +276,18 @@ airline _unfocus <window-id>
 
 `_unfocus` is an internal, CLI-reachable hook callback. All other listed commands
 are public.
+
+The parser arms are also the grammar source. Their colocated `#|` annotations
+contain usage and descriptions, and `airline help` renders those annotations
+directly. Semantic placeholders such as `<palette>`, `<layout>`, `<file>`, and
+`<window>` are part of that contract: they tell completion generation which
+catalog or shell primitive supplies a value.
+
+Bash and Zsh completions are compiled from the rendered help by
+`scripts/generate-completions`; they do not add a runtime inspection API or parse
+`airline.sh` independently. `make completions` updates the committed artifacts,
+and `make check-completions` rejects drift. `make install` performs that check and
+installs both artifacts with the PATH shim.
 
 ### Conventions
 
@@ -610,6 +622,7 @@ The same boundary makes most tests cheap:
 | `runner.bats` | in-memory fake | runner element contracts and mechanics |
 | `lifecycle.bats` | in-memory fake | signals, problems, state, and redraw gating |
 | `grammar.bats` | sourced CLI with spies | grammar and exactly-once delegation behavior |
+| `completions.bats` | generated shell artifacts | help/compiler drift, typed completion, and shell syntax |
 | `layout.bats` | real tmux subprocess | executable layout and primitive integration |
 | `integration-lifecycle.bats` | real tmux subprocess | lifecycle integration requiring tmux semantics |
 | `integration-runner.bats` | real tmux subprocess | runner process and topology integration |

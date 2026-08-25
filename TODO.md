@@ -13,11 +13,6 @@ that is part of the airline from configuration type code. Currently, the
 latter is all flat at the top-level of the repository, making the organization
 less obvious. Further, the testing structure should follow a similar pattern.
 
-### Completions
-
-Since airline is a CLI, airline should generate its own completion file for
-zsh and bash.
-
 ### Palette cycling
 
 The pieces already exist: the active palette is recorded, names resolve through an

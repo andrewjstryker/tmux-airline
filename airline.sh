@@ -39,33 +39,88 @@ source "$AIRLINE_DIR/lib/lifecycle.sh"
 
 #-----------------------------------------------------------------------------#
 # Help — generated from the `#| …` markers on the case arms below, so the grammar
-# is the single source of truth (no separate help text to keep in sync). Like `show`,
-# it lists the top-level commands then recurses into each noun's dispatcher.
+# is the single source of truth (no separate help text to keep in sync). The rendered
+# grammar is also the input to the completion generator.
 #-----------------------------------------------------------------------------#
 
-# Print a source range's #|-annotated arms as "  verb   help". <file> <start> <end>.
-_help_arms () {
-  sed -n "/$2/,/$3/{ s/^[[:space:]]*\([a-zA-Z_][a-zA-Z0-9_-]*\))[^#]*#|[[:space:]]*\(.*\)/\1\t\2/p; }" "$1" \
-    | while IFS=$'\t' read -r v d; do printf '  %-9s %s\n' "$v" "$d"; done
+# Raw tab-delimited command + annotation records from one case block.
+_help_records () {   # <file> <start-regex> <end-regex>
+  sed -n "/$2/,/$3/{ s/^[[:space:]]*\([a-zA-Z_][a-zA-Z0-9_-]*\))[^#]*#|[[:space:]]*\(.*\)/\1\t\2/p; }" "$1"
 }
 
-# One noun's verbs — the recursion target (also `<noun> help`). The dispatchers live in
-# THIS file, so that's where the arms are read from.
+_help_arms () {
+  _help_records "$@" | while IFS=$'\t' read -r command annotation; do
+    printf '  %-11s %s\n' "$command" "$annotation"
+  done
+}
+
 _help_noun () {   # <noun>
   printf '%s:\n' "$1"
   _help_arms "$AIRLINE_DIR/airline.sh" "^cmd_$1 () {" '^}'
 }
 
-usage () {
+_help_annotation () {   # <noun-or-empty> <command>
+  local noun="$1" wanted="$2" command annotation
+  local start='^case ' end='^esac'
+  [[ -z "$noun" ]] || start="^cmd_$noun () {"
+  while IFS=$'\t' read -r command annotation; do
+    [[ "$command" == "$wanted" ]] || continue
+    printf '%s' "$annotation"
+    return 0
+  done < <(_help_records "$AIRLINE_DIR/airline.sh" "$start" "$end")
+  return 1
+}
+
+AIRLINE_NOUNS='state status health problem lock palette segment adapter layout classifier filter probe runner'
+
+_help_usage () {
   printf 'airline — tmux-airline CLI\n\n'
+  printf 'Usage: airline <command> [<argument>...]\n\n'
   printf 'Commands:\n'
   _help_arms "$AIRLINE_DIR/airline.sh" '^case ' '^esac'
   local n
-  for n in palette segment adapter layout classifier filter probe runner state status health problem lock; do
+  for n in $AIRLINE_NOUNS; do
     printf '\n'; _help_noun "$n"
   done
   printf '\n  use loads a bare name from a registered dir; register blesses a location.\n'
   printf '  --transient clears a signal when you focus away from its window.\n'
+}
+
+_help_command () {   # [<top-command|noun> [<verb>]]
+  local first="${1:-}" second="${2:-}" annotation usage description
+  (( $# <= 2 )) || die "help: too many command levels"
+  [[ -n "$first" ]] || { _help_usage; return; }
+
+  case " $AIRLINE_NOUNS " in
+    *" $first "*)
+      if [[ -z "$second" ]]; then
+        printf 'Usage: airline %s <command>\n\n' "$first"
+        _help_noun "$first"
+        return
+      fi
+      annotation="$(_help_annotation "$first" "$second")" || \
+        die "help: unknown command '$first $second'"
+      ;;
+    *)
+      [[ -z "$second" ]] || die "help: '$first' has no subcommands"
+      annotation="$(_help_annotation "" "$first")" || die "help: unknown command '$first'"
+      ;;
+  esac
+
+  if [[ "$annotation" == "— "* ]]; then
+    usage=""
+    description="${annotation#— }"
+  elif [[ "$annotation" == *" — "* ]]; then
+    usage="${annotation%% — *}"
+    description="${annotation#* — }"
+  else
+    usage=""
+    description="$annotation"
+  fi
+  printf 'Usage: airline %s' "$first"
+  [[ -z "$second" ]] || printf ' %s' "$second"
+  [[ -z "$usage" ]] || printf ' %s' "$usage"
+  printf '\n\n%s\n' "$description"
 }
 
 #-----------------------------------------------------------------------------#
@@ -76,11 +131,10 @@ usage () {
 cmd_state () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    suspend) lifecycle_state_suspend ;;   #| mute the palette + trap the prefix (session dormant)
-    resume)  lifecycle_state_resume ;;    #| restore vibrant colours + release the prefix
-    toggle)  lifecycle_state_toggle ;;    #| flip active/suspended
-    show)    lifecycle_state_show ;;      #| print the current state (active | suspended)
-    ""|-h|--help|help) _help_noun state ;;
+    suspend) lifecycle_state_suspend ;;   #| — mute the palette + trap the prefix (session dormant)
+    resume)  lifecycle_state_resume ;;    #| — restore vibrant colours + release the prefix
+    toggle)  lifecycle_state_toggle ;;    #| — flip active/suspended
+    show)    lifecycle_state_show ;;      #| — print the current state (active | suspended)
     *) die "unknown state command: $verb" ;;
   esac
 }
@@ -88,10 +142,9 @@ cmd_state () {
 cmd_status () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    set)   lifecycle_status_set "$@" ;;   #| <key> <active|result|attention> [--transient] [-t <win>]
-    clear) lifecycle_status_clear "$@" ;; #| <key> [-t <win>]
-    show)  lifecycle_status_show "$@" ;;  #| [<key>] [-t <win>] — a window's app-status
-    ""|-h|--help|help) _help_noun status ;;
+    set)   lifecycle_status_set "$@" ;;   #| <status-key> <active|result|attention> [--transient] [-t <window>] — set app status
+    clear) lifecycle_status_clear "$@" ;; #| <status-key> [-t <window>] — clear app status
+    show)  lifecycle_status_show "$@" ;;  #| [<status-key>] [-t <window>] — show a window's app status
     *) die "unknown status command: $verb" ;;
   esac
 }
@@ -99,10 +152,9 @@ cmd_status () {
 cmd_health () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    set)   lifecycle_health_set "$@" ;;   #| <key> <ok|warn|fail> [--transient] [-t <win>]
-    clear) lifecycle_health_clear "$@" ;; #| <key> [-t <win>]
-    show)  lifecycle_health_show "$@" ;;  #| [<key>] [-t <win>] — a window's health
-    ""|-h|--help|help) _help_noun health ;;
+    set)   lifecycle_health_set "$@" ;;   #| <health-key> <ok|warn|fail> [--transient] [-t <window>] — set window health
+    clear) lifecycle_health_clear "$@" ;; #| <health-key> [-t <window>] — clear window health
+    show)  lifecycle_health_show "$@" ;;  #| [<health-key>] [-t <window>] — show a window's health
     *) die "unknown health command: $verb" ;;
   esac
 }
@@ -110,10 +162,9 @@ cmd_health () {
 cmd_problem () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    set)   lifecycle_problem_set "$@" ;;   #| <session> <key> <ok|warn|fail> [<message>]
-    clear) lifecycle_problem_clear "$@" ;; #| <session> <key>
-    show)  lifecycle_problem_show "$@" ;;  #| [<session> [<key>]] — all sessions, one session, or one problem
-    ""|-h|--help|help) _help_noun problem ;;
+    set)   lifecycle_problem_set "$@" ;;   #| <session> <problem-key> <ok|warn|fail> [<message>] — set or recover a session problem
+    clear) lifecycle_problem_clear "$@" ;; #| <session> <problem-key> — clear a session problem
+    show)  lifecycle_problem_show "$@" ;;  #| [<session> [<problem-key>]] — show all sessions, one session, or one problem
     *) die "unknown problem command: $verb" ;;
   esac
 }
@@ -121,9 +172,8 @@ cmd_problem () {
 cmd_lock () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    show)  lifecycle_lock_show "$@" ;;  #| list outstanding transactions and whether their owner is active or stale
+    show)  lifecycle_lock_show "$@" ;;  #| — list outstanding transactions and owner state
     clear) lifecycle_lock_clear "$@" ;; #| <session|window> <target> <namespace> — release one stale lock
-    ""|-h|--help|help) _help_noun lock ;;
     *) die "unknown lock command: $verb" ;;
   esac
 }
@@ -135,11 +185,10 @@ cmd_palette () {
   # `show <field>` a raw value for scripts; `show name` is the active-palette read).
   local verb="${1:-}"; shift || true
   case "$verb" in
-    show)      layout_palette_show "$@" ;;      #| [name|<element>] — summary, or one field raw (`show name` for scripts)
-    use)       layout_palette_use "$@" ;;       #| <name> — load a complete palette and repaint adapters
-    available) layout_palette_available ;;      #| the palettes you can `use` (on the path)
-    register)  layout_palette_register "$@" ;; #| <dir> — add a palette search dir
-    ""|-h|--help|help) _help_noun palette ;;
+    show)      layout_palette_show "$@" ;;      #| [name|<palette-element>] — show the palette summary or one raw field
+    use)       layout_palette_use "$@" ;;       #| <palette> — load a complete palette and repaint adapters
+    available) layout_palette_available ;;      #| — list palettes on the search path
+    register)  layout_palette_register "$@" ;; #| <dir> — add a palette search directory
     *) die "unknown palette command: $verb" ;;
   esac
 }
@@ -149,8 +198,7 @@ cmd_segment () {
   # their function contract. This noun is read-only — `show` reads the private snapshot.
   local verb="${1:-}"; shift || true
   case "$verb" in
-    show) layout_segment_show "$@" ;;   #| [<slot>] — read one or all
-    ""|-h|--help|help) _help_noun segment ;;
+    show) layout_segment_show "$@" ;;   #| [<segment>] — show one segment or all segments
     *) die "unknown segment command: $verb" ;;
   esac
 }
@@ -158,12 +206,11 @@ cmd_segment () {
 cmd_adapter () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    use)       layout_adapter_use "$@" ;;       #| <name> — apply the palette to a plugin
-    load)      layout_adapter_load "$@" ;;      #| <path> — apply a one-off adapter script
-    show)      layout_adapter_show ;;           #| the applied adapters, one per line
-    available) layout_adapter_available ;;      #| the adapters you can `use` (on the path)
-    register)  layout_adapter_register "$@" ;; #| <dir> — add an adapter search dir
-    ""|-h|--help|help) _help_noun adapter ;;
+    use)       layout_adapter_use "$@" ;;       #| <adapter>... — apply palette roles to one or more plugins
+    load)      layout_adapter_load "$@" ;;      #| <file> — apply a one-off adapter script
+    show)      layout_adapter_show ;;           #| — list applied adapters
+    available) layout_adapter_available ;;      #| — list adapters on the search path
+    register)  layout_adapter_register "$@" ;; #| <dir> — add an adapter search directory
     *) die "unknown adapter command: $verb" ;;
   esac
 }
@@ -171,12 +218,11 @@ cmd_adapter () {
 cmd_layout () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    use)       layout_use "$@" ;;       #| <name> — run a composition (adapters + segments)
-    load)      layout_load "$@" ;;      #| <path> — run a one-off layout script (records it)
-    show)      layout_show "$@" ;;      #| [name|path] — the active layout (summary, or one field raw)
-    available) layout_available ;;      #| the layouts you can `use` (on the path)
-    register)  layout_register "$@" ;; #| <dir> — add a layout search dir
-    ""|-h|--help|help) _help_noun layout ;;
+    use)       layout_use "$@" ;;       #| <layout> — apply a named layout definition
+    load)      layout_load "$@" ;;      #| <file> — apply and record a one-off layout definition
+    show)      layout_show "$@" ;;      #| [name|path] — show active layout provenance
+    available) layout_available ;;      #| — list layouts on the search path
+    register)  layout_register "$@" ;; #| <dir> — add a layout search directory
     *) die "unknown layout command: $verb" ;;
   esac
 }
@@ -184,10 +230,9 @@ cmd_layout () {
 cmd_classifier () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    show)      runner_classifier_show "$@" ;;      #| <name> — summary, contract, and resolved path
-    available) runner_classifier_available ;;      #| the classifiers available to runner run
-    register)  runner_classifier_register "$@" ;; #| <dir> — add a classifier search dir
-    ""|-h|--help|help) _help_noun classifier ;;
+    show)      runner_classifier_show "$@" ;;      #| <classifier> — show summary, contract, and resolved path
+    available) runner_classifier_available ;;      #| — list classifiers available to runners
+    register)  runner_classifier_register "$@" ;; #| <dir> — add a classifier search directory
     *) die "unknown classifier command: $verb" ;;
   esac
 }
@@ -195,10 +240,9 @@ cmd_classifier () {
 cmd_filter () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    show)      runner_filter_show "$@" ;;      #| <name> — summary, contract, and resolved path
-    available) runner_filter_available ;;      #| the filters available to runner run
-    register)  runner_filter_register "$@" ;; #| <dir> — add a filter search dir
-    ""|-h|--help|help) _help_noun filter ;;
+    show)      runner_filter_show "$@" ;;      #| <filter> — show summary, contract, and resolved path
+    available) runner_filter_available ;;      #| — list filters available to runners
+    register)  runner_filter_register "$@" ;; #| <dir> — add a filter search directory
     *) die "unknown filter command: $verb" ;;
   esac
 }
@@ -206,10 +250,9 @@ cmd_filter () {
 cmd_probe () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    show)      runner_probe_show "$@" ;;      #| <name> — summary, arguments, interval, and resolved path
-    available) runner_probe_available ;;      #| the probes available to runner run/watch
-    register)  runner_probe_register "$@" ;; #| <dir> — add a probe search dir
-    ""|-h|--help|help) _help_noun probe ;;
+    show)      runner_probe_show "$@" ;;      #| <probe> — show summary, arguments, interval, and resolved path
+    available) runner_probe_available ;;      #| — list probes available to runners
+    register)  runner_probe_register "$@" ;; #| <dir> — add a probe search directory
     *) die "unknown probe command: $verb" ;;
   esac
 }
@@ -217,12 +260,11 @@ cmd_probe () {
 cmd_runner () {
   local verb="${1:-}"; shift || true
   case "$verb" in
-    show)      runner_show "$@" ;;       #| <name> [<arg>...] — one named composition with resolved defaults
-    available) runner_available ;;       #| the named runner compositions on the path
-    register)  runner_register "$@" ;;  #| <dir> — add a runner-composition search dir
-    run)       runner_run "$@" ;;        #| [--here|--pane [-h|-v]|--window] [<runner>] [composition] -- <command>...
-    watch)     runner_watch "$@" ;;      #| [--here|--pane [-h|-v]|--window] [<runner>] [composition] — probe until interrupted
-    ""|-h|--help|help) _help_noun runner ;;
+    show)      runner_show "$@" ;;       #| <runner> [<arg>...] — show one named composition with resolved defaults
+    available) runner_available ;;       #| — list named runner compositions
+    register)  runner_register "$@" ;;  #| <dir> — add a runner search directory
+    run)       runner_run "$@" ;;        #| [--here|--pane [-h|-v]|--window] [<runner>] [--classify <classifier>] [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]] -- <command>... — run a command with monitoring
+    watch)     runner_watch "$@" ;;      #| [--here|--pane [-h|-v]|--window] [<runner>] [--probe <probe> [<arg>...]] — watch probe state until interrupted
     *) die "unknown runner command: $verb" ;;
   esac
 }
@@ -235,9 +277,9 @@ cmd_runner () {
 main () {
   local cmd="${1:-}"; shift || true
 case "$cmd" in
-    init)     lifecycle_init    "$@" ;;   #| seed defaults, register search paths, publish the CLI handle; then render
-    apply)    lifecycle_apply   "$@" ;;   #| re-apply the layout and render from the source of truth
-    show)     lifecycle_show    "$@" ;;   #| print the active configuration
+    init)     lifecycle_init    "$@" ;;   #| — seed defaults, register paths, publish the CLI handle, and render
+    apply)    lifecycle_apply   "$@" ;;   #| — commit global option edits and render the session
+    show)     lifecycle_show    "$@" ;;   #| — print the active configuration
     state)    cmd_state   "$@" ;;
     status)   cmd_status  "$@" ;;
     health)   cmd_health  "$@" ;;
@@ -255,7 +297,8 @@ case "$cmd" in
     _unfocus) lifecycle_unfocus "$@" ;;           # internal: pane-focus-out hook callback
     _run)     runner_exec "$@" ;;        # internal: spawned-pane runner callback
     _watch)   runner_watch_exec "$@" ;;  # internal: spawned-pane watcher callback
-    ""|-h|--help|help) usage ;;
+    help)     _help_command "$@" ;;      #| [<command> [<verb>]] — show command help
+    ""|-h|--help) _help_command ;;
     *) die "unknown command: $cmd (try: airline help)" ;;
 esac
 }

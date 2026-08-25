@@ -1,0 +1,258 @@
+#compdef airline
+# zsh completion for airline
+# Generated from `airline help`; do not edit.
+_airline_children () {
+  case "$1" in
+    '') printf %s init\ apply\ show\ help\ state\ status\ health\ problem\ lock\ palette\ segment\ adapter\ layout\ classifier\ filter\ probe\ runner ;;
+    state) printf %s suspend\ resume\ toggle\ show ;;
+    status) printf %s set\ clear\ show ;;
+    health) printf %s set\ clear\ show ;;
+    problem) printf %s set\ clear\ show ;;
+    lock) printf %s show\ clear ;;
+    palette) printf %s show\ use\ available\ register ;;
+    segment) printf %s show ;;
+    adapter) printf %s use\ load\ show\ available\ register ;;
+    layout) printf %s use\ load\ show\ available\ register ;;
+    classifier) printf %s show\ available\ register ;;
+    filter) printf %s show\ available\ register ;;
+    probe) printf %s show\ available\ register ;;
+    runner) printf %s show\ available\ register\ run\ watch ;;
+    *) return 1 ;;
+  esac
+}
+_airline_usage () {
+  case "$1" in
+    init) printf %s '' ;;
+    apply) printf %s '' ;;
+    show) printf %s '' ;;
+    help) printf %s \[\<command\>\ \[\<verb\>\]\] ;;
+    state\ suspend) printf %s '' ;;
+    state\ resume) printf %s '' ;;
+    state\ toggle) printf %s '' ;;
+    state\ show) printf %s '' ;;
+    status\ set) printf %s \<status-key\>\ \<active\|result\|attention\>\ \[--transient\]\ \[-t\ \<window\>\] ;;
+    status\ clear) printf %s \<status-key\>\ \[-t\ \<window\>\] ;;
+    status\ show) printf %s \[\<status-key\>\]\ \[-t\ \<window\>\] ;;
+    health\ set) printf %s \<health-key\>\ \<ok\|warn\|fail\>\ \[--transient\]\ \[-t\ \<window\>\] ;;
+    health\ clear) printf %s \<health-key\>\ \[-t\ \<window\>\] ;;
+    health\ show) printf %s \[\<health-key\>\]\ \[-t\ \<window\>\] ;;
+    problem\ set) printf %s \<session\>\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>\] ;;
+    problem\ clear) printf %s \<session\>\ \<problem-key\> ;;
+    problem\ show) printf %s \[\<session\>\ \[\<problem-key\>\]\] ;;
+    lock\ show) printf %s '' ;;
+    lock\ clear) printf %s \<session\|window\>\ \<target\>\ \<namespace\> ;;
+    palette\ show) printf %s \[name\|\<palette-element\>\] ;;
+    palette\ use) printf %s \<palette\> ;;
+    palette\ available) printf %s '' ;;
+    palette\ register) printf %s \<dir\> ;;
+    segment\ show) printf %s \[\<segment\>\] ;;
+    adapter\ use) printf %s \<adapter\>... ;;
+    adapter\ load) printf %s \<file\> ;;
+    adapter\ show) printf %s '' ;;
+    adapter\ available) printf %s '' ;;
+    adapter\ register) printf %s \<dir\> ;;
+    layout\ use) printf %s \<layout\> ;;
+    layout\ load) printf %s \<file\> ;;
+    layout\ show) printf %s \[name\|path\] ;;
+    layout\ available) printf %s '' ;;
+    layout\ register) printf %s \<dir\> ;;
+    classifier\ show) printf %s \<classifier\> ;;
+    classifier\ available) printf %s '' ;;
+    classifier\ register) printf %s \<dir\> ;;
+    filter\ show) printf %s \<filter\> ;;
+    filter\ available) printf %s '' ;;
+    filter\ register) printf %s \<dir\> ;;
+    probe\ show) printf %s \<probe\> ;;
+    probe\ available) printf %s '' ;;
+    probe\ register) printf %s \<dir\> ;;
+    runner\ show) printf %s \<runner\>\ \[\<arg\>...\] ;;
+    runner\ available) printf %s '' ;;
+    runner\ register) printf %s \<dir\> ;;
+    runner\ run) printf %s \[--here\|--pane\ \[-h\|-v\]\|--window\]\ \[\<runner\>\]\ \[--classify\ \<classifier\>\]\ \[--filter\ \<filter\>\ \[--merge-stderr\]\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\ --\ \<command\>... ;;
+    runner\ watch) printf %s \[--here\|--pane\ \[-h\|-v\]\|--window\]\ \[\<runner\>\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\] ;;
+    state) printf %s '' ;;
+    status) printf %s '' ;;
+    health) printf %s '' ;;
+    problem) printf %s '' ;;
+    lock) printf %s '' ;;
+    palette) printf %s '' ;;
+    segment) printf %s '' ;;
+    adapter) printf %s '' ;;
+    layout) printf %s '' ;;
+    classifier) printf %s '' ;;
+    filter) printf %s '' ;;
+    probe) printf %s '' ;;
+    runner) printf %s '' ;;
+    *) return 1 ;;
+  esac
+}
+_airline_description () {
+  case "$1" in
+    init) printf %s seed\ defaults\,\ register\ paths\,\ publish\ the\ CLI\ handle\,\ and\ render ;;
+    apply) printf %s commit\ global\ option\ edits\ and\ render\ the\ session ;;
+    show) printf %s print\ the\ active\ configuration ;;
+    help) printf %s show\ command\ help ;;
+    state\ suspend) printf %s mute\ the\ palette\ +\ trap\ the\ prefix\ \(session\ dormant\) ;;
+    state\ resume) printf %s restore\ vibrant\ colours\ +\ release\ the\ prefix ;;
+    state\ toggle) printf %s flip\ active/suspended ;;
+    state\ show) printf %s print\ the\ current\ state\ \(active\ \|\ suspended\) ;;
+    status\ set) printf %s set\ app\ status ;;
+    status\ clear) printf %s clear\ app\ status ;;
+    status\ show) printf %s show\ a\ window\'s\ app\ status ;;
+    health\ set) printf %s set\ window\ health ;;
+    health\ clear) printf %s clear\ window\ health ;;
+    health\ show) printf %s show\ a\ window\'s\ health ;;
+    problem\ set) printf %s set\ or\ recover\ a\ session\ problem ;;
+    problem\ clear) printf %s clear\ a\ session\ problem ;;
+    problem\ show) printf %s show\ all\ sessions\,\ one\ session\,\ or\ one\ problem ;;
+    lock\ show) printf %s list\ outstanding\ transactions\ and\ owner\ state ;;
+    lock\ clear) printf %s release\ one\ stale\ lock ;;
+    palette\ show) printf %s show\ the\ palette\ summary\ or\ one\ raw\ field ;;
+    palette\ use) printf %s load\ a\ complete\ palette\ and\ repaint\ adapters ;;
+    palette\ available) printf %s list\ palettes\ on\ the\ search\ path ;;
+    palette\ register) printf %s add\ a\ palette\ search\ directory ;;
+    segment\ show) printf %s show\ one\ segment\ or\ all\ segments ;;
+    adapter\ use) printf %s apply\ palette\ roles\ to\ one\ or\ more\ plugins ;;
+    adapter\ load) printf %s apply\ a\ one-off\ adapter\ script ;;
+    adapter\ show) printf %s list\ applied\ adapters ;;
+    adapter\ available) printf %s list\ adapters\ on\ the\ search\ path ;;
+    adapter\ register) printf %s add\ an\ adapter\ search\ directory ;;
+    layout\ use) printf %s apply\ a\ named\ layout\ definition ;;
+    layout\ load) printf %s apply\ and\ record\ a\ one-off\ layout\ definition ;;
+    layout\ show) printf %s show\ active\ layout\ provenance ;;
+    layout\ available) printf %s list\ layouts\ on\ the\ search\ path ;;
+    layout\ register) printf %s add\ a\ layout\ search\ directory ;;
+    classifier\ show) printf %s show\ summary\,\ contract\,\ and\ resolved\ path ;;
+    classifier\ available) printf %s list\ classifiers\ available\ to\ runners ;;
+    classifier\ register) printf %s add\ a\ classifier\ search\ directory ;;
+    filter\ show) printf %s show\ summary\,\ contract\,\ and\ resolved\ path ;;
+    filter\ available) printf %s list\ filters\ available\ to\ runners ;;
+    filter\ register) printf %s add\ a\ filter\ search\ directory ;;
+    probe\ show) printf %s show\ summary\,\ arguments\,\ interval\,\ and\ resolved\ path ;;
+    probe\ available) printf %s list\ probes\ available\ to\ runners ;;
+    probe\ register) printf %s add\ a\ probe\ search\ directory ;;
+    runner\ show) printf %s show\ one\ named\ composition\ with\ resolved\ defaults ;;
+    runner\ available) printf %s list\ named\ runner\ compositions ;;
+    runner\ register) printf %s add\ a\ runner\ search\ directory ;;
+    runner\ run) printf %s run\ a\ command\ with\ monitoring ;;
+    runner\ watch) printf %s watch\ probe\ state\ until\ interrupted ;;
+    state) printf %s state\ commands ;;
+    status) printf %s status\ commands ;;
+    health) printf %s health\ commands ;;
+    problem) printf %s problem\ commands ;;
+    lock) printf %s lock\ commands ;;
+    palette) printf %s palette\ commands ;;
+    segment) printf %s segment\ commands ;;
+    adapter) printf %s adapter\ commands ;;
+    layout) printf %s layout\ commands ;;
+    classifier) printf %s classifier\ commands ;;
+    filter) printf %s filter\ commands ;;
+    probe) printf %s probe\ commands ;;
+    runner) printf %s runner\ commands ;;
+    *) return 1 ;;
+  esac
+}
+
+_airline_zsh_dynamic () {
+  local type="$1" noun
+  case "$type" in
+    palette|adapter|layout|classifier|filter|probe|runner)
+      command airline "$type" available 2>/dev/null
+      ;;
+    palette-element) command airline palette show 2>/dev/null | awk '$1 != "name" {print $1}' ;;
+    segment) command airline segment show 2>/dev/null | awk '{print $1}' ;;
+    status-key) command airline status show 2>/dev/null | awk '{print $1}' ;;
+    health-key) command airline health show 2>/dev/null | awk '{print $1}' ;;
+    session) command tmux list-sessions -F '#{session_name}' 2>/dev/null ;;
+    window) command tmux list-windows -a -F '#{window_id}' 2>/dev/null ;;
+  esac
+}
+
+_airline_zsh_problem_keys () {
+  command airline problem show "$1" 2>/dev/null | awk '{print $1}'
+}
+
+_airline_zsh_describe_children () {
+  local parent="$1" child
+  local -a values
+  for child in ${=_airline_children "$parent"}; do
+    values+=("$child:$(_airline_description "${parent:+$parent }$child")")
+  done
+  _describe 'airline command' values
+}
+
+_airline_zsh () {
+  local top="${words[2]:-}" verb path previous semantic
+  if (( CURRENT == 2 )); then _airline_zsh_describe_children ''; return; fi
+  if [[ "$top" == help ]]; then
+    if (( CURRENT == 3 )); then _airline_zsh_describe_children ''; return; fi
+    if (( CURRENT == 4 )); then _airline_zsh_describe_children "${words[3]}"; return; fi
+    return
+  fi
+  if [[ -n "$(_airline_children "$top")" ]]; then
+    if (( CURRENT == 3 )); then _airline_zsh_describe_children "$top"; return; fi
+    verb="${words[3]}"; path="$top $verb"
+  else
+    path="$top"
+  fi
+  previous="${words[CURRENT-1]:-}"
+  case "$previous" in
+    --classify) compadd ${(@f)$(_airline_zsh_dynamic classifier)}; return ;;
+    --filter) compadd ${(@f)$(_airline_zsh_dynamic filter)}; return ;;
+    --probe) compadd ${(@f)$(_airline_zsh_dynamic probe)}; return ;;
+    -t) compadd ${(@f)$(_airline_zsh_dynamic window)}; return ;;
+  esac
+  if [[ "$path" == 'runner run' || "$path" == 'runner watch' ]]; then
+    if (( ${words[(I)--]} )); then [[ "$path" == 'runner run' ]] && _normal; return; fi
+    local -a runner_options=(--here --pane --window -h -v --probe)
+    [[ "$path" == 'runner run' ]] && runner_options+=(--classify --filter --merge-stderr --)
+    if [[ "$PREFIX" == -* ]]; then compadd -- $runner_options
+    elif (( CURRENT == 4 )); then compadd ${(@f)$(_airline_zsh_dynamic runner)} $runner_options
+    fi
+    return
+  fi
+  case "$path" in
+    'status set')
+      if (( CURRENT == 4 )); then semantic=status-key
+      elif (( CURRENT == 5 )); then compadd active result attention; return
+      fi
+      ;;
+    'status clear'|'status show') (( CURRENT == 4 )) && semantic=status-key ;;
+    'health set')
+      if (( CURRENT == 4 )); then semantic=health-key
+      elif (( CURRENT == 5 )); then compadd ok warn fail; return
+      fi
+      ;;
+    'health clear'|'health show') (( CURRENT == 4 )) && semantic=health-key ;;
+    'problem set')
+      if (( CURRENT == 4 )); then semantic=session
+      elif (( CURRENT == 5 )); then compadd ${(@f)$(_airline_zsh_problem_keys "${words[4]}")}; return
+      elif (( CURRENT == 6 )); then compadd ok warn fail; return
+      fi
+      ;;
+    'problem clear'|'problem show')
+      if (( CURRENT == 4 )); then semantic=session
+      elif (( CURRENT == 5 )); then compadd ${(@f)$(_airline_zsh_problem_keys "${words[4]}")}; return
+      fi
+      ;;
+    'lock clear')
+      if (( CURRENT == 4 )); then compadd session window; return
+      elif (( CURRENT == 5 )); then compadd ${(@f)$(_airline_zsh_dynamic "${words[4]}")}; return
+      elif (( CURRENT == 6 )); then
+        [[ "${words[4]}" == session ]] && compadd config problem || compadd status health
+        return
+      fi
+      ;;
+    'palette use') semantic=palette ;; 'adapter use') semantic=adapter ;;
+    'layout use') semantic=layout ;; 'classifier show') semantic=classifier ;;
+    'filter show') semantic=filter ;; 'probe show') semantic=probe ;;
+    'runner show') semantic=runner ;;
+    'palette show') compadd name ${(@f)$(_airline_zsh_dynamic palette-element)}; return ;;
+    'layout show') compadd name path; return ;;
+    'segment show') semantic=segment ;;
+    *' register') _files -/; return ;; *' load') _files; return ;;
+  esac
+  [[ -z "$semantic" ]] || compadd ${(@f)$(_airline_zsh_dynamic "$semantic")}
+}
+
+compdef _airline_zsh airline

@@ -77,10 +77,21 @@ CASES
   assert_output --partial "--transient"
 }
 
-@test "noun help prints only that noun" {
-  run main palette help
+@test "canonical help inspects a noun or leaf command" {
+  run main help palette
   assert_success
   assert_output --partial "palette:"
   assert_output --partial "available"
   refute_output --partial "runner:"
+
+  run main help palette use
+  assert_success
+  assert_output --partial "Usage: airline palette use <palette>"
+  assert_output --partial "repaint adapters"
+}
+
+@test "noun-local help is not retained" {
+  run main palette help
+  assert_failure
+  assert_output --partial "unknown palette command: help"
 }

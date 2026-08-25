@@ -82,7 +82,10 @@ make install BINDIR="$HOME/bin"
 
 The launcher finds the active plugin through tmux, so it keeps working if TPM
 moves the plugin directory. Tmux-airline must be initialized in the tmux server;
-otherwise the launcher prints an actionable error.
+otherwise the launcher prints an actionable error. The same install places Bash
+and Zsh completions under the prefix's standard `share` directories. Your shell
+or completion manager must include those directories in its normal completion
+search path.
 
 ## Core concepts
 
@@ -717,22 +720,22 @@ instead take their owning session as a required first argument.
 airline init                 # initialize airline (normally called by airline.tmux)
 airline apply                # commit global option edits and render this session
 airline show                 # print the active configuration
-airline help                 # usage (also -h / --help, and <noun> help)
+airline help [command [verb]] # all commands, one noun, or one leaf command
 
-airline palette  show [name|<element>] | available | use <name> | register <dir>
-airline segment  show [<slot>]                 # read-only; write with set -g @airline-segment-<slot>
-airline layout   show [name|path] | available | use <name> | load <path> | register <dir>
-airline adapter  show | available | use <name> | load <path> | register <dir>
-airline classifier show <name> | available | register <dir>
-airline filter     show <name> | available | register <dir>
-airline probe      show <name> | available | register <dir>
-airline runner   show <name> [<arg>...] | available | register <dir>
-                 run [--here|--pane [-h|-v]|--window] [<runner>] [--classify <name>]
-                     [--filter <name> [--merge-stderr]] [--probe <name> [<arg>...]] -- <command>...
-                 watch [--here|--pane [-h|-v]|--window] [<runner>] [--probe <name> [<arg>...]]
-airline status   set <key> <level>    [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
-airline health   set <key> <ok|warn|fail> [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
-airline problem  set <session> <key> <ok|warn|fail> [<message>] | clear <session> <key> | show [<session> [<key>]]
+airline palette  show [name|<palette-element>] | available | use <palette> | register <dir>
+airline segment  show [<segment>]              # read-only; write with set -g @airline-segment-<segment>
+airline layout   show [name|path] | available | use <layout> | load <file> | register <dir>
+airline adapter  show | available | use <adapter>... | load <file> | register <dir>
+airline classifier show <classifier> | available | register <dir>
+airline filter     show <filter> | available | register <dir>
+airline probe      show <probe> | available | register <dir>
+airline runner   show <runner> [<arg>...] | available | register <dir>
+                 run [--here|--pane [-h|-v]|--window] [<runner>] [--classify <classifier>]
+                     [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]] -- <command>...
+                 watch [--here|--pane [-h|-v]|--window] [<runner>] [--probe <probe> [<arg>...]]
+airline status   set <status-key> <active|result|attention> [--transient] [-t <window>] | clear <status-key> [-t <window>] | show [<status-key>] [-t <window>]
+airline health   set <health-key> <ok|warn|fail> [--transient] [-t <window>] | clear <health-key> [-t <window>] | show [<health-key>] [-t <window>]
+airline problem  set <session> <problem-key> <ok|warn|fail> [<message>] | clear <session> <problem-key> | show [<session> [<problem-key>]]
 airline lock     show | clear <session|window> <target> <namespace>
 airline state    suspend | resume | toggle | show
 ```
@@ -743,11 +746,17 @@ Two conventions run through it:
   registered directory; `register <dir>` adds one (and lets it shadow shipped
   names). `load <path>` runs a one-off adapter or layout file. Classifier, filter,
   probe, and runner each have an independent registered catalog.
+
 - **`show`.** Bare `show` is a human summary; `show <field>` prints one raw
   value, newline-terminated, safe for `$(…)`. `available` lists the catalog a
   `use` can pick from. Catalog-only runner nouns instead use `show <name>` for an
   implementation's summary, usage, and path. Editing a color or segment option is
   free; the bar re-renders on the next `apply` (or `use`, which ends in one).
+
+Help is inspected through the top-level command, for example `airline help
+palette` or `airline help runner run`. Bash and Zsh completion follows the same
+grammar and completes typed values such as palette, layout, probe, session, and
+window names through the installed CLI.
 
 ## Development
 
