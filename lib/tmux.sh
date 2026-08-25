@@ -181,9 +181,11 @@ current_session () {
 # Runner topology. Commands are argv vectors, not shell strings: split/new-window
 # pass every argument after the fixed placement fields directly to the new pane.
 # Both creators print the new pane id so orchestration can identify its owner.
-runner_open_pane () {   # <target-pane> <cwd> <command> [<arg>...]
-  local target="$1" cwd="$2"; shift 2
-  tmux split-window -d -P -F '#{pane_id}' -c "$cwd" -t "$target" "$@"
+runner_open_pane () {   # <target-pane> <cwd> <-h|-v|empty> <command> [<arg>...]
+  local target="$1" cwd="$2" orientation="$3"; shift 3
+  local -a split_args=()
+  [[ -n "$orientation" ]] && split_args+=("$orientation")
+  tmux split-window "${split_args[@]}" -d -P -F '#{pane_id}' -c "$cwd" -t "$target" "$@"
 }
 
 runner_open_window () {   # <target-session> <cwd> <command> [<arg>...]

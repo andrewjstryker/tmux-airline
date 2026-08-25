@@ -324,13 +324,16 @@ Elements compose only for one invocation:
 ```sh
 airline runner run -- make test
 airline runner run --pane -- npm test
+airline runner run --pane -h -- npm test
 airline runner run --window -- cargo test
 ```
 
 The default `--here` runs synchronously in the current pane, streams terminal I/O,
 and returns the command's original exit status. `--pane` and `--window` launch in
-new tmux topology and print the new pane id; spawned panes are retained after exit
-so their output and native tmux exit status remain available until dismissed.
+new tmux topology and print the new pane id. After `--pane`, the native tmux `-h`
+and `-v` modifiers select the split orientation; bare `--pane` keeps tmux's default.
+Spawned panes are retained after exit so their output and native tmux exit status
+remain available until dismissed.
 
 A probe-only implementation can watch a remote service until interrupted:
 
@@ -358,9 +361,9 @@ endpoints replace those defaults.
 While watching, status is `active` and probe reports drive health. Stopping the
 watch clears both; there is no artificial command exit to classify.
 
-`--here` is the explicit spelling of the default placement; `--pane` and `--window`
-are alternatives. Probe arguments continue to end-of-argv for `watch`. For `run`,
-the bare `--` separates the airline specification from the command.
+`--here` is the explicit spelling of the default placement; `--pane [-h|-v]` and
+`--window` are alternatives. Probe arguments continue to end-of-argv for `watch`.
+For `run`, the bare `--` separates the airline specification from the command.
 
 This lifecycle monitoring is independent of tmux's standard terminal monitoring.
 Airline observes a process it runs: whether it is active, its changing health, and
@@ -708,9 +711,9 @@ airline classifier show <name> | available | register <dir>
 airline filter     show <name> | available | register <dir>
 airline probe      show <name> | available | register <dir>
 airline runner   show <name> [<arg>...] | available | register <dir>
-                 run [--here|--pane|--window] [<runner>] [--classify <name>]
+                 run [--here|--pane [-h|-v]|--window] [<runner>] [--classify <name>]
                      [--filter <name> [--merge-stderr]] [--probe <name> [<arg>...]] -- <command>...
-                 watch [--here|--pane|--window] [<runner>] [--probe <name> [<arg>...]]
+                 watch [--here|--pane [-h|-v]|--window] [<runner>] [--probe <name> [<arg>...]]
 airline status   set <key> <level>    [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
 airline health   set <key> <ok|warn|fail> [--transient] [-t <win>] | clear <key> [-t <win>] | show [<key>] [-t <win>]
 airline problem  set <session> <key> <ok|warn|fail> [<message>] | clear <session> <key> | show [<session> [<key>]]

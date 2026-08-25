@@ -253,9 +253,9 @@ airline classifier show <name> | available | register <dir>
 airline filter     show <name> | available | register <dir>
 airline probe      show <name> | available | register <dir>
 airline runner   show <name> [<arg>...] | available | register <dir>
-                 run [--here|--pane|--window] [<runner>] [--classify <name>]
+                 run [--here|--pane [-h|-v]|--window] [<runner>] [--classify <name>]
                      [--filter <name> [--merge-stderr]] [--probe <name> [<arg>...]] -- <command>...
-                 watch [--here|--pane|--window] [<runner>] --probe <name> [<arg>...]
+                 watch [--here|--pane [-h|-v]|--window] [<runner>] --probe <name> [<arg>...]
 airline state    suspend | resume | toggle | show
 
 airline _unfocus <window-id>
@@ -282,7 +282,8 @@ are public.
   Named compositions contain monitoring configuration but never the command.
   `run` defaults to classifier `basic`; `watch` requires a probe. `--here` is the
   explicit placement default, while `--pane` and `--window` create tmux topology
-  through the common runner core.
+  through the common runner core. Pane placement accepts tmux's native `-h` and
+  `-v` orientation modifiers; omitting one preserves tmux's default split.
 - `-t` accepts a window target for status and health. A pane target is valid where
   tmux can resolve its owning window. Problem mutations instead require a session
   as their first positional argument; a bare problem show reads every session.

@@ -392,7 +392,7 @@ wait_for_file () {
   pane="$(current_pane)"
   cwd="$(current_path)"
 
-  split="$(runner_open_pane "$pane" "$cwd" bash -c 'sleep 30')"
+  split="$(runner_open_pane "$pane" "$cwd" "" bash -c 'sleep 30')"
   [[ "$split" =~ ^%[0-9]+$ ]]
   run tmux display-message -p -t "$split" '#{pane_current_path}'
   assert_output "$cwd"
@@ -404,6 +404,33 @@ wait_for_file () {
   [[ "$window" =~ ^%[0-9]+$ ]]
   run tmux display-message -p -t "$window" '#{pane_current_path}'
   assert_output "$cwd"
+}
+
+@test "runner pane topology follows tmux -h and -v orientation" {
+  load_tmux
+  pane="$(current_pane)"
+  cwd="$(current_path)"
+
+  horizontal="$(runner_open_pane "$pane" "$cwd" -h bash -c 'sleep 30')"
+  run tmux display-message -p -t "$pane" '#{pane_top}'
+  origin_top="$output"
+  run tmux display-message -p -t "$horizontal" '#{pane_top}'
+  assert_output "$origin_top"
+  run tmux display-message -p -t "$pane" '#{pane_left}'
+  origin_left="$output"
+  run tmux display-message -p -t "$horizontal" '#{pane_left}'
+  refute_output "$origin_left"
+  tmux kill-pane -t "$horizontal"
+
+  vertical="$(runner_open_pane "$pane" "$cwd" -v bash -c 'sleep 30')"
+  run tmux display-message -p -t "$pane" '#{pane_left}'
+  origin_left="$output"
+  run tmux display-message -p -t "$vertical" '#{pane_left}'
+  assert_output "$origin_left"
+  run tmux display-message -p -t "$pane" '#{pane_top}'
+  origin_top="$output"
+  run tmux display-message -p -t "$vertical" '#{pane_top}'
+  refute_output "$origin_top"
 }
 
 @test "source_file loads a tmux file that sets options" {

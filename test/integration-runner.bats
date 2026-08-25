@@ -352,13 +352,22 @@ setup() {
 
 @test "runner pane retains failed output and native exit status" {
   airline init
+  origin="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
 
   # Avoid making the retained-pane assertion depend on tmux scheduling a payload
   # that exits in the same instant its pane is created.
-  run airline runner run --pane -- bash -c 'printf "pane failure\\n"; sleep 1; exit 9'
+  run airline runner run --pane -h -- bash -c 'printf "pane failure\\n"; sleep 1; exit 9'
   assert_success
   spawned="$output"
   assert_regex "$spawned" '^%[0-9]+$'
+  run $TMUX -L "$_bats_socket" display-message -p -t "$origin" '#{pane_top}'
+  origin_top="$output"
+  run $TMUX -L "$_bats_socket" display-message -p -t "$spawned" '#{pane_top}'
+  assert_output "$origin_top"
+  run $TMUX -L "$_bats_socket" display-message -p -t "$origin" '#{pane_left}'
+  origin_left="$output"
+  run $TMUX -L "$_bats_socket" display-message -p -t "$spawned" '#{pane_left}'
+  refute_output "$origin_left"
 
   dead=""
   dead_status=""

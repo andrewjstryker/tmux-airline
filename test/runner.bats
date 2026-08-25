@@ -66,6 +66,20 @@ setup() {
   assert_output $'--probe\nhttp\none\ntwo'
 }
 
+@test "pane placement accepts tmux orientation modifiers" {
+  _runner_parse run --pane -h -- true
+  assert_equal "$AIRLINE_RUNNER_PLACEMENT" pane
+  assert_equal "$AIRLINE_RUNNER_PANE_ORIENTATION" -h
+
+  _runner_parse run --pane -v -- true
+  assert_equal "$AIRLINE_RUNNER_PLACEMENT" pane
+  assert_equal "$AIRLINE_RUNNER_PANE_ORIENTATION" -v
+
+  _runner_parse run --pane -- true
+  assert_equal "$AIRLINE_RUNNER_PLACEMENT" pane
+  assert_equal "$AIRLINE_RUNNER_PANE_ORIENTATION" ""
+}
+
 @test "probe interval must be positive seconds" {
   printf '%s\n' \
     'AIRLINE_PROBE_SUMMARY="test probe"' \

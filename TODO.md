@@ -6,11 +6,6 @@ state and problems, and window-local status/health signals.
 
 ## Future ideas
 
-### Pane orientation
-
-Runners can create panes. Tmux supports vertical and horizontal panes. We
-should follow the Tmux convention here.
-
 ### Improve file layout clarity
 
 We should introduce some hierarchy in the file system to clearly separate code

@@ -479,6 +479,7 @@ _runner_finish () {   # <condition> <window> <key>
 # one operation. Probe arguments end at the next recognized runner option, at `--`
 # for run, or at argv exhaustion for watch.
 AIRLINE_RUNNER_PLACEMENT=here
+AIRLINE_RUNNER_PANE_ORIENTATION=""
 AIRLINE_RUNNER_CLASSIFIER=""
 AIRLINE_RUNNER_FILTER=""
 AIRLINE_RUNNER_FILTER_MERGE=""
@@ -496,8 +497,17 @@ _runner_expand_named () {   # <session> <run|watch> [invocation...]
   local -a placement=() extra=() command=()
   AIRLINE_RUNNER_INVOCATION_ARGV=()
 
-  while [[ "${1:-}" == --here || "${1:-}" == --pane || "${1:-}" == --window ]]; do
-    placement+=("$1"); shift
+  while (( $# )); do
+    case "$1" in
+      --pane)
+        placement+=("$1"); shift
+        if [[ "${1:-}" == -h || "${1:-}" == -v ]]; then
+          placement+=("$1"); shift
+        fi
+        ;;
+      --here|--window) placement+=("$1"); shift ;;
+      *) break ;;
+    esac
   done
 
   if (( $# == 0 )) || [[ "$1" == --* ]]; then
@@ -549,6 +559,7 @@ _runner_spec_token () {
 _runner_parse () {   # <run|watch> [spec...]
   local mode="$1"; shift
   AIRLINE_RUNNER_PLACEMENT=here
+  AIRLINE_RUNNER_PANE_ORIENTATION=""
   AIRLINE_RUNNER_CLASSIFIER=""
   AIRLINE_RUNNER_FILTER=""
   AIRLINE_RUNNER_FILTER_MERGE=""
@@ -558,9 +569,25 @@ _runner_parse () {   # <run|watch> [spec...]
 
   while (( $# )); do
     case "$1" in
-      --here)   AIRLINE_RUNNER_PLACEMENT=here; shift ;;
-      --pane)   AIRLINE_RUNNER_PLACEMENT=pane; shift ;;
-      --window) AIRLINE_RUNNER_PLACEMENT=window; shift ;;
+      --here)
+        AIRLINE_RUNNER_PLACEMENT=here
+        AIRLINE_RUNNER_PANE_ORIENTATION=""
+        shift
+        ;;
+      --pane)
+        AIRLINE_RUNNER_PLACEMENT=pane
+        AIRLINE_RUNNER_PANE_ORIENTATION=""
+        shift
+        if [[ "${1:-}" == -h || "${1:-}" == -v ]]; then
+          AIRLINE_RUNNER_PANE_ORIENTATION="$1"
+          shift
+        fi
+        ;;
+      --window)
+        AIRLINE_RUNNER_PLACEMENT=window
+        AIRLINE_RUNNER_PANE_ORIENTATION=""
+        shift
+        ;;
       --classify)
         [[ "$mode" == run ]] || die "runner watch: --classify is not applicable"
         [[ -z "$AIRLINE_RUNNER_CLASSIFIER" ]] || die "runner run: classifier already specified"
@@ -748,7 +775,7 @@ _runner_invoke () {   # <session> <run|watch> [spec...]
     pane|window)
       pane="$(current_pane)"; cwd="$(current_path)"
       if [[ "$AIRLINE_RUNNER_PLACEMENT" == pane ]]; then
-        spawned="$(runner_open_pane "$pane" "$cwd" env \
+        spawned="$(runner_open_pane "$pane" "$cwd" "$AIRLINE_RUNNER_PANE_ORIENTATION" env \
           "AIRLINE_DIR=$AIRLINE_DIR" "AIRLINE_TMUX=${AIRLINE_TMUX:-tmux}" \
           "$AIRLINE_DIR/airline.sh" "_$mode" "${AIRLINE_RUNNER_SPEC_ARGV[@]}")"
       else

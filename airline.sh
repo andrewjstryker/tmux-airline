@@ -221,8 +221,8 @@ cmd_runner () {
     show)      runner_show "$@" ;;       #| <name> [<arg>...] — one named composition with resolved defaults
     available) runner_available ;;       #| the named runner compositions on the path
     register)  runner_register "$@" ;;  #| <dir> — add a runner-composition search dir
-    run)       runner_run "$@" ;;        #| [--here|--pane|--window] [<runner>] [composition] -- <command>...
-    watch)     runner_watch "$@" ;;      #| [--here|--pane|--window] [<runner>] [composition] — probe until interrupted
+    run)       runner_run "$@" ;;        #| [--here|--pane [-h|-v]|--window] [<runner>] [composition] -- <command>...
+    watch)     runner_watch "$@" ;;      #| [--here|--pane [-h|-v]|--window] [<runner>] [composition] — probe until interrupted
     ""|-h|--help|help) _help_noun runner ;;
     *) die "unknown runner command: $verb" ;;
   esac
