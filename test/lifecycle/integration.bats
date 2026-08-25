@@ -18,7 +18,7 @@ setup() {
 # --- init -------------------------------------------------------------------
 
 @test "init publishes the CLI path as the public bootstrap handle + sets the sentinel" {
-  airline init
+  airline session init
   run get_option @airline-cli          # public (single dash) — the one published handle
   assert_output --partial "/airline.sh"
   run sopt @airline--defaults-done
@@ -26,7 +26,7 @@ setup() {
 }
 
 @test "init applies the default palette when no palette is set" {
-  airline init
+  airline session init
   run airline palette show inner-bg
   assert_output "colour234"          # palette use default
   run sopt @airline--palette
@@ -34,7 +34,7 @@ setup() {
 }
 
 @test "init applies the adaptive layout (segments) when none is set" {
-  airline init
+  airline session init
   run sopt status-left
   assert_output --partial "#S"       # adaptive sets left-out=#S (present with or without plugins)
   run sopt @airline--layout
@@ -43,15 +43,15 @@ setup() {
 
 @test "init does not clobber a user-set palette" {
   $TMUX -L "$_bats_socket" set -g @airline-inner-bg colour99
-  airline init
+  airline session init
   run get_option @airline-inner-bg
   assert_output "colour99"           # user value preserved; default not applied
 }
 
 @test "init is idempotent and refreshes global segment configuration" {
-  airline init
+  airline session init
   $TMUX -L "$_bats_socket" set -g @airline-segment-left-out "CUSTOM"
-  airline init
+  airline session init
   run airline segment show left-out
   assert_output "CUSTOM"
   run sopt @airline-segment-left-out
@@ -59,7 +59,7 @@ setup() {
 }
 
 @test "init composes the bar (chrome + window formats)" {
-  airline init
+  airline session init
   run sopt status-style
   assert_output --partial "bg=colour234"
   run get_option window-status-current-format
@@ -67,7 +67,7 @@ setup() {
 }
 
 @test "the global lifecycle hook initializes sessions created after airline loads" {
-  airline init
+  airline session init
   $TMUX -L "$_bats_socket" new-session -d -s later
   later="$($TMUX -L "$_bats_socket" display-message -p -t later '#{session_id}')"
 
@@ -87,16 +87,16 @@ setup() {
 # --- apply / use ------------------------------------------------------------
 
 @test "apply renders from the current source of truth" {
-  airline init
+  airline session init
   $TMUX -L "$_bats_socket" set -g @airline-active "colour201"
-  airline apply
+  airline session apply
   run get_option window-status-current-format
   assert_output --partial "colour201"
 }
 
 @test "show reports the active config and recurses into the static nouns" {
-  airline init
-  run airline show
+  airline session init
+  run airline session show
   assert_success
   assert_output --partial "layout"      # a top-level record
   assert_output --partial "default"     # its active value
@@ -108,7 +108,7 @@ setup() {
 }
 
 @test "status and health accept a pane target and store on its containing window" {
-  airline init
+  airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
   window="$($TMUX -L "$_bats_socket" display-message -p -t "$pane" '#{window_id}')"
 
@@ -122,7 +122,7 @@ setup() {
 }
 
 @test "problem contributors reduce to one session badge and recover independently" {
-  airline init
+  airline session init
   session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
   airline problem set "$session" cpu warn "required program 'sensors' was not found"
   airline problem set "$session" battery fail "battery query timed out"
@@ -153,7 +153,7 @@ setup() {
 }
 
 @test "bare problem show lists problems across sessions" {
-  airline init
+  airline session init
   session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
   $TMUX -L "$_bats_socket" new-session -d -s other
   other="$($TMUX -L "$_bats_socket" display-message -p -t other '#{session_id}')"
@@ -169,7 +169,7 @@ setup() {
 }
 
 @test "lock diagnostics are empty normally and clear rejects a missing lock" {
-  airline init
+  airline session init
   session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
 
   run airline lock show
@@ -182,7 +182,7 @@ setup() {
 }
 
 @test "a --transient signal arms the focus hook and clears on _unfocus" {
-  airline init
+  airline session init
   win="$($TMUX -L "$_bats_socket" display-message -p '#{window_id}')"
   airline status set build active                 # persistent
   airline status set review attention --transient # transient
@@ -196,7 +196,7 @@ setup() {
 # --- state (active/suspended) -----------------------------------------------
 
 @test "state suspend traps the prefix; resume restores; show reads the state" {
-  airline init
+  airline session init
   run airline state show
   assert_output "active"            # default
   airline state suspend

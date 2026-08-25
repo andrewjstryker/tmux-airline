@@ -23,7 +23,7 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   assert_equal "${COMPREPLY[*]}" palette
 
   COMP_WORDS=(airline help palette ""); COMP_CWORD=3; _airline_completion
-  assert_equal "${COMPREPLY[*]}" "show use available register"
+  assert_equal "${COMPREPLY[*]}" "show use list register"
 
   COMP_WORDS=(airline health set build ""); COMP_CWORD=4; _airline_completion
   assert_equal "${COMPREPLY[*]}" "ok warn fail --transient -t"
@@ -31,7 +31,7 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 
 @test "bash completion resolves typed and contextual values through the airline CLI" {
   mkdir -p "$BATS_TEST_TMPDIR/bin"
-  printf '#!/usr/bin/env bash\ncase "$1 $2" in\n  "palette available") printf "dark\\nlight\\n" ;;\n  "adapter available") printf "battery\\ncpu\\n" ;;\n  "problem show") printf "build  warn\\ndeploy  fail\\n" ;;\nesac\n' \
+  printf '#!/usr/bin/env bash\ncase "$1 $2" in\n  "palette list") printf "dark\\nlight\\n" ;;\n  "adapter list") printf "battery\\ncpu\\n" ;;\n  "problem show") printf "build  warn\\ndeploy  fail\\n" ;;\nesac\n' \
     > "$BATS_TEST_TMPDIR/bin/airline"
   chmod +x "$BATS_TEST_TMPDIR/bin/airline"
   PATH="$BATS_TEST_TMPDIR/bin:$PATH"

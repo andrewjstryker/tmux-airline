@@ -101,7 +101,7 @@ Five things, driven by one `airline` CLI:
 
 Choose a palette for the colors and a layout for the arrangement. To change an
 individual palette role or segment slot, set a global tmux option and run
-`airline apply`. Airline copies that input into the invoking session's private
+`airline session apply`. Airline copies that input into the invoking session's private
 configuration. Plugins and widgets can use status, health, and problem signals
 to report live state without rebuilding the bar.
 
@@ -184,7 +184,7 @@ airline palette use dark
 | `solarized-dark`  | Solarized dark (assumes a Solarized terminal)   |
 | `solarized-light` | Solarized light (assumes a Solarized terminal)  |
 
-`airline palette available` lists what's on the search path; `airline palette
+`airline palette list` lists what's on the search path; `airline palette
 show` prints the active palette and every role; `airline palette show name`
 prints just the active name (for scripts).
 
@@ -193,7 +193,7 @@ Change individual roles with normal global tmux options, then apply them:
 ```tmux
 set -g @airline-active "colour214"
 set -g @airline-stress "colour196"
-airline apply
+airline session apply
 ```
 
 `apply` copies each explicitly set global role over the invoking session's private
@@ -243,7 +243,7 @@ re-apply — the CLI reads segments back but does not write them:
 ```tmux
 # put the kubectl context in the right-inner slot
 set -g @airline-segment-right-in '#[fg=colour39]⎈ #(kubectl config current-context)'
-airline apply
+airline session apply
 
 # inspect the slots (bare = all, or name one)
 airline segment show
@@ -261,7 +261,7 @@ plain `apply` copies global edits and renders the committed arrangement:
 ```tmux
 airline layout use minimal
 airline layout show          # the active layout + its file
-airline layout available     # what's on the layout path
+airline layout list     # what's on the layout path
 ```
 
 | Layout     | What it composes                                                    |
@@ -315,7 +315,7 @@ plugin's colors; the plugin draws its own widget.
 
 You rarely call adapters directly — a layout invokes them — but you can:
 `airline adapter use cpu`, `airline adapter show` (what's applied), `airline
-adapter available` (what's on the path).
+adapter list` (what's on the path).
 
 ## Process runners
 
@@ -328,7 +328,7 @@ Airline ships `basic` as the implicit classifier, `tap` as a stream filter, and
 `http` as a probe. Each is a first-class catalog with its own discovery commands:
 
 ```sh
-airline classifier available
+airline classifier list
 airline classifier show basic
 airline filter show tap
 airline probe show http
@@ -361,7 +361,7 @@ Frequently used compositions can be named. Airline ships `tap` as a run
 composition and `http` as a watch composition:
 
 ```sh
-airline runner available
+airline runner list
 airline runner show tap
 airline runner run tap -- bats --formatter tap test/
 airline runner watch http http://localhost/health
@@ -543,7 +543,7 @@ Register and inspect compositions like every other catalog:
 
 ```sh
 airline runner register ~/.config/airline/runners
-airline runner available
+airline runner list
 airline runner show my-tests
 ```
 
@@ -714,24 +714,25 @@ diagnosing a stuck problem transaction never depends on acquiring that same lock
 
 ## The `airline` CLI
 
-One entry point drives everything. Top-level verbs plus a handful of nouns, each
-with its own verbs. `-t` targets a window for status/health. Problem mutations
-instead take their owning session as a required first argument.
+One entry point drives everything. Public commands use a noun followed by a verb;
+help and underscore-prefixed internal callbacks are the only exceptions. `-t`
+targets a window for status/health. Problem mutations instead take their owning
+session as a required first argument.
 
 ```
-airline init                 # initialize airline (normally called by airline.tmux)
-airline apply                # commit global option edits and render this session
-airline show                 # print the active configuration
+airline session init                 # initialize airline (normally called by airline.tmux)
+airline session apply                # commit global option edits and render this session
+airline session show                 # print the active configuration
 airline help [command [verb]] # all commands, one noun, or one leaf command
 
-airline palette  show [name|<palette-element>] | available | use <palette> | register <dir>
+airline palette  show [name|<palette-element>] | list | use <palette> | register <dir>
 airline segment  show [<segment>]              # read-only; write with set -g @airline-segment-<segment>
-airline layout   show [name|path] | available | use <layout> | load <file> | register <dir>
-airline adapter  show | available | use <adapter>... | load <file> | register <dir>
-airline classifier show <classifier> | available | register <dir>
-airline filter     show <filter> | available | register <dir>
-airline probe      show <probe> | available | register <dir>
-airline runner   show <runner> [<arg>...] | available | register <dir>
+airline layout   show [name|path] | list | use <layout> | load <file> | register <dir>
+airline adapter  show | list | use <adapter>... | load <file> | register <dir>
+airline classifier show <classifier> | list | register <dir>
+airline filter     show <filter> | list | register <dir>
+airline probe      show <probe> | list | register <dir>
+airline runner   show <runner> [<arg>...] | list | register <dir>
                  run [--here|--pane [-h|-v]|--window] [<runner>] [--classify <classifier>]
                      [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]] -- <command>...
                  watch [--here|--pane [-h|-v]|--window] [<runner>] [--probe <probe> [<arg>...]]
@@ -750,7 +751,7 @@ Two conventions run through it:
   probe, and runner each have an independent registered catalog.
 
 - **`show`.** Bare `show` is a human summary; `show <field>` prints one raw
-  value, newline-terminated, safe for `$(…)`. `available` lists the catalog a
+  value, newline-terminated, safe for `$(…)`. `list` lists the catalog a
   `use` can pick from. Catalog-only runner nouns instead use `show <name>` for an
   implementation's summary, usage, and path. Editing a color or segment option is
   free; the bar re-renders on the next `apply` (or `use`, which ends in one).

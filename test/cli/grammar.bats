@@ -23,14 +23,14 @@ setup() {
     lifecycle_health_set lifecycle_health_clear lifecycle_health_show \
     lifecycle_problem_set lifecycle_problem_clear lifecycle_problem_show \
     lifecycle_lock_show lifecycle_lock_clear \
-    layout_palette_show layout_palette_available layout_palette_use layout_palette_register \
+    layout_palette_show layout_palette_list layout_palette_use layout_palette_register \
     layout_segment_show \
-    layout_adapter_show layout_adapter_available layout_adapter_use layout_adapter_load layout_adapter_register \
-    layout_show layout_available layout_use layout_load layout_register \
-    runner_classifier_show runner_classifier_available runner_classifier_register \
-    runner_filter_show runner_filter_available runner_filter_register \
-    runner_probe_show runner_probe_available runner_probe_register \
-    runner_show runner_available runner_register runner_run runner_watch \
+    layout_adapter_show layout_adapter_list layout_adapter_use layout_adapter_load layout_adapter_register \
+    layout_show layout_list layout_use layout_load layout_register \
+    runner_classifier_show runner_classifier_list runner_classifier_register \
+    runner_filter_show runner_filter_list runner_filter_register \
+    runner_probe_show runner_probe_list runner_probe_register \
+    runner_show runner_list runner_register runner_run runner_watch \
     lifecycle_init_session lifecycle_unfocus runner_exec runner_watch_exec; do
     eval "$fn () { _record_delegate \"\$@\"; }"
   done
@@ -45,9 +45,9 @@ setup() {
     assert_success "$argv"
     assert_output "$expected"
   done <<'CASES'
-init|lifecycle_init
-apply|lifecycle_apply
-show|lifecycle_show
+session init|lifecycle_init
+session apply|lifecycle_apply
+session show|lifecycle_show
 state suspend|lifecycle_state_suspend
 status set build active --transient|lifecycle_status_set <build> <active> <--transient>
 health clear cpu -t @2|lifecycle_health_clear <cpu> <-t> <@2>
@@ -58,7 +58,7 @@ segment show left-out|layout_segment_show <left-out>
 adapter load /tmp/adapter|layout_adapter_load </tmp/adapter>
 layout register /tmp/layouts|layout_register </tmp/layouts>
 classifier show basic|runner_classifier_show <basic>
-filter available|runner_filter_available
+filter list|runner_filter_list
 probe register /tmp/probes|runner_probe_register </tmp/probes>
 runner run tap -- true|runner_run <tap> <--> <true>
 _init-session $2|lifecycle_init_session <$2>
@@ -73,7 +73,7 @@ CASES
   assert_success
   assert_output --partial "palette"
   assert_output --partial "runner"
-  assert_output --partial "available"
+  assert_output --partial "list"
   assert_output --partial "--transient"
 }
 
@@ -81,7 +81,7 @@ CASES
   run main help palette
   assert_success
   assert_output --partial "palette:"
-  assert_output --partial "available"
+  assert_output --partial "list"
   refute_output --partial "runner:"
 
   run main help palette use
@@ -94,4 +94,17 @@ CASES
   run main palette help
   assert_failure
   assert_output --partial "unknown palette command: help"
+}
+
+@test "removed top-level verbs and available aliases are rejected" {
+  local command
+  for command in init apply show; do
+    run main "$command"
+    assert_failure
+    assert_output --partial "unknown command: $command"
+  done
+
+  run main palette available
+  assert_failure
+  assert_output --partial "unknown palette command: available"
 }

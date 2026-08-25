@@ -17,15 +17,15 @@ setup() {
 
 # --- init -------------------------------------------------------------------
 @test "init exposes first-class element and runner catalogs" {
-  airline init
+  airline session init
 
-  run airline classifier available
+  run airline classifier list
   assert_line basic
-  run airline filter available
+  run airline filter list
   assert_line tap
-  run airline probe available
+  run airline probe list
   assert_line http
-  run airline runner available
+  run airline runner list
   assert_line tap
   assert_line http
 
@@ -43,7 +43,7 @@ setup() {
 }
 
 @test "each runner primitive has its own registered path" {
-  airline init
+  airline session init
   mkdir -p "$BATS_TEST_TMPDIR/classifiers" "$BATS_TEST_TMPDIR/filters" \
     "$BATS_TEST_TMPDIR/probes"
   printf '%s\n' 'AIRLINE_CLASSIFIER_SUMMARY="custom classifier"' \
@@ -56,16 +56,16 @@ setup() {
   airline classifier register "$BATS_TEST_TMPDIR/classifiers"
   airline filter register "$BATS_TEST_TMPDIR/filters"
   airline probe register "$BATS_TEST_TMPDIR/probes"
-  run airline classifier available
+  run airline classifier list
   assert_line custom
-  run airline filter available
+  run airline filter list
   assert_line custom
-  run airline probe available
+  run airline probe list
   assert_line custom
 }
 
 @test "runner validates the selected element contract" {
-  airline init
+  airline session init
   mkdir -p "$BATS_TEST_TMPDIR/classifiers"
   printf 'unrelated() { :; }\n' > "$BATS_TEST_TMPDIR/classifiers/broken"
   airline classifier register "$BATS_TEST_TMPDIR/classifiers"
@@ -76,7 +76,7 @@ setup() {
 }
 
 @test "runner here streams output, returns the child status, and projects success" {
-  airline init
+  airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
   key="runner-${pane#%}"
 
@@ -90,7 +90,7 @@ setup() {
 }
 
 @test "runner here preserves a failed exit and projects attention plus fail" {
-  airline init
+  airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
   key="runner-${pane#%}"
 
@@ -104,7 +104,7 @@ setup() {
 }
 
 @test "a registered classifier can interpret a nonzero exit as warn" {
-  airline init
+  airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
   key="runner-${pane#%}"
   mkdir -p "$BATS_TEST_TMPDIR/classifiers"
@@ -122,7 +122,7 @@ setup() {
 }
 
 @test "a named runner composes monitoring while the caller supplies the command" {
-  airline init
+  airline session init
 
   run airline runner run tap -- bash -c \
     'printf "TAP version 13\n1..1\nok 1 - catalogued\n"'
@@ -135,7 +135,7 @@ setup() {
 }
 
 @test "a probe can fail and recover health while the process stays active" {
-  airline init
+  airline session init
   session="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{session_id}')"
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
   key="runner-${pane#%}"
@@ -179,7 +179,7 @@ setup() {
 }
 
 @test "runner watch probes remote state without a placeholder command" {
-  airline init
+  airline session init
   session="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{session_id}')"
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
   key="runner-${pane#%}-watch"
@@ -257,14 +257,14 @@ setup() {
 }
 
 @test "runner watch requires a probe capability" {
-  airline init
+  airline session init
   run airline runner watch
   assert_failure 2
   assert_output --partial "need --probe"
 }
 
 @test "tap runner preserves output and filters progressive test health" {
-  airline init
+  airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
   key="runner-${pane#%}"
   filter_key="$key-filter"
@@ -301,7 +301,7 @@ setup() {
 }
 
 @test "filter observes stdout by default and can merge stderr" {
-  airline init
+  airline session init
   mkdir -p "$BATS_TEST_TMPDIR/filters"
   evidence_file="$BATS_TEST_TMPDIR/evidence"
   export evidence_file
@@ -323,7 +323,7 @@ setup() {
 }
 
 @test "probe stdout is visible and remains outside the filter stream" {
-  airline init
+  airline session init
   mkdir -p "$BATS_TEST_TMPDIR/filters" "$BATS_TEST_TMPDIR/probes"
   evidence_file="$BATS_TEST_TMPDIR/filter-evidence"
   export evidence_file
@@ -351,7 +351,7 @@ setup() {
 }
 
 @test "runner pane retains failed output and native exit status" {
-  airline init
+  airline session init
   origin="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
 
   # Avoid making the retained-pane assertion depend on tmux scheduling a payload
@@ -391,7 +391,7 @@ setup() {
 }
 
 @test "runner window retains a successful result in its execution window" {
-  airline init
+  airline session init
 
   run airline runner run --window -- bash -c 'printf "window success\\n"'
   assert_success

@@ -198,7 +198,7 @@ There are seven catalog kinds and one plain-option kind:
 | **runner** | named run/watch composition over those primitives | expanded for one invocation |
 | **segment** | public `@airline-segment-<slot>` option | set directly or by a layout; not loadable |
 
-Every catalog has an ordered registered search path. `available` lists resolvable
+Every catalog has an ordered registered search path. `list` lists resolvable
 bare names and `register <dir>` prepends a trusted location. Palette, adapter, and
 layout additionally provide `use`; classifier, filter, probe, and runner provide
 `show <name>` for static metadata and the resolved path.
@@ -206,7 +206,7 @@ layout additionally provide `use`; classifier, filter, probe, and runner provide
 For palette, adapter, and layout:
 
 - `register <dir>` prepends a trusted search location;
-- `available` lists resolvable bare names, deduplicated in search order;
+- `list` lists resolvable bare names, deduplicated in search order;
 - `use <name>` accepts a bare name and resolves it only within registered paths.
 
 `load <path>` is the explicit operation for executable adapter and layout files.
@@ -241,9 +241,9 @@ discovery shim that resolves the active `airline.sh` through `@airline-cli`.
 ### Grammar
 
 ```text
-airline init
-airline apply
-airline show
+airline session init
+airline session apply
+airline session show
 airline help [<command> [<verb>]]
 
 airline status   set <status-key> <active|result|attention> [--transient] [-t <window>]
@@ -258,14 +258,14 @@ airline problem  set <session> <problem-key> <ok|warn|fail> [<message>]
 airline lock     show
                  clear <session|window> <target> <namespace>
 
-airline palette  show [name|<palette-element>] | available | use <palette> | register <dir>
+airline palette  show [name|<palette-element>] | list | use <palette> | register <dir>
 airline segment  show [<segment>]
-airline adapter  show | available | use <adapter>... | load <file> | register <dir>
-airline layout   show [name|path] | available | use <layout> | load <file> | register <dir>
-airline classifier show <classifier> | available | register <dir>
-airline filter     show <filter> | available | register <dir>
-airline probe      show <probe> | available | register <dir>
-airline runner   show <runner> [<arg>...] | available | register <dir>
+airline adapter  show | list | use <adapter>... | load <file> | register <dir>
+airline layout   show [name|path] | list | use <layout> | load <file> | register <dir>
+airline classifier show <classifier> | list | register <dir>
+airline filter     show <filter> | list | register <dir>
+airline probe      show <probe> | list | register <dir>
+airline runner   show <runner> [<arg>...] | list | register <dir>
                  run [--here|--pane [-h|-v]|--window] [<runner>] [--classify <classifier>]
                      [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]] -- <command>...
                  watch [--here|--pane [-h|-v]|--window] [<runner>] [--probe <probe> [<arg>...]]
@@ -300,7 +300,7 @@ installs both artifacts with the PATH shim.
   `show <name>` to describe one resolvable implementation.
 - `palette show name` and `layout show name` expose their active selection. Layout
   also exposes its resolved path.
-- `adapter show` lists the active adapter set, one name per line. `available` is a
+- `adapter show` lists the active adapter set, one name per line. `list` is a
   separate catalog of what could be selected.
 - Runner elements compose only for one invocation. A leading bare runner name
   expands a catalogued composition; an option-leading invocation remains ad hoc.

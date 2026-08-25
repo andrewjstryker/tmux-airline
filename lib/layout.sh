@@ -418,7 +418,7 @@ layout_palette_use () {
   else _config_problem "$s" airline-palette ok ""; fi
   (( rc == 0 )) || return "$rc"
 }
-layout_palette_available () { local s; s="$(_require_current_session)"; _path_available "$s" palette; }
+layout_palette_list () { local s; s="$(_require_current_session)"; _path_list "$s" palette; }
 layout_palette_register () { local s; s="$(_require_current_session)"; _register "$s" palette "$@"; }
 
 layout_segment_show () {
@@ -443,7 +443,7 @@ layout_adapter_load () {
   return "$rc"
 }
 layout_adapter_show () { _adapter_show "$(_require_current_session)"; }
-layout_adapter_available () { local s; s="$(_require_current_session)"; _path_available "$s" adapter; }
+layout_adapter_list () { local s; s="$(_require_current_session)"; _path_list "$s" adapter; }
 layout_adapter_register () { local s; s="$(_require_current_session)"; _register "$s" adapter "$@"; }
 
 layout_use () {
@@ -476,7 +476,7 @@ layout_load () {
   (( rc == 0 )) || return "$rc"
 }
 layout_show () { local s; s="$(_require_current_session)"; _layout_show "$s" "$@"; }
-layout_available () { local s; s="$(_require_current_session)"; _path_available "$s" layout; }
+layout_list () { local s; s="$(_require_current_session)"; _path_list "$s" layout; }
 layout_register () { local s; s="$(_require_current_session)"; _register "$s" layout "$@"; }
 
 _palette_use_apply_unlocked () {

@@ -9,6 +9,6 @@
 
 CURRENT_DIR="${AIRLINE_DIR:-$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )}"
 
-"$CURRENT_DIR/airline.sh" init
+"$CURRENT_DIR/airline.sh" session init
 
 # vim: ft=bash

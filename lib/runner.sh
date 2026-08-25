@@ -841,17 +841,17 @@ _runner_watch_execute () {   # <session> <retain:0|1>; uses parsed watch specifi
 }
 # CLI delegation targets for runner and its primitives.
 runner_classifier_show () { local s; s="$(_require_current_session)"; _runner_element_show "$s" classifier "$@"; }
-runner_classifier_available () { local s; s="$(_require_current_session)"; _path_available "$s" classifier; }
+runner_classifier_list () { local s; s="$(_require_current_session)"; _path_list "$s" classifier; }
 runner_classifier_register () { local s; s="$(_require_current_session)"; _register "$s" classifier "$@"; }
 runner_filter_show () { local s; s="$(_require_current_session)"; _runner_element_show "$s" filter "$@"; }
-runner_filter_available () { local s; s="$(_require_current_session)"; _path_available "$s" filter; }
+runner_filter_list () { local s; s="$(_require_current_session)"; _path_list "$s" filter; }
 runner_filter_register () { local s; s="$(_require_current_session)"; _register "$s" filter "$@"; }
 runner_probe_show () { local s; s="$(_require_current_session)"; _runner_element_show "$s" probe "$@"; }
-runner_probe_available () { local s; s="$(_require_current_session)"; _path_available "$s" probe; }
+runner_probe_list () { local s; s="$(_require_current_session)"; _path_list "$s" probe; }
 runner_probe_register () { local s; s="$(_require_current_session)"; _register "$s" probe "$@"; }
 
 runner_show () { local s; s="$(_require_current_session)"; _runner_definition_show "$s" "$@"; }
-runner_available () { local s; s="$(_require_current_session)"; _path_available "$s" runner; }
+runner_list () { local s; s="$(_require_current_session)"; _path_list "$s" runner; }
 runner_register () { local s; s="$(_require_current_session)"; _register "$s" runner "$@"; }
 runner_run () { local s; s="$(_require_current_session)"; _runner_invoke "$s" run "$@"; }
 runner_watch () { local s; s="$(_require_current_session)"; _runner_invoke "$s" watch "$@"; }

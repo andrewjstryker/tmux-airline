@@ -207,8 +207,8 @@ _path_resolve () {   # <session> <kind> <name>
 # List every bare name resolvable on the kind's path — the catalog selection surface.
 # One name per line, deduped in path order (a shadowing user dir collapses with the
 # shipped name it overrides). The read-side counterpart to _path_resolve; the shared
-# core of every noun's `available` verb (palette / adapter / layout).
-_path_available () {   # <session> <kind>
+# core of every noun's `list` verb (palette / adapter / layout).
+_path_list () {   # <session> <kind>
   local session="$1" kind="$2" dir f name seen=" "
   for dir in $(coll_members_session "$session" "$(_path_ns "$kind")"); do
     [[ -d "$dir" ]] || continue

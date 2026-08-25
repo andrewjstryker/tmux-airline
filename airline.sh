@@ -7,10 +7,10 @@
 # sources the internal behaviour stack under lib/, then parses argv and delegates
 # each command once. The CLI is the public API; lib/ contains its implementation.
 #
-# Grammar: a few top-level verbs (init/apply/show/…) plus config, signal, diagnostic,
-# lifecycle, and runner nouns, each with its own verb set. Every noun's verbs live in
-# a cmd_<noun> dispatcher below; help is generated from the `#| …` markers on the
-# case arms, so the grammar documents itself.
+# Grammar: public commands follow a noun-verb pattern, apart from help. Internal
+# underscore-prefixed hook callbacks are also top-level entry points. Every noun's
+# verbs live in a cmd_<noun> dispatcher below; help is generated from the `#| …`
+# markers on the case arms, so the grammar documents itself.
 
 set -u
 
@@ -71,7 +71,7 @@ _help_annotation () {   # <noun-or-empty> <command>
   return 1
 }
 
-AIRLINE_NOUNS='state status health problem lock palette segment adapter layout classifier filter probe runner'
+AIRLINE_NOUNS='session state status health problem lock palette segment adapter layout classifier filter probe runner'
 
 _help_usage () {
   printf 'airline — tmux-airline CLI\n\n'
@@ -127,6 +127,16 @@ _help_command () {   # [<top-command|noun> [<verb>]]
 # Noun dispatchers — each parses its verb and makes exactly one delegated call.
 # The `#| …` markers on the arms are the help source.
 #-----------------------------------------------------------------------------#
+
+cmd_session () {
+  local verb="${1:-}"; shift || true
+  case "$verb" in
+    init)  lifecycle_init  "$@" ;; #| — seed defaults, register paths, publish the CLI handle, and render
+    apply) lifecycle_apply "$@" ;; #| — commit global option edits and render the session
+    show)  lifecycle_show  "$@" ;; #| — print the active configuration
+    *) die "unknown session command: $verb" ;;
+  esac
+}
 
 cmd_state () {
   local verb="${1:-}"; shift || true
@@ -187,7 +197,7 @@ cmd_palette () {
   case "$verb" in
     show)      layout_palette_show "$@" ;;      #| [name|<palette-element>] — show the palette summary or one raw field
     use)       layout_palette_use "$@" ;;       #| <palette> — load a complete palette and repaint adapters
-    available) layout_palette_available ;;      #| — list palettes on the search path
+    list)      layout_palette_list ;;           #| — list palettes on the search path
     register)  layout_palette_register "$@" ;; #| <dir> — add a palette search directory
     *) die "unknown palette command: $verb" ;;
   esac
@@ -209,7 +219,7 @@ cmd_adapter () {
     use)       layout_adapter_use "$@" ;;       #| <adapter>... — apply palette roles to one or more plugins
     load)      layout_adapter_load "$@" ;;      #| <file> — apply a one-off adapter script
     show)      layout_adapter_show ;;           #| — list applied adapters
-    available) layout_adapter_available ;;      #| — list adapters on the search path
+    list)      layout_adapter_list ;;           #| — list adapters on the search path
     register)  layout_adapter_register "$@" ;; #| <dir> — add an adapter search directory
     *) die "unknown adapter command: $verb" ;;
   esac
@@ -221,7 +231,7 @@ cmd_layout () {
     use)       layout_use "$@" ;;       #| <layout> — apply a named layout definition
     load)      layout_load "$@" ;;      #| <file> — apply and record a one-off layout definition
     show)      layout_show "$@" ;;      #| [name|path] — show active layout provenance
-    available) layout_available ;;      #| — list layouts on the search path
+    list)      layout_list ;;           #| — list layouts on the search path
     register)  layout_register "$@" ;; #| <dir> — add a layout search directory
     *) die "unknown layout command: $verb" ;;
   esac
@@ -231,7 +241,7 @@ cmd_classifier () {
   local verb="${1:-}"; shift || true
   case "$verb" in
     show)      runner_classifier_show "$@" ;;      #| <classifier> — show summary, contract, and resolved path
-    available) runner_classifier_available ;;      #| — list classifiers available to runners
+    list)      runner_classifier_list ;;           #| — list classifiers available to runners
     register)  runner_classifier_register "$@" ;; #| <dir> — add a classifier search directory
     *) die "unknown classifier command: $verb" ;;
   esac
@@ -241,7 +251,7 @@ cmd_filter () {
   local verb="${1:-}"; shift || true
   case "$verb" in
     show)      runner_filter_show "$@" ;;      #| <filter> — show summary, contract, and resolved path
-    available) runner_filter_available ;;      #| — list filters available to runners
+    list)      runner_filter_list ;;           #| — list filters available to runners
     register)  runner_filter_register "$@" ;; #| <dir> — add a filter search directory
     *) die "unknown filter command: $verb" ;;
   esac
@@ -251,7 +261,7 @@ cmd_probe () {
   local verb="${1:-}"; shift || true
   case "$verb" in
     show)      runner_probe_show "$@" ;;      #| <probe> — show summary, arguments, interval, and resolved path
-    available) runner_probe_available ;;      #| — list probes available to runners
+    list)      runner_probe_list ;;           #| — list probes available to runners
     register)  runner_probe_register "$@" ;; #| <dir> — add a probe search directory
     *) die "unknown probe command: $verb" ;;
   esac
@@ -261,7 +271,7 @@ cmd_runner () {
   local verb="${1:-}"; shift || true
   case "$verb" in
     show)      runner_show "$@" ;;       #| <runner> [<arg>...] — show one named composition with resolved defaults
-    available) runner_available ;;       #| — list named runner compositions
+    list)      runner_list ;;            #| — list named runner compositions
     register)  runner_register "$@" ;;  #| <dir> — add a runner search directory
     run)       runner_run "$@" ;;        #| [--here|--pane [-h|-v]|--window] [<runner>] [--classify <classifier>] [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]] -- <command>... — run a command with monitoring
     watch)     runner_watch "$@" ;;      #| [--here|--pane [-h|-v]|--window] [<runner>] [--probe <probe> [<arg>...]] — watch probe state until interrupted
@@ -270,16 +280,14 @@ cmd_runner () {
 }
 
 #-----------------------------------------------------------------------------#
-# Dispatch — top-level verbs. Config/dynamic nouns delegate to their cmd_<noun>
-# parser above; the rest delegate directly to their implementation function.
+# Dispatch — public nouns delegate to their cmd_<noun> parser above. Help and
+# internal callbacks are the only top-level exceptions.
 # Keeping dispatch in main makes the grammar behavior-testable without starting tmux.
 #-----------------------------------------------------------------------------#
 main () {
   local cmd="${1:-}"; shift || true
 case "$cmd" in
-    init)     lifecycle_init    "$@" ;;   #| — seed defaults, register paths, publish the CLI handle, and render
-    apply)    lifecycle_apply   "$@" ;;   #| — commit global option edits and render the session
-    show)     lifecycle_show    "$@" ;;   #| — print the active configuration
+    session)  cmd_session "$@" ;;
     state)    cmd_state   "$@" ;;
     status)   cmd_status  "$@" ;;
     health)   cmd_health  "$@" ;;

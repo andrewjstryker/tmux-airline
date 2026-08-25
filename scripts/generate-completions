@@ -118,7 +118,7 @@ _airline_dynamic () {   # <semantic-type>
   case "$type" in
     palette|adapter|layout|classifier|filter|probe|runner)
       noun="$type"
-      command airline "$noun" available 2>/dev/null || true
+      command airline "$noun" list 2>/dev/null || true
       ;;
     palette-element)
       command airline palette show 2>/dev/null | while read -r line _; do
@@ -302,7 +302,7 @@ _airline_zsh_dynamic () {
   local type="$1" noun
   case "$type" in
     palette|adapter|layout|classifier|filter|probe|runner)
-      command airline "$type" available 2>/dev/null
+      command airline "$type" list 2>/dev/null
       ;;
     palette-element) command airline palette show 2>/dev/null | awk '$1 != "name" {print $1}' ;;
     segment) command airline segment show 2>/dev/null | awk '{print $1}' ;;

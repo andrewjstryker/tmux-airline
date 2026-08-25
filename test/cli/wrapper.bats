@@ -9,7 +9,7 @@ setup() {
 }
 
 @test "PATH shim resolves and delegates to the initialized CLI" {
-  airline init
+  airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
 
   run env TMUX_PANE="$pane" AIRLINE_TMUX="$TMUX -L $_bats_socket" \
