@@ -177,7 +177,7 @@ _check_c () {
     rc=1
   fi
   arms="$(grep -nE '^[[:space:]]*[a-zA-Z_][a-zA-Z0-9_-]*\).*#\|' "$ROOT/airline.sh" \
-    | grep -vE '^[0-9]+:[[:space:]]*[a-zA-Z_][a-zA-Z0-9_-]*\)[[:space:]]+((lifecycle|layout|runner|signal)_[a-zA-Z0-9_]+|help_command)([[:space:]]+"\$@")?[[:space:]]*;;[[:space:]]*#\|' || true)"
+    | grep -vE '^[0-9]+:[[:space:]]*[a-zA-Z_][a-zA-Z0-9_-]*\)[[:space:]]+((session|transaction|layout|runner|signal)_[a-zA-Z0-9_]+|help_command)([[:space:]]+"\$@")?[[:space:]]*;;[[:space:]]*#\|' || true)"
   if [[ -n "$arms" ]]; then
     printf 'C: airline.sh:%s\n' "$arms"
     rc=1

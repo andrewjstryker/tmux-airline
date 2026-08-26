@@ -694,22 +694,22 @@ session id. `problem show <session>` narrows the listing, and `problem show
 `level<TAB>message` tuple. Tmux status formats can supply the precise evaluation
 context as `#{session_id}`; callers do not need to infer it from `TMUX_PANE`.
 
-### Lock recovery
+### Transaction recovery
 
-Airline serializes collection updates with owner-scoped tmux locks. A process
-killed with `SIGKILL` cannot run cleanup, so its lock can remain behind. The lock
+Airline serializes collection updates with owner-scoped tmux locks. A process killed
+with `SIGKILL` cannot run cleanup, so its transaction marker can remain behind. The
 diagnostics make that rare state discoverable and recoverable:
 
 ```shell
-airline lock show
+airline transaction show
 # scope<TAB>owner<TAB>namespace<TAB>active|stale<TAB>pid<TAB>age-seconds
 
-airline lock clear session '$1' problem
-airline lock clear window '@3' status
+airline transaction clear session '$1' problem
+airline transaction clear window '@3' status
 ```
 
-`lock clear` only releases a stale lock; it refuses to clear one whose recorded
-owner process is still alive. Lock recovery is separate from the problem API so
+`transaction clear` only releases a stale marker; it refuses to clear one whose
+recorded owner process is still alive. Recovery is separate from the problem API so
 diagnosing a stuck problem transaction never depends on acquiring that same lock.
 
 ## The `airline` CLI
@@ -741,7 +741,7 @@ airline status   set <status-key> <active|result|attention> [--transient] [-t <w
 airline health   set <health-key> <ok|warn|fail> [--transient] [-t <window>] | clear <health-key> [-t <window>] | show [<health-key>] [-t <window>]
 airline problem  set <session> <problem-key> <ok|warn|fail> [<message>] | clear <session> <problem-key> | show [<session> [<problem-key>]]
 airline signal   clear-transient [-t <window>]
-airline lock     show | clear <session|window> <target> <namespace>
+airline transaction show | clear <session|window> <target> <namespace>
 ```
 
 Two conventions run through it:
@@ -774,6 +774,6 @@ make test
 ```
 
 For focused development, `make test-fast` runs only static and in-memory behavior
-tests. `make test-layout`, `make test-lifecycle`, and `make test-runner` pair tests
+tests. `make test-layout`, `make test-session`, and `make test-runner` pair tests
 with the corresponding `lib/` module; `make test-integration` runs every real-tmux
 suite. Run `make lint` for ShellCheck and the architecture guards.

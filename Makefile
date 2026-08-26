@@ -1,6 +1,6 @@
 # tmux-airline — installation and developer tasks.
 
-.PHONY: install completions check-completions test test-fast test-integration test-layout test-lifecycle test-runner lint
+.PHONY: install completions check-completions test test-fast test-integration test-layout test-session test-runner lint
 
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
@@ -14,8 +14,8 @@ SHELLCHECK_SOURCES := airline airline.sh airline.tmux scripts/generate-completio
 
 FAST_TESTS := test/architecture.bats test/cli/grammar.bats test/cli/completions.bats \
 	test/core/collections.bats test/core/catalog.bats test/core/render.bats test/runner/behavior.bats \
-	test/signal/behavior.bats test/lifecycle/behavior.bats
-INTEGRATION_TESTS := test/lifecycle/integration.bats test/layout/integration.bats \
+	test/signal/behavior.bats test/session/behavior.bats test/transaction/behavior.bats
+INTEGRATION_TESTS := test/session/integration.bats test/layout/integration.bats \
 	test/runner/integration.bats test/core/tmux.bats test/cli/wrapper.bats
 ALL_TESTS := $(FAST_TESTS) $(INTEGRATION_TESTS)
 
@@ -49,8 +49,8 @@ test-integration:
 test-layout:
 	bats test/layout/integration.bats test/core/render.bats
 
-test-lifecycle:
-	bats test/signal/behavior.bats test/lifecycle/behavior.bats test/lifecycle/integration.bats
+test-session:
+	bats test/session/behavior.bats test/session/integration.bats
 
 test-runner:
 	bats test/runner/behavior.bats test/runner/integration.bats

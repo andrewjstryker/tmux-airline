@@ -66,7 +66,7 @@ setup() {
   assert_output --partial "#I:#W"
 }
 
-@test "the global lifecycle hook initializes sessions created after airline loads" {
+@test "the global session hook initializes sessions created after airline loads" {
   airline session init
   $TMUX -L "$_bats_socket" new-session -d -s later
   later="$($TMUX -L "$_bats_socket" display-message -p -t later '#{session_id}')"
@@ -168,15 +168,15 @@ setup() {
   assert_output --partial "battery"
 }
 
-@test "lock diagnostics are empty normally and clear rejects a missing lock" {
+@test "transaction diagnostics are empty normally and clear rejects a missing marker" {
   airline session init
   session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
 
-  run airline lock show
+  run airline transaction show
   assert_success
   assert_output ""
 
-  run airline lock clear session "$session" problem
+  run airline transaction clear session "$session" problem
   assert_failure
   assert_output --partial "no such outstanding transaction"
 }

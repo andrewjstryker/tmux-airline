@@ -274,7 +274,7 @@ _airline_completion () {
     COMPREPLY=( $(compgen -W "$(_airline_problem_keys "${prior[0]}")" -- "$current") )
     return
   fi
-  if [[ "$path" == 'lock clear' ]]; then
+  if [[ "$path" == 'transaction clear' ]]; then
     if (( position == 1 )); then
       COMPREPLY=( $(compgen -W "$(_airline_dynamic "${prior[0]}")" -- "$current") )
       return
@@ -387,7 +387,7 @@ _airline_zsh () {
       elif (( CURRENT == 5 )); then compadd ${(@f)$(_airline_zsh_problem_keys "${words[4]}")}; return
       fi
       ;;
-    'lock clear')
+    'transaction clear')
       if (( CURRENT == 4 )); then compadd session window; return
       elif (( CURRENT == 5 )); then compadd ${(@f)$(_airline_zsh_dynamic "${words[4]}")}; return
       elif (( CURRENT == 6 )); then

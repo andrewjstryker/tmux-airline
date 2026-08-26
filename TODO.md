@@ -131,19 +131,18 @@ the agreed bar for a private entry point.
       The CLI and help now use `signal`; carry that decision through the module name,
       functions, tests, and design document during the lifecycle split. `attention`
       remains a status value and would be ambiguous as the owner name.
-- [ ] Reconsider `lock` as a root domain noun. It is transaction recovery/diagnostic
+- [x] Reconsider `lock` as a root domain noun. It is transaction recovery/diagnostic
       behavior rather than lifecycle behavior; place it under a clear diagnostics or
-      transaction concept if it remains public.
+      transaction concept if it remains public. The public noun is now `transaction`.
 
 ### Library ownership
 
 `lib/lifecycle.sh` began as a coordinator, shared-services module, and domain module
-at once. Catalog and signal behavior now have explicit owners, and generic CLI
-utilities live in a deliberately small command boundary. Lifecycle still combines
-session coordination with lock diagnostics and still calls layout internals; those
-remaining responsibilities are the next ownership split.
+at once. It has now been replaced: catalog, signal, session, and transaction behavior
+have explicit owners, and generic CLI utilities live in a deliberately small command
+boundary. Session coordinates configuration only through public layout services.
 
-- [ ] Replace `lib/lifecycle.sh` with narrower owners. The working target is:
+- [x] Replace `lib/lifecycle.sh` with narrower owners. The resulting owners are:
       - `lib/session.sh`: initialization, apply/show orchestration, and
         active/suspended session behavior;
       - `lib/signal.sh` or `lib/attention.sh`: status, health, problem, projection
@@ -157,35 +156,35 @@ remaining responsibilities are the next ownership split.
 - [x] Extract `lib/signal.sh`; it owns status, health, problems, projection
       orchestration, redraw gating, and transient consumption. The CLI, layout, and
       runner use its public services directly.
-- [ ] Keep `lib/layout.sh` responsible for layout, palette, segment, and adapter
+- [x] Keep `lib/layout.sh` responsible for layout, palette, segment, and adapter
       behavior.
-- [ ] Keep `lib/runner.sh` responsible for runner orchestration and classifier,
+- [x] Keep `lib/runner.sh` responsible for runner orchestration and classifier,
       filter, and probe contracts.
-- [ ] Keep `lib/render.sh`, `lib/collections.sh`, and `lib/tmux.sh` as lower layers.
+- [x] Keep `lib/render.sh`, `lib/collections.sh`, and `lib/tmux.sh` as lower layers.
 - [x] Move generic command context and error handling to a deliberately small shared
       boundary rather than allowing a new miscellaneous module to form.
 - [ ] Give all private functions an owner-qualified name such as `_session_*`,
       `_signal_*`, `_catalog_*`, `_layout_*`, or `_runner_*`.
 - [ ] Replace cross-module private calls with small public service boundaries. In
       particular:
-      - session may coordinate public layout/configuration operations;
+      - session may coordinate public layout/configuration operations (complete);
       - layout and runner consume public catalog services;
       - layout and runner report through public signal/problem services (complete);
       - signal, catalog, render, and collections reach tmux only through
         `lib/tmux.sh`.
 - [ ] Remove load-order assertions that stand in for real module boundaries.
-- [ ] Redraw the architecture graph from actual calls after the extraction and verify
+- [x] Redraw the architecture graph from actual calls after the extraction and verify
       that it is acyclic.
 
 ## Suggested execution order
 
-1. [ ] Settle the public CLI grammar for targeted initialization, transient
+1. [x] Settle the public CLI grammar for targeted initialization, transient
        consumption, session state, and transaction diagnostics.
 2. [x] Convert tmux hooks and spawned runners to the resulting public commands; then
        remove the four private root routes.
 3. [x] Extract signal/attention and catalog responsibilities from lifecycle.
 4. [ ] Rename private functions by owner and eliminate cross-module private calls.
-5. [ ] Update the source/load structure and the documented dependency graph.
+5. [x] Update the source/load structure and the documented dependency graph.
 6. [ ] Remove invariant C and add the replacement dependency/visibility lint.
 7. [ ] Regenerate completions and update grammar, behavior, integration, architecture,
        README, and design tests/documentation.
@@ -194,9 +193,9 @@ remaining responsibilities are the next ownership split.
 
 ## Test strategy
 
-- [ ] Use focused fast tests during the refactor: CLI grammar/help/completions,
+- [x] Use focused fast tests during the refactor: CLI grammar/help/completions,
       architecture lint, and the directly affected in-memory behavior suites.
-- [ ] Run `make test-fast` at coherent milestones rather than paying the integration
+- [x] Run `make test-fast` at coherent milestones rather than paying the integration
       cost after each mechanical change.
 - [ ] Avoid routine integration-test runs while module names, dispatch, and ownership
       are moving. This work does not change `lib/tmux.sh` or intentionally add tmux

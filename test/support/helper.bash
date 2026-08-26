@@ -57,9 +57,8 @@ load_signal() {
   source "$PROJECT_ROOT/lib/signal.sh"
 }
 
-# Source the complete behavior stack on the fake store. Used where a lifecycle test
-# needs observable redraw counts without starting a tmux server.
-load_lifecycle() {
+# Source the complete behavior stack on the fake store for session coordination tests.
+load_session() {
   export AIRLINE_DIR="$PROJECT_ROOT"
   export AIRLINE_SESSION='s1'
   source "$PROJECT_ROOT/test/support/fake-tmux.sh"
@@ -70,7 +69,8 @@ load_lifecycle() {
   source "$PROJECT_ROOT/lib/signal.sh"
   source "$PROJECT_ROOT/lib/runner.sh"
   source "$PROJECT_ROOT/lib/layout.sh"
-  source "$PROJECT_ROOT/lib/lifecycle.sh"
+  source "$PROJECT_ROOT/lib/session.sh"
+  source "$PROJECT_ROOT/lib/transaction.sh"
   _use_fake_readback
 }
 

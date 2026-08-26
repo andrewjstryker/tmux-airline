@@ -53,7 +53,7 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   COMP_WORDS=(airline problem clear work d); COMP_CWORD=4; _airline_completion
   assert_equal "${COMPREPLY[*]}" deploy
 
-  COMP_WORDS=(airline lock clear session work p); COMP_CWORD=5; _airline_completion
+  COMP_WORDS=(airline transaction clear session work p); COMP_CWORD=5; _airline_completion
   assert_equal "${COMPREPLY[*]}" problem
 }
 

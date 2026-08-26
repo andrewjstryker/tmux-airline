@@ -390,8 +390,74 @@ _adapter_show () {
 }
 
 #-----------------------------------------------------------------------------#
-# CLI behavior boundary
+# Public configuration services and CLI behavior boundary
 #-----------------------------------------------------------------------------#
+
+# Session coordination services. Layout owns initialization and application of the
+# complete configuration snapshot; session owns only the session command and state.
+_layout_initialize_unlocked () {   # <session>
+  local session="$1" selected seeded=""
+  if [[ -z "$(cfg_get_session "$session" inner-bg)" ]]; then
+    _palette_select_unlocked "$session" default || return $?
+    seeded=1
+  fi
+  if [[ -n "$seeded" || -z "$(prv_get_session "$session" "$AIRLINE_KEY_DEFAULTS")" ]]; then
+    selected="$(prv_get_session "$session" layout)"
+    [[ -n "$selected" ]] || selected=adaptive
+    _apply_layout_unlocked "$session" "$selected" || return $?
+  fi
+  _apply_public_unlocked "$session" || return $?
+  _reapply_adapters_unlocked "$session" || return $?
+  prv_set_session "$session" "$AIRLINE_KEY_DEFAULTS" 1
+  render "$session" || true
+}
+
+_layout_apply_unlocked () {   # <session>
+  _apply_public_unlocked "$1" || return $?
+  _reapply_adapters_unlocked "$1" || return $?
+  render "$1" || true
+}
+
+_layout_report_configuration_result () {   # <session> <rc> <operation>
+  local session="$1" rc="$2" operation="$3" message
+  case "$rc" in
+    0)
+      signal_problem_report "$session" airline-palette ok ""
+      [[ "$operation" != init ]] || signal_problem_report "$session" airline-layout ok ""
+      ;;
+    "$AIRLINE_CONFIG_PALETTE_FAILURE")
+      signal_problem_report "$session" airline-palette fail \
+        "$operation could not resolve a complete palette"
+      ;;
+    *)
+      message="$(prv_get_session "$session" "$AIRLINE_CONFIG_ERROR")"
+      [[ -n "$message" ]] || message="$operation could not apply a layout"
+      signal_problem_report "$session" airline-layout fail "$message"
+      ;;
+  esac
+}
+
+layout_initialize () {   # <session>
+  local session="$1" rc=0
+  with_session_transaction "$session" config _layout_initialize_unlocked "$session" || rc=$?
+  _layout_report_configuration_result "$session" "$rc" init
+  return "$rc"
+}
+
+layout_apply () {   # <session>
+  local session="$1" rc=0
+  with_session_transaction "$session" config _layout_apply_unlocked "$session" || rc=$?
+  _layout_report_configuration_result "$session" "$rc" apply
+  return "$rc"
+}
+
+layout_configuration_show () {   # <session>; caller owns the config transaction
+  local session="$1"
+  printf '\npalette:\n'; _palette_show "$session"
+  printf '\nsegment:\n'; _static_show "$session" "segment-" _segment_slot_valid AIRLINE_SEGMENT_SLOTS
+  printf '\nadapter:\n'; _adapter_show "$session"
+  printf '\nlayout:\n';  _layout_show "$session"
+}
 
 _layout_problem_message () {
   local session="$1" handle="$2" message

@@ -3,12 +3,12 @@
 # Generated from `airline help`; do not edit.
 _airline_children () {
   case "$1" in
-    '') printf %s help\ session\ signal\ status\ health\ problem\ lock\ palette\ segment\ adapter\ layout\ classifier\ filter\ probe\ runner ;;
+    '') printf %s help\ session\ signal\ status\ health\ problem\ transaction\ palette\ segment\ adapter\ layout\ classifier\ filter\ probe\ runner ;;
     session) printf %s init\ apply\ show\ suspend\ resume\ toggle ;;
     status) printf %s set\ clear\ show ;;
     health) printf %s set\ clear\ show ;;
     problem) printf %s set\ clear\ show ;;
-    lock) printf %s show\ clear ;;
+    transaction) printf %s show\ clear ;;
     palette) printf %s show\ use\ list\ register ;;
     segment) printf %s show ;;
     adapter) printf %s use\ load\ show\ list\ register ;;
@@ -38,8 +38,8 @@ _airline_usage () {
     problem\ set) printf %s \<session\>\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>\] ;;
     problem\ clear) printf %s \<session\>\ \<problem-key\> ;;
     problem\ show) printf %s \[\<session\>\ \[\<problem-key\>\]\] ;;
-    lock\ show) printf %s '' ;;
-    lock\ clear) printf %s \<session\|window\>\ \<target\>\ \<namespace\> ;;
+    transaction\ show) printf %s '' ;;
+    transaction\ clear) printf %s \<session\|window\>\ \<target\>\ \<namespace\> ;;
     palette\ show) printf %s \[name\|\<palette-element\>\] ;;
     palette\ use) printf %s \<palette\> ;;
     palette\ list) printf %s '' ;;
@@ -74,7 +74,7 @@ _airline_usage () {
     status) printf %s '' ;;
     health) printf %s '' ;;
     problem) printf %s '' ;;
-    lock) printf %s '' ;;
+    transaction) printf %s '' ;;
     palette) printf %s '' ;;
     segment) printf %s '' ;;
     adapter) printf %s '' ;;
@@ -104,8 +104,8 @@ _airline_description () {
     problem\ set) printf %s set\ or\ recover\ a\ session\ problem ;;
     problem\ clear) printf %s clear\ a\ session\ problem ;;
     problem\ show) printf %s show\ all\ sessions\,\ one\ session\,\ or\ one\ problem ;;
-    lock\ show) printf %s list\ outstanding\ transactions\ and\ owner\ state ;;
-    lock\ clear) printf %s release\ one\ stale\ lock ;;
+    transaction\ show) printf %s list\ outstanding\ transactions\ and\ owner\ state ;;
+    transaction\ clear) printf %s release\ one\ stale\ transaction ;;
     palette\ show) printf %s show\ the\ palette\ summary\ or\ one\ raw\ field ;;
     palette\ use) printf %s load\ a\ complete\ palette\ and\ repaint\ adapters ;;
     palette\ list) printf %s list\ palettes\ on\ the\ search\ path ;;
@@ -140,7 +140,7 @@ _airline_description () {
     status) printf %s status\ commands ;;
     health) printf %s health\ commands ;;
     problem) printf %s problem\ commands ;;
-    lock) printf %s lock\ commands ;;
+    transaction) printf %s transaction\ commands ;;
     palette) printf %s palette\ commands ;;
     segment) printf %s segment\ commands ;;
     adapter) printf %s adapter\ commands ;;
@@ -238,7 +238,7 @@ _airline_zsh () {
       elif (( CURRENT == 5 )); then compadd ${(@f)$(_airline_zsh_problem_keys "${words[4]}")}; return
       fi
       ;;
-    'lock clear')
+    'transaction clear')
       if (( CURRENT == 4 )); then compadd session window; return
       elif (( CURRENT == 5 )); then compadd ${(@f)$(_airline_zsh_dynamic "${words[4]}")}; return
       elif (( CURRENT == 6 )); then

@@ -39,7 +39,8 @@ a non-obvious boundary described here.
 | `airline.sh` | Public CLI: parses the grammar and delegates each command once | no |
 | `lib/help.sh` | Renders marked CLI grammar sections for help and completions | no |
 | `lib/command.sh` | Shared CLI error, context, and output helpers | no |
-| `lib/lifecycle.sh` | Session initialization, active/suspended state, and locks | no |
+| `lib/session.sh` | Session bootstrap, configuration coordination, and state | no |
+| `lib/transaction.sh` | Transaction-marker inspection and stale recovery | no |
 | `lib/signal.sh` | Status, health, problems, projection, and transient consumption | no |
 | `lib/catalog.sh` | Owns registered search paths and bare-name resolution | no |
 | `lib/layout.sh` | Palette, adapter, segment, and executable-layout behavior | no |
@@ -63,33 +64,42 @@ graph TD
     ENTRY --> CLI[airline.sh]
     SHIM --> CLI
     CLI --> CMD[lib/command.sh]
-    CLI --> LIFE[lib/lifecycle.sh]
+    CLI --> SESSION[lib/session.sh]
+    CLI --> TX[lib/transaction.sh]
     CLI --> SIGNAL[lib/signal.sh]
     CLI --> LAYOUT[lib/layout.sh]
     CLI --> RUNNER[lib/runner.sh]
     CLI --> HELP[lib/help.sh]
-    LIFE --> LAYOUT
-    LIFE --> LOGIC[lib/render.sh]
-    LIFE --> SIGNAL
+    SESSION --> CMD
+    TX --> CMD
+    SIGNAL --> CMD
+    LAYOUT --> CMD
+    RUNNER --> CMD
+    CAT --> CMD
+    HELP --> CMD
+    SESSION --> LAYOUT
+    SESSION --> LOGIC[lib/render.sh]
     LAYOUT --> LOGIC
     LAYOUT --> SIGNAL
     RUNNER --> SIGNAL
-    LIFE --> CAT[lib/catalog.sh]
+    SESSION --> CAT[lib/catalog.sh]
     LAYOUT --> CAT
     RUNNER --> CAT
     CAT --> COLL
-    LIFE --> COLL[lib/collections.sh]
+    COLL[lib/collections.sh]
     LAYOUT --> COLL
     RUNNER --> COLL
     LOGIC --> COLL
     SIGNAL --> LOGIC
     SIGNAL --> COLL
-    LIFE --> MECH[lib/tmux.sh]
+    SESSION --> MECH[lib/tmux.sh]
+    TX --> MECH
     LAYOUT --> MECH
     RUNNER --> MECH
     LOGIC --> MECH
     SIGNAL --> MECH
     COLL --> MECH
+    CMD --> MECH
     CAT -. register/resolve .-> FILES[palettes · adapters · layouts · runner catalogs]
     MECH ==> TMUX([tmux server]):::ext
 
@@ -282,8 +292,8 @@ airline problem  set <session> <problem-key> <ok|warn|fail> [<message>]
                  clear <session> <problem-key>
                  show [<session> [<problem-key>]]
 airline signal   clear-transient [-t <window>]
-airline lock     show
-                 clear <session|window> <target> <namespace>
+airline transaction show
+                    clear <session|window> <target> <namespace>
 
 airline palette  show [name|<palette-element>] | list | use <palette> | register <dir>
 airline segment  show [<segment>]
@@ -593,11 +603,10 @@ serialize by `(window, namespace)`, while problems serialize by `(session,
 namespace)`. The registry, contributor tuple, reduction, and projected badge
 therefore form one logical mutation even when background evaluations overlap.
 `lib/tmux.sh` owns acquisition, an atomic owner-scoped marker, cleanup, stale-owner
-detection, and recovery; lifecycle only declares the owner, namespace, and operation
-that must be atomic. Transaction callbacks run in a subshell so transaction-local
-signal traps do not alter caller traps. `airline lock show` exposes outstanding
-markers, and `lock clear` releases only a marker whose recorded process is no longer
-alive. This diagnostic API is deliberately separate from problems, avoiding a
+detection, and recovery. Transaction callbacks run in a subshell so transaction-local
+signal traps do not alter caller traps. `airline transaction show` exposes
+outstanding markers, and `transaction clear` releases only a marker whose recorded
+process is no longer alive. This diagnostic API is deliberately separate from problems, avoiding a
 circular dependency when the problem transaction itself is stuck. Identical problem
 sets and absent clears skip both storage writes and redraws. Widgets may report their
 current capability on every evaluation so stale semantic observations converge.
@@ -639,8 +648,8 @@ private scalar in a tmux format. There is no private-global accessor.
 - **C — CLI delegation:** each ordinary top-level noun calls its matching
   `cmd_<noun>` dispatcher, and that inferred noun set must exactly match the grouped
   help registry. Each leaf arm then calls one owner-prefixed implementation entry
-  (`lifecycle_*`, `signal_*`, `layout_*`, or `runner_*`). Help is the explicit root
-  exception.
+  (`session_*`, `transaction_*`, `signal_*`, `layout_*`, or `runner_*`). Help is the
+  explicit root exception.
 
 The same boundary makes most tests cheap:
 
@@ -654,8 +663,9 @@ The same boundary makes most tests cheap:
 | `runner/integration.bats` | real tmux subprocess | runner process and topology integration |
 | `layout/integration.bats` | real tmux subprocess | executable layout and primitive integration |
 | `signal/behavior.bats` | in-memory fake | status, health, problems, transients, and redraw gating |
-| `lifecycle/behavior.bats` | in-memory fake | session initialization and active/suspended state |
-| `lifecycle/integration.bats` | real tmux subprocess | lifecycle integration requiring tmux semantics |
+| `session/behavior.bats` | in-memory fake | session initialization and active/suspended state |
+| `session/integration.bats` | real tmux subprocess | session integration requiring tmux semantics |
+| `transaction/behavior.bats` | function stubs | diagnostic validation and error translation |
 | `cli/grammar.bats` | sourced CLI with spies | grammar and exactly-once delegation behavior |
 | `cli/completions.bats` | generated shell artifacts | help/compiler drift, typed completion, and shell syntax |
 | `cli/wrapper.bats` | real tmux subprocess | installed launcher discovery and delegation |
@@ -665,7 +675,7 @@ The same boundary makes most tests cheap:
 leaf store operations and standalone tmux verbs. It models option scope, absence,
 overwrite, removal, and preservation of spaces; it does not evaluate tmux formats.
 `make test-fast` selects the static and fake-backed suites; `make test-integration`
-selects the real-tmux suites. The domain targets `test-layout`, `test-lifecycle`,
+selects the real-tmux suites. The domain targets `test-layout`, `test-session`,
 and `test-runner` pair fast behavior with integration only where that domain needs it.
 
 ## Lessons from failed approaches

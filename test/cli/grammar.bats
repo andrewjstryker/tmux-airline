@@ -17,13 +17,13 @@ setup() {
 
   local fn
   for fn in \
-    lifecycle_init lifecycle_apply lifecycle_show \
-    lifecycle_session_suspend lifecycle_session_resume lifecycle_session_toggle \
+    session_init session_apply session_show \
+    session_suspend session_resume session_toggle \
     signal_clear_transient \
     signal_status_set signal_status_clear signal_status_show \
     signal_health_set signal_health_clear signal_health_show \
     signal_problem_set signal_problem_clear signal_problem_show \
-    lifecycle_lock_show lifecycle_lock_clear \
+    transaction_show transaction_clear_stale \
     layout_palette_show layout_palette_list layout_palette_use layout_palette_register \
     layout_segment_show \
     layout_adapter_show layout_adapter_list layout_adapter_use layout_adapter_load layout_adapter_register \
@@ -45,17 +45,17 @@ setup() {
     assert_success "$argv"
     assert_output "$expected"
   done <<'CASES'
-session init -t work|lifecycle_init <-t> <work>
-session apply|lifecycle_apply
-session show state|lifecycle_show <state>
-session suspend|lifecycle_session_suspend
-session resume|lifecycle_session_resume
-session toggle|lifecycle_session_toggle
+session init -t work|session_init <-t> <work>
+session apply|session_apply
+session show state|session_show <state>
+session suspend|session_suspend
+session resume|session_resume
+session toggle|session_toggle
 signal clear-transient -t @3|signal_clear_transient <-t> <@3>
 status set build active --transient|signal_status_set <build> <active> <--transient>
 health clear cpu -t @2|signal_health_clear <cpu> <-t> <@2>
 problem set $1 cpu warn sensors-missing|signal_problem_set <$1> <cpu> <warn> <sensors-missing>
-lock clear session $1 problem|lifecycle_lock_clear <session> <$1> <problem>
+transaction clear session $1 problem|transaction_clear_stale <session> <$1> <problem>
 palette use light|layout_palette_use <light>
 segment show left-out|layout_segment_show <left-out>
 adapter load /tmp/adapter|layout_adapter_load </tmp/adapter>
@@ -87,6 +87,10 @@ CASES
   run main _watch --probe http example.test
   assert_failure
   assert_output --partial "unknown command: _watch"
+
+  run main lock show
+  assert_failure
+  assert_output --partial "unknown command: lock"
 }
 
 @test "help is generated from the grammar without tmux" {

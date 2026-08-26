@@ -39,14 +39,16 @@ source "$AIRLINE_DIR/lib/signal.sh"
 source "$AIRLINE_DIR/lib/runner.sh"
 # shellcheck source=lib/layout.sh
 source "$AIRLINE_DIR/lib/layout.sh"
-# shellcheck source=lib/lifecycle.sh
-source "$AIRLINE_DIR/lib/lifecycle.sh"
+# shellcheck source=lib/session.sh
+source "$AIRLINE_DIR/lib/session.sh"
+# shellcheck source=lib/transaction.sh
+source "$AIRLINE_DIR/lib/transaction.sh"
 
 AIRLINE_HELP_GROUP_NAMES=(Session Signals Diagnostics Layout Runner)
 AIRLINE_HELP_GROUP_NOUNS=(
   'session'
   'signal status health problem'
-  'lock'
+  'transaction'
   'palette segment adapter layout'
   'classifier filter probe runner'
 )
@@ -64,12 +66,12 @@ cmd_session () {
   local verb="${1:-}"; shift || true
   # help:begin session
   case "$verb" in
-    init)  lifecycle_init  "$@" ;; #| [-t <session>] — seed defaults, register paths, publish the CLI handle, and render
-    apply) lifecycle_apply "$@" ;; #| — commit global option edits and render the session
-    show)  lifecycle_show  "$@" ;; #| [state] — print the active configuration or raw session state
-    suspend) lifecycle_session_suspend ;; #| — mute the palette + trap the prefix (session dormant)
-    resume)  lifecycle_session_resume ;;  #| — restore vibrant colours + release the prefix
-    toggle)  lifecycle_session_toggle ;;  #| — flip active/suspended
+    init)  session_init  "$@" ;; #| [-t <session>] — seed defaults, register paths, publish the CLI handle, and render
+    apply) session_apply "$@" ;; #| — commit global option edits and render the session
+    show)  session_show  "$@" ;; #| [state] — print the active configuration or raw session state
+    suspend) session_suspend ;; #| — mute the palette + trap the prefix (session dormant)
+    resume)  session_resume ;;  #| — restore vibrant colours + release the prefix
+    toggle)  session_toggle ;;  #| — flip active/suspended
     *) command_die "unknown session command: $verb" ;;
   esac
   # help:end session
@@ -121,15 +123,15 @@ cmd_problem () {
   # help:end problem
 }
 
-cmd_lock () {
+cmd_transaction () {
   local verb="${1:-}"; shift || true
-  # help:begin lock
+  # help:begin transaction
   case "$verb" in
-    show)  lifecycle_lock_show "$@" ;;  #| — list outstanding transactions and owner state
-    clear) lifecycle_lock_clear "$@" ;; #| <session|window> <target> <namespace> — release one stale lock
-    *) command_die "unknown lock command: $verb" ;;
+    show)  transaction_show "$@" ;;        #| — list outstanding transactions and owner state
+    clear) transaction_clear_stale "$@" ;; #| <session|window> <target> <namespace> — release one stale transaction
+    *) command_die "unknown transaction command: $verb" ;;
   esac
-  # help:end lock
+  # help:end transaction
 }
 
 cmd_palette () {
@@ -253,7 +255,7 @@ main () {
     status)   cmd_status  "$@" ;;
     health)   cmd_health  "$@" ;;
     problem)  cmd_problem "$@" ;;
-    lock)     cmd_lock    "$@" ;;
+    transaction) cmd_transaction "$@" ;;
     palette)  cmd_palette "$@" ;;
     segment)  cmd_segment "$@" ;;
     adapter)  cmd_adapter "$@" ;;
