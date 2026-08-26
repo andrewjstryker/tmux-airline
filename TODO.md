@@ -89,7 +89,7 @@ the agreed bar for a private entry point.
 
       Have the `pane-focus-out` hook translate the tmux event into that operation.
 
-- [ ] Replace `_run` and `_watch` with re-entry through public runner commands using
+- [x] Replace `_run` and `_watch` with re-entry through public runner commands using
       the already-normalized specification:
 
       ```text
@@ -97,11 +97,11 @@ the agreed bar for a private entry point.
       airline runner watch --here ...
       ```
 
-- [ ] Preserve the spawned-pane retention race guarantee without adding another
+- [x] Preserve the spawned-pane retention race guarantee without adding another
       command vocabulary. Pass airline-owned spawn provenance as execution context
       (for example, an environment marker) and let the public runner handler retain
       the new pane before validation/execution.
-- [ ] Remove all four underscore-prefixed arms, their delegation wrappers, grammar
+- [x] Remove all four underscore-prefixed arms, their delegation wrappers, grammar
       spies, and direct integration-test usage after the public paths cover their
       behavior.
 - [x] Update `DESIGN.md`, whose CLI grammar currently documents `_unfocus` but omits
@@ -176,7 +176,7 @@ lifecycle calls layout internals, while layout and runner call lifecycle interna
 
 1. [ ] Settle the public CLI grammar for targeted initialization, transient
        consumption, session state, and transaction diagnostics.
-2. [ ] Convert tmux hooks and spawned runners to the resulting public commands; then
+2. [x] Convert tmux hooks and spawned runners to the resulting public commands; then
        remove the four private root routes.
 3. [ ] Extract signal/attention and catalog responsibilities from lifecycle.
 4. [ ] Rename private functions by owner and eliminate cross-module private calls.
@@ -219,9 +219,9 @@ lifecycle calls layout internals, while layout and runner call lifecycle interna
 
 ## Completion criteria
 
-- [ ] The public CLI can express every operation needed by tmux hooks and spawned
+- [x] The public CLI can express every operation needed by tmux hooks and spawned
       runner processes.
-- [ ] `airline.sh` contains no private command vocabulary.
+- [x] `airline.sh` contains no private command vocabulary.
 - [x] Session state is part of the session command family.
 - [ ] Status, health, and problem have a clear shared owner distinct from session
       lifecycle.

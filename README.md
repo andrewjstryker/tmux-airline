@@ -715,8 +715,8 @@ diagnosing a stuck problem transaction never depends on acquiring that same lock
 ## The `airline` CLI
 
 One entry point drives everything. Public commands use a noun followed by a verb;
-help and the remaining internal runner continuations are the only exceptions. `-t`
-targets a window for status/health and a session for targeted initialization.
+help is the only exception. `-t` targets a window for status/health and a session
+for targeted initialization.
 Problem mutations instead take their owning session as a required first argument.
 
 ```

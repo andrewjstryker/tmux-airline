@@ -276,8 +276,9 @@ airline runner   show <runner> [<arg>...] | list | register <dir>
 ```
 
 All listed commands are public. Tmux hooks use targeted public session and signal
-operations rather than a separate callback vocabulary. Two internal runner
-continuations remain outside this grammar pending runner simplification.
+operations rather than a separate callback vocabulary. Spawned runner panes and
+windows re-enter through public `runner run/watch --here` commands; process-local
+spawn context arms pane retention before validation without adding command grammar.
 
 The parser arms are also the grammar source. Explicit `help:begin` / `help:end`
 markers delimit each noun without depending on function or `case` formatting;
@@ -615,8 +616,7 @@ private scalar in a tmux format. There is no private-global accessor.
 - **C — CLI delegation:** each ordinary top-level noun calls its matching
   `cmd_<noun>` dispatcher, and that inferred noun set must exactly match the grouped
   help registry. Each leaf arm then calls one owner-prefixed implementation entry
-  (`lifecycle_*`, `layout_*`, or `runner_*`). Help and underscore-prefixed internal
-  runner continuations are the explicit root exceptions.
+  (`lifecycle_*`, `layout_*`, or `runner_*`). Help is the explicit root exception.
 
 The same boundary makes most tests cheap:
 

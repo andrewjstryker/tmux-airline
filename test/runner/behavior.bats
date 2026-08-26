@@ -80,6 +80,55 @@ setup() {
   assert_equal "$AIRLINE_RUNNER_PANE_ORIENTATION" ""
 }
 
+@test "spawned placements re-enter public runner commands with normalized argv" {
+  evidence="$BATS_TEST_TMPDIR/spawn"
+  _runner_expand_named() { AIRLINE_RUNNER_INVOCATION_ARGV=("$3"); }
+  _runner_parse() {
+    AIRLINE_RUNNER_PLACEMENT=pane
+    AIRLINE_RUNNER_PANE_ORIENTATION=-h
+  }
+  _runner_validate_spec() { :; }
+  _runner_normalize_spec() {
+    AIRLINE_RUNNER_SPEC_ARGV=(--probe visible endpoint)
+    [[ "$1" != run ]] || AIRLINE_RUNNER_SPEC_ARGV+=(-- true)
+  }
+  runner_open_pane() {
+    printf '<%s>' "$@" > "$evidence"
+    printf '%%2'
+  }
+  runner_retain_pane() { printf '<retain:%s>' "$1" >> "$evidence"; }
+
+  local mode
+  for mode in run watch; do
+    _runner_invoke s1 "$mode" --pane >/dev/null
+    run cat "$evidence"
+    assert_output --partial '<env><AIRLINE_RUNNER_SPAWNED=1>'
+    assert_output --partial "<${PROJECT_ROOT}/airline.sh><runner><$mode><--here>"
+    assert_output --partial '<--probe><visible><endpoint>'
+    assert_output --partial '<retain:%2>'
+  done
+}
+
+@test "public runner consumes spawn context and retains before invocation" {
+  _RUNNER_EVENTS=""
+  current_pane() { printf '%%7'; }
+  runner_retain_pane() { _RUNNER_EVENTS+="retain:$1 "; }
+  _require_current_session() { printf s1; }
+  _runner_invoke() {
+    [[ ! -v AIRLINE_RUNNER_SPAWNED ]] || return 9
+    _RUNNER_EVENTS+="invoke:$2"
+  }
+
+  AIRLINE_RUNNER_SPAWNED=1
+  runner_run --here -- true
+  assert_equal "$_RUNNER_EVENTS" "retain:%7 invoke:run"
+  [[ ! -v AIRLINE_RUNNER_SPAWNED ]]
+
+  _RUNNER_EVENTS=""
+  runner_watch --here --probe visible
+  assert_equal "$_RUNNER_EVENTS" "invoke:watch"
+}
+
 @test "probe interval must be positive seconds" {
   printf '%s\n' \
     'AIRLINE_PROBE_SUMMARY="test probe"' \

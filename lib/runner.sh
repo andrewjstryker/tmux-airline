@@ -662,8 +662,8 @@ _runner_normalize_spec () {   # <run|watch>
 # can observe it; explicit stdin inheritance preserves current-pane interaction and
 # stdout/stderr remain visible in the pane. A filter gets a tee'd copy of its declared
 # stream; a probe performs sequential periodic observations without overlapping.
-_runner_execute () {   # <session> <retain:0|1>; uses parsed run specification
-  local session="$1" retain="$2" file pane win key filter_key probe_key
+_runner_execute () {   # <session>; uses parsed run specification
+  local session="$1" file pane win key filter_key probe_key
   local load_problem classify_problem filter_problem probe_problem streams=""
   local child_pid filter_pid="" probe_pid="" rc=0 signal="" condition
 
@@ -676,8 +676,6 @@ _runner_execute () {   # <session> <retain:0|1>; uses parsed run specification
   classify_problem="$(_runner_problem_key "$AIRLINE_RUNNER_CLASSIFIER" classify)"
   filter_problem="$(_runner_problem_key "$AIRLINE_RUNNER_FILTER" filter)"
   probe_problem="$(_runner_problem_key "$AIRLINE_RUNNER_PROBE" probe)"
-  [[ "$retain" == 1 ]] && runner_retain_pane "$pane"
-
   file="$(_runner_element_file "$session" classify "$AIRLINE_RUNNER_CLASSIFIER")"
   runner_classifier_load "$file" || return 2
   if [[ -n "$AIRLINE_RUNNER_FILTER" ]]; then
@@ -769,22 +767,24 @@ _runner_invoke () {   # <session> <run|watch> [spec...]
 
   case "$AIRLINE_RUNNER_PLACEMENT" in
     here)
-      if [[ "$mode" == run ]]; then _runner_execute "$session" 0
-      else _runner_watch_execute "$session" 0; fi
+      if [[ "$mode" == run ]]; then _runner_execute "$session"
+      else _runner_watch_execute "$session"; fi
       ;;
     pane|window)
       pane="$(current_pane)"; cwd="$(current_path)"
       if [[ "$AIRLINE_RUNNER_PLACEMENT" == pane ]]; then
         spawned="$(runner_open_pane "$pane" "$cwd" "$AIRLINE_RUNNER_PANE_ORIENTATION" env \
-          "AIRLINE_DIR=$AIRLINE_DIR" "AIRLINE_TMUX=${AIRLINE_TMUX:-tmux}" \
-          "$AIRLINE_DIR/airline.sh" "_$mode" "${AIRLINE_RUNNER_SPEC_ARGV[@]}")"
+          "AIRLINE_RUNNER_SPAWNED=1" "AIRLINE_DIR=$AIRLINE_DIR" \
+          "AIRLINE_TMUX=${AIRLINE_TMUX:-tmux}" "$AIRLINE_DIR/airline.sh" \
+          runner "$mode" --here "${AIRLINE_RUNNER_SPEC_ARGV[@]}")"
       else
         spawned="$(runner_open_window "$session" "$cwd" env \
-          "AIRLINE_DIR=$AIRLINE_DIR" "AIRLINE_TMUX=${AIRLINE_TMUX:-tmux}" \
-          "$AIRLINE_DIR/airline.sh" "_$mode" "${AIRLINE_RUNNER_SPEC_ARGV[@]}")"
+          "AIRLINE_RUNNER_SPAWNED=1" "AIRLINE_DIR=$AIRLINE_DIR" \
+          "AIRLINE_TMUX=${AIRLINE_TMUX:-tmux}" "$AIRLINE_DIR/airline.sh" \
+          runner "$mode" --here "${AIRLINE_RUNNER_SPEC_ARGV[@]}")"
       fi
-      # Arm retention from both sides of the spawn boundary. The child does it
-      # before validation; the parent closes the scheduler race before a very
+      # The public child command consumes AIRLINE_RUNNER_SPAWNED and arms retention
+      # before validation. The parent closes the scheduler race before a very
       # short-lived child can be reaped under load.
       runner_retain_pane "$spawned"
       printf '%s\n' "$spawned"
@@ -793,8 +793,8 @@ _runner_invoke () {   # <session> <run|watch> [spec...]
 }
 
 # Watch external state without manufacturing a placeholder command.
-_runner_watch_execute () {   # <session> <retain:0|1>; uses parsed watch specification
-  local session="$1" retain="$2" file pane win key probe_key probe_problem
+_runner_watch_execute () {   # <session>; uses parsed watch specification
+  local session="$1" file pane win key probe_key probe_problem
   local interval watch_pid="$BASHPID" watch_rc=0 sleep_pid=""
 
   pane="$(current_pane)"
@@ -802,8 +802,6 @@ _runner_watch_execute () {   # <session> <retain:0|1>; uses parsed watch specifi
   key="runner-${pane#%}-watch"
   probe_key="$key-probe"
   probe_problem="$(_runner_problem_key "$AIRLINE_RUNNER_PROBE" probe)"
-  [[ "$retain" == 1 ]] && runner_retain_pane "$pane"
-
   file="$(_runner_element_file "$session" probe "$AIRLINE_RUNNER_PROBE")"
   runner_probe_load "$file" || return 2
   _runner_problem "$session" "$(_runner_problem_key "$AIRLINE_RUNNER_PROBE" load)" ok ""
@@ -853,25 +851,16 @@ runner_probe_register () { local s; s="$(_require_current_session)"; _register "
 runner_show () { local s; s="$(_require_current_session)"; _runner_definition_show "$s" "$@"; }
 runner_list () { local s; s="$(_require_current_session)"; _path_list "$s" runner; }
 runner_register () { local s; s="$(_require_current_session)"; _register "$s" runner "$@"; }
-runner_run () { local s; s="$(_require_current_session)"; _runner_invoke "$s" run "$@"; }
-runner_watch () { local s; s="$(_require_current_session)"; _runner_invoke "$s" watch "$@"; }
-
-runner_exec () {   # <normalized-run-spec...>; internal spawned-pane entry
-  local s
+_runner_command () {   # <run|watch> [invocation...]
+  local mode="$1" spawned="${AIRLINE_RUNNER_SPAWNED:-}" s; shift
+  # Spawn provenance is process-local context, not command grammar. Consume it so
+  # the monitored child and any nested airline invocation cannot inherit it.
+  unset AIRLINE_RUNNER_SPAWNED
+  [[ "$spawned" != 1 ]] || runner_retain_pane "$(current_pane)"
   s="$(_require_current_session)"
-  runner_retain_pane "$(current_pane)"
-  _runner_parse run "$@"
-  _runner_validate_spec "$s" run
-  _runner_execute "$s" 0
+  _runner_invoke "$s" "$mode" "$@"
 }
-
-runner_watch_exec () {   # <normalized-watch-spec...>; internal spawned-pane entry
-  local s
-  s="$(_require_current_session)"
-  runner_retain_pane "$(current_pane)"
-  _runner_parse watch "$@"
-  _runner_validate_spec "$s" watch
-  _runner_watch_execute "$s" 0
-}
+runner_run () { _runner_command run "$@"; }
+runner_watch () { _runner_command watch "$@"; }
 
 # vim: ft=bash

@@ -114,8 +114,8 @@ _cli_nouns () {
 
 # Enforce the public root grammar without naming any forbidden commands. Between
 # the explicit root markers, every ordinary word arm must be `noun) cmd_noun "$@"`.
-# Help, option aliases for help, wildcard rejection, and underscore callbacks are
-# the deliberate top-level exceptions.
+# Help, option aliases for help, and wildcard rejection are the deliberate
+# top-level exceptions. The CLI has no private command vocabulary.
 _check_c_root () {
   local nouns line marker arm pattern body expected expected_re seen=" " active="" rc=0 lineno=0 noun
   nouns="$(_cli_nouns)" || return 1
@@ -132,7 +132,7 @@ _check_c_root () {
     body="${arm#*)}"
     body="${body#"${body%%[![:space:]]*}"}"
     case "$pattern" in
-      help|'""|-h|--help'|'*'|_*) continue ;;
+      help|'""|-h|--help'|'*') continue ;;
     esac
     if [[ ! "$pattern" =~ ^[a-z][a-z0-9-]*$ ]]; then
       printf 'C: airline.sh:%d: invalid public root pattern: %s\n' "$lineno" "$pattern"
@@ -167,7 +167,7 @@ _check_c_root () {
 
 # Invariant C — validate both delegation hops. Documented leaf arms contain
 # exactly one owner-prefixed call, and the parser makes no underscore-private
-# behavior calls. Internal command names do not have call syntax.
+# behavior calls.
 _check_c () {
   local hits arms rc=0
   _check_c_root || rc=1

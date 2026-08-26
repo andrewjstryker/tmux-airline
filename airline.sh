@@ -7,10 +7,9 @@
 # sources the internal behaviour stack under lib/, then parses argv and delegates
 # each command once. The CLI is the public API; lib/ contains its implementation.
 #
-# Grammar: public commands follow a noun-verb pattern, apart from help. Two internal
-# runner continuations remain top-level entry points pending runner simplification.
-# Every noun's verbs live in a cmd_<noun> dispatcher below; help is generated from
-# the `#| …` markers on the case arms, so the grammar documents itself.
+# Grammar: public commands follow a noun-verb pattern, apart from help. Every noun's
+# verbs live in a cmd_<noun> dispatcher below; help is generated from the `#| …`
+# markers on the case arms, so the grammar documents itself.
 
 set -u
 
@@ -235,8 +234,8 @@ cmd_runner () {
 }
 
 #-----------------------------------------------------------------------------#
-# Dispatch — public nouns delegate to their cmd_<noun> parser above. Help and
-# internal runner continuations are the only top-level exceptions.
+# Dispatch — public nouns delegate to their cmd_<noun> parser above. Help is the only
+# top-level exception.
 # Keeping dispatch in main makes the grammar behavior-testable without starting tmux.
 #-----------------------------------------------------------------------------#
 main () {
@@ -257,8 +256,6 @@ main () {
     filter)     cmd_filter "$@" ;;
     probe)      cmd_probe "$@" ;;
     runner)   cmd_runner  "$@" ;;
-    _run)     runner_exec "$@" ;;        # internal: spawned-pane runner callback
-    _watch)   runner_watch_exec "$@" ;;  # internal: spawned-pane watcher callback
     help)     help_command "$@" ;;      #| [<noun> [<verb>]] — show command help
     ""|-h|--help) help_command ;;
     *) die "unknown command: $cmd (try: airline help)" ;;

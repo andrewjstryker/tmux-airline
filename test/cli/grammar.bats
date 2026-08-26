@@ -31,8 +31,7 @@ setup() {
     runner_classifier_show runner_classifier_list runner_classifier_register \
     runner_filter_show runner_filter_list runner_filter_register \
     runner_probe_show runner_probe_list runner_probe_register \
-    runner_show runner_list runner_register runner_run runner_watch \
-    runner_exec runner_watch_exec; do
+    runner_show runner_list runner_register runner_run runner_watch; do
     eval "$fn () { _record_delegate \"\$@\"; }"
   done
 }
@@ -65,8 +64,6 @@ classifier show basic|runner_classifier_show <basic>
 filter list|runner_filter_list
 probe register /tmp/probes|runner_probe_register </tmp/probes>
 runner run tap -- true|runner_run <tap> <--> <true>
-_run --classify basic -- true|runner_exec <--classify> <basic> <--> <true>
-_watch --probe http example.test|runner_watch_exec <--probe> <http> <example.test>
 CASES
 }
 
@@ -82,6 +79,14 @@ CASES
   run main _unfocus @3
   assert_failure
   assert_output --partial "unknown command: _unfocus"
+
+  run main _run -- true
+  assert_failure
+  assert_output --partial "unknown command: _run"
+
+  run main _watch --probe http example.test
+  assert_failure
+  assert_output --partial "unknown command: _watch"
 }
 
 @test "help is generated from the grammar without tmux" {
