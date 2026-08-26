@@ -66,7 +66,7 @@ An effective reduction in production and test code is an expected outcome.
 The current root dispatcher contains four underscore-prefixed routes. None clears
 the agreed bar for a private entry point.
 
-- [ ] Replace `_init-session` with targeted public session initialization.
+- [x] Replace `_init-session` with targeted public session initialization.
       `session init` currently resolves only the current session, while the
       asynchronous `after-new-session` hook needs an explicit, stable target. Add an
       explicit target to the public operation, for example:
@@ -77,7 +77,7 @@ the agreed bar for a private entry point.
 
       Have the hook call that public command with `#{session_id}`.
 
-- [ ] Replace `_unfocus` with a public semantic operation that consumes all transient
+- [x] Replace `_unfocus` with a public semantic operation that consumes all transient
       status and health contributors for a target window. The operation must retain
       the current transaction and redraw-gating behavior. Choose final grammar based
       on the signal/attention model rather than exposing the tmux hook name; for
@@ -104,33 +104,33 @@ the agreed bar for a private entry point.
 - [ ] Remove all four underscore-prefixed arms, their delegation wrappers, grammar
       spies, and direct integration-test usage after the public paths cover their
       behavior.
-- [ ] Update `DESIGN.md`, whose CLI grammar currently documents `_unfocus` but omits
+- [x] Update `DESIGN.md`, whose CLI grammar currently documents `_unfocus` but omits
       the other three internal routes even though all four are reachable through the
       same executable.
 
 ### CLI concepts
 
-- [ ] Combine `state` with `session`. Active/suspended state is session-owned
+- [x] Combine `state` with `session`. Active/suspended state is session-owned
       behavior and does not justify an independent root concept. Target grammar:
 
       ```text
       airline session init
       airline session apply
-      airline session show
+      airline session show [state]
       airline session suspend
       airline session resume
       airline session toggle
       ```
 
-- [ ] Do not retain `airline state ...` compatibility aliases.
+- [x] Do not retain `airline state ...` compatibility aliases.
 - [ ] Preserve the useful aggregate structure already present in the layout family:
       layout with palette, segment, and adapter primitives.
 - [ ] Preserve the analogous runner family: runner with classifier, filter, and probe
       primitives.
 - [ ] Give status, health, and problem an explicit shared concept and help grouping.
-      Settle whether the project calls this concept `signal` or `attention`, then use
-      that term consistently in the CLI description, module name, functions, tests,
-      and design document.
+      The CLI and help now use `signal`; carry that decision through the module name,
+      functions, tests, and design document during the lifecycle split. `attention`
+      remains a status value and would be ambiguous as the owner name.
 - [ ] Reconsider `lock` as a root domain noun. It is transaction recovery/diagnostic
       behavior rather than lifecycle behavior; place it under a clear diagnostics or
       transaction concept if it remains public.
@@ -184,7 +184,23 @@ lifecycle calls layout internals, while layout and runner call lifecycle interna
 6. [ ] Remove invariant C and add the replacement dependency/visibility lint.
 7. [ ] Regenerate completions and update grammar, behavior, integration, architecture,
        README, and design tests/documentation.
-8. [ ] Run `make lint`, `make test-fast`, and the full `make test` suite.
+8. [ ] Run final verification: `make lint`, `make test-fast`, and the full
+       `make test` suite.
+
+## Test strategy
+
+- [ ] Use focused fast tests during the refactor: CLI grammar/help/completions,
+      architecture lint, and the directly affected in-memory behavior suites.
+- [ ] Run `make test-fast` at coherent milestones rather than paying the integration
+      cost after each mechanical change.
+- [ ] Avoid routine integration-test runs while module names, dispatch, and ownership
+      are moving. This work does not change `lib/tmux.sh` or intentionally add tmux
+      behavior.
+- [ ] Run targeted integration tests at key process-boundary moments, especially
+      after replacing tmux hook routes and spawned runner re-entry. Those changes
+      alter subprocess wiring even though the tmux mechanics remain unchanged.
+- [ ] Run the complete integration and test suites once the architecture and public
+      grammar have settled, before considering the work complete.
 
 ## Scope and simplification checks
 
@@ -206,7 +222,7 @@ lifecycle calls layout internals, while layout and runner call lifecycle interna
 - [ ] The public CLI can express every operation needed by tmux hooks and spawned
       runner processes.
 - [ ] `airline.sh` contains no private command vocabulary.
-- [ ] Session state is part of the session command family.
+- [x] Session state is part of the session command family.
 - [ ] Status, health, and problem have a clear shared owner distinct from session
       lifecycle.
 - [ ] Catalog behavior is not owned by session lifecycle.

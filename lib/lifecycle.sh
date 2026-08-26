@@ -78,12 +78,12 @@ _init () {   # <session>
   # The CLI path is the ONE published (public) option — the bootstrap handle, since a
   # script can't call the CLI to discover where the CLI lives. Everything else about
   # airline's state is read through the CLI, never a private option. Airline binds no
-  # keys — a user wires their own (e.g. `bind F12 run "#{@airline-cli} state toggle"`).
+  # keys — a user wires their own (e.g. `bind F12 run "#{@airline-cli} session toggle"`).
   pub_set "$AIRLINE_KEY_CLI" "$AIRLINE_DIR/airline.sh"
   # tmux loads plugins once per server, but airline owns session-local runtime
   # state. Seed each later session through one indexed global infrastructure hook.
   hook_set "after-new-session[90]" \
-    "run-shell -b \"'$AIRLINE_DIR/airline.sh' _init-session '#{session_id}'\""
+    "run-shell -b \"'$AIRLINE_DIR/airline.sh' session init -t '#{session_id}'\""
 
   # Register airline's own shipped config dirs on each loadable kind's search path.
   # (segment is not loadable — it's public options a layout sets, or the user sets.)
@@ -233,7 +233,7 @@ _register () {   # <session> <kind> <dir>
 # The active/suspended state. `suspend` mutes the palette (the derived flat look, via
 # _palette_load) and traps the prefix so keys pass through — the nested-session signal
 # "this tmux is dormant." `resume` restores. The flat/vibrant colour is derived, not a
-# second palette. State is private; read it through `state show`, not the option.
+# second palette. State is private; read it through `session show`, not the option.
 _state_word () {   # <session>
   [[ "$(prv_get_session "$1" "$AIRLINE_KEY_SUSPENDED")" == 1 ]] && echo suspended || echo active
 }
@@ -255,14 +255,15 @@ _state_set () {   # <session> <1=suspended|0=active>
 # Transient (consume-on-view)
 #-----------------------------------------------------------------------------#
 
-_ensure_unfocus_hook () {
+_ensure_transient_hook () {
   opt_set_global focus-events on
-  hook_set "pane-focus-out[90]" "run-shell -b \"$AIRLINE_DIR/airline.sh _unfocus #{window_id}\""
+  hook_set "pane-focus-out[90]" \
+    "run-shell -b \"'$AIRLINE_DIR/airline.sh' signal clear-transient -t #{window_id}\""
 }
 
 # Drop one namespace's transient contributors and re-project its badge. The caller
 # runs this inside that window collection's transaction.
-_unfocus_namespace_unlocked () {   # <window> <status|health>
+_clear_transient_namespace_unlocked () {   # <window> <status|health>
   local win="$1" ns="$2" changed="" key f1 f2
   for key in $(coll_members_window "$win" "$ns"); do
     IFS=$'\t' read -r f1 f2 <<< "$(coll_get_window "$win" "$ns" "$key")"
@@ -272,13 +273,26 @@ _unfocus_namespace_unlocked () {   # <window> <status|health>
   "${ns}_project" "$win"
 }
 
-# The internal `_unfocus` hook callback. Status and health use separate locks in a
-# fixed order; each collection mutation and projection is one window transaction.
-_unfocus () {
-  local win="${1:-}" ns changed=""; [[ -n "$win" ]] || return 0
+# Consume-on-view is a public signal operation. Status and health use separate locks
+# in a fixed order; each collection mutation and projection is one window transaction.
+_clear_transient () {   # [-t <window>]
+  local win="" ns changed=""
+  while (( $# )); do
+    case "$1" in
+      -t)
+        [[ $# -ge 2 && -n "$2" ]] || die "signal clear-transient: -t requires <window>"
+        [[ -z "$win" ]] || die "signal clear-transient: duplicate -t"
+        win="$2"
+        shift 2
+        ;;
+      *) die "signal clear-transient: unknown argument '$1'" ;;
+    esac
+  done
+  [[ -n "$win" ]] || win="$(current_window)"
   win="$(resolve_window "$win")"
+  [[ -n "$win" ]] || die "signal clear-transient: cannot resolve window"
   for ns in status health; do
-    with_window_transaction "$win" "$ns" _unfocus_namespace_unlocked "$win" "$ns" && changed=1
+    with_window_transaction "$win" "$ns" _clear_transient_namespace_unlocked "$win" "$ns" && changed=1
   done
   [[ -n "$changed" ]] && redraw
   return 0
@@ -319,7 +333,7 @@ _signal_set () {   # <ns> <validator> <clear-value|""> <key> <value> [--transien
   win="$(resolve_window "$win")"
   with_window_transaction "$win" "$ns" _signal_set_unlocked \
     "$ns" "$clear_value" "$key" "$value" "$transient" "$win" && redraw
-  [[ -n "$transient" ]] && _ensure_unfocus_hook
+  [[ -n "$transient" ]] && _ensure_transient_hook
   return 0
 }
 
@@ -473,23 +487,43 @@ _lock_clear () {   # <session|window> <target> <namespace>
 
 # CLI delegation targets. These functions are the behavior boundary behind the
 # grammar in airline.sh; they are internal implementation, not a second user API.
-lifecycle_init () { _init "$(_require_current_session)"; }
-lifecycle_init_session () {   # <tmux-target>; internal lifecycle hook entry
-  local session
-  [[ -n "${1:-}" ]] || die "_init-session: need <target>"
-  session="$(resolve_session "$1")"
-  [[ -n "$session" ]] || die "cannot resolve target session: $1"
+lifecycle_init () {   # [-t <session>]
+  local target="" session
+  while (( $# )); do
+    case "$1" in
+      -t)
+        [[ $# -ge 2 && -n "$2" ]] || die "session init: -t requires <session>"
+        [[ -z "$target" ]] || die "session init: duplicate -t"
+        target="$2"
+        shift 2
+        ;;
+      *) die "session init: unknown argument '$1'" ;;
+    esac
+  done
+  if [[ -n "$target" ]]; then
+    session="$(resolve_session_target "$target")"
+    [[ -n "$session" ]] || die "session init: cannot resolve session '$target'"
+  else
+    session="$(_require_current_session)"
+  fi
   _init "$session"
 }
 lifecycle_apply () { _apply "$(_require_current_session)"; }
 lifecycle_show () {
-  local session; session="$(_require_current_session)"
+  local field="${1:-}" session
+  (( $# <= 1 )) || die "session show: too many arguments"
+  [[ -z "$field" || "$field" == state ]] || die "session show: unknown field '$field'"
+  session="$(_require_current_session)"
+  if [[ "$field" == state ]]; then
+    _state_word "$session"
+    return
+  fi
   with_session_transaction "$session" config _show_config "$session"
 }
 
-lifecycle_state_suspend () { _state_set "$(_require_current_session)" 1; }
-lifecycle_state_resume () { _state_set "$(_require_current_session)" 0; }
-lifecycle_state_toggle () {
+lifecycle_session_suspend () { _state_set "$(_require_current_session)" 1; }
+lifecycle_session_resume () { _state_set "$(_require_current_session)" 0; }
+lifecycle_session_toggle () {
   local session
   session="$(_require_current_session)"
   if [[ "$(_state_word "$session")" == suspended ]]; then
@@ -498,8 +532,7 @@ lifecycle_state_toggle () {
     _state_set "$session" 1
   fi
 }
-lifecycle_state_show () { _state_word "$(_require_current_session)"; }
-
+lifecycle_signal_clear_transient () { _clear_transient "$@"; }
 lifecycle_status_set () { _signal_set status _status_level_valid "" "$@"; }
 lifecycle_status_clear () { _signal_clear status "$@"; }
 lifecycle_status_show () { _signal_show status "$@"; }
@@ -511,5 +544,4 @@ lifecycle_problem_clear () { _problem_clear "$@"; }
 lifecycle_problem_show () { _problem_show "$@"; }
 lifecycle_lock_show () { _lock_show "$@"; }
 lifecycle_lock_clear () { _lock_clear "$@"; }
-lifecycle_unfocus () { _unfocus "$@"; }
 # vim: ft=bash

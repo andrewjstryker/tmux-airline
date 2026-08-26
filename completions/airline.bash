@@ -4,9 +4,8 @@
 # Generated from `airline help`; do not edit.
 _airline_children () {
   case "$1" in
-    '') printf %s help\ session\ state\ status\ health\ problem\ lock\ palette\ segment\ adapter\ layout\ classifier\ filter\ probe\ runner ;;
-    session) printf %s init\ apply\ show ;;
-    state) printf %s suspend\ resume\ toggle\ show ;;
+    '') printf %s help\ session\ signal\ status\ health\ problem\ lock\ palette\ segment\ adapter\ layout\ classifier\ filter\ probe\ runner ;;
+    session) printf %s init\ apply\ show\ suspend\ resume\ toggle ;;
     status) printf %s set\ clear\ show ;;
     health) printf %s set\ clear\ show ;;
     problem) printf %s set\ clear\ show ;;
@@ -25,13 +24,12 @@ _airline_children () {
 _airline_usage () {
   case "$1" in
     help) printf %s \[\<noun\>\ \[\<verb\>\]\] ;;
-    session\ init) printf %s '' ;;
+    session\ init) printf %s \[-t\ \<session\>\] ;;
     session\ apply) printf %s '' ;;
-    session\ show) printf %s '' ;;
-    state\ suspend) printf %s '' ;;
-    state\ resume) printf %s '' ;;
-    state\ toggle) printf %s '' ;;
-    state\ show) printf %s '' ;;
+    session\ show) printf %s \[state\] ;;
+    session\ suspend) printf %s '' ;;
+    session\ resume) printf %s '' ;;
+    session\ toggle) printf %s '' ;;
     status\ set) printf %s \<status-key\>\ \<active\|result\|attention\>\ \[--transient\]\ \[-t\ \<window\>\] ;;
     status\ clear) printf %s \<status-key\>\ \[-t\ \<window\>\] ;;
     status\ show) printf %s \[\<status-key\>\]\ \[-t\ \<window\>\] ;;
@@ -73,7 +71,7 @@ _airline_usage () {
     runner\ run) printf %s \[--here\|--pane\ \[-h\|-v\]\|--window\]\ \[\<runner\>\]\ \[--classify\ \<classifier\>\]\ \[--filter\ \<filter\>\ \[--merge-stderr\]\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\ --\ \<command\>... ;;
     runner\ watch) printf %s \[--here\|--pane\ \[-h\|-v\]\|--window\]\ \[\<runner\>\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\] ;;
     session) printf %s '' ;;
-    state) printf %s '' ;;
+    signal) printf %s '' ;;
     status) printf %s '' ;;
     health) printf %s '' ;;
     problem) printf %s '' ;;
@@ -94,11 +92,10 @@ _airline_description () {
     help) printf %s show\ command\ help ;;
     session\ init) printf %s seed\ defaults\,\ register\ paths\,\ publish\ the\ CLI\ handle\,\ and\ render ;;
     session\ apply) printf %s commit\ global\ option\ edits\ and\ render\ the\ session ;;
-    session\ show) printf %s print\ the\ active\ configuration ;;
-    state\ suspend) printf %s mute\ the\ palette\ +\ trap\ the\ prefix\ \(session\ dormant\) ;;
-    state\ resume) printf %s restore\ vibrant\ colours\ +\ release\ the\ prefix ;;
-    state\ toggle) printf %s flip\ active/suspended ;;
-    state\ show) printf %s print\ the\ current\ state\ \(active\ \|\ suspended\) ;;
+    session\ show) printf %s print\ the\ active\ configuration\ or\ raw\ session\ state ;;
+    session\ suspend) printf %s mute\ the\ palette\ +\ trap\ the\ prefix\ \(session\ dormant\) ;;
+    session\ resume) printf %s restore\ vibrant\ colours\ +\ release\ the\ prefix ;;
+    session\ toggle) printf %s flip\ active/suspended ;;
     status\ set) printf %s set\ app\ status ;;
     status\ clear) printf %s clear\ app\ status ;;
     status\ show) printf %s show\ a\ window\'s\ app\ status ;;
@@ -140,7 +137,7 @@ _airline_description () {
     runner\ run) printf %s run\ a\ command\ with\ monitoring ;;
     runner\ watch) printf %s watch\ probe\ state\ until\ interrupted ;;
     session) printf %s session\ commands ;;
-    state) printf %s state\ commands ;;
+    signal) printf %s signal\ commands ;;
     status) printf %s status\ commands ;;
     health) printf %s health\ commands ;;
     problem) printf %s problem\ commands ;;
@@ -303,7 +300,11 @@ _airline_completion () {
   usage="$(_airline_usage "$path")" || return
   previous=""; (( ${#prior[@]} == 0 )) || previous="${prior[-1]}"
   case "$previous" in
-    -t) COMPREPLY=( $(compgen -W "$(_airline_dynamic window)" -- "$current") ); return ;;
+    -t)
+      [[ "$path" == 'session init' ]] && token=session || token=window
+      COMPREPLY=( $(compgen -W "$(_airline_dynamic "$token")" -- "$current") )
+      return
+      ;;
   esac
   case "$current" in
     -*) COMPREPLY=( $(compgen -W "$(_airline_option_values "$usage")" -- "$current") ); return ;;

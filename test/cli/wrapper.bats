@@ -13,7 +13,7 @@ setup() {
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
 
   run env TMUX_PANE="$pane" AIRLINE_TMUX="$TMUX -L $_bats_socket" \
-    "$PROJECT_ROOT/airline" state show
+    "$PROJECT_ROOT/airline" session show state
 
   assert_success
   assert_output "active"

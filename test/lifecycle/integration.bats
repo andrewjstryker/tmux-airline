@@ -181,32 +181,32 @@ setup() {
   assert_output --partial "no such outstanding transaction"
 }
 
-@test "a --transient signal arms the focus hook and clears on _unfocus" {
+@test "a --transient signal arms the focus hook and clears publicly" {
   airline session init
   win="$($TMUX -L "$_bats_socket" display-message -p '#{window_id}')"
   airline status set build active                 # persistent
   airline status set review attention --transient # transient
   run get_option focus-events
   assert_output "on"
-  airline _unfocus "$win"
+  airline signal clear-transient -t "$win"
   run wopt @airline--badge-status
   assert_output "active"             # transient 'review' gone, persistent 'build' remains
 }
 
-# --- state (active/suspended) -----------------------------------------------
+# --- session state (active/suspended) ---------------------------------------
 
-@test "state suspend traps the prefix; resume restores; show reads the state" {
+@test "session suspend traps the prefix; resume restores; show reads the state" {
   airline session init
-  run airline state show
+  run airline session show state
   assert_output "active"            # default
-  airline state suspend
+  airline session suspend
   run sopt prefix
   assert_output "None"              # prefix trapped
-  run airline state show
+  run airline session show state
   assert_output "suspended"
-  airline state resume
+  airline session resume
   run sopt prefix
   refute_output "None"              # released → back to default
-  run airline state show
+  run airline session show state
   assert_output "active"
 }

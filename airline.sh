@@ -7,10 +7,10 @@
 # sources the internal behaviour stack under lib/, then parses argv and delegates
 # each command once. The CLI is the public API; lib/ contains its implementation.
 #
-# Grammar: public commands follow a noun-verb pattern, apart from help. Internal
-# underscore-prefixed hook callbacks are also top-level entry points. Every noun's
-# verbs live in a cmd_<noun> dispatcher below; help is generated from the `#| …`
-# markers on the case arms, so the grammar documents itself.
+# Grammar: public commands follow a noun-verb pattern, apart from help. Two internal
+# runner continuations remain top-level entry points pending runner simplification.
+# Every noun's verbs live in a cmd_<noun> dispatcher below; help is generated from
+# the `#| …` markers on the case arms, so the grammar documents itself.
 
 set -u
 
@@ -37,9 +37,11 @@ source "$AIRLINE_DIR/lib/layout.sh"
 # shellcheck source=lib/lifecycle.sh
 source "$AIRLINE_DIR/lib/lifecycle.sh"
 
-AIRLINE_HELP_GROUP_NAMES=(Lifecycle Layout Runner)
+AIRLINE_HELP_GROUP_NAMES=(Session Signals Diagnostics Layout Runner)
 AIRLINE_HELP_GROUP_NOUNS=(
-  'session state status health problem lock'
+  'session'
+  'signal status health problem'
+  'lock'
   'palette segment adapter layout'
   'classifier filter probe runner'
 )
@@ -57,25 +59,25 @@ cmd_session () {
   local verb="${1:-}"; shift || true
   # help:begin session
   case "$verb" in
-    init)  lifecycle_init  "$@" ;; #| — seed defaults, register paths, publish the CLI handle, and render
+    init)  lifecycle_init  "$@" ;; #| [-t <session>] — seed defaults, register paths, publish the CLI handle, and render
     apply) lifecycle_apply "$@" ;; #| — commit global option edits and render the session
-    show)  lifecycle_show  "$@" ;; #| — print the active configuration
+    show)  lifecycle_show  "$@" ;; #| [state] — print the active configuration or raw session state
+    suspend) lifecycle_session_suspend ;; #| — mute the palette + trap the prefix (session dormant)
+    resume)  lifecycle_session_resume ;;  #| — restore vibrant colours + release the prefix
+    toggle)  lifecycle_session_toggle ;;  #| — flip active/suspended
     *) die "unknown session command: $verb" ;;
   esac
   # help:end session
 }
 
-cmd_state () {
+cmd_signal () {
   local verb="${1:-}"; shift || true
-  # help:begin state
+  # help:begin signal
   case "$verb" in
-    suspend) lifecycle_state_suspend ;;   #| — mute the palette + trap the prefix (session dormant)
-    resume)  lifecycle_state_resume ;;    #| — restore vibrant colours + release the prefix
-    toggle)  lifecycle_state_toggle ;;    #| — flip active/suspended
-    show)    lifecycle_state_show ;;      #| — print the current state (active | suspended)
-    *) die "unknown state command: $verb" ;;
+    clear-transient) lifecycle_signal_clear_transient "$@" ;; #| [-t <window>] — consume transient status and health for a window
+    *) die "unknown signal command: $verb" ;;
   esac
-  # help:end state
+  # help:end signal
 }
 
 cmd_status () {
@@ -234,7 +236,7 @@ cmd_runner () {
 
 #-----------------------------------------------------------------------------#
 # Dispatch — public nouns delegate to their cmd_<noun> parser above. Help and
-# internal callbacks are the only top-level exceptions.
+# internal runner continuations are the only top-level exceptions.
 # Keeping dispatch in main makes the grammar behavior-testable without starting tmux.
 #-----------------------------------------------------------------------------#
 main () {
@@ -242,7 +244,7 @@ main () {
   # help:begin root
   case "$cmd" in
     session)  cmd_session "$@" ;;
-    state)    cmd_state   "$@" ;;
+    signal)   cmd_signal  "$@" ;;
     status)   cmd_status  "$@" ;;
     health)   cmd_health  "$@" ;;
     problem)  cmd_problem "$@" ;;
@@ -255,8 +257,6 @@ main () {
     filter)     cmd_filter "$@" ;;
     probe)      cmd_probe "$@" ;;
     runner)   cmd_runner  "$@" ;;
-    _init-session) lifecycle_init_session "$@" ;; # internal: after-new-session hook callback
-    _unfocus) lifecycle_unfocus "$@" ;;           # internal: pane-focus-out hook callback
     _run)     runner_exec "$@" ;;        # internal: spawned-pane runner callback
     _watch)   runner_watch_exec "$@" ;;  # internal: spawned-pane watcher callback
     help)     help_command "$@" ;;      #| [<noun> [<verb>]] — show command help

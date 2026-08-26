@@ -259,7 +259,11 @@ _airline_completion () {
   usage="$(_airline_usage "$path")" || return
   previous=""; (( ${#prior[@]} == 0 )) || previous="${prior[-1]}"
   case "$previous" in
-    -t) COMPREPLY=( $(compgen -W "$(_airline_dynamic window)" -- "$current") ); return ;;
+    -t)
+      [[ "$path" == 'session init' ]] && token=session || token=window
+      COMPREPLY=( $(compgen -W "$(_airline_dynamic "$token")" -- "$current") )
+      return
+      ;;
   esac
   case "$current" in
     -*) COMPREPLY=( $(compgen -W "$(_airline_option_values "$usage")" -- "$current") ); return ;;
@@ -345,7 +349,10 @@ _airline_zsh () {
     --classify) compadd ${(@f)$(_airline_zsh_dynamic classifier)}; return ;;
     --filter) compadd ${(@f)$(_airline_zsh_dynamic filter)}; return ;;
     --probe) compadd ${(@f)$(_airline_zsh_dynamic probe)}; return ;;
-    -t) compadd ${(@f)$(_airline_zsh_dynamic window)}; return ;;
+    -t)
+      [[ "$path" == 'session init' ]] && semantic=session || semantic=window
+      compadd ${(@f)$(_airline_zsh_dynamic "$semantic")}; return
+      ;;
   esac
   if [[ "$path" == 'runner run' || "$path" == 'runner watch' ]]; then
     if (( ${words[(I)--]} )); then [[ "$path" == 'runner run' ]] && _normal; return; fi

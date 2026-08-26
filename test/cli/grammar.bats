@@ -18,7 +18,8 @@ setup() {
   local fn
   for fn in \
     lifecycle_init lifecycle_apply lifecycle_show \
-    lifecycle_state_suspend lifecycle_state_resume lifecycle_state_toggle lifecycle_state_show \
+    lifecycle_session_suspend lifecycle_session_resume lifecycle_session_toggle \
+    lifecycle_signal_clear_transient \
     lifecycle_status_set lifecycle_status_clear lifecycle_status_show \
     lifecycle_health_set lifecycle_health_clear lifecycle_health_show \
     lifecycle_problem_set lifecycle_problem_clear lifecycle_problem_show \
@@ -31,7 +32,7 @@ setup() {
     runner_filter_show runner_filter_list runner_filter_register \
     runner_probe_show runner_probe_list runner_probe_register \
     runner_show runner_list runner_register runner_run runner_watch \
-    lifecycle_init_session lifecycle_unfocus runner_exec runner_watch_exec; do
+    runner_exec runner_watch_exec; do
     eval "$fn () { _record_delegate \"\$@\"; }"
   done
 }
@@ -45,10 +46,13 @@ setup() {
     assert_success "$argv"
     assert_output "$expected"
   done <<'CASES'
-session init|lifecycle_init
+session init -t work|lifecycle_init <-t> <work>
 session apply|lifecycle_apply
-session show|lifecycle_show
-state suspend|lifecycle_state_suspend
+session show state|lifecycle_show <state>
+session suspend|lifecycle_session_suspend
+session resume|lifecycle_session_resume
+session toggle|lifecycle_session_toggle
+signal clear-transient -t @3|lifecycle_signal_clear_transient <-t> <@3>
 status set build active --transient|lifecycle_status_set <build> <active> <--transient>
 health clear cpu -t @2|lifecycle_health_clear <cpu> <-t> <@2>
 problem set $1 cpu warn sensors-missing|lifecycle_problem_set <$1> <cpu> <warn> <sensors-missing>
@@ -61,11 +65,23 @@ classifier show basic|runner_classifier_show <basic>
 filter list|runner_filter_list
 probe register /tmp/probes|runner_probe_register </tmp/probes>
 runner run tap -- true|runner_run <tap> <--> <true>
-_init-session $2|lifecycle_init_session <$2>
-_unfocus @3|lifecycle_unfocus <@3>
 _run --classify basic -- true|runner_exec <--classify> <basic> <--> <true>
 _watch --probe http example.test|runner_watch_exec <--probe> <http> <example.test>
 CASES
+}
+
+@test "removed state and callback command vocabularies are rejected" {
+  run main state show
+  assert_failure
+  assert_output --partial "unknown command: state"
+
+  run main _init-session '$2'
+  assert_failure
+  assert_output --partial "unknown command: _init-session"
+
+  run main _unfocus @3
+  assert_failure
+  assert_output --partial "unknown command: _unfocus"
 }
 
 @test "help is generated from the grammar without tmux" {

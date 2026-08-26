@@ -22,6 +22,12 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   COMP_WORDS=(airline pal); COMP_CWORD=1; _airline_completion
   assert_equal "${COMPREPLY[*]}" palette
 
+  COMP_WORDS=(airline sta); COMP_CWORD=1; _airline_completion
+  assert_equal "${COMPREPLY[*]}" status
+
+  COMP_WORDS=(airline session ""); COMP_CWORD=2; _airline_completion
+  assert_equal "${COMPREPLY[*]}" "init apply show suspend resume toggle"
+
   COMP_WORDS=(airline help palette ""); COMP_CWORD=3; _airline_completion
   assert_equal "${COMPREPLY[*]}" "show use list register"
 

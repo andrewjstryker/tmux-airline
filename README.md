@@ -109,7 +109,7 @@ to report live state without rebuilding the bar.
 
 When running tmux inside tmux (e.g., a local session SSH'd into a remote one),
 every layer looks identical and keystrokes only reach the outer session.
-`airline state toggle` suspends the outer session:
+`airline session toggle` suspends the outer session:
 
 - The outer prefix is disabled and keystrokes pass through to the inner session
 - The outer status bar dims to a flat, muted palette so you can tell which
@@ -121,11 +121,11 @@ it works wherever airline is installed. Because `suspend` switches tmux's
 active) and the `off` table (fires while suspended), so one key round-trips:
 
 ```tmux
-bind -T root F12 run "#{@airline-cli} state toggle"
-bind -T off  F12 run "#{@airline-cli} state toggle"
+bind -T root F12 run "#{@airline-cli} session toggle"
+bind -T off  F12 run "#{@airline-cli} session toggle"
 ```
 
-Inspect the current state with `airline state show` (`active` | `suspended`).
+Inspect the current state with `airline session show state` (`active` | `suspended`).
 
 ## Palettes
 
@@ -715,14 +715,15 @@ diagnosing a stuck problem transaction never depends on acquiring that same lock
 ## The `airline` CLI
 
 One entry point drives everything. Public commands use a noun followed by a verb;
-help and underscore-prefixed internal callbacks are the only exceptions. `-t`
-targets a window for status/health. Problem mutations instead take their owning
-session as a required first argument.
+help and the remaining internal runner continuations are the only exceptions. `-t`
+targets a window for status/health and a session for targeted initialization.
+Problem mutations instead take their owning session as a required first argument.
 
 ```
-airline session init                 # initialize airline (normally called by airline.tmux)
-airline session apply                # commit global option edits and render this session
-airline session show                 # print the active configuration
+airline session init [-t <session>]  # initialize the current or selected session
+airline session apply                # commit global edits and render
+airline session show [state]         # print the configuration or raw session state
+airline session suspend | resume | toggle
 airline help [noun [verb]]    # all commands, one noun, or one leaf command
 
 airline palette  show [name|<palette-element>] | list | use <palette> | register <dir>
@@ -739,8 +740,8 @@ airline runner   show <runner> [<arg>...] | list | register <dir>
 airline status   set <status-key> <active|result|attention> [--transient] [-t <window>] | clear <status-key> [-t <window>] | show [<status-key>] [-t <window>]
 airline health   set <health-key> <ok|warn|fail> [--transient] [-t <window>] | clear <health-key> [-t <window>] | show [<health-key>] [-t <window>]
 airline problem  set <session> <problem-key> <ok|warn|fail> [<message>] | clear <session> <problem-key> | show [<session> [<problem-key>]]
+airline signal   clear-transient [-t <window>]
 airline lock     show | clear <session|window> <target> <namespace>
-airline state    suspend | resume | toggle | show
 ```
 
 Two conventions run through it:

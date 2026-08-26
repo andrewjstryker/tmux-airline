@@ -80,10 +80,12 @@ teardown() { :; }
   assert_output --partial "need <key>"
 }
 
-@test "transient unfocus removes only transient contributors" {
+@test "clear-transient removes only transient contributors" {
   lifecycle_status_set build active
   lifecycle_status_set review attention --transient
-  lifecycle_unfocus "$_FAKE_WIN"
+  assert_equal "${_FAKE_HOOK[pane-focus-out[90]]}" \
+    "run-shell -b \"'$AIRLINE_DIR/airline.sh' signal clear-transient -t #{window_id}\""
+  lifecycle_signal_clear_transient -t "$_FAKE_WIN"
 
   run lifecycle_status_show build
   assert_output active
@@ -91,25 +93,44 @@ teardown() { :; }
   assert_output ""
 }
 
-@test "state suspend, resume, and toggle expose one lifecycle state" {
-  run lifecycle_state_show
+@test "targeted session init resolves that session and publishes a public hook" {
+  _init_unlocked () { _INITIALIZED_SESSION="$1"; }
+  lifecycle_init -t s2
+
+  assert_equal "$_INITIALIZED_SESSION" s2
+  assert_equal "${_FAKE_HOOK[after-new-session[90]]}" \
+    "run-shell -b \"'$AIRLINE_DIR/airline.sh' session init -t '#{session_id}'\""
+}
+
+@test "session suspend, resume, and toggle expose one session state" {
+  run lifecycle_show state
   assert_output active
 
-  lifecycle_state_suspend
-  run lifecycle_state_show
+  lifecycle_session_suspend
+  run lifecycle_show state
   assert_output suspended
   run opt_get_session "$_FAKE_SESSION" prefix
   assert_output None
 
-  lifecycle_state_resume
-  run lifecycle_state_show
+  lifecycle_session_resume
+  run lifecycle_show state
   assert_output active
   run opt_get_session "$_FAKE_SESSION" prefix
   assert_output ""
 
-  lifecycle_state_toggle
-  run lifecycle_state_show
+  lifecycle_session_toggle
+  run lifecycle_show state
   assert_output suspended
+}
+
+@test "public session and signal target options validate at the boundary" {
+  run lifecycle_init -t
+  assert_failure
+  assert_output --partial "-t requires <session>"
+
+  run lifecycle_signal_clear_transient -t
+  assert_failure
+  assert_output --partial "-t requires <window>"
 }
 
 @test "identical problem reports and absent clears do not redraw" {

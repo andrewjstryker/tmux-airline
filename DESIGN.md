@@ -243,9 +243,10 @@ discovery shim that resolves the active `airline.sh` through `@airline-cli`.
 ### Grammar
 
 ```text
-airline session init
+airline session init [-t <session>]
 airline session apply
-airline session show
+airline session show [state]
+airline session suspend | resume | toggle
 airline help [<noun> [<verb>]]
 
 airline status   set <status-key> <active|result|attention> [--transient] [-t <window>]
@@ -257,6 +258,7 @@ airline health   set <health-key> <ok|warn|fail> [--transient] [-t <window>]
 airline problem  set <session> <problem-key> <ok|warn|fail> [<message>]
                  clear <session> <problem-key>
                  show [<session> [<problem-key>]]
+airline signal   clear-transient [-t <window>]
 airline lock     show
                  clear <session|window> <target> <namespace>
 
@@ -271,13 +273,11 @@ airline runner   show <runner> [<arg>...] | list | register <dir>
                  run [--here|--pane [-h|-v]|--window] [<runner>] [--classify <classifier>]
                      [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]] -- <command>...
                  watch [--here|--pane [-h|-v]|--window] [<runner>] [--probe <probe> [<arg>...]]
-airline state    suspend | resume | toggle | show
-
-airline _unfocus <window-id>
 ```
 
-`_unfocus` is an internal, CLI-reachable hook callback. All other listed commands
-are public.
+All listed commands are public. Tmux hooks use targeted public session and signal
+operations rather than a separate callback vocabulary. Two internal runner
+continuations remain outside this grammar pending runner simplification.
 
 The parser arms are also the grammar source. Explicit `help:begin` / `help:end`
 markers delimit each noun without depending on function or `case` formatting;
@@ -315,8 +315,9 @@ installs both artifacts with the PATH shim.
 - `-t` accepts a window target for status and health. A pane target is valid where
   tmux can resolve its owning window. Problem mutations instead require a session
   as their first positional argument; a bare problem show reads every session.
-- `state` is the active/suspended axis. Suspension derives a muted palette and traps
-  the prefix; airline itself installs no key binding.
+- Session state is the active/suspended axis. Suspension derives a muted palette and
+  traps the prefix; airline itself installs no key binding. `session show state`
+  returns its raw scripting value.
 
 Static options deliberately retain normal tmux behavior: changing a value at
 runtime requires `set -g …` followed by `apply`, and an unknown option name is not
@@ -615,7 +616,7 @@ private scalar in a tmux format. There is no private-global accessor.
   `cmd_<noun>` dispatcher, and that inferred noun set must exactly match the grouped
   help registry. Each leaf arm then calls one owner-prefixed implementation entry
   (`lifecycle_*`, `layout_*`, or `runner_*`). Help and underscore-prefixed internal
-  callbacks are the explicit root exceptions.
+  runner continuations are the explicit root exceptions.
 
 The same boundary makes most tests cheap:
 
