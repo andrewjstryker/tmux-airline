@@ -116,11 +116,11 @@ _source_adapter () {
 
 _apply_adapter_unlocked () {
   local session="$1" name file; shift
-  [[ $# -gt 0 ]] || die "adapter use: need <name>"
+  [[ $# -gt 0 ]] || command_die "adapter use: need <name>"
   for name in "$@"; do
-    [[ "$name" != */* ]] || die "adapter use: '$name' — bare name (or 'adapter load <path>')"
+    [[ "$name" != */* ]] || command_die "adapter use: '$name' — bare name (or 'adapter load <path>')"
     file="$(catalog_resolve "$session" adapter "$name")"
-    [[ -n "$file" ]] || die "adapter use: '$name' not found on the adapter path"
+    [[ -n "$file" ]] || command_die "adapter use: '$name' not found on the adapter path"
     _source_adapter "$session" "$file"
     coll_set_session "$session" adapters "$name" use "$name"
   done
@@ -128,9 +128,9 @@ _apply_adapter_unlocked () {
 
 _load_adapter_unlocked () {
   local session="$1" path="${2:-}" abs
-  [[ -n "$path" ]] || die "adapter load: need <path>"
+  [[ -n "$path" ]] || command_die "adapter load: need <path>"
   abs="$(_abspath "$path")"
-  [[ -f "$abs" ]] || die "adapter load: no such file: $path"
+  [[ -f "$abs" ]] || command_die "adapter load: no such file: $path"
   _source_adapter "$session" "$abs"
   coll_set_session "$session" adapters "${abs##*/}" load "$abs"
 }
@@ -149,11 +149,11 @@ _reapply_adapters_unlocked () {
     case "$kind" in
       use)
         file="$(catalog_resolve "$session" adapter "$handle")"
-        [[ -n "$file" ]] || die "adapter use: '$handle' not found on the adapter path"
+        [[ -n "$file" ]] || command_die "adapter use: '$handle' not found on the adapter path"
         _source_adapter "$session" "$file"
         ;;
       load)
-        [[ -f "$handle" ]] || die "adapter load: no such file: $handle"
+        [[ -f "$handle" ]] || command_die "adapter load: no such file: $handle"
         _source_adapter "$session" "$handle"
         ;;
       "")
@@ -361,26 +361,26 @@ _layout_show () {
   case "$x" in
     name) printf '%s\n' "$handle" ;;
     path) printf '%s\n' "$(_layout_file "$session" "$handle")" ;;
-    "")   _show_row name "$handle"; _show_row path "$(_layout_file "$session" "$handle")" ;;
-    *)    die "layout show: unknown field '$x' (name | path)" ;;
+    "")   command_show_row name "$handle"; command_show_row path "$(_layout_file "$session" "$handle")" ;;
+    *)    command_die "layout show: unknown field '$x' (name | path)" ;;
   esac
 }
 
 _static_show () {
   local session="$1" keypfx="$2" valid="$3" listname="$4" x="${5:-}"
   if [[ -n "$x" ]]; then
-    "$valid" "$x" || die "show: unknown target '$x'"
+    "$valid" "$x" || command_die "show: unknown target '$x'"
     cfg_get_session "$session" "${keypfx}${x}"
     return 0
   fi
   local -n all="$listname"; local key
-  for key in "${all[@]}"; do _show_row "$key" "$(cfg_get_session "$session" "${keypfx}${key}")"; done
+  for key in "${all[@]}"; do command_show_row "$key" "$(cfg_get_session "$session" "${keypfx}${key}")"; done
 }
 
 _palette_show () {
   local session="$1" x="${2:-}"
   [[ "$x" == name ]] && { prv_get_session "$session" palette; return 0; }
-  [[ -z "$x" ]] && _show_row name "$(prv_get_session "$session" palette)"
+  [[ -z "$x" ]] && command_show_row name "$(prv_get_session "$session" palette)"
   _static_show "$session" "" _palette_element_valid AIRLINE_PALETTE_ELEMENTS "$x"
 }
 
@@ -393,11 +393,6 @@ _adapter_show () {
 # CLI behavior boundary
 #-----------------------------------------------------------------------------#
 
-_config_problem () {
-  _problem_store "$1" "$2" "$3" "$4" && redraw
-  return 0
-}
-
 _layout_problem_message () {
   local session="$1" handle="$2" message
   message="$(prv_get_session "$session" "$AIRLINE_CONFIG_ERROR")"
@@ -405,79 +400,79 @@ _layout_problem_message () {
   else printf "layout '%s' could not be applied" "$handle"; fi
 }
 
-layout_palette_show () { local s; s="$(_require_current_session)"; _palette_show "$s" "$@"; }
+layout_palette_show () { local s; s="$(command_current_session)"; _palette_show "$s" "$@"; }
 layout_palette_use () {
   local s name rc=0
-  [[ $# -eq 1 && -n "$1" ]] || die "palette use: need exactly one <name>"
-  name="$1"; [[ "$name" != */* ]] || die "palette use: '$name' — use a bare name"
-  s="$(_require_current_session)"
-  [[ -n "$(catalog_resolve "$s" palette "$name")" ]] || die "palette use: '$name' not found on the palette path"
+  [[ $# -eq 1 && -n "$1" ]] || command_die "palette use: need exactly one <name>"
+  name="$1"; [[ "$name" != */* ]] || command_die "palette use: '$name' — use a bare name"
+  s="$(command_current_session)"
+  [[ -n "$(catalog_resolve "$s" palette "$name")" ]] || command_die "palette use: '$name' not found on the palette path"
   with_session_transaction "$s" config _palette_use_apply_unlocked "$s" "$name" || rc=$?
   if (( rc == AIRLINE_CONFIG_PALETTE_FAILURE )); then
-    _config_problem "$s" airline-palette fail "palette '$name' is incomplete or could not be evaluated"
-  else _config_problem "$s" airline-palette ok ""; fi
+    signal_problem_report "$s" airline-palette fail "palette '$name' is incomplete or could not be evaluated"
+  else signal_problem_report "$s" airline-palette ok ""; fi
   (( rc == 0 )) || return "$rc"
 }
-layout_palette_list () { local s; s="$(_require_current_session)"; catalog_list "$s" palette; }
-layout_palette_register () { local s; s="$(_require_current_session)"; catalog_register "$s" palette "$@"; }
+layout_palette_list () { local s; s="$(command_current_session)"; catalog_list "$s" palette; }
+layout_palette_register () { local s; s="$(command_current_session)"; catalog_register "$s" palette "$@"; }
 
 layout_segment_show () {
-  local s; s="$(_require_current_session)"
+  local s; s="$(command_current_session)"
   _static_show "$s" "segment-" _segment_slot_valid AIRLINE_SEGMENT_SLOTS "$@"
 }
 
 layout_adapter_use () {
-  local s rc=0; s="$(_require_current_session)"
+  local s rc=0; s="$(command_current_session)"
   with_session_transaction "$s" config _adapter_use_render_unlocked "$s" "$@" || rc=$?
   if (( rc == AIRLINE_CONFIG_PALETTE_FAILURE )); then
-    _config_problem "$s" airline-palette fail "adapter use could not resolve a complete palette"
+    signal_problem_report "$s" airline-palette fail "adapter use could not resolve a complete palette"
   fi
   return "$rc"
 }
 layout_adapter_load () {
-  local s rc=0; s="$(_require_current_session)"
+  local s rc=0; s="$(command_current_session)"
   with_session_transaction "$s" config _adapter_load_render_unlocked "$s" "$@" || rc=$?
   if (( rc == AIRLINE_CONFIG_PALETTE_FAILURE )); then
-    _config_problem "$s" airline-palette fail "adapter load could not resolve a complete palette"
+    signal_problem_report "$s" airline-palette fail "adapter load could not resolve a complete palette"
   fi
   return "$rc"
 }
-layout_adapter_show () { _adapter_show "$(_require_current_session)"; }
-layout_adapter_list () { local s; s="$(_require_current_session)"; catalog_list "$s" adapter; }
-layout_adapter_register () { local s; s="$(_require_current_session)"; catalog_register "$s" adapter "$@"; }
+layout_adapter_show () { _adapter_show "$(command_current_session)"; }
+layout_adapter_list () { local s; s="$(command_current_session)"; catalog_list "$s" adapter; }
+layout_adapter_register () { local s; s="$(command_current_session)"; catalog_register "$s" adapter "$@"; }
 
 layout_use () {
   local s name rc=0
-  [[ $# -eq 1 && -n "$1" ]] || die "layout use: need exactly one <name>"
-  name="$1"; [[ "$name" != */* ]] || die "layout use: '$name' — bare name (or 'layout load <path>')"
-  s="$(_require_current_session)"
-  [[ -n "$(catalog_resolve "$s" layout "$name")" ]] || die "layout use: '$name' not found"
+  [[ $# -eq 1 && -n "$1" ]] || command_die "layout use: need exactly one <name>"
+  name="$1"; [[ "$name" != */* ]] || command_die "layout use: '$name' — bare name (or 'layout load <path>')"
+  s="$(command_current_session)"
+  [[ -n "$(catalog_resolve "$s" layout "$name")" ]] || command_die "layout use: '$name' not found"
   with_session_transaction "$s" config _layout_use_render_unlocked "$s" "$name" || rc=$?
   case "$rc" in
-    0) _config_problem "$s" airline-layout ok "" ;;
+    0) signal_problem_report "$s" airline-layout ok "" ;;
     "$AIRLINE_CONFIG_PALETTE_FAILURE")
-      _config_problem "$s" airline-palette fail "layout use could not resolve a complete palette" ;;
-    *) _config_problem "$s" airline-layout fail "$(_layout_problem_message "$s" "$name")" ;;
+      signal_problem_report "$s" airline-palette fail "layout use could not resolve a complete palette" ;;
+    *) signal_problem_report "$s" airline-layout fail "$(_layout_problem_message "$s" "$name")" ;;
   esac
   (( rc == 0 )) || return "$rc"
 }
 layout_load () {
   local s path abs rc=0
-  [[ $# -eq 1 && -n "$1" ]] || die "layout load: need <path>"
-  path="$1"; abs="$(_abspath "$path")"; [[ -f "$abs" ]] || die "layout load: no such file: $path"
-  s="$(_require_current_session)"
+  [[ $# -eq 1 && -n "$1" ]] || command_die "layout load: need <path>"
+  path="$1"; abs="$(_abspath "$path")"; [[ -f "$abs" ]] || command_die "layout load: no such file: $path"
+  s="$(command_current_session)"
   with_session_transaction "$s" config _layout_load_render_unlocked "$s" "$abs" || rc=$?
   case "$rc" in
-    0) _config_problem "$s" airline-layout ok "" ;;
+    0) signal_problem_report "$s" airline-layout ok "" ;;
     "$AIRLINE_CONFIG_PALETTE_FAILURE")
-      _config_problem "$s" airline-palette fail "layout load could not resolve a complete palette" ;;
-    *) _config_problem "$s" airline-layout fail "$(_layout_problem_message "$s" "$abs")" ;;
+      signal_problem_report "$s" airline-palette fail "layout load could not resolve a complete palette" ;;
+    *) signal_problem_report "$s" airline-layout fail "$(_layout_problem_message "$s" "$abs")" ;;
   esac
   (( rc == 0 )) || return "$rc"
 }
-layout_show () { local s; s="$(_require_current_session)"; _layout_show "$s" "$@"; }
-layout_list () { local s; s="$(_require_current_session)"; catalog_list "$s" layout; }
-layout_register () { local s; s="$(_require_current_session)"; catalog_register "$s" layout "$@"; }
+layout_show () { local s; s="$(command_current_session)"; _layout_show "$s" "$@"; }
+layout_list () { local s; s="$(command_current_session)"; catalog_list "$s" layout; }
+layout_register () { local s; s="$(command_current_session)"; catalog_register "$s" layout "$@"; }
 
 _palette_use_apply_unlocked () {
   _apply_public_unlocked "$1" &&

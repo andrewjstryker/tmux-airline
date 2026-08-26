@@ -19,10 +19,10 @@ setup() {
   for fn in \
     lifecycle_init lifecycle_apply lifecycle_show \
     lifecycle_session_suspend lifecycle_session_resume lifecycle_session_toggle \
-    lifecycle_signal_clear_transient \
-    lifecycle_status_set lifecycle_status_clear lifecycle_status_show \
-    lifecycle_health_set lifecycle_health_clear lifecycle_health_show \
-    lifecycle_problem_set lifecycle_problem_clear lifecycle_problem_show \
+    signal_clear_transient \
+    signal_status_set signal_status_clear signal_status_show \
+    signal_health_set signal_health_clear signal_health_show \
+    signal_problem_set signal_problem_clear signal_problem_show \
     lifecycle_lock_show lifecycle_lock_clear \
     layout_palette_show layout_palette_list layout_palette_use layout_palette_register \
     layout_segment_show \
@@ -51,10 +51,10 @@ session show state|lifecycle_show <state>
 session suspend|lifecycle_session_suspend
 session resume|lifecycle_session_resume
 session toggle|lifecycle_session_toggle
-signal clear-transient -t @3|lifecycle_signal_clear_transient <-t> <@3>
-status set build active --transient|lifecycle_status_set <build> <active> <--transient>
-health clear cpu -t @2|lifecycle_health_clear <cpu> <-t> <@2>
-problem set $1 cpu warn sensors-missing|lifecycle_problem_set <$1> <cpu> <warn> <sensors-missing>
+signal clear-transient -t @3|signal_clear_transient <-t> <@3>
+status set build active --transient|signal_status_set <build> <active> <--transient>
+health clear cpu -t @2|signal_health_clear <cpu> <-t> <@2>
+problem set $1 cpu warn sensors-missing|signal_problem_set <$1> <cpu> <warn> <sensors-missing>
 lock clear session $1 problem|lifecycle_lock_clear <session> <$1> <problem>
 palette use light|layout_palette_use <light>
 segment show left-out|layout_segment_show <left-out>

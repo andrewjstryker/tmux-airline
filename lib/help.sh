@@ -88,7 +88,7 @@ _help_usage () {
 
 help_command () {   # [<help|noun> [<verb>]]
   local first="${1:-}" second="${2:-}" annotation usage description
-  (( $# <= 2 )) || die "help: too many command levels"
+  (( $# <= 2 )) || command_die "help: too many command levels"
   [[ -n "$first" ]] || { _help_usage; return; }
 
   case " $AIRLINE_NOUNS " in
@@ -99,11 +99,11 @@ help_command () {   # [<help|noun> [<verb>]]
         return
       fi
       annotation="$(_help_annotation "$first" "$second")" || \
-        die "help: unknown command '$first $second'"
+        command_die "help: unknown command '$first $second'"
       ;;
     *)
-      [[ -z "$second" ]] || die "help: '$first' has no subcommands"
-      annotation="$(_help_annotation "" "$first")" || die "help: unknown command '$first'"
+      [[ -z "$second" ]] || command_die "help: '$first' has no subcommands"
+      annotation="$(_help_annotation "" "$first")" || command_die "help: unknown command '$first'"
       ;;
   esac
 

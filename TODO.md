@@ -127,7 +127,7 @@ the agreed bar for a private entry point.
       layout with palette, segment, and adapter primitives.
 - [ ] Preserve the analogous runner family: runner with classifier, filter, and probe
       primitives.
-- [ ] Give status, health, and problem an explicit shared concept and help grouping.
+- [x] Give status, health, and problem an explicit shared concept and help grouping.
       The CLI and help now use `signal`; carry that decision through the module name,
       functions, tests, and design document during the lifecycle split. `attention`
       remains a status value and would be ambiguous as the owner name.
@@ -137,11 +137,11 @@ the agreed bar for a private entry point.
 
 ### Library ownership
 
-`lib/lifecycle.sh` is currently a coordinator, a shared-services module, and a
-domain module at once. It owns context resolution, initialization, configuration,
-catalog paths, session state, status, health, problems, transient hooks, and lock
-diagnostics. This creates dependencies omitted from the documented acyclic graph:
-lifecycle calls layout internals, while layout and runner call lifecycle internals.
+`lib/lifecycle.sh` began as a coordinator, shared-services module, and domain module
+at once. Catalog and signal behavior now have explicit owners, and generic CLI
+utilities live in a deliberately small command boundary. Lifecycle still combines
+session coordination with lock diagnostics and still calls layout internals; those
+remaining responsibilities are the next ownership split.
 
 - [ ] Replace `lib/lifecycle.sh` with narrower owners. The working target is:
       - `lib/session.sh`: initialization, apply/show orchestration, and
@@ -154,12 +154,15 @@ lifecycle calls layout internals, while layout and runner call lifecycle interna
         raw tmux mechanics.
 - [x] Extract `lib/catalog.sh`; layout and runner now consume its public registration,
       path, resolution, and listing services instead of lifecycle-private helpers.
+- [x] Extract `lib/signal.sh`; it owns status, health, problems, projection
+      orchestration, redraw gating, and transient consumption. The CLI, layout, and
+      runner use its public services directly.
 - [ ] Keep `lib/layout.sh` responsible for layout, palette, segment, and adapter
       behavior.
 - [ ] Keep `lib/runner.sh` responsible for runner orchestration and classifier,
       filter, and probe contracts.
 - [ ] Keep `lib/render.sh`, `lib/collections.sh`, and `lib/tmux.sh` as lower layers.
-- [ ] Move generic command context and error handling to a deliberately small shared
+- [x] Move generic command context and error handling to a deliberately small shared
       boundary rather than allowing a new miscellaneous module to form.
 - [ ] Give all private functions an owner-qualified name such as `_session_*`,
       `_signal_*`, `_catalog_*`, `_layout_*`, or `_runner_*`.
@@ -167,7 +170,7 @@ lifecycle calls layout internals, while layout and runner call lifecycle interna
       particular:
       - session may coordinate public layout/configuration operations;
       - layout and runner consume public catalog services;
-      - layout and runner report through public signal/problem services;
+      - layout and runner report through public signal/problem services (complete);
       - signal, catalog, render, and collections reach tmux only through
         `lib/tmux.sh`.
 - [ ] Remove load-order assertions that stand in for real module boundaries.
@@ -180,7 +183,7 @@ lifecycle calls layout internals, while layout and runner call lifecycle interna
        consumption, session state, and transaction diagnostics.
 2. [x] Convert tmux hooks and spawned runners to the resulting public commands; then
        remove the four private root routes.
-3. [ ] Extract signal/attention and catalog responsibilities from lifecycle.
+3. [x] Extract signal/attention and catalog responsibilities from lifecycle.
 4. [ ] Rename private functions by owner and eliminate cross-module private calls.
 5. [ ] Update the source/load structure and the documented dependency graph.
 6. [ ] Remove invariant C and add the replacement dependency/visibility lint.
@@ -225,7 +228,7 @@ lifecycle calls layout internals, while layout and runner call lifecycle interna
       runner processes.
 - [x] `airline.sh` contains no private command vocabulary.
 - [x] Session state is part of the session command family.
-- [ ] Status, health, and problem have a clear shared owner distinct from session
+- [x] Status, health, and problem have a clear shared owner distinct from session
       lifecycle.
 - [x] Catalog behavior is not owned by session lifecycle.
 - [ ] No module calls another module's private functions.

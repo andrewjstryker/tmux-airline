@@ -192,44 +192,44 @@ _seed_palette() {
   [[ "$output" == *"@airline--badge-status"*"#I:#W"*"@airline--badge-health"* ]]
 }
 
-@test "status_project reduces contributors to the highest level" {
+@test "render_status_project reduces contributors to the highest level" {
   load_render
   win="$(current_window)"
   coll_set_window "$win" status build  active
   coll_set_window "$win" status test   result
   coll_set_window "$win" status review attention
-  status_project "$win"
+  render_status_project "$win"
   run opt_get_window "$win" @airline--badge-status
   assert_output "attention"
 }
 
-@test "status_project leaves a blank badge when nothing reports" {
+@test "render_status_project leaves a blank badge when nothing reports" {
   load_render
   win="$(current_window)"
-  status_project "$win" || true   # returns 1 = nothing to render (redraw-gate signal)
+  render_status_project "$win" || true   # returns 1 = nothing to render (redraw-gate signal)
   run opt_get_window "$win" @airline--badge-status
   assert_output ""
 }
 
-@test "status_project signals change via exit status (gate a redraw)" {
+@test "render_status_project signals change via exit status (gate a redraw)" {
   load_render
   win="$(current_window)"
   coll_set_window "$win" status build active
   # Call directly (not via `run`) so the badge write persists in this shell; capture
   # status with `|| rc=$?` to keep bats' errexit from aborting on the no-change 1.
-  rc=0; status_project "$win" || rc=$?   # unset -> active : changed
+  rc=0; render_status_project "$win" || rc=$?   # unset -> active : changed
   assert_equal "$rc" 0
-  rc=0; status_project "$win" || rc=$?   # active -> active : no change
+  rc=0; render_status_project "$win" || rc=$?   # active -> active : no change
   assert_equal "$rc" 1
 }
 
-@test "status_project clears the badge when the top contributor is removed" {
+@test "render_status_project clears the badge when the top contributor is removed" {
   load_render
   win="$(current_window)"
   coll_set_window "$win" status review attention
-  status_project "$win"
+  render_status_project "$win"
   coll_unregister_window "$win" status review
-  status_project "$win"
+  render_status_project "$win"
   run opt_get_window "$win" @airline--badge-status
   assert_output ""
 }
@@ -242,43 +242,43 @@ _seed_palette() {
   assert_output --partial "@airline--badge-health"   # the projected reduced-level scalar
 }
 
-@test "health_project reduces contributors to the worst level scalar" {
+@test "render_health_project reduces contributors to the worst level scalar" {
   load_render
   win="$(current_window)"
   coll_set_window "$win" health cpu ok
   coll_set_window "$win" health disk warn
   coll_set_window "$win" health net fail
-  health_project "$win"
+  render_health_project "$win"
   run opt_get_window "$win" @airline--badge-health
   assert_output "fail"
 }
 
-@test "health_project leaves a blank badge when only ok reports" {
+@test "render_health_project leaves a blank badge when only ok reports" {
   load_render
   win="$(current_window)"
   coll_set_window "$win" health cpu ok
-  health_project "$win" || true   # returns 1 = nothing to render (redraw-gate signal)
+  render_health_project "$win" || true   # returns 1 = nothing to render (redraw-gate signal)
   run opt_get_window "$win" @airline--badge-health
   assert_output ""
 }
 
-@test "health_project signals change via exit status (gate a redraw)" {
+@test "render_health_project signals change via exit status (gate a redraw)" {
   load_render
   win="$(current_window)"
   coll_set_window "$win" health net fail
-  rc=0; health_project "$win" || rc=$?   # unset -> fail : changed
+  rc=0; render_health_project "$win" || rc=$?   # unset -> fail : changed
   assert_equal "$rc" 0
-  rc=0; health_project "$win" || rc=$?   # fail -> fail : no change
+  rc=0; render_health_project "$win" || rc=$?   # fail -> fail : no change
   assert_equal "$rc" 1
 }
 
-@test "health_project clears the badge when the worst contributor is removed" {
+@test "render_health_project clears the badge when the worst contributor is removed" {
   load_render
   win="$(current_window)"
   coll_set_window "$win" health net fail
-  health_project "$win"
+  render_health_project "$win"
   coll_unregister_window "$win" health net
-  health_project "$win"
+  render_health_project "$win"
   run opt_get_window "$win" @airline--badge-health
   assert_output ""
 }
@@ -298,28 +298,28 @@ _seed_palette() {
   assert_output --partial "fail},#[blink]"
 }
 
-@test "problem_project reduces session contributors to the worst level" {
+@test "render_problem_project reduces session contributors to the worst level" {
   load_render
   session="$(current_session)"
   coll_set_session "$session" problem cpu warn "sensors missing"
   coll_set_session "$session" problem battery fail "query timed out"
-  problem_project "$session"
+  render_problem_project "$session"
   run opt_get_session "$session" @airline--badge-problem
   assert_output "fail"
 }
 
-@test "problem_project downgrades and clears as problems recover" {
+@test "render_problem_project downgrades and clears as problems recover" {
   load_render
   session="$(current_session)"
   coll_set_session "$session" problem cpu warn "sensors missing"
   coll_set_session "$session" problem battery fail "query timed out"
-  problem_project "$session"
+  render_problem_project "$session"
   coll_unregister_session "$session" problem battery
-  problem_project "$session"
+  render_problem_project "$session"
   run opt_get_session "$session" @airline--badge-problem
   assert_output "warn"
   coll_unregister_session "$session" problem cpu
-  problem_project "$session"
+  render_problem_project "$session"
   run opt_get_session "$session" @airline--badge-problem
   assert_output ""
 }

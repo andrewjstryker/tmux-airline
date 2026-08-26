@@ -7,6 +7,7 @@ load ../support/helper
 setup() {
   load_render
   source "$PROJECT_ROOT/lib/catalog.sh"
+  source "$PROJECT_ROOT/lib/signal.sh"
   source "$PROJECT_ROOT/lib/runner.sh"
 }
 
@@ -114,7 +115,7 @@ setup() {
   _RUNNER_EVENTS=""
   current_pane() { printf '%%7'; }
   runner_retain_pane() { _RUNNER_EVENTS+="retain:$1 "; }
-  _require_current_session() { printf s1; }
+  command_current_session() { printf s1; }
   _runner_invoke() {
     [[ ! -v AIRLINE_RUNNER_SPAWNED ]] || return 9
     _RUNNER_EVENTS+="invoke:$2"

@@ -38,7 +38,9 @@ a non-obvious boundary described here.
 | `airline` | Installable PATH shim; resolves the active CLI through `@airline-cli` | bootstrap lookup only |
 | `airline.sh` | Public CLI: parses the grammar and delegates each command once | no |
 | `lib/help.sh` | Renders marked CLI grammar sections for help and completions | no |
-| `lib/lifecycle.sh` | Context, initialization, state, signals, problems, and locks | no |
+| `lib/command.sh` | Shared CLI error, context, and output helpers | no |
+| `lib/lifecycle.sh` | Session initialization, active/suspended state, and locks | no |
+| `lib/signal.sh` | Status, health, problems, projection, and transient consumption | no |
 | `lib/catalog.sh` | Owns registered search paths and bare-name resolution | no |
 | `lib/layout.sh` | Palette, adapter, segment, and executable-layout behavior | no |
 | `lib/runner.sh` | Runner contracts, mechanics, and orchestration | no |
@@ -60,12 +62,18 @@ graph TD
     EXT([users and plugins]):::ext --> SHIM[airline]
     ENTRY --> CLI[airline.sh]
     SHIM --> CLI
+    CLI --> CMD[lib/command.sh]
     CLI --> LIFE[lib/lifecycle.sh]
+    CLI --> SIGNAL[lib/signal.sh]
     CLI --> LAYOUT[lib/layout.sh]
     CLI --> RUNNER[lib/runner.sh]
     CLI --> HELP[lib/help.sh]
+    LIFE --> LAYOUT
     LIFE --> LOGIC[lib/render.sh]
+    LIFE --> SIGNAL
     LAYOUT --> LOGIC
+    LAYOUT --> SIGNAL
+    RUNNER --> SIGNAL
     LIFE --> CAT[lib/catalog.sh]
     LAYOUT --> CAT
     RUNNER --> CAT
@@ -74,10 +82,13 @@ graph TD
     LAYOUT --> COLL
     RUNNER --> COLL
     LOGIC --> COLL
+    SIGNAL --> LOGIC
+    SIGNAL --> COLL
     LIFE --> MECH[lib/tmux.sh]
     LAYOUT --> MECH
     RUNNER --> MECH
     LOGIC --> MECH
+    SIGNAL --> MECH
     COLL --> MECH
     CAT -. register/resolve .-> FILES[palettes · adapters · layouts · runner catalogs]
     MECH ==> TMUX([tmux server]):::ext
@@ -101,6 +112,9 @@ The important boundaries are:
   element kind. Layout and runner own element behavior but use catalog's public
   register, resolve, list, and path operations; they do not know the path collection
   namespace or representation.
+- `lib/signal.sh` owns the complete attention-signal operation: validation,
+  contributor mutation, badge projection, redraw gating, and transient consumption.
+  Layout and runner report managed problems through that public service.
 - Palette and layout are independent axes: a palette chooses colors; a layout
   chooses adapters and segment strings. A palette change replays the active adapter
   declarations against the new colors without rerunning the layout program.
@@ -625,7 +639,8 @@ private scalar in a tmux format. There is no private-global accessor.
 - **C — CLI delegation:** each ordinary top-level noun calls its matching
   `cmd_<noun>` dispatcher, and that inferred noun set must exactly match the grouped
   help registry. Each leaf arm then calls one owner-prefixed implementation entry
-  (`lifecycle_*`, `layout_*`, or `runner_*`). Help is the explicit root exception.
+  (`lifecycle_*`, `signal_*`, `layout_*`, or `runner_*`). Help is the explicit root
+  exception.
 
 The same boundary makes most tests cheap:
 
@@ -638,7 +653,8 @@ The same boundary makes most tests cheap:
 | `runner/behavior.bats` | in-memory fake | runner element contracts and mechanics |
 | `runner/integration.bats` | real tmux subprocess | runner process and topology integration |
 | `layout/integration.bats` | real tmux subprocess | executable layout and primitive integration |
-| `lifecycle/behavior.bats` | in-memory fake | signals, problems, state, and redraw gating |
+| `signal/behavior.bats` | in-memory fake | status, health, problems, transients, and redraw gating |
+| `lifecycle/behavior.bats` | in-memory fake | session initialization and active/suspended state |
 | `lifecycle/integration.bats` | real tmux subprocess | lifecycle integration requiring tmux semantics |
 | `cli/grammar.bats` | sourced CLI with spies | grammar and exactly-once delegation behavior |
 | `cli/completions.bats` | generated shell artifacts | help/compiler drift, typed completion, and shell syntax |

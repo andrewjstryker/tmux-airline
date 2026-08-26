@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# runner.sh — runner contracts, mechanics, catalogs, and command orchestration.
+# runner.sh — runner contracts, mechanics, and command orchestration.
 #
 # Elements are trusted shell selected independently for one invocation:
 #
@@ -25,12 +25,12 @@
 #
 # The contract/mechanics section has no tmux knowledge. The command orchestration
 # later in this module reaches tmux only through tmux.sh and projects normalized
-# reports onto lifecycle signals.
+# reports through signal services.
 
 # shellcheck shell=bash
 
-if ! declare -F _condition_level_valid >/dev/null; then
-  printf 'runner.sh: load render.sh (and its layers) first\n' >&2
+if ! declare -F signal_condition_valid >/dev/null; then
+  printf 'runner.sh: load signal.sh (and its layers) first\n' >&2
   return 1 2>/dev/null || exit 1
 fi
 
@@ -49,7 +49,7 @@ runner_classifier_run () {   # <exit-status> <signal>
   local condition rc=0
   condition="$(airline_runner_classify "$1" "$2")" || rc=$?
   (( rc == 0 )) || return 1
-  _condition_level_valid "$condition" || return 1
+  signal_condition_valid "$condition" || return 1
   printf '%s' "$condition"
 }
 
@@ -160,7 +160,7 @@ runner_probe_once () {   # <lifecycle-pid> [<arg>...]
   [[ -z "$AIRLINE_RUNNER_PROBE_REPORT_INVALID" ]] || return 1
   (( ${#AIRLINE_RUNNER_PROBE_REPORTS[@]} > 0 )) || return 1
   for condition in "${AIRLINE_RUNNER_PROBE_REPORTS[@]}"; do
-    _condition_level_valid "$condition" || return 1
+    signal_condition_valid "$condition" || return 1
     case "$condition" in
       fail) worst=fail ;;
       warn) [[ "$worst" == ok ]] && worst=warn ;;
@@ -354,60 +354,55 @@ _runner_element_file () {   # <session> <kind> <bare-name>
 
 _runner_element_show () {   # <session> <classifier|filter|probe> <name>
   local session="$1" kind="$2" name="${3:-}" file summary usage="" interval=""
-  [[ -n "$name" ]] || die "$kind show: need <name>"
-  [[ "$name" != */* ]] || die "$kind show: need a bare name"
+  [[ -n "$name" ]] || command_die "$kind show: need <name>"
+  [[ "$name" != */* ]] || command_die "$kind show: need a bare name"
   file="$(catalog_resolve "$session" "$kind" "$name")"
-  [[ -n "$file" ]] || die "$kind show: '$name' not found on the $kind path"
+  [[ -n "$file" ]] || command_die "$kind show: '$name' not found on the $kind path"
   case "$kind" in
     classifier)
-      runner_classifier_load "$file" || die "classifier show: '$name' is invalid"
+      runner_classifier_load "$file" || command_die "classifier show: '$name' is invalid"
       summary="$AIRLINE_CLASSIFIER_SUMMARY"
       ;;
     filter)
-      runner_filter_load "$file" || die "filter show: '$name' is invalid"
+      runner_filter_load "$file" || command_die "filter show: '$name' is invalid"
       summary="$AIRLINE_FILTER_SUMMARY"
       ;;
     probe)
-      runner_probe_load "$file" || die "probe show: '$name' is invalid"
+      runner_probe_load "$file" || command_die "probe show: '$name' is invalid"
       summary="$AIRLINE_PROBE_SUMMARY"
       usage="$AIRLINE_PROBE_USAGE"
       interval="${AIRLINE_RUNNER_PROBE_INTERVAL:-5} seconds"
       ;;
   esac
-  _show_row name "$name"
-  _show_row summary "$summary"
-  [[ "$kind" == probe ]] && _show_row arguments "${usage:-none}"
-  [[ "$kind" == probe ]] && _show_row interval "$interval"
-  _show_row path "$file"
+  command_show_row name "$name"
+  command_show_row summary "$summary"
+  [[ "$kind" == probe ]] && command_show_row arguments "${usage:-none}"
+  [[ "$kind" == probe ]] && command_show_row interval "$interval"
+  command_show_row path "$file"
 }
 
 _runner_definition_show () {   # <session> <name> [<runner-arg>...]
   local session="$1" name="${2:-}" file probe_args=""; shift 2 || true
-  [[ -n "$name" ]] || die "runner show: need <name>"
-  [[ "$name" != */* ]] || die "runner show: need a bare name"
+  [[ -n "$name" ]] || command_die "runner show: need <name>"
+  [[ "$name" != */* ]] || command_die "runner show: need a bare name"
   file="$(catalog_resolve "$session" runner "$name")"
-  [[ -n "$file" ]] || die "runner show: '$name' not found on the runner path"
-  runner_definition_load "$file" || die "runner show: '$name' is invalid"
-  runner_definition_metadata || die "runner show: '$name' has invalid metadata"
-  runner_definition_configure "$@" || die "runner show: '$name' produced an invalid configuration"
+  [[ -n "$file" ]] || command_die "runner show: '$name' not found on the runner path"
+  runner_definition_load "$file" || command_die "runner show: '$name' is invalid"
+  runner_definition_metadata || command_die "runner show: '$name' has invalid metadata"
+  runner_definition_configure "$@" || command_die "runner show: '$name' produced an invalid configuration"
   if (( ${#AIRLINE_RUNNER_CONFIG_PROBE_ARGS[@]} )); then
     printf -v probe_args '%q ' "${AIRLINE_RUNNER_CONFIG_PROBE_ARGS[@]}"
     probe_args="${probe_args% }"
   fi
-  _show_row name "$name"
-  _show_row summary "$AIRLINE_RUNNER_SUMMARY"
-  _show_row arguments "${AIRLINE_RUNNER_USAGE:-none}"
-  _show_row classifier "${AIRLINE_RUNNER_CONFIG_CLASSIFIER:-basic}"
-  _show_row filter "${AIRLINE_RUNNER_CONFIG_FILTER:-none}"
-  [[ -n "$AIRLINE_RUNNER_CONFIG_FILTER_MERGE" ]] && _show_row filter-input merged-stderr
-  _show_row probe "${AIRLINE_RUNNER_CONFIG_PROBE:-none}"
-  [[ -n "$probe_args" ]] && _show_row probe-args "$probe_args"
-  _show_row path "$file"
-}
-
-_runner_problem () {   # <session> <key> <ok|warn|fail> [<message>]
-  _problem_store "$@" && redraw
-  return 0
+  command_show_row name "$name"
+  command_show_row summary "$AIRLINE_RUNNER_SUMMARY"
+  command_show_row arguments "${AIRLINE_RUNNER_USAGE:-none}"
+  command_show_row classifier "${AIRLINE_RUNNER_CONFIG_CLASSIFIER:-basic}"
+  command_show_row filter "${AIRLINE_RUNNER_CONFIG_FILTER:-none}"
+  [[ -n "$AIRLINE_RUNNER_CONFIG_FILTER_MERGE" ]] && command_show_row filter-input merged-stderr
+  command_show_row probe "${AIRLINE_RUNNER_CONFIG_PROBE:-none}"
+  [[ -n "$probe_args" ]] && command_show_row probe-args "$probe_args"
+  command_show_row path "$file"
 }
 
 # Globals intentionally cross the filter's background subshell boundary. Each CLI
@@ -430,34 +425,34 @@ _runner_problem_key () {   # <element> <load|classify|filter|probe>
 
 _runner_filter_report () {   # <ok|warn|fail>
   local condition="${1:-}"
-  if ! _condition_level_valid "$condition"; then
-    _runner_problem "$AIRLINE_RUNNER_SESSION" "$AIRLINE_RUNNER_FILTER_PROBLEM" fail \
+  if ! signal_condition_valid "$condition"; then
+    signal_problem_report "$AIRLINE_RUNNER_SESSION" "$AIRLINE_RUNNER_FILTER_PROBLEM" fail \
       "runner filter emitted invalid condition '${condition}'"
     return 1
   fi
-  _runner_problem "$AIRLINE_RUNNER_SESSION" "$AIRLINE_RUNNER_FILTER_PROBLEM" ok ""
+  signal_problem_report "$AIRLINE_RUNNER_SESSION" "$AIRLINE_RUNNER_FILTER_PROBLEM" ok ""
   [[ "$condition" == "$AIRLINE_RUNNER_FILTER_LAST" ]] && return 0
   AIRLINE_RUNNER_FILTER_LAST="$condition"
-  _signal_set health _condition_level_valid ok \
+  signal_health_set \
     "$AIRLINE_RUNNER_FILTER_KEY" "$condition" -t "$AIRLINE_RUNNER_WINDOW"
 }
 
 _runner_probe_report () {   # <ok|warn|fail>
   local condition="${1:-}"
-  if ! _condition_level_valid "$condition"; then
-    _runner_problem "$AIRLINE_RUNNER_SESSION" "$AIRLINE_RUNNER_PROBE_PROBLEM" fail \
+  if ! signal_condition_valid "$condition"; then
+    signal_problem_report "$AIRLINE_RUNNER_SESSION" "$AIRLINE_RUNNER_PROBE_PROBLEM" fail \
       "runner probe emitted invalid condition '${condition}'"
     return 1
   fi
-  _runner_problem "$AIRLINE_RUNNER_SESSION" "$AIRLINE_RUNNER_PROBE_PROBLEM" ok ""
+  signal_problem_report "$AIRLINE_RUNNER_SESSION" "$AIRLINE_RUNNER_PROBE_PROBLEM" ok ""
   [[ "$condition" == "$AIRLINE_RUNNER_PROBE_LAST" ]] && return 0
   AIRLINE_RUNNER_PROBE_LAST="$condition"
-  _signal_set health _condition_level_valid ok \
+  signal_health_set \
     "$AIRLINE_RUNNER_PROBE_KEY" "$condition" -t "$AIRLINE_RUNNER_WINDOW"
 }
 
 _runner_probe_error () {
-  _runner_problem "$AIRLINE_RUNNER_SESSION" "$AIRLINE_RUNNER_PROBE_PROBLEM" fail \
+  signal_problem_report "$AIRLINE_RUNNER_SESSION" "$AIRLINE_RUNNER_PROBE_PROBLEM" fail \
     "runner probe failed or emitted an invalid condition"
 }
 
@@ -465,12 +460,12 @@ _runner_finish () {   # <condition> <window> <key>
   local condition="$1" win="$2" key="$3"
   case "$condition" in
     ok)
-      _signal_set health _condition_level_valid ok "$key" ok -t "$win"
-      _signal_set status _status_level_valid "" "$key" result --transient -t "$win"
+      signal_health_set "$key" ok -t "$win"
+      signal_status_set "$key" result --transient -t "$win"
       ;;
     warn|fail)
-      _signal_set health _condition_level_valid ok "$key" "$condition" --transient -t "$win"
-      _signal_set status _status_level_valid "" "$key" attention --transient -t "$win"
+      signal_health_set "$key" "$condition" --transient -t "$win"
+      signal_status_set "$key" attention --transient -t "$win"
       ;;
   esac
 }
@@ -516,11 +511,11 @@ _runner_expand_named () {   # <session> <run|watch> [invocation...]
   fi
 
   name="$1"; shift
-  [[ "$name" != */* ]] || die "runner $mode: runner must be a bare name"
+  [[ "$name" != */* ]] || command_die "runner $mode: runner must be a bare name"
   file="$(catalog_resolve "$session" runner "$name")"
-  [[ -n "$file" ]] || die "runner $mode: runner '$name' not found"
-  runner_definition_load "$file" || die "runner $mode: runner '$name' is invalid"
-  runner_definition_metadata || die "runner $mode: runner '$name' has invalid metadata"
+  [[ -n "$file" ]] || command_die "runner $mode: runner '$name' not found"
+  runner_definition_load "$file" || command_die "runner $mode: runner '$name' is invalid"
+  runner_definition_metadata || command_die "runner $mode: runner '$name' has invalid metadata"
 
   if [[ "$mode" == run ]]; then
     while (( $# )); do
@@ -530,18 +525,18 @@ _runner_expand_named () {   # <session> <run|watch> [invocation...]
       extra+=("$1"); shift
     done
     [[ -n "$boundary" && ${#command[@]} -gt 0 ]] || \
-      die "runner run: named runner '$name' needs -- <command>"
+      command_die "runner run: named runner '$name' needs -- <command>"
     runner_definition_configure "${extra[@]}" || \
-      die "runner run: runner '$name' produced an invalid configuration"
+      command_die "runner run: runner '$name' produced an invalid configuration"
     runner_definition_project run
     AIRLINE_RUNNER_INVOCATION_ARGV=(
       "${placement[@]}" "${AIRLINE_RUNNER_DEFINITION_ARGV[@]}" -- "${command[@]}"
     )
   else
     runner_definition_configure "$@" || \
-      die "runner watch: runner '$name' produced an invalid configuration"
+      command_die "runner watch: runner '$name' produced an invalid configuration"
     if ! runner_definition_project watch; then
-      die "runner watch: runner '$name' has no probe"
+      command_die "runner watch: runner '$name' has no probe"
     fi
     AIRLINE_RUNNER_INVOCATION_ARGV=(
       "${placement[@]}" "${AIRLINE_RUNNER_DEFINITION_ARGV[@]}"
@@ -589,38 +584,38 @@ _runner_parse () {   # <run|watch> [spec...]
         shift
         ;;
       --classify)
-        [[ "$mode" == run ]] || die "runner watch: --classify is not applicable"
-        [[ -z "$AIRLINE_RUNNER_CLASSIFIER" ]] || die "runner run: classifier already specified"
-        [[ $# -ge 2 && -n "$2" ]] || die "runner run: --classify requires <name>"
+        [[ "$mode" == run ]] || command_die "runner watch: --classify is not applicable"
+        [[ -z "$AIRLINE_RUNNER_CLASSIFIER" ]] || command_die "runner run: classifier already specified"
+        [[ $# -ge 2 && -n "$2" ]] || command_die "runner run: --classify requires <name>"
         AIRLINE_RUNNER_CLASSIFIER="$2"; shift 2 ;;
       --filter)
-        [[ "$mode" == run ]] || die "runner watch: --filter is not applicable"
-        [[ -z "$AIRLINE_RUNNER_FILTER" ]] || die "runner run: filter already specified"
-        [[ $# -ge 2 && -n "$2" ]] || die "runner run: --filter requires <name>"
+        [[ "$mode" == run ]] || command_die "runner watch: --filter is not applicable"
+        [[ -z "$AIRLINE_RUNNER_FILTER" ]] || command_die "runner run: filter already specified"
+        [[ $# -ge 2 && -n "$2" ]] || command_die "runner run: --filter requires <name>"
         AIRLINE_RUNNER_FILTER="$2"; shift 2
         if [[ "${1:-}" == --merge-stderr ]]; then AIRLINE_RUNNER_FILTER_MERGE=1; shift; fi
         ;;
       --probe)
-        [[ -z "$AIRLINE_RUNNER_PROBE" ]] || die "runner $mode: probe already specified"
-        [[ $# -ge 2 && -n "$2" ]] || die "runner $mode: --probe requires <name>"
+        [[ -z "$AIRLINE_RUNNER_PROBE" ]] || command_die "runner $mode: probe already specified"
+        [[ $# -ge 2 && -n "$2" ]] || command_die "runner $mode: --probe requires <name>"
         AIRLINE_RUNNER_PROBE="$2"; shift 2
         while (( $# )) && ! _runner_spec_token "$1"; do
           AIRLINE_RUNNER_PROBE_ARGS+=("$1"); shift
         done
         ;;
       --)
-        [[ "$mode" == run ]] || die "runner watch: unexpected -- (watch ends at end of arguments)"
+        [[ "$mode" == run ]] || command_die "runner watch: unexpected -- (watch ends at end of arguments)"
         shift; AIRLINE_RUNNER_COMMAND=("$@"); break ;;
-      --merge-stderr) die "runner $mode: --merge-stderr must immediately follow --filter <name>" ;;
-      *) die "runner $mode: unknown option '$1'" ;;
+      --merge-stderr) command_die "runner $mode: --merge-stderr must immediately follow --filter <name>" ;;
+      *) command_die "runner $mode: unknown option '$1'" ;;
     esac
   done
 
   if [[ "$mode" == run ]]; then
-    [[ ${#AIRLINE_RUNNER_COMMAND[@]} -gt 0 ]] || die "runner run: need -- <command>"
+    [[ ${#AIRLINE_RUNNER_COMMAND[@]} -gt 0 ]] || command_die "runner run: need -- <command>"
     [[ -n "$AIRLINE_RUNNER_CLASSIFIER" ]] || AIRLINE_RUNNER_CLASSIFIER=basic
   else
-    [[ -n "$AIRLINE_RUNNER_PROBE" ]] || die "runner watch: need --probe <name> [<arg>...]"
+    [[ -n "$AIRLINE_RUNNER_PROBE" ]] || command_die "runner watch: need --probe <name> [<arg>...]"
   fi
 }
 
@@ -628,18 +623,18 @@ _runner_validate_spec () {   # <session> <run|watch>
   local session="$1" mode="$2" file
   if [[ "$mode" == run ]]; then
     file="$(_runner_element_file "$session" classify "$AIRLINE_RUNNER_CLASSIFIER")" || \
-      die "runner run: classifier '$AIRLINE_RUNNER_CLASSIFIER' not found"
-    runner_classifier_valid "$file" || die "runner run: classifier '$AIRLINE_RUNNER_CLASSIFIER' is invalid"
+      command_die "runner run: classifier '$AIRLINE_RUNNER_CLASSIFIER' not found"
+    runner_classifier_valid "$file" || command_die "runner run: classifier '$AIRLINE_RUNNER_CLASSIFIER' is invalid"
     if [[ -n "$AIRLINE_RUNNER_FILTER" ]]; then
       file="$(_runner_element_file "$session" filter "$AIRLINE_RUNNER_FILTER")" || \
-        die "runner run: filter '$AIRLINE_RUNNER_FILTER' not found"
-      runner_filter_valid "$file" || die "runner run: filter '$AIRLINE_RUNNER_FILTER' is invalid"
+        command_die "runner run: filter '$AIRLINE_RUNNER_FILTER' not found"
+      runner_filter_valid "$file" || command_die "runner run: filter '$AIRLINE_RUNNER_FILTER' is invalid"
     fi
   fi
   if [[ -n "$AIRLINE_RUNNER_PROBE" ]]; then
     file="$(_runner_element_file "$session" probe "$AIRLINE_RUNNER_PROBE")" || \
-      die "runner $mode: probe '$AIRLINE_RUNNER_PROBE' not found"
-    runner_probe_valid "$file" || die "runner $mode: probe '$AIRLINE_RUNNER_PROBE' is invalid"
+      command_die "runner $mode: probe '$AIRLINE_RUNNER_PROBE' not found"
+    runner_probe_valid "$file" || command_die "runner $mode: probe '$AIRLINE_RUNNER_PROBE' is invalid"
   fi
 }
 
@@ -686,18 +681,18 @@ _runner_execute () {   # <session>; uses parsed run specification
     file="$(_runner_element_file "$session" probe "$AIRLINE_RUNNER_PROBE")"
     runner_probe_load "$file" || return 2
   fi
-  _runner_problem "$session" "$load_problem" ok ""
+  signal_problem_report "$session" "$load_problem" ok ""
 
-  _signal_set health _condition_level_valid ok "$key" ok -t "$win"
-  _signal_set health _condition_level_valid ok "$filter_key" ok -t "$win"
-  _signal_set health _condition_level_valid ok "$probe_key" ok -t "$win"
-  _signal_set status _status_level_valid "" "$key" active -t "$win"
+  signal_health_set "$key" ok -t "$win"
+  signal_health_set "$filter_key" ok -t "$win"
+  signal_health_set "$probe_key" ok -t "$win"
+  signal_status_set "$key" active -t "$win"
 
   if [[ -n "$AIRLINE_RUNNER_FILTER" ]]; then
     streams=stdout
     if ! runner_stream_prepare "$streams"; then
       runner_stream_cleanup
-      _runner_problem "$session" "$filter_problem" fail "runner filter '$AIRLINE_RUNNER_FILTER' could not prepare"
+      signal_problem_report "$session" "$filter_problem" fail "runner filter '$AIRLINE_RUNNER_FILTER' could not prepare"
       return 2
     fi
     trap runner_stream_cleanup EXIT
@@ -737,21 +732,21 @@ _runner_execute () {   # <session>; uses parsed run specification
     runner_stream_wait || true
   fi
   if ! runner_filter_wait "$filter_pid"; then
-    _runner_problem "$session" "$filter_problem" fail "runner filter '$AIRLINE_RUNNER_FILTER' failed"
+    signal_problem_report "$session" "$filter_problem" fail "runner filter '$AIRLINE_RUNNER_FILTER' failed"
   fi
   if [[ -n "$streams" ]]; then
     runner_stream_cleanup
     trap - EXIT
   fi
-  _signal_set health _condition_level_valid ok "$filter_key" ok -t "$win"
-  _signal_set health _condition_level_valid ok "$probe_key" ok -t "$win"
+  signal_health_set "$filter_key" ok -t "$win"
+  signal_health_set "$probe_key" ok -t "$win"
   (( rc > 128 )) && signal="$((rc - 128))"
 
   if condition="$(runner_classifier_run "$rc" "$signal")"; then
-    _runner_problem "$session" "$classify_problem" ok ""
+    signal_problem_report "$session" "$classify_problem" ok ""
   else
     condition=fail
-    _runner_problem "$session" "$classify_problem" fail \
+    signal_problem_report "$session" "$classify_problem" fail \
       "runner classifier '$AIRLINE_RUNNER_CLASSIFIER' failed or emitted an invalid condition"
   fi
   _runner_finish "$condition" "$win" "$key"
@@ -804,7 +799,7 @@ _runner_watch_execute () {   # <session>; uses parsed watch specification
   probe_problem="$(_runner_problem_key "$AIRLINE_RUNNER_PROBE" probe)"
   file="$(_runner_element_file "$session" probe "$AIRLINE_RUNNER_PROBE")"
   runner_probe_load "$file" || return 2
-  _runner_problem "$session" "$(_runner_problem_key "$AIRLINE_RUNNER_PROBE" load)" ok ""
+  signal_problem_report "$session" "$(_runner_problem_key "$AIRLINE_RUNNER_PROBE" load)" ok ""
 
   AIRLINE_RUNNER_SESSION="$session"
   AIRLINE_RUNNER_WINDOW="$win"
@@ -813,8 +808,8 @@ _runner_watch_execute () {   # <session>; uses parsed watch specification
   AIRLINE_RUNNER_PROBE_LAST=""
   interval="${AIRLINE_RUNNER_PROBE_INTERVAL:-5}"
 
-  _signal_set health _condition_level_valid ok "$probe_key" ok -t "$win"
-  _signal_set status _status_level_valid "" "$key" active -t "$win"
+  signal_health_set "$probe_key" ok -t "$win"
+  signal_status_set "$key" active -t "$win"
 
   trap 'watch_rc=130; [[ -n "$sleep_pid" ]] && kill "$sleep_pid" 2>/dev/null || true' INT
   trap 'watch_rc=143; [[ -n "$sleep_pid" ]] && kill "$sleep_pid" 2>/dev/null || true' TERM
@@ -833,31 +828,31 @@ _runner_watch_execute () {   # <session>; uses parsed watch specification
   done
   trap - INT TERM HUP
 
-  _signal_clear health "$probe_key" -t "$win"
-  _signal_clear status "$key" -t "$win"
+  signal_health_clear "$probe_key" -t "$win"
+  signal_status_clear "$key" -t "$win"
   return "$watch_rc"
 }
 # CLI delegation targets for runner and its primitives.
-runner_classifier_show () { local s; s="$(_require_current_session)"; _runner_element_show "$s" classifier "$@"; }
-runner_classifier_list () { local s; s="$(_require_current_session)"; catalog_list "$s" classifier; }
-runner_classifier_register () { local s; s="$(_require_current_session)"; catalog_register "$s" classifier "$@"; }
-runner_filter_show () { local s; s="$(_require_current_session)"; _runner_element_show "$s" filter "$@"; }
-runner_filter_list () { local s; s="$(_require_current_session)"; catalog_list "$s" filter; }
-runner_filter_register () { local s; s="$(_require_current_session)"; catalog_register "$s" filter "$@"; }
-runner_probe_show () { local s; s="$(_require_current_session)"; _runner_element_show "$s" probe "$@"; }
-runner_probe_list () { local s; s="$(_require_current_session)"; catalog_list "$s" probe; }
-runner_probe_register () { local s; s="$(_require_current_session)"; catalog_register "$s" probe "$@"; }
+runner_classifier_show () { local s; s="$(command_current_session)"; _runner_element_show "$s" classifier "$@"; }
+runner_classifier_list () { local s; s="$(command_current_session)"; catalog_list "$s" classifier; }
+runner_classifier_register () { local s; s="$(command_current_session)"; catalog_register "$s" classifier "$@"; }
+runner_filter_show () { local s; s="$(command_current_session)"; _runner_element_show "$s" filter "$@"; }
+runner_filter_list () { local s; s="$(command_current_session)"; catalog_list "$s" filter; }
+runner_filter_register () { local s; s="$(command_current_session)"; catalog_register "$s" filter "$@"; }
+runner_probe_show () { local s; s="$(command_current_session)"; _runner_element_show "$s" probe "$@"; }
+runner_probe_list () { local s; s="$(command_current_session)"; catalog_list "$s" probe; }
+runner_probe_register () { local s; s="$(command_current_session)"; catalog_register "$s" probe "$@"; }
 
-runner_show () { local s; s="$(_require_current_session)"; _runner_definition_show "$s" "$@"; }
-runner_list () { local s; s="$(_require_current_session)"; catalog_list "$s" runner; }
-runner_register () { local s; s="$(_require_current_session)"; catalog_register "$s" runner "$@"; }
+runner_show () { local s; s="$(command_current_session)"; _runner_definition_show "$s" "$@"; }
+runner_list () { local s; s="$(command_current_session)"; catalog_list "$s" runner; }
+runner_register () { local s; s="$(command_current_session)"; catalog_register "$s" runner "$@"; }
 _runner_command () {   # <run|watch> [invocation...]
   local mode="$1" spawned="${AIRLINE_RUNNER_SPAWNED:-}" s; shift
   # Spawn provenance is process-local context, not command grammar. Consume it so
   # the monitored child and any nested airline invocation cannot inherit it.
   unset AIRLINE_RUNNER_SPAWNED
   [[ "$spawned" != 1 ]] || runner_retain_pane "$(current_pane)"
-  s="$(_require_current_session)"
+  s="$(command_current_session)"
   _runner_invoke "$s" "$mode" "$@"
 }
 runner_run () { _runner_command run "$@"; }

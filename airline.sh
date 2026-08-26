@@ -25,12 +25,16 @@ fi
 
 # shellcheck source=lib/tmux.sh
 source "$AIRLINE_DIR/lib/tmux.sh"
+# shellcheck source=lib/command.sh
+source "$AIRLINE_DIR/lib/command.sh"
 # shellcheck source=lib/collections.sh
 source "$AIRLINE_DIR/lib/collections.sh"
 # shellcheck source=lib/render.sh
 source "$AIRLINE_DIR/lib/render.sh"
 # shellcheck source=lib/catalog.sh
 source "$AIRLINE_DIR/lib/catalog.sh"
+# shellcheck source=lib/signal.sh
+source "$AIRLINE_DIR/lib/signal.sh"
 # shellcheck source=lib/runner.sh
 source "$AIRLINE_DIR/lib/runner.sh"
 # shellcheck source=lib/layout.sh
@@ -66,7 +70,7 @@ cmd_session () {
     suspend) lifecycle_session_suspend ;; #| — mute the palette + trap the prefix (session dormant)
     resume)  lifecycle_session_resume ;;  #| — restore vibrant colours + release the prefix
     toggle)  lifecycle_session_toggle ;;  #| — flip active/suspended
-    *) die "unknown session command: $verb" ;;
+    *) command_die "unknown session command: $verb" ;;
   esac
   # help:end session
 }
@@ -75,8 +79,8 @@ cmd_signal () {
   local verb="${1:-}"; shift || true
   # help:begin signal
   case "$verb" in
-    clear-transient) lifecycle_signal_clear_transient "$@" ;; #| [-t <window>] — consume transient status and health for a window
-    *) die "unknown signal command: $verb" ;;
+    clear-transient) signal_clear_transient "$@" ;; #| [-t <window>] — consume transient status and health for a window
+    *) command_die "unknown signal command: $verb" ;;
   esac
   # help:end signal
 }
@@ -85,10 +89,10 @@ cmd_status () {
   local verb="${1:-}"; shift || true
   # help:begin status
   case "$verb" in
-    set)   lifecycle_status_set "$@" ;;   #| <status-key> <active|result|attention> [--transient] [-t <window>] — set app status
-    clear) lifecycle_status_clear "$@" ;; #| <status-key> [-t <window>] — clear app status
-    show)  lifecycle_status_show "$@" ;;  #| [<status-key>] [-t <window>] — show a window's app status
-    *) die "unknown status command: $verb" ;;
+    set)   signal_status_set "$@" ;;   #| <status-key> <active|result|attention> [--transient] [-t <window>] — set app status
+    clear) signal_status_clear "$@" ;; #| <status-key> [-t <window>] — clear app status
+    show)  signal_status_show "$@" ;;  #| [<status-key>] [-t <window>] — show a window's app status
+    *) command_die "unknown status command: $verb" ;;
   esac
   # help:end status
 }
@@ -97,10 +101,10 @@ cmd_health () {
   local verb="${1:-}"; shift || true
   # help:begin health
   case "$verb" in
-    set)   lifecycle_health_set "$@" ;;   #| <health-key> <ok|warn|fail> [--transient] [-t <window>] — set window health
-    clear) lifecycle_health_clear "$@" ;; #| <health-key> [-t <window>] — clear window health
-    show)  lifecycle_health_show "$@" ;;  #| [<health-key>] [-t <window>] — show a window's health
-    *) die "unknown health command: $verb" ;;
+    set)   signal_health_set "$@" ;;   #| <health-key> <ok|warn|fail> [--transient] [-t <window>] — set window health
+    clear) signal_health_clear "$@" ;; #| <health-key> [-t <window>] — clear window health
+    show)  signal_health_show "$@" ;;  #| [<health-key>] [-t <window>] — show a window's health
+    *) command_die "unknown health command: $verb" ;;
   esac
   # help:end health
 }
@@ -109,10 +113,10 @@ cmd_problem () {
   local verb="${1:-}"; shift || true
   # help:begin problem
   case "$verb" in
-    set)   lifecycle_problem_set "$@" ;;   #| <session> <problem-key> <ok|warn|fail> [<message>] — set or recover a session problem
-    clear) lifecycle_problem_clear "$@" ;; #| <session> <problem-key> — clear a session problem
-    show)  lifecycle_problem_show "$@" ;;  #| [<session> [<problem-key>]] — show all sessions, one session, or one problem
-    *) die "unknown problem command: $verb" ;;
+    set)   signal_problem_set "$@" ;;   #| <session> <problem-key> <ok|warn|fail> [<message>] — set or recover a session problem
+    clear) signal_problem_clear "$@" ;; #| <session> <problem-key> — clear a session problem
+    show)  signal_problem_show "$@" ;;  #| [<session> [<problem-key>]] — show all sessions, one session, or one problem
+    *) command_die "unknown problem command: $verb" ;;
   esac
   # help:end problem
 }
@@ -123,7 +127,7 @@ cmd_lock () {
   case "$verb" in
     show)  lifecycle_lock_show "$@" ;;  #| — list outstanding transactions and owner state
     clear) lifecycle_lock_clear "$@" ;; #| <session|window> <target> <namespace> — release one stale lock
-    *) die "unknown lock command: $verb" ;;
+    *) command_die "unknown lock command: $verb" ;;
   esac
   # help:end lock
 }
@@ -140,7 +144,7 @@ cmd_palette () {
     use)       layout_palette_use "$@" ;;       #| <palette> — load a complete palette and repaint adapters
     list)      layout_palette_list ;;           #| — list palettes on the search path
     register)  layout_palette_register "$@" ;; #| <dir> — add a palette search directory
-    *) die "unknown palette command: $verb" ;;
+    *) command_die "unknown palette command: $verb" ;;
   esac
   # help:end palette
 }
@@ -152,7 +156,7 @@ cmd_segment () {
   # help:begin segment
   case "$verb" in
     show) layout_segment_show "$@" ;;   #| [<segment>] — show one segment or all segments
-    *) die "unknown segment command: $verb" ;;
+    *) command_die "unknown segment command: $verb" ;;
   esac
   # help:end segment
 }
@@ -166,7 +170,7 @@ cmd_adapter () {
     show)      layout_adapter_show ;;           #| — list applied adapters
     list)      layout_adapter_list ;;           #| — list adapters on the search path
     register)  layout_adapter_register "$@" ;; #| <dir> — add an adapter search directory
-    *) die "unknown adapter command: $verb" ;;
+    *) command_die "unknown adapter command: $verb" ;;
   esac
   # help:end adapter
 }
@@ -180,7 +184,7 @@ cmd_layout () {
     show)      layout_show "$@" ;;      #| [name|path] — show active layout provenance
     list)      layout_list ;;           #| — list layouts on the search path
     register)  layout_register "$@" ;; #| <dir> — add a layout search directory
-    *) die "unknown layout command: $verb" ;;
+    *) command_die "unknown layout command: $verb" ;;
   esac
   # help:end layout
 }
@@ -192,7 +196,7 @@ cmd_classifier () {
     show)      runner_classifier_show "$@" ;;      #| <classifier> — show summary, contract, and resolved path
     list)      runner_classifier_list ;;           #| — list classifiers available to runners
     register)  runner_classifier_register "$@" ;; #| <dir> — add a classifier search directory
-    *) die "unknown classifier command: $verb" ;;
+    *) command_die "unknown classifier command: $verb" ;;
   esac
   # help:end classifier
 }
@@ -204,7 +208,7 @@ cmd_filter () {
     show)      runner_filter_show "$@" ;;      #| <filter> — show summary, contract, and resolved path
     list)      runner_filter_list ;;           #| — list filters available to runners
     register)  runner_filter_register "$@" ;; #| <dir> — add a filter search directory
-    *) die "unknown filter command: $verb" ;;
+    *) command_die "unknown filter command: $verb" ;;
   esac
   # help:end filter
 }
@@ -216,7 +220,7 @@ cmd_probe () {
     show)      runner_probe_show "$@" ;;      #| <probe> — show summary, arguments, interval, and resolved path
     list)      runner_probe_list ;;           #| — list probes available to runners
     register)  runner_probe_register "$@" ;; #| <dir> — add a probe search directory
-    *) die "unknown probe command: $verb" ;;
+    *) command_die "unknown probe command: $verb" ;;
   esac
   # help:end probe
 }
@@ -230,7 +234,7 @@ cmd_runner () {
     register)  runner_register "$@" ;;  #| <dir> — add a runner search directory
     run)       runner_run "$@" ;;        #| [--here|--pane [-h|-v]|--window] [<runner>] [--classify <classifier>] [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]] -- <command>... — run a command with monitoring
     watch)     runner_watch "$@" ;;      #| [--here|--pane [-h|-v]|--window] [<runner>] [--probe <probe> [<arg>...]] — watch probe state until interrupted
-    *) die "unknown runner command: $verb" ;;
+    *) command_die "unknown runner command: $verb" ;;
   esac
   # help:end runner
 }
@@ -260,7 +264,7 @@ main () {
     runner)   cmd_runner  "$@" ;;
     help)     help_command "$@" ;;      #| [<noun> [<verb>]] — show command help
     ""|-h|--help) help_command ;;
-    *) die "unknown command: $cmd (try: airline help)" ;;
+    *) command_die "unknown command: $cmd (try: airline help)" ;;
   esac
   # help:end root
 }

@@ -35,6 +35,7 @@ load_tmux() {
 load_collections() {
   export AIRLINE_DIR="$PROJECT_ROOT"
   source "$PROJECT_ROOT/test/support/fake-tmux.sh"
+  source "$PROJECT_ROOT/lib/command.sh"
   source "$PROJECT_ROOT/lib/collections.sh"
   _use_fake_readback
 }
@@ -44,9 +45,16 @@ load_render() {
   export AIRLINE_DIR="$PROJECT_ROOT"
   export AIRLINE_SESSION='s1'
   source "$PROJECT_ROOT/test/support/fake-tmux.sh"
+  source "$PROJECT_ROOT/lib/command.sh"
   source "$PROJECT_ROOT/lib/collections.sh"
   source "$PROJECT_ROOT/lib/render.sh"
   _use_fake_readback
+}
+
+# Source the signal services over the in-memory store and renderer.
+load_signal() {
+  load_render
+  source "$PROJECT_ROOT/lib/signal.sh"
 }
 
 # Source the complete behavior stack on the fake store. Used where a lifecycle test
@@ -55,9 +63,11 @@ load_lifecycle() {
   export AIRLINE_DIR="$PROJECT_ROOT"
   export AIRLINE_SESSION='s1'
   source "$PROJECT_ROOT/test/support/fake-tmux.sh"
+  source "$PROJECT_ROOT/lib/command.sh"
   source "$PROJECT_ROOT/lib/collections.sh"
   source "$PROJECT_ROOT/lib/render.sh"
   source "$PROJECT_ROOT/lib/catalog.sh"
+  source "$PROJECT_ROOT/lib/signal.sh"
   source "$PROJECT_ROOT/lib/runner.sh"
   source "$PROJECT_ROOT/lib/layout.sh"
   source "$PROJECT_ROOT/lib/lifecycle.sh"

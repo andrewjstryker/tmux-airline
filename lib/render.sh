@@ -106,7 +106,7 @@ declare -gA AIRLINE_STATUS_GLYPH=([active]='○' [result]='●' [attention]='◆
 # shellcheck disable=SC2034
 declare -gA AIRLINE_HEALTH_GLYPH=([warn]='△' [fail]='▲')                      # degraded → broken
 
-# Boundary validators — pure predicates the CLI calls before it stores anything.
+# Layout validators — pure predicates used before configuration is stored.
 _segment_slot_valid () {
   local s; for s in "${AIRLINE_SEGMENT_SLOTS[@]}"; do [[ "$s" == "$1" ]] && return 0; done
   return 1
@@ -115,15 +115,6 @@ _palette_element_valid () {
   local e; for e in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do [[ "$e" == "$1" ]] && return 0; done
   return 1
 }
-_status_level_valid () {
-  local l; for l in "${AIRLINE_STATUS_LEVELS[@]}"; do [[ "$l" == "$1" ]] && return 0; done
-  return 1
-}
-_condition_level_valid () {
-  local s; for s in "${AIRLINE_CONDITION_LEVELS[@]}"; do [[ "$s" == "$1" ]] && return 0; done
-  return 1
-}
-
 #-----------------------------------------------------------------------------#
 # Palette — PALETTE, populated from the @airline-<element> options.
 #-----------------------------------------------------------------------------#
@@ -251,7 +242,7 @@ _window_mode_pick () {   # <in-mode> <none>
 # Badges — status (left of the name) and health (right of it).
 #-----------------------------------------------------------------------------#
 # Two channels flank the window name. Each is a runtime collection reduced to ONE
-# badge and projected to a per-window scalar (status_project / health_project):
+# badge and projected to a per-window scalar (render_status_project / render_health_project):
 #   status : app-status contributors (ns "status") reduced by the level ladder into
 #            the AIRLINE_KEY_STATUS scalar; the left badge shows one glyph in that
 #            level's color, or nothing when no contributor reports.
@@ -340,12 +331,12 @@ _project () {   # <win> <ns> <ranking> <badge-key>
 }
 
 # Status: every level shows (absence is the blank), so project the reduce verbatim.
-status_project () {   # <win>
+render_status_project () {   # <win>
   _project "$1" status "${AIRLINE_STATUS_LEVELS[*]}" "$AIRLINE_KEY_STATUS"
 }
 
 # Health: a clean badge means healthy, so an `ok`/none reduce projects as blank.
-health_project () {   # <win>
+render_health_project () {   # <win>
   local win="$1" max
   max="$(coll_reduce_window "$win" health "${AIRLINE_CONDITION_LEVELS[*]}")"
   case "$max" in fail|warn) ;; *) max="" ;; esac
@@ -359,7 +350,7 @@ health_project () {   # <win>
 
 # Problem: session-scoped widget problems use the shared condition ladder and
 # reduce to one overall badge. An `ok`/none result is visually healthy (blank).
-problem_project () {   # <session>
+render_problem_project () {   # <session>
   local session="$1" max
   max="$(coll_reduce_session "$session" problem "${AIRLINE_CONDITION_LEVELS[*]}")"
   case "$max" in fail|warn) ;; *) max="" ;; esac
