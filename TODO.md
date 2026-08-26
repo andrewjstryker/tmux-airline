@@ -1,4 +1,55 @@
-# Architecture TODO
+# TODO
+
+## Follow-up: initialization performance
+
+The architecture work exposed a user-facing performance question that deserves its
+own investigation. Starting an isolated tmux server measured roughly 15–25 ms, while
+one full Airline initialization measured roughly 1.5–2.5 seconds in controlled
+alternating runs. The integration suite amplified that cost by repeatedly performing
+a complete bootstrap; widening its workflows reduced the full-suite runtime from
+more than eight minutes to about five minutes and thirteen seconds. That improves
+test feedback, but it does not explain or improve Airline initialization itself.
+
+The leading hypothesis is cumulative synchronous tmux client round trips. Session
+resolution, catalog registration, configuration collection, rendering, transaction
+markers, and problem recovery each perform option reads and writes through
+`lib/tmux.sh`. Individual calls are inexpensive, but initialization performs enough
+of them serially to become visible.
+
+Initial investigation path:
+
+1. [ ] Establish repeatable cold-init and idempotent-reinit benchmarks. Record wall
+       time, tmux client invocation count, and command count rather than relying on
+       full-suite duration as a proxy.
+2. [ ] Instrument the `AIRLINE_TMUX` seam to attribute calls and cumulative time to
+       session resolution, catalog registration, layout/palette collection, adapter
+       application, rendering, transactions, and problem reporting.
+3. [ ] Identify redundant work separately from necessary work. In particular, check
+       repeated option reads, read-before-write pairs, unchanged rendering writes,
+       and invariant catalog registration during idempotent initialization.
+4. [ ] Prototype batch execution at the mechanical boundary:
+       - retrieve related options with one bulk query where tmux semantics permit;
+       - compute the desired snapshot in memory;
+       - submit ordered changed writes as one tmux command sequence or sourced file;
+       - batch builtin catalog registration after one bulk read, if that preserves
+         collection ownership and priority semantics.
+5. [ ] Re-measure after each batching change and retain it only when it materially
+       reduces both tmux invocations and initialization time without obscuring the
+       mechanical API.
+6. [ ] Consider parallel execution only after batching. Parallelize only demonstrably
+       independent, read-only work; do not parallelize ordered layout/adapter writes,
+       shared collection mutations, rendering writes, or transaction-protected state.
+       tmux is a single shared server, so concurrent clients may add contention rather
+       than reduce latency.
+7. [ ] Preserve behavior with fast boundary tests and a few wide real-tmux workflows.
+       Do not add product capability or weaken transaction, ordering, idempotence, or
+       session-isolation guarantees as a performance shortcut.
+
+Completion requires an explained profile, a before/after benchmark, and a clear
+account of which round trips were removed or batched. A fixed latency target should
+come from the baseline and profile rather than being invented in advance.
+
+## Completed work: CLI and library architecture
 
 This worklist records the CLI and library architecture review of 2026-08-26.
 Compatibility with the current command grammar or internal entry points is **not**
@@ -187,9 +238,9 @@ boundary. Session coordinates configuration only through public layout services.
 4. [x] Establish private ownership and eliminate cross-module private calls.
 5. [x] Update the source/load structure and the documented dependency graph.
 6. [x] Remove invariant C and add the replacement dependency/visibility lint.
-7. [ ] Regenerate completions and update grammar, behavior, integration, architecture,
+7. [x] Regenerate completions and update grammar, behavior, integration, architecture,
        README, and design tests/documentation.
-8. [ ] Run final verification: `make lint`, `make test-fast`, and the full
+8. [x] Run final verification: `make lint`, `make test-fast`, and the full
        `make test` suite.
 
 ## Test strategy
@@ -201,26 +252,47 @@ boundary. Session coordinates configuration only through public layout services.
 - [x] Avoid routine integration-test runs while module names, dispatch, and ownership
       are moving. This work does not change `lib/tmux.sh` or intentionally add tmux
       behavior.
-- [ ] Run targeted integration tests at key process-boundary moments, especially
+- [x] Run targeted integration tests at key process-boundary moments, especially
       after replacing tmux hook routes and spawned runner re-entry. Those changes
       alter subprocess wiring even though the tmux mechanics remain unchanged.
-- [ ] Run the complete integration and test suites once the architecture and public
+- [x] Run the complete integration and test suites once the architecture and public
       grammar have settled, before considering the work complete.
 
 ## Scope and simplification checks
 
-- [ ] Do not add new end-user behavior while reorganizing these boundaries.
-- [ ] Treat targeted initialization, transient consumption, and spawned-runner
+- [x] Do not add new end-user behavior while reorganizing these boundaries.
+- [x] Treat targeted initialization, transient consumption, and spawned-runner
       re-entry as existing behavior receiving public expression, not new capability.
-- [ ] Avoid compatibility aliases and adapter layers for the grammar being removed.
-- [ ] Avoid replacing `cmd_*` and lifecycle ceremony with registries, metaprogramming,
+- [x] Avoid compatibility aliases and adapter layers for the grammar being removed.
+- [x] Avoid replacing `cmd_*` and lifecycle ceremony with registries, metaprogramming,
       or a generic module framework unless they produce a demonstrably smaller and
       clearer system.
-- [ ] Compare production shell LOC, test LOC, function count, and architecture-lint
+- [x] Compare production shell LOC, test LOC, function count, and architecture-lint
       LOC before and after. These are supporting signals rather than hard targets,
       but unexpected growth requires a concrete justification.
-- [ ] Prefer fewer concepts and paths over a one-file-per-noun structure. File
+- [x] Prefer fewer concepts and paths over a one-file-per-noun structure. File
       boundaries should represent cohesive owners, not mirror every CLI word.
+
+### Outcome metrics
+
+Compared with the branch base (`32f80c6`), counting `airline.sh` plus `lib/*.sh` as
+production and project-owned Bats/support sources as tests:
+
+| Measure | Before | After | Change |
+|---------|-------:|------:|-------:|
+| Production shell lines | 3270 | 3257 | -13 |
+| Production functions | 317 | 312 | -5 |
+| Architecture-lint lines | 200 | 176 | -24 |
+| Test/support lines | 3124 | 3245 | +121 |
+| Bats test cases | 190 | 171 | -19 |
+
+The support-line increase is deliberate boundary coverage: catalog, signal, session,
+and transaction behavior now have focused fast suites, and the architecture lint has
+negative fixtures proving that violations are detected. Integration coverage was
+widened from 107 narrow cases to 72 domain workflows so repeated real-tmux bootstrap
+does not dominate feedback. It does not represent added product capability.
+Production code, production function count, lint size, and total Bats case count all
+decreased.
 
 ## Completion criteria
 
@@ -235,7 +307,7 @@ boundary. Session coordinates configuration only through public layout services.
 - [x] The documented dependency graph matches the implementation and is acyclic.
 - [x] Every architecture lint states and enforces a substantive boundary.
 - [x] Help and generated completions describe only the intended public grammar.
-- [ ] No new product capability was introduced by the architecture rework.
-- [ ] Any net increase in effective code size has a documented architectural reason;
+- [x] No new product capability was introduced by the architecture rework.
+- [x] Any net increase in effective code size has a documented architectural reason;
       otherwise the rework reduces effective production/test complexity.
-- [ ] All lint and test suites pass.
+- [x] All lint and test suites pass.

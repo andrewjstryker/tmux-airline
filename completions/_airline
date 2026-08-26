@@ -3,12 +3,8 @@
 # Generated from `airline help`; do not edit.
 _airline_children () {
   case "$1" in
-    '') printf %s help\ session\ signal\ status\ health\ problem\ transaction\ palette\ segment\ adapter\ layout\ classifier\ filter\ probe\ runner ;;
+    '') printf %s help\ session\ palette\ segment\ adapter\ layout\ classifier\ filter\ probe\ runner\ signal\ status\ health\ problem\ transaction ;;
     session) printf %s init\ apply\ show\ suspend\ resume\ toggle ;;
-    status) printf %s set\ clear\ show ;;
-    health) printf %s set\ clear\ show ;;
-    problem) printf %s set\ clear\ show ;;
-    transaction) printf %s show\ clear ;;
     palette) printf %s show\ use\ list\ register ;;
     segment) printf %s show ;;
     adapter) printf %s use\ load\ show\ list\ register ;;
@@ -17,6 +13,10 @@ _airline_children () {
     filter) printf %s show\ list\ register ;;
     probe) printf %s show\ list\ register ;;
     runner) printf %s show\ list\ register\ run\ watch ;;
+    status) printf %s set\ clear\ show ;;
+    health) printf %s set\ clear\ show ;;
+    problem) printf %s set\ clear\ show ;;
+    transaction) printf %s show\ clear ;;
     *) return 1 ;;
   esac
 }
@@ -29,17 +29,6 @@ _airline_usage () {
     session\ suspend) printf %s '' ;;
     session\ resume) printf %s '' ;;
     session\ toggle) printf %s '' ;;
-    status\ set) printf %s \<status-key\>\ \<active\|result\|attention\>\ \[--transient\]\ \[-t\ \<window\>\] ;;
-    status\ clear) printf %s \<status-key\>\ \[-t\ \<window\>\] ;;
-    status\ show) printf %s \[\<status-key\>\]\ \[-t\ \<window\>\] ;;
-    health\ set) printf %s \<health-key\>\ \<ok\|warn\|fail\>\ \[--transient\]\ \[-t\ \<window\>\] ;;
-    health\ clear) printf %s \<health-key\>\ \[-t\ \<window\>\] ;;
-    health\ show) printf %s \[\<health-key\>\]\ \[-t\ \<window\>\] ;;
-    problem\ set) printf %s \<session\>\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>\] ;;
-    problem\ clear) printf %s \<session\>\ \<problem-key\> ;;
-    problem\ show) printf %s \[\<session\>\ \[\<problem-key\>\]\] ;;
-    transaction\ show) printf %s '' ;;
-    transaction\ clear) printf %s \<session\|window\>\ \<target\>\ \<namespace\> ;;
     palette\ show) printf %s \[name\|\<palette-element\>\] ;;
     palette\ use) printf %s \<palette\> ;;
     palette\ list) printf %s '' ;;
@@ -69,12 +58,18 @@ _airline_usage () {
     runner\ register) printf %s \<dir\> ;;
     runner\ run) printf %s \[--here\|--pane\ \[-h\|-v\]\|--window\]\ \[\<runner\>\]\ \[--classify\ \<classifier\>\]\ \[--filter\ \<filter\>\ \[--merge-stderr\]\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\ --\ \<command\>... ;;
     runner\ watch) printf %s \[--here\|--pane\ \[-h\|-v\]\|--window\]\ \[\<runner\>\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\] ;;
+    status\ set) printf %s \<status-key\>\ \<active\|result\|attention\>\ \[--transient\]\ \[-t\ \<window\>\] ;;
+    status\ clear) printf %s \<status-key\>\ \[-t\ \<window\>\] ;;
+    status\ show) printf %s \[\<status-key\>\]\ \[-t\ \<window\>\] ;;
+    health\ set) printf %s \<health-key\>\ \<ok\|warn\|fail\>\ \[--transient\]\ \[-t\ \<window\>\] ;;
+    health\ clear) printf %s \<health-key\>\ \[-t\ \<window\>\] ;;
+    health\ show) printf %s \[\<health-key\>\]\ \[-t\ \<window\>\] ;;
+    problem\ set) printf %s \<session\>\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>\] ;;
+    problem\ clear) printf %s \<session\>\ \<problem-key\> ;;
+    problem\ show) printf %s \[\<session\>\ \[\<problem-key\>\]\] ;;
+    transaction\ show) printf %s '' ;;
+    transaction\ clear) printf %s \<session\|window\>\ \<target\>\ \<namespace\> ;;
     session) printf %s '' ;;
-    signal) printf %s '' ;;
-    status) printf %s '' ;;
-    health) printf %s '' ;;
-    problem) printf %s '' ;;
-    transaction) printf %s '' ;;
     palette) printf %s '' ;;
     segment) printf %s '' ;;
     adapter) printf %s '' ;;
@@ -83,6 +78,11 @@ _airline_usage () {
     filter) printf %s '' ;;
     probe) printf %s '' ;;
     runner) printf %s '' ;;
+    signal) printf %s '' ;;
+    status) printf %s '' ;;
+    health) printf %s '' ;;
+    problem) printf %s '' ;;
+    transaction) printf %s '' ;;
     *) return 1 ;;
   esac
 }
@@ -90,11 +90,40 @@ _airline_description () {
   case "$1" in
     help) printf %s show\ command\ help ;;
     session\ init) printf %s seed\ defaults\,\ register\ paths\,\ publish\ the\ CLI\ handle\,\ and\ render ;;
-    session\ apply) printf %s commit\ global\ option\ edits\ and\ render\ the\ session ;;
+    session\ apply) printf %s Commit\ global\ option\ edits\ and\ render\ the\ session ;;
     session\ show) printf %s print\ the\ active\ configuration\ or\ raw\ session\ state ;;
-    session\ suspend) printf %s mute\ the\ palette\ +\ trap\ the\ prefix\ \(session\ dormant\) ;;
-    session\ resume) printf %s restore\ vibrant\ colours\ +\ release\ the\ prefix ;;
-    session\ toggle) printf %s flip\ active/suspended ;;
+    session\ suspend) printf %s Mute\ the\ palette\ +\ trap\ the\ prefix\ \(session\ dormant\) ;;
+    session\ resume) printf %s Restore\ vibrant\ colours\ +\ release\ the\ prefix ;;
+    session\ toggle) printf %s Flip\ active/suspended ;;
+    palette\ show) printf %s show\ the\ palette\ summary\ or\ one\ raw\ field ;;
+    palette\ use) printf %s load\ a\ complete\ palette\ and\ repaint\ adapters ;;
+    palette\ list) printf %s List\ palettes\ on\ the\ search\ path ;;
+    palette\ register) printf %s add\ a\ palette\ search\ directory ;;
+    segment\ show) printf %s show\ one\ segment\ or\ all\ segments ;;
+    adapter\ use) printf %s apply\ palette\ roles\ to\ one\ or\ more\ plugins ;;
+    adapter\ load) printf %s apply\ a\ one-off\ adapter\ script ;;
+    adapter\ show) printf %s List\ applied\ adapters ;;
+    adapter\ list) printf %s List\ adapters\ on\ the\ search\ path ;;
+    adapter\ register) printf %s add\ an\ adapter\ search\ directory ;;
+    layout\ use) printf %s apply\ a\ named\ layout\ definition ;;
+    layout\ load) printf %s apply\ and\ record\ a\ one-off\ layout\ definition ;;
+    layout\ show) printf %s show\ active\ layout\ provenance ;;
+    layout\ list) printf %s List\ layouts\ on\ the\ search\ path ;;
+    layout\ register) printf %s add\ a\ layout\ search\ directory ;;
+    classifier\ show) printf %s show\ summary\,\ contract\,\ and\ resolved\ path ;;
+    classifier\ list) printf %s List\ classifiers\ available\ to\ runners ;;
+    classifier\ register) printf %s add\ a\ classifier\ search\ directory ;;
+    filter\ show) printf %s show\ summary\,\ contract\,\ and\ resolved\ path ;;
+    filter\ list) printf %s List\ filters\ available\ to\ runners ;;
+    filter\ register) printf %s add\ a\ filter\ search\ directory ;;
+    probe\ show) printf %s show\ summary\,\ arguments\,\ interval\,\ and\ resolved\ path ;;
+    probe\ list) printf %s List\ probes\ available\ to\ runners ;;
+    probe\ register) printf %s add\ a\ probe\ search\ directory ;;
+    runner\ show) printf %s show\ one\ named\ composition\ with\ resolved\ defaults ;;
+    runner\ list) printf %s List\ named\ runner\ compositions ;;
+    runner\ register) printf %s add\ a\ runner\ search\ directory ;;
+    runner\ run) printf %s run\ a\ command\ with\ monitoring ;;
+    runner\ watch) printf %s watch\ probe\ state\ until\ interrupted ;;
     status\ set) printf %s set\ app\ status ;;
     status\ clear) printf %s clear\ app\ status ;;
     status\ show) printf %s show\ a\ window\'s\ app\ status ;;
@@ -104,43 +133,9 @@ _airline_description () {
     problem\ set) printf %s set\ or\ recover\ a\ session\ problem ;;
     problem\ clear) printf %s clear\ a\ session\ problem ;;
     problem\ show) printf %s show\ all\ sessions\,\ one\ session\,\ or\ one\ problem ;;
-    transaction\ show) printf %s list\ outstanding\ transactions\ and\ owner\ state ;;
+    transaction\ show) printf %s List\ outstanding\ transactions\ and\ owner\ state ;;
     transaction\ clear) printf %s release\ one\ stale\ transaction ;;
-    palette\ show) printf %s show\ the\ palette\ summary\ or\ one\ raw\ field ;;
-    palette\ use) printf %s load\ a\ complete\ palette\ and\ repaint\ adapters ;;
-    palette\ list) printf %s list\ palettes\ on\ the\ search\ path ;;
-    palette\ register) printf %s add\ a\ palette\ search\ directory ;;
-    segment\ show) printf %s show\ one\ segment\ or\ all\ segments ;;
-    adapter\ use) printf %s apply\ palette\ roles\ to\ one\ or\ more\ plugins ;;
-    adapter\ load) printf %s apply\ a\ one-off\ adapter\ script ;;
-    adapter\ show) printf %s list\ applied\ adapters ;;
-    adapter\ list) printf %s list\ adapters\ on\ the\ search\ path ;;
-    adapter\ register) printf %s add\ an\ adapter\ search\ directory ;;
-    layout\ use) printf %s apply\ a\ named\ layout\ definition ;;
-    layout\ load) printf %s apply\ and\ record\ a\ one-off\ layout\ definition ;;
-    layout\ show) printf %s show\ active\ layout\ provenance ;;
-    layout\ list) printf %s list\ layouts\ on\ the\ search\ path ;;
-    layout\ register) printf %s add\ a\ layout\ search\ directory ;;
-    classifier\ show) printf %s show\ summary\,\ contract\,\ and\ resolved\ path ;;
-    classifier\ list) printf %s list\ classifiers\ available\ to\ runners ;;
-    classifier\ register) printf %s add\ a\ classifier\ search\ directory ;;
-    filter\ show) printf %s show\ summary\,\ contract\,\ and\ resolved\ path ;;
-    filter\ list) printf %s list\ filters\ available\ to\ runners ;;
-    filter\ register) printf %s add\ a\ filter\ search\ directory ;;
-    probe\ show) printf %s show\ summary\,\ arguments\,\ interval\,\ and\ resolved\ path ;;
-    probe\ list) printf %s list\ probes\ available\ to\ runners ;;
-    probe\ register) printf %s add\ a\ probe\ search\ directory ;;
-    runner\ show) printf %s show\ one\ named\ composition\ with\ resolved\ defaults ;;
-    runner\ list) printf %s list\ named\ runner\ compositions ;;
-    runner\ register) printf %s add\ a\ runner\ search\ directory ;;
-    runner\ run) printf %s run\ a\ command\ with\ monitoring ;;
-    runner\ watch) printf %s watch\ probe\ state\ until\ interrupted ;;
     session) printf %s session\ commands ;;
-    signal) printf %s signal\ commands ;;
-    status) printf %s status\ commands ;;
-    health) printf %s health\ commands ;;
-    problem) printf %s problem\ commands ;;
-    transaction) printf %s transaction\ commands ;;
     palette) printf %s palette\ commands ;;
     segment) printf %s segment\ commands ;;
     adapter) printf %s adapter\ commands ;;
@@ -149,6 +144,11 @@ _airline_description () {
     filter) printf %s filter\ commands ;;
     probe) printf %s probe\ commands ;;
     runner) printf %s runner\ commands ;;
+    signal) printf %s signal\ commands ;;
+    status) printf %s status\ commands ;;
+    health) printf %s health\ commands ;;
+    problem) printf %s problem\ commands ;;
+    transaction) printf %s transaction\ commands ;;
     *) return 1 ;;
   esac
 }

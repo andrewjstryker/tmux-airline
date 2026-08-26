@@ -667,9 +667,11 @@ The same boundary makes most tests cheap:
 | `runner/integration.bats` | real tmux subprocess | runner process and topology integration |
 | `layout/integration.bats` | real tmux subprocess | executable layout and primitive integration |
 | `signal/behavior.bats` | in-memory fake | status, health, problems, transients, and redraw gating |
+| `signal/integration.bats` | real tmux subprocess | signal targeting, projection, and transient hooks |
 | `session/behavior.bats` | in-memory fake | session initialization and active/suspended state |
 | `session/integration.bats` | real tmux subprocess | session integration requiring tmux semantics |
 | `transaction/behavior.bats` | function stubs | diagnostic validation and error translation |
+| `transaction/integration.bats` | real tmux subprocess | public transaction inspection and recovery errors |
 | `cli/grammar.bats` | sourced CLI with spies | grammar and exactly-once delegation behavior |
 | `cli/completions.bats` | generated shell artifacts | help/compiler drift, typed completion, and shell syntax |
 | `cli/wrapper.bats` | real tmux subprocess | installed launcher discovery and delegation |
@@ -680,7 +682,14 @@ leaf store operations and standalone tmux verbs. It models option scope, absence
 overwrite, removal, and preservation of spaces; it does not evaluate tmux formats.
 `make test-fast` selects the static and fake-backed suites; `make test-integration`
 selects the real-tmux suites. The domain targets `test-layout`, `test-session`,
-and `test-runner` pair fast behavior with integration only where that domain needs it.
+`test-signal`, `test-transaction`, and `test-runner` pair fast behavior with
+integration only where that domain needs it.
+
+Fast suites keep validation, reduction, and boundary cases narrow. Real-tmux suites
+prefer wider domain workflows: one isolated Airline initialization should prove a
+related sequence of public behaviors, rather than paying the bootstrap cost once per
+assertion. Runner process and topology cases remain isolated where process lifetime is
+itself the behavior under test.
 
 ## Lessons from failed approaches
 

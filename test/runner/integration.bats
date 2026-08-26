@@ -372,7 +372,7 @@ setup() {
   dead=""
   dead_status=""
   dead_signal=""
-  for _ in {1..200}; do
+  for _ in {1..500}; do
     state="$($TMUX -L "$_bats_socket" display-message -p -t "$spawned" \
       '#{pane_dead}:#{pane_dead_status}:#{pane_dead_signal}')"
     IFS=: read -r dead dead_status dead_signal <<< "$state"

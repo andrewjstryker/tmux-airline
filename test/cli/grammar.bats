@@ -100,6 +100,16 @@ CASES
   assert_output --partial "runner"
   assert_output --partial "list"
   assert_output --partial "--transient"
+  refute_output --partial "list        — list"
+
+  local session_line layout_line runner_line signals_line diagnostics_line
+  session_line="$(printf '%s\n' "$output" | grep -n '^Session commands$' | cut -d: -f1)"
+  layout_line="$(printf '%s\n' "$output" | grep -n '^Layout commands$' | cut -d: -f1)"
+  runner_line="$(printf '%s\n' "$output" | grep -n '^Runner commands$' | cut -d: -f1)"
+  signals_line="$(printf '%s\n' "$output" | grep -n '^Signals commands$' | cut -d: -f1)"
+  diagnostics_line="$(printf '%s\n' "$output" | grep -n '^Diagnostics commands$' | cut -d: -f1)"
+  (( session_line < layout_line && layout_line < runner_line && \
+     runner_line < signals_line && signals_line < diagnostics_line ))
 }
 
 @test "canonical help inspects a noun or leaf command" {

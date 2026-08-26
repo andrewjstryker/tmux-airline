@@ -1,6 +1,6 @@
 # tmux-airline — installation and developer tasks.
 
-.PHONY: install completions check-completions test test-fast test-integration test-layout test-session test-runner lint
+.PHONY: install completions check-completions test test-fast test-integration test-layout test-session test-signal test-transaction test-runner lint
 
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
@@ -16,7 +16,8 @@ FAST_TESTS := test/architecture.bats test/cli/grammar.bats test/cli/completions.
 	test/core/collections.bats test/core/catalog.bats test/core/render.bats test/runner/behavior.bats \
 	test/signal/behavior.bats test/session/behavior.bats test/transaction/behavior.bats
 INTEGRATION_TESTS := test/session/integration.bats test/layout/integration.bats \
-	test/runner/integration.bats test/core/tmux.bats test/cli/wrapper.bats
+	test/runner/integration.bats test/signal/integration.bats \
+	test/transaction/integration.bats test/core/tmux.bats test/cli/wrapper.bats
 ALL_TESTS := $(FAST_TESTS) $(INTEGRATION_TESTS)
 
 install: check-completions
@@ -51,6 +52,12 @@ test-layout:
 
 test-session:
 	bats test/session/behavior.bats test/session/integration.bats
+
+test-signal:
+	bats test/signal/behavior.bats test/signal/integration.bats
+
+test-transaction:
+	bats test/transaction/behavior.bats test/transaction/integration.bats
 
 test-runner:
 	bats test/runner/behavior.bats test/runner/integration.bats

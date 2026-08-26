@@ -774,6 +774,7 @@ make test
 ```
 
 For focused development, `make test-fast` runs only static and in-memory behavior
-tests. `make test-layout`, `make test-session`, and `make test-runner` pair tests
+tests. `make test-layout`, `make test-session`, `make test-signal`,
+`make test-transaction`, and `make test-runner` pair tests
 with the corresponding `lib/` module; `make test-integration` runs every real-tmux
 suite. Run `make lint` for ShellCheck and the architecture guards.

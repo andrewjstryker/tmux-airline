@@ -48,6 +48,10 @@ _help_arms () {   # <section>
   records="$(_help_records "$1")" || return
   while IFS=$'\t' read -r command annotation; do
     [[ -n "$command" ]] || continue
+    if [[ "$annotation" == "— "* ]]; then
+      annotation="${annotation#— }"
+      annotation="${annotation^}"
+    fi
     printf '  %-11s %s\n' "$command" "$annotation"
   done <<< "$records"
 }

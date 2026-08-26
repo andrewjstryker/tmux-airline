@@ -44,13 +44,13 @@ source "$AIRLINE_DIR/lib/session.sh"
 # shellcheck source=lib/transaction.sh
 source "$AIRLINE_DIR/lib/transaction.sh"
 
-AIRLINE_HELP_GROUP_NAMES=(Session Signals Diagnostics Layout Runner)
+AIRLINE_HELP_GROUP_NAMES=(Session Layout Runner Signals Diagnostics)
 AIRLINE_HELP_GROUP_NOUNS=(
   'session'
-  'signal status health problem'
-  'transaction'
   'palette segment adapter layout'
   'classifier filter probe runner'
+  'signal status health problem'
+  'transaction'
 )
 AIRLINE_NOUNS="${AIRLINE_HELP_GROUP_NOUNS[*]}"
 AIRLINE_HELP_SOURCE="$AIRLINE_DIR/airline.sh"
