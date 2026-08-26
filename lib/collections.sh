@@ -9,7 +9,7 @@
 #
 # Built entirely on lib/tmux.sh's opt_* functions — it makes NO direct tmux calls, so
 # it stays OFF the architecture-lint allowlist while tmux.sh remains the sole
-# caller. Assumes tmux.sh is sourced first (the guard below enforces it).
+# caller. Static architecture checks enforce the dependency on tmux.sh.
 #
 # Storage — two shapes, each one option split with bash IFS (no awk/jq/subshell):
 #
@@ -24,11 +24,6 @@
 # stay fixed.
 
 # shellcheck shell=bash
-
-if ! declare -F opt_get_global >/dev/null; then
-  printf 'collections.sh: load tmux.sh first\n' >&2
-  return 1 2>/dev/null || exit 1
-fi
 
 #-----------------------------------------------------------------------------#
 # Option I/O, scope-polymorphic. Scope and target are explicit so session names,

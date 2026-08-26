@@ -9,19 +9,10 @@
 # It reaches tmux only through the mechanical layer (tmux.sh's
 # opt_*) and *trusts its inputs*; validation lives in the command behavior modules.
 #
-# Assumes lib/tmux.sh is already sourced — the CLI and test harness load
-# mechanical-then-logic, in that order. The guard below enforces it.
+# The CLI and test harness load mechanical storage before this module; the static
+# architecture check enforces that dependency.
 
 # shellcheck shell=bash
-
-if ! declare -F opt_get_global >/dev/null; then
-  printf 'render.sh: load tmux.sh first\n' >&2
-  return 1 2>/dev/null || exit 1
-fi
-if ! declare -F coll_get_session >/dev/null; then
-  printf 'render.sh: load collections.sh first\n' >&2
-  return 1 2>/dev/null || exit 1
-fi
 
 #-----------------------------------------------------------------------------#
 # Vocabulary — the names the bar is built from. The CLI validates input against
@@ -107,11 +98,11 @@ declare -gA AIRLINE_STATUS_GLYPH=([active]='○' [result]='●' [attention]='◆
 declare -gA AIRLINE_HEALTH_GLYPH=([warn]='△' [fail]='▲')                      # degraded → broken
 
 # Layout validators — pure predicates used before configuration is stored.
-_segment_slot_valid () {
+render_segment_slot_valid () {
   local s; for s in "${AIRLINE_SEGMENT_SLOTS[@]}"; do [[ "$s" == "$1" ]] && return 0; done
   return 1
 }
-_palette_element_valid () {
+render_palette_element_valid () {
   local e; for e in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do [[ "$e" == "$1" ]] && return 0; done
   return 1
 }
@@ -125,7 +116,7 @@ declare -gA PALETTE
 
 # Read every palette element into PALETTE, then apply the suspended dimming when the
 # private suspended flag is 1 (flat, muted palette for nested sessions).
-_palette_load () {
+render_palette_load () {
   local el
   for el in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
     PALETTE[$el]="$(cfg_get_session "$AIRLINE_SESSION" "$el")"
@@ -419,7 +410,7 @@ set_window_formats () {
 # (a redraw happened), 1 when the bar was already current.
 render () {   # <session>
   local AIRLINE_SESSION="$1"
-  _palette_load
+  render_palette_load
   local changed=1
   opt_setif_global pane-border-style         "fg=${PALETTE[primary]}"                       && changed=0
   opt_setif_global pane-active-border-style   "fg=${PALETTE[active]}"                        && changed=0

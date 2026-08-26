@@ -38,28 +38,28 @@ An effective reduction in production and test code is an expected outcome.
 
 ### Architecture lint
 
-- [ ] Retain invariant A's principle: `lib/tmux.sh` is the sole application module
+- [x] Retain invariant A's principle: `lib/tmux.sh` is the sole application module
       that invokes the tmux binary.
-- [ ] Review invariant A's implementation for complete coverage. Its tmux-verb
+- [x] Review invariant A's implementation for complete coverage. Its tmux-verb
       allowlist can miss a newly introduced subcommand, so the check may not fully
       express the stated rule.
-- [ ] Retain invariant B's principle: `lib/tmux.sh` is the sole owner of literal
+- [x] Retain invariant B's principle: `lib/tmux.sh` is the sole owner of literal
       `@airline-` and `@airline--` option-name construction.
-- [ ] Review invariant B's exclusions and matching rules so the documented scope and
+- [x] Review invariant B's exclusions and matching rules so the documented scope and
       checked source set agree.
-- [ ] Remove invariant C in its current form. Requiring `noun -> cmd_<noun>` and one
+- [x] Remove invariant C in its current form. Requiring `noun -> cmd_<noun>` and one
       of the currently approved handler prefixes enforces the present naming scheme,
       not dependency direction or module ownership.
-- [ ] Keep grammar behavior, exactly-once dispatch, argument preservation, help
+- [x] Keep grammar behavior, exactly-once dispatch, argument preservation, help
       generation, and completion drift checks in the CLI test suites rather than
       presenting them as module architecture enforcement.
-- [ ] Introduce a replacement module-boundary lint only after the target module graph
+- [x] Introduce a replacement module-boundary lint after the target module graph
       and naming rules exist. It should enforce at least:
-      - every module's private functions carry that module's owner prefix;
+      - private ownership is derived from the defining file, avoiding prefix ceremony;
       - no file calls another module's private functions;
       - cross-module public calls follow an explicit allowed dependency graph;
-      - public and internal dispatch code contains grammar/translation only, not
-        domain behavior.
+      - `airline.sh` follows only its allowed public module edges; detailed grammar
+        and dispatch behavior remains in the CLI behavior suites.
 
 ### Internal CLI entry points
 
@@ -123,9 +123,9 @@ the agreed bar for a private entry point.
       ```
 
 - [x] Do not retain `airline state ...` compatibility aliases.
-- [ ] Preserve the useful aggregate structure already present in the layout family:
+- [x] Preserve the useful aggregate structure already present in the layout family:
       layout with palette, segment, and adapter primitives.
-- [ ] Preserve the analogous runner family: runner with classifier, filter, and probe
+- [x] Preserve the analogous runner family: runner with classifier, filter, and probe
       primitives.
 - [x] Give status, health, and problem an explicit shared concept and help grouping.
       The CLI and help now use `signal`; carry that decision through the module name,
@@ -163,16 +163,17 @@ boundary. Session coordinates configuration only through public layout services.
 - [x] Keep `lib/render.sh`, `lib/collections.sh`, and `lib/tmux.sh` as lower layers.
 - [x] Move generic command context and error handling to a deliberately small shared
       boundary rather than allowing a new miscellaneous module to form.
-- [ ] Give all private functions an owner-qualified name such as `_session_*`,
-      `_signal_*`, `_catalog_*`, `_layout_*`, or `_runner_*`.
-- [ ] Replace cross-module private calls with small public service boundaries. In
+- [x] Give every private function one defining owner and enforce that ownership
+      directly. Primitive names such as `_palette_*` remain meaningful within layout;
+      they do not need a redundant `_layout_*` prefix.
+- [x] Replace cross-module private calls with small public service boundaries. In
       particular:
       - session may coordinate public layout/configuration operations (complete);
       - layout and runner consume public catalog services;
       - layout and runner report through public signal/problem services (complete);
       - signal, catalog, render, and collections reach tmux only through
         `lib/tmux.sh`.
-- [ ] Remove load-order assertions that stand in for real module boundaries.
+- [x] Remove load-order assertions that stand in for real module boundaries.
 - [x] Redraw the architecture graph from actual calls after the extraction and verify
       that it is acyclic.
 
@@ -183,9 +184,9 @@ boundary. Session coordinates configuration only through public layout services.
 2. [x] Convert tmux hooks and spawned runners to the resulting public commands; then
        remove the four private root routes.
 3. [x] Extract signal/attention and catalog responsibilities from lifecycle.
-4. [ ] Rename private functions by owner and eliminate cross-module private calls.
+4. [x] Establish private ownership and eliminate cross-module private calls.
 5. [x] Update the source/load structure and the documented dependency graph.
-6. [ ] Remove invariant C and add the replacement dependency/visibility lint.
+6. [x] Remove invariant C and add the replacement dependency/visibility lint.
 7. [ ] Regenerate completions and update grammar, behavior, integration, architecture,
        README, and design tests/documentation.
 8. [ ] Run final verification: `make lint`, `make test-fast`, and the full
@@ -197,7 +198,7 @@ boundary. Session coordinates configuration only through public layout services.
       architecture lint, and the directly affected in-memory behavior suites.
 - [x] Run `make test-fast` at coherent milestones rather than paying the integration
       cost after each mechanical change.
-- [ ] Avoid routine integration-test runs while module names, dispatch, and ownership
+- [x] Avoid routine integration-test runs while module names, dispatch, and ownership
       are moving. This work does not change `lib/tmux.sh` or intentionally add tmux
       behavior.
 - [ ] Run targeted integration tests at key process-boundary moments, especially
@@ -230,10 +231,10 @@ boundary. Session coordinates configuration only through public layout services.
 - [x] Status, health, and problem have a clear shared owner distinct from session
       lifecycle.
 - [x] Catalog behavior is not owned by session lifecycle.
-- [ ] No module calls another module's private functions.
-- [ ] The documented dependency graph matches the implementation and is acyclic.
-- [ ] Every architecture lint states and enforces a substantive boundary.
-- [ ] Help and generated completions describe only the intended public grammar.
+- [x] No module calls another module's private functions.
+- [x] The documented dependency graph matches the implementation and is acyclic.
+- [x] Every architecture lint states and enforces a substantive boundary.
+- [x] Help and generated completions describe only the intended public grammar.
 - [ ] No new product capability was introduced by the architecture rework.
 - [ ] Any net increase in effective code size has a documented architectural reason;
       otherwise the rework reduces effective production/test complexity.

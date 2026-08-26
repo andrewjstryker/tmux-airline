@@ -29,11 +29,6 @@
 
 # shellcheck shell=bash
 
-if ! declare -F signal_condition_valid >/dev/null; then
-  printf 'runner.sh: load signal.sh (and its layers) first\n' >&2
-  return 1 2>/dev/null || exit 1
-fi
-
 runner_classifier_load () {   # <file>
   unset -f airline_runner_classify 2>/dev/null || true
   unset AIRLINE_CLASSIFIER_SUMMARY

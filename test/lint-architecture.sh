@@ -1,200 +1,176 @@
 #!/usr/bin/env bash
 #
-# lint-architecture.sh — the build-time architecture lint (DESIGN.md §Enforcement).
+# Build-time architecture checks (DESIGN.md §Enforcement).
 #
-# Bash has one global namespace and no visibility modifiers, so the layering is a
-# convention. We don't enforce it at runtime; we enforce it here, with a grep,
-# and gate it in CI next to shellcheck. test/architecture.bats wraps this so it
-# runs in the normal `make test` suite; `make lint` can call it directly too.
-#
-# Three invariants, all grep-able:
-#
-#   A — only tmux.sh invokes the `tmux` binary. Allowlist: tmux.sh. Everything
-#       else reaches tmux only through tmux.sh's opt_* / verb functions.
-#   B — the @airline- option prefix (both tiers, public @airline- and private
-#       @airline--) lives in ONE place: tmux.sh, which owns the pub_* / prv_*
-#       accessors and the prv_name builder. Everything above addresses airline
-#       options by BARE key through those, so a literal @airline- option name in
-#       any other source is a layering violation. (Palette/segment data files spell
-#       @airline- — that is the public contract — but they aren't scanned.)
-#   C — each public root noun delegates to its matching cmd_<noun>, the root noun
-#       set matches the help-group registry, and leaf arms delegate only to public
-#       owner-prefixed behavior under lib/.
-#
-# Usage: test/lint-architecture.sh [A|B|C|all]   (default: all)
-# Exit:  0 = clean, 1 = violations (printed, one per line), 2 = bad usage.
+# A — only tmux.sh may invoke the tmux command.
+# B — only tmux.sh may construct literal airline option names.
+# D — module-private functions stay private and public module calls follow the
+#     documented acyclic dependency graph.
 
 set -u
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="${AIRLINE_LINT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
-# Application shell the lint governs — including adapters and runner catalogs
-# (trusted snippets that must reach tmux only through opt_*). The installable
-# `airline` shim is an external bootstrap consumer, so its one @airline-cli lookup
-# is outside this layer check.
-# Declarative palettes and the test tree are not scanned.
-# Globs that match nothing drop out (nullglob).
 _sources () {
   shopt -s nullglob
-  local f
-  for f in "$ROOT"/airline.tmux "$ROOT"/*.sh "$ROOT"/lib/*.sh \
-    "$ROOT"/layouts/adapters/* "$ROOT"/layouts/definitions/* "$ROOT"/layouts/helpers/* \
-    "$ROOT"/runners/classifiers/* "$ROOT"/runners/filters/* \
-    "$ROOT"/runners/probes/* "$ROOT"/runners/definitions/*; do
-    printf '%s\n' "$f"
+  local file
+  for file in "$ROOT"/airline.tmux "$ROOT"/*.sh "$ROOT"/lib/*.sh \
+    "$ROOT"/layouts/adapters/* "$ROOT"/layouts/definitions/* \
+    "$ROOT"/layouts/helpers/* "$ROOT"/runners/classifiers/* \
+    "$ROOT"/runners/filters/* "$ROOT"/runners/probes/* \
+    "$ROOT"/runners/definitions/*; do
+    printf '%s\n' "$file"
   done
 }
 
-# tmux subcommands airline actually uses. A real call is `tmux` (as its own word)
-# followed by one of these, or by a flag (-g, -L, …). Prose that merely mentions
-# "tmux" doesn't match — it isn't followed by a subcommand — so comments are safe
-# without parsing them out.
-_TMUX_VERBS='set-option|show-options|show-option|set-window-option|set-hook|show-hooks|source-file|refresh-client|display-message|bind-key|unbind-key|list-keys|kill-server|new-session|run-shell|set|show|bind|unbind'
+_module_sources () {
+  shopt -s nullglob
+  [[ ! -f "$ROOT/airline.sh" ]] || printf '%s\n' "$ROOT/airline.sh"
+  printf '%s\n' "$ROOT"/lib/*.sh
+}
 
-# Invariant A — flag every direct tmux invocation outside the allowlist.
+_module_name () {
+  local name="${1##*/}"
+  printf '%s' "${name%.sh}"
+}
+
+# Print non-comment source hits. Patterns operate on shell identifiers or literal
+# namespaces, so full-line comments are the only prose exclusion required.
+_code_hits () {   # <extended-regex> <file>
+  local pattern="$1" file="$2" line
+  grep -nE "$pattern" "$file" 2>/dev/null | while IFS= read -r line; do
+    [[ "${line#*:}" =~ ^[[:space:]]*# ]] || printf '%s\n' "$line"
+  done
+}
+
 _check_a () {
-  local f rc=0 hits
-  while IFS= read -r f; do
-    [[ "$(basename "$f")" == tmux.sh ]] && continue   # the sole allowed caller
-    hits="$(grep -nE "(^|[^[:alnum:]_])tmux[[:space:]]+(-[a-zA-Z]|(${_TMUX_VERBS})([[:space:]]|$))" "$f" 2>/dev/null)" || continue
+  local file hits line rc=0
+  while IFS= read -r file; do
+    [[ "$(basename "$file")" == tmux.sh ]] && continue
+    hits="$(_code_hits '(^|[^[:alnum:]_])tmux([[:space:]]|$)' "$file")"
     [[ -z "$hits" ]] && continue
     while IFS= read -r line; do
-      # Skip hits on full-line comments — prose may quote an example `tmux …`
-      # command (the match is real, the call is not).
-      [[ "${line#*:}" =~ ^[[:space:]]*# ]] && continue
+      # airline.sh may define the test/advanced tmux seam; a function definition
+      # is not an invocation of the binary.
+      [[ "${line#*:}" =~ ^[[:space:]]*tmux[[:space:]]*\(\) ]] && continue
+      printf 'A: %s:%s\n' "${file#"$ROOT"/}" "$line"
       rc=1
-      printf 'A: %s:%s\n' "${f#"$ROOT"/}" "$line"
     done <<< "$hits"
   done < <(_sources)
-  return $rc
-}
-
-# Invariant B — the @airline- prefix lives only in tmux.sh. The telltale of an
-# option NAME (vs prose) is a key character right after the prefix: a letter, or a
-# `%`/`$` for a constructed name. So the pattern is `@airline-` + an optional second
-# dash (the private tier) + one of [a-z%$]:
-#   matches:  @airline-inner-bg   @airline--badge-status   @airline--%s   @airline--$x
-#   skips:    @airline-*  @airline-<el>  @airline--<ns>     (documentation prose)
-# tmux.sh is the sole home (pub_* / prv_* / prv_name); a hit anywhere else means a
-# layer spelled a prefix instead of using a bare-key accessor.
-_check_b () {
-  local f rc=0 hits
-  while IFS= read -r f; do
-    [[ "$(basename "$f")" == tmux.sh ]] && continue          # the one home for the prefix
-    hits="$(grep -nE '@airline--?[a-z%$]' "$f" 2>/dev/null)" || continue
-    [[ -z "$hits" ]] && continue
-    while IFS= read -r line; do
-      [[ "${line#*:}" =~ ^[[:space:]]*# ]] && continue        # skip comment prose
-      rc=1
-      printf 'B: %s:%s\n' "${f#"$ROOT"/}" "$line"
-    done <<< "$hits"
-  done < <(_sources)
-  return $rc
-}
-
-# Read the noun registry as Bash data instead of maintaining a second list in the
-# lint. Also verify that every registered noun has a dispatcher definition.
-_cli_nouns () {
-  AIRLINE_TMUX= AIRLINE_DIR="$ROOT" bash -c '
-    source "$1/airline.sh"
-    seen=" "
-    for noun in $AIRLINE_NOUNS; do
-      case "$seen" in
-        *" $noun "*) printf "C: duplicate registered noun: %s\n" "$noun" >&2; exit 1 ;;
-      esac
-      seen+="$noun "
-      declare -F "cmd_$noun" >/dev/null || {
-        printf "C: missing dispatcher function: cmd_%s\n" "$noun" >&2
-        exit 1
-      }
-    done
-    printf "%s\n" "$AIRLINE_NOUNS"
-  ' bash "$ROOT"
-}
-
-# Enforce the public root grammar without naming any forbidden commands. Between
-# the explicit root markers, every ordinary word arm must be `noun) cmd_noun "$@"`.
-# Help, option aliases for help, and wildcard rejection are the deliberate
-# top-level exceptions. The CLI has no private command vocabulary.
-_check_c_root () {
-  local nouns line marker arm pattern body expected expected_re seen=" " active="" rc=0 lineno=0 noun
-  nouns="$(_cli_nouns)" || return 1
-
-  while IFS= read -r line; do
-    (( lineno += 1 ))
-    marker="${line#"${line%%[![:space:]]*}"}"
-    if [[ "$marker" == '# help:begin root' ]]; then active=1; continue; fi
-    if [[ "$marker" == '# help:end root' ]]; then active=""; continue; fi
-    [[ -n "$active" && "$marker" == *')'* ]] || continue
-
-    arm="$marker"
-    pattern="${arm%%)*}"
-    body="${arm#*)}"
-    body="${body#"${body%%[![:space:]]*}"}"
-    case "$pattern" in
-      help|'""|-h|--help'|'*') continue ;;
-    esac
-    if [[ ! "$pattern" =~ ^[a-z][a-z0-9-]*$ ]]; then
-      printf 'C: airline.sh:%d: invalid public root pattern: %s\n' "$lineno" "$pattern"
-      rc=1
-      continue
-    fi
-    expected="cmd_${pattern}"
-    expected_re="^${expected}[[:space:]]+\"\\\$@\"[[:space:]]*;;[[:space:]]*$"
-    if [[ ! "$body" =~ $expected_re ]]; then
-      printf 'C: airline.sh:%d: %s must delegate exactly to %s "$@"\n' \
-        "$lineno" "$pattern" "$expected"
-      rc=1
-    fi
-    case " $nouns " in
-      *" $pattern "*) ;;
-      *) printf 'C: airline.sh:%d: unregistered public noun: %s\n' "$lineno" "$pattern"; rc=1 ;;
-    esac
-    case "$seen" in
-      *" $pattern "*) printf 'C: airline.sh:%d: duplicate root noun: %s\n' "$lineno" "$pattern"; rc=1 ;;
-    esac
-    seen+="$pattern "
-  done < "$ROOT/airline.sh"
-
-  for noun in $nouns; do
-    case "$seen" in
-      *" $noun "*) ;;
-      *) printf 'C: registered noun has no root dispatch: %s\n' "$noun"; rc=1 ;;
-    esac
-  done
   return "$rc"
 }
 
-# Invariant C — validate both delegation hops. Documented leaf arms contain
-# exactly one owner-prefixed call, and the parser makes no underscore-private
-# behavior calls.
-_check_c () {
-  local hits arms rc=0
-  _check_c_root || rc=1
-  hits="$(grep -nE '(^|[^[:alnum:]_])_[a-zA-Z][a-zA-Z0-9_]*([[:space:]]|;)' "$ROOT/airline.sh" || true)"
-  if [[ -n "$hits" ]]; then
-    printf 'C: airline.sh:%s\n' "$hits"
+_check_b () {
+  local file hits rc=0
+  while IFS= read -r file; do
+    [[ "$(basename "$file")" == tmux.sh ]] && continue
+    hits="$(_code_hits '@airline--?[a-z%$]' "$file")"
+    [[ -z "$hits" ]] && continue
+    printf '%s\n' "$hits" | while IFS= read -r line; do
+      printf 'B: %s:%s\n' "${file#"$ROOT"/}" "$line"
+    done
     rc=1
-  fi
-  arms="$(grep -nE '^[[:space:]]*[a-zA-Z_][a-zA-Z0-9_-]*\).*#\|' "$ROOT/airline.sh" \
-    | grep -vE '^[0-9]+:[[:space:]]*[a-zA-Z_][a-zA-Z0-9_-]*\)[[:space:]]+((session|transaction|layout|runner|signal)_[a-zA-Z0-9_]+|help_command)([[:space:]]+"\$@")?[[:space:]]*;;[[:space:]]*#\|' || true)"
-  if [[ -n "$arms" ]]; then
-    printf 'C: airline.sh:%s\n' "$arms"
+  done < <(_sources)
+  return "$rc"
+}
+
+_dependency_allowed () {   # <caller> <provider>
+  case "$1:$2" in
+    airline:command|airline:help|airline:session|airline:transaction|airline:signal|\
+    airline:layout|airline:runner|\
+    help:command|\
+    session:command|session:catalog|session:layout|session:render|session:tmux|\
+    transaction:command|transaction:tmux|\
+    signal:command|signal:collections|signal:render|signal:tmux|\
+    layout:command|layout:catalog|layout:collections|layout:render|layout:signal|layout:tmux|\
+    runner:command|runner:catalog|runner:collections|runner:signal|runner:tmux|\
+    catalog:collections|\
+    render:collections|render:tmux|\
+    collections:tmux|command:tmux) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+_check_d () {
+  local provider symbol previous file line raw caller provider_name rc=0
+  local -a modules=()
+  declare -A private_owner=() public_owner=()
+  while IFS= read -r file; do modules+=("$file"); done < <(_module_sources)
+
+  for provider in "$ROOT"/lib/*.sh; do
+    [[ -f "$provider" ]] || continue
+    while IFS= read -r symbol; do
+      [[ -n "$symbol" ]] || continue
+      previous="${private_owner[$symbol]:-}"
+      if [[ -n "$previous" && "$previous" != "$provider" ]]; then
+        printf 'D-private: duplicate private symbol %s in %s and %s\n' \
+          "$symbol" "${previous#"$ROOT"/}" "${provider#"$ROOT"/}"
+        rc=1
+      fi
+      private_owner[$symbol]="$provider"
+    done < <(sed -nE 's/^(_[a-zA-Z][a-zA-Z0-9_]*)[[:space:]]*\(\).*/\1/p' "$provider")
+    while IFS= read -r symbol; do
+      [[ -n "$symbol" ]] && public_owner[$symbol]="$provider"
+    done < <(sed -nE 's/^([a-zA-Z][a-zA-Z0-9_]*)[[:space:]]*\(\).*/\1/p' "$provider")
+  done
+
+  while IFS=$'\t' read -r file line symbol raw; do
+    provider="${private_owner[$symbol]:-}"
+    if [[ -n "$provider" && "$file" != "$provider" ]]; then
+      printf 'D-private: %s defines %s; referenced by %s:%s:%s\n' \
+        "${provider#"$ROOT"/}" "$symbol" "${file#"$ROOT"/}" "$line" "$raw"
+      rc=1
+    fi
+
+    provider="${public_owner[$symbol]:-}"
+    [[ -n "$provider" && "$file" != "$provider" ]] || continue
+    caller="$(_module_name "$file")"
+    provider_name="$(_module_name "$provider")"
+    _dependency_allowed "$caller" "$provider_name" && continue
+    printf 'D-dependency: %s -> %s via %s at %s:%s:%s\n' \
+      "$caller" "$provider_name" "$symbol" "${file#"$ROOT"/}" "$line" "$raw"
     rc=1
-  fi
+  done < <(awk '
+    function uncomment(text,    out, i, char, previous, single, doubleq, escaped) {
+      out=""
+      for (i=1; i<=length(text); i++) {
+        char=substr(text, i, 1)
+        previous=(i == 1 ? "" : substr(text, i - 1, 1))
+        if (escaped) { out=out char; escaped=0; continue }
+        if (char == "\\" && !single) { out=out char; escaped=1; continue }
+        if (char == "\047" && !doubleq) { single=!single; out=out char; continue }
+        if (char == "\"" && !single) { doubleq=!doubleq; out=out char; continue }
+        if (char == "#" && !single && !doubleq && (i == 1 || previous ~ /[[:space:];&|()]/))
+          break
+        out=out char
+      }
+      return out
+    }
+    {
+      raw=$0
+      code=uncomment(raw)
+      while (match(code, /[a-zA-Z_][a-zA-Z0-9_]*/)) {
+        symbol=substr(code, RSTART, RLENGTH)
+        after=substr(code, RSTART + RLENGTH, 1)
+        if (after == "" || after ~ /[[:space:];&|)]/)
+          printf "%s\t%d\t%s\t%s\n", FILENAME, FNR, symbol, raw
+        code=substr(code, RSTART + RLENGTH)
+      }
+    }
+  ' "${modules[@]}")
   return "$rc"
 }
 
 main () {
   local which="${1:-all}" rc=0
   case "$which" in
-    A)   _check_a || rc=1 ;;
-    B)   _check_b || rc=1 ;;
-    C)   _check_c || rc=1 ;;
-    all) _check_a || rc=1; _check_b || rc=1; _check_c || rc=1 ;;
-    *)   printf 'usage: %s [A|B|C|all]\n' "$0" >&2; exit 2 ;;
+    A) _check_a || rc=1 ;;
+    B) _check_b || rc=1 ;;
+    D) _check_d || rc=1 ;;
+    all) _check_a || rc=1; _check_b || rc=1; _check_d || rc=1 ;;
+    *) printf 'usage: %s [A|B|D|all]\n' "$0" >&2; exit 2 ;;
   esac
-  return $rc
+  return "$rc"
 }
 
 main "$@"

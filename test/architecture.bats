@@ -7,7 +7,7 @@ load test_helper/bats-assert/load
 # normal `make test` run. The grep logic lives in test/lint-architecture.sh so
 # `make lint` can call it too; this wraps it with didactic failure messages.
 #
-# Both invariants are GREEN. A — every `tmux` call goes through tmux.sh; the plugin
+# The invariants are GREEN. A — every `tmux` call goes through tmux.sh; the plugin
 # adapters (`layouts/adapters/*`) set their options via opt_*, not raw tmux. B — the
 # @airline- option prefix (both tiers) lives only in tmux.sh, behind the pub_* /
 # prv_* accessors and the prv_name builder. These are now regression guards, not a
@@ -19,7 +19,7 @@ LINT="$BATS_TEST_DIRNAME/lint-architecture.sh"
   run "$LINT" A
   if [[ "$status" -ne 0 ]]; then
     {
-      echo "Direct \`tmux\` calls outside the tmux.sh allowlist — the rework worklist."
+      echo "Direct \`tmux\` calls outside tmux.sh violate its mechanical ownership."
       echo "Each must move onto a tmux.sh function (opt_*, redraw, hook_*, key_*, …):"
       echo
       printf '%s\n' "$output" | cut -d: -f2 | sort | uniq -c | sort -rn
@@ -46,16 +46,39 @@ LINT="$BATS_TEST_DIRNAME/lint-architecture.sh"
   fi
 }
 
-@test "Invariant C — the CLI delegates only to implementation entry points" {
-  run "$LINT" C
+@test "Invariant D — private symbols and module dependency direction are enforced" {
+  run "$LINT" D
   if [[ "$status" -ne 0 ]]; then
     {
-      echo "The CLI grammar violated its two-hop delegation contract. Public root"
-      echo "nouns must call matching cmd_<noun> dispatchers registered for help;"
-      echo "leaf arms must call one owner-prefixed implementation entry point:"
+      echo "A module referenced another module's private function or called across"
+      echo "an edge absent from the documented dependency graph:"
       echo
       printf '%s\n' "$output"
     } >&2
     return 1
   fi
+}
+
+@test "Invariant A catches an unknown future tmux subcommand" {
+  local fixture="$BATS_TEST_TMPDIR/a"
+  mkdir -p "$fixture/lib"
+  printf 'probe () { tmux future-command; }\n' > "$fixture/lib/probe.sh"
+
+  run env AIRLINE_LINT_ROOT="$fixture" "$LINT" A
+  assert_failure
+  assert_output --partial "future-command"
+}
+
+@test "Invariant D catches private leakage and a forbidden dependency edge" {
+  local fixture="$BATS_TEST_TMPDIR/d"
+  mkdir -p "$fixture/lib"
+  printf '_render_secret () { :; }\nrender_api () { :; }\nsession_api\n' \
+    > "$fixture/lib/render.sh"
+  printf 'session_api () { :; }\n' > "$fixture/lib/session.sh"
+  printf '_render_secret\n' > "$fixture/lib/layout.sh"
+
+  run env AIRLINE_LINT_ROOT="$fixture" "$LINT" D
+  assert_failure
+  assert_output --partial "D-private"
+  assert_output --partial "D-dependency"
 }

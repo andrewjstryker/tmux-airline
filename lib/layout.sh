@@ -9,11 +9,6 @@
 
 # shellcheck shell=bash
 
-if ! declare -F render >/dev/null; then
-  printf 'layout.sh: load render.sh (and its layers) first\n' >&2
-  return 1 2>/dev/null || exit 1
-fi
-
 AIRLINE_CONFIG_PALETTE_FAILURE=70
 AIRLINE_CONFIG_LAYOUT_FAILURE=80
 AIRLINE_CONFIG_ERROR='config-error'
@@ -109,7 +104,7 @@ _abspath () {
 _source_adapter () {
   # shellcheck disable=SC2034
   local AIRLINE_SESSION="$1" file="$2"
-  _palette_load
+  render_palette_load
   # shellcheck source=/dev/null
   source "$file"
 }
@@ -207,7 +202,7 @@ _layout_contract_reject () {
 _layout_declare_segment () {
   local slot="${1:-}" value="${2:-}"
   (( $# == 2 )) || { _layout_contract_reject "segment needs exactly <slot> <value>"; return; }
-  _segment_slot_valid "$slot" || { _layout_contract_reject "unknown segment slot '$slot'"; return; }
+  render_segment_slot_valid "$slot" || { _layout_contract_reject "unknown segment slot '$slot'"; return; }
   [[ -z "${AIRLINE_LAYOUT_CONFIG_SEGMENT_SEEN[$slot]:-}" ]] || {
     _layout_contract_reject "segment '$slot' was declared more than once"; return;
   }
@@ -381,7 +376,7 @@ _palette_show () {
   local session="$1" x="${2:-}"
   [[ "$x" == name ]] && { prv_get_session "$session" palette; return 0; }
   [[ -z "$x" ]] && command_show_row name "$(prv_get_session "$session" palette)"
-  _static_show "$session" "" _palette_element_valid AIRLINE_PALETTE_ELEMENTS "$x"
+  _static_show "$session" "" render_palette_element_valid AIRLINE_PALETTE_ELEMENTS "$x"
 }
 
 _adapter_show () {
@@ -454,7 +449,7 @@ layout_apply () {   # <session>
 layout_configuration_show () {   # <session>; caller owns the config transaction
   local session="$1"
   printf '\npalette:\n'; _palette_show "$session"
-  printf '\nsegment:\n'; _static_show "$session" "segment-" _segment_slot_valid AIRLINE_SEGMENT_SLOTS
+  printf '\nsegment:\n'; _static_show "$session" "segment-" render_segment_slot_valid AIRLINE_SEGMENT_SLOTS
   printf '\nadapter:\n'; _adapter_show "$session"
   printf '\nlayout:\n';  _layout_show "$session"
 }
@@ -484,7 +479,7 @@ layout_palette_register () { local s; s="$(command_current_session)"; catalog_re
 
 layout_segment_show () {
   local s; s="$(command_current_session)"
-  _static_show "$s" "segment-" _segment_slot_valid AIRLINE_SEGMENT_SLOTS "$@"
+  _static_show "$s" "segment-" render_segment_slot_valid AIRLINE_SEGMENT_SLOTS "$@"
 }
 
 layout_adapter_use () {

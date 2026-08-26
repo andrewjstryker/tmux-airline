@@ -60,6 +60,13 @@ _signal_ensure_transient_hook () {
     "run-shell -b \"'$AIRLINE_DIR/airline.sh' signal clear-transient -t #{window_id}\""
 }
 
+_signal_project () {   # <status|health> <window>
+  case "$1" in
+    status) render_status_project "$2" ;;
+    health) render_health_project "$2" ;;
+  esac
+}
+
 _signal_clear_transient_namespace_unlocked () {   # <window> <status|health>
   local win="$1" ns="$2" changed="" key f1 f2
   for key in $(coll_members_window "$win" "$ns"); do
@@ -67,7 +74,7 @@ _signal_clear_transient_namespace_unlocked () {   # <window> <status|health>
     [[ "$f2" == 1 ]] && { coll_unregister_window "$win" "$ns" "$key"; changed=1; }
   done
   [[ -n "$changed" ]] || return 1
-  "render_${ns}_project" "$win"
+  _signal_project "$ns" "$win"
 }
 
 signal_clear_transient () {   # [-t <window>]
@@ -101,7 +108,7 @@ _signal_set_unlocked () {   # <ns> <clear-value|""> <key> <value> <transient> <w
   else
     coll_set_window "$win" "$ns" "$key" "$value" "$transient"
   fi
-  "render_${ns}_project" "$win"
+  _signal_project "$ns" "$win"
 }
 
 _signal_set () {   # <ns> <validator> <clear-value|""> <key> <value> [options]
@@ -132,7 +139,7 @@ _signal_set () {   # <ns> <validator> <clear-value|""> <key> <value> [options]
 _signal_clear_unlocked () {   # <ns> <key> <window>
   local ns="$1" key="$2" win="$3"
   coll_unregister_window "$win" "$ns" "$key"
-  "render_${ns}_project" "$win"
+  _signal_project "$ns" "$win"
 }
 
 _signal_clear () {   # <ns> <key> [-t <window>]

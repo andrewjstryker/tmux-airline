@@ -645,11 +645,15 @@ private scalar in a tmux format. There is no private-global accessor.
 - **B — namespace ownership:** only `lib/tmux.sh` constructs literal `@airline-` and
   `@airline--` names in shell code. Palette and segment configuration spell public
   names because those names are the external contract.
-- **C — CLI delegation:** each ordinary top-level noun calls its matching
-  `cmd_<noun>` dispatcher, and that inferred noun set must exactly match the grouped
-  help registry. Each leaf arm then calls one owner-prefixed implementation entry
-  (`session_*`, `transaction_*`, `signal_*`, `layout_*`, or `runner_*`). Help is the
-  explicit root exception.
+- **D — module boundaries:** a function whose name begins with `_` may be referenced
+  only by the module that defines it. Calls to public functions must follow the
+  explicit acyclic dependency graph above. The lint derives ownership from function
+  definitions, so palette and adapter helpers may retain useful primitive names
+  without filename-prefix ceremony.
+
+CLI grammar shape, exactly-once delegation, argument preservation, help generation,
+and completion drift are behavior tested by the CLI suites rather than labeled as
+architecture rules.
 
 The same boundary makes most tests cheap:
 
