@@ -152,6 +152,8 @@ lifecycle calls layout internals, while layout and runner call lifecycle interna
         and runner;
       - optionally `lib/transaction.sh`: transaction inspection and recovery above
         raw tmux mechanics.
+- [x] Extract `lib/catalog.sh`; layout and runner now consume its public registration,
+      path, resolution, and listing services instead of lifecycle-private helpers.
 - [ ] Keep `lib/layout.sh` responsible for layout, palette, segment, and adapter
       behavior.
 - [ ] Keep `lib/runner.sh` responsible for runner orchestration and classifier,
@@ -225,7 +227,7 @@ lifecycle calls layout internals, while layout and runner call lifecycle interna
 - [x] Session state is part of the session command family.
 - [ ] Status, health, and problem have a clear shared owner distinct from session
       lifecycle.
-- [ ] Catalog behavior is not owned by session lifecycle.
+- [x] Catalog behavior is not owned by session lifecycle.
 - [ ] No module calls another module's private functions.
 - [ ] The documented dependency graph matches the implementation and is acyclic.
 - [ ] Every architecture lint states and enforces a substantive boundary.

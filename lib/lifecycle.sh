@@ -87,13 +87,13 @@ _init () {   # <session>
 
   # Register airline's own shipped config dirs on each loadable kind's search path.
   # (segment is not loadable — it's public options a layout sets, or the user sets.)
-  _path_register_self "$session" palette "$AIRLINE_DIR/layouts/palettes"
-  _path_register_self "$session" adapter "$AIRLINE_DIR/layouts/adapters"
-  _path_register_self "$session" layout  "$AIRLINE_DIR/layouts/definitions"
-  _path_register_self "$session" classifier "$AIRLINE_DIR/runners/classifiers"
-  _path_register_self "$session" filter "$AIRLINE_DIR/runners/filters"
-  _path_register_self "$session" probe "$AIRLINE_DIR/runners/probes"
-  _path_register_self "$session" runner  "$AIRLINE_DIR/runners/definitions"
+  catalog_register_builtin "$session" palette "$AIRLINE_DIR/layouts/palettes"
+  catalog_register_builtin "$session" adapter "$AIRLINE_DIR/layouts/adapters"
+  catalog_register_builtin "$session" layout  "$AIRLINE_DIR/layouts/definitions"
+  catalog_register_builtin "$session" classifier "$AIRLINE_DIR/runners/classifiers"
+  catalog_register_builtin "$session" filter "$AIRLINE_DIR/runners/filters"
+  catalog_register_builtin "$session" probe "$AIRLINE_DIR/runners/probes"
+  catalog_register_builtin "$session" runner  "$AIRLINE_DIR/runners/definitions"
 
   with_session_transaction "$session" config _init_unlocked "$session" || rc=$?
   _report_config_result "$session" "$rc" init
@@ -165,69 +165,12 @@ _show_config () {   # <session>
   printf '\npaths:\n'                           # catalog resolution, priority order
   local k
   for k in palette adapter layout classifier filter probe runner; do
-    _show_row "$k" "$(coll_members_session "$session" "$(_path_ns "$k")")"
+    _show_row "$k" "$(catalog_paths "$session" "$k")"
   done
   printf '\npalette:\n'; _palette_show "$session"
   printf '\nsegment:\n'; _static_show "$session" "segment-" _segment_slot_valid AIRLINE_SEGMENT_SLOTS
   printf '\nadapter:\n'; _adapter_show "$session"
   printf '\nlayout:\n';  _layout_show "$session"
-}
-
-#-----------------------------------------------------------------------------#
-# Search paths — registered catalogs and the `use` mechanism
-#-----------------------------------------------------------------------------#
-# Each config kind (palette, layout/segment, adapter) has an ordered search PATH of
-# directories, stored via collections.sh: the kind's registry list IS the path, in
-# priority order. `<kind> use <name>` resolves <name> to the FIRST matching file on
-# that path (or a literal path when it contains '/'), sources it, and renders.
-# airline registers its own shipped dir per kind at init. (`register` to add more —
-# piece 2.) Limitation: the path lives in a space-delimited registry, so a directory
-# containing a space is unsupported — config/plugin dirs don't have spaces.
-
-_path_ns () { printf 'path-%s' "$1"; }        # kind → collection ns
-
-# Register airline's own shipped dir for a kind (idempotent; skips if absent).
-_path_register_self () {   # <session> <kind> <dir>
-  local session="$1" kind="$2" dir="$3"
-  [[ -d "$dir" ]] && coll_register_session "$session" "$(_path_ns "$kind")" "$dir"
-}
-
-# Resolve a bare <name> to the first hit walking the kind's path. Names are simple
-# (no '/'): `use` only reaches BLESSED locations — `register` a dir to add one; there
-# is no literal-path escape hatch (we don't load/execute from arbitrary paths).
-# Echoes the file path, empty when unresolved.
-_path_resolve () {   # <session> <kind> <name>
-  local session="$1" kind="$2" name="$3" dir
-  [[ "$name" == */* ]] && return          # not a bare name → unresolvable here
-  for dir in $(coll_members_session "$session" "$(_path_ns "$kind")"); do
-    [[ -f "$dir/$name" ]] && { printf '%s' "$dir/$name"; return; }
-  done
-}
-
-# List every bare name resolvable on the kind's path — the catalog selection surface.
-# One name per line, deduped in path order (a shadowing user dir collapses with the
-# shipped name it overrides). The read-side counterpart to _path_resolve; the shared
-# core of every noun's `list` verb (palette / adapter / layout).
-_path_list () {   # <session> <kind>
-  local session="$1" kind="$2" dir f name seen=" "
-  for dir in $(coll_members_session "$session" "$(_path_ns "$kind")"); do
-    [[ -d "$dir" ]] || continue
-    for f in "$dir"/*; do
-      [[ -f "$f" ]] || continue
-      name="${f##*/}"
-      case "$seen" in *" $name "*) continue ;; esac
-      seen+="$name "; printf '%s\n' "$name"
-    done
-  done
-}
-
-# Prepend a dir to a kind's search path — the one trust boundary: registering a dir
-# blesses it, and only then can `use` reach names inside it.
-_register () {   # <session> <kind> <dir>
-  local session="$1" kind="$2" dir="${3:-}"
-  [[ -n "$dir" ]] || die "$kind register: need <dir>"
-  [[ -d "$dir" ]] || die "$kind register: no such directory: $dir"
-  coll_prepend_session "$session" "$(_path_ns "$kind")" "$dir"
 }
 
 # The active/suspended state. `suspend` mutes the palette (the derived flat look, via

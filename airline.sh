@@ -29,6 +29,8 @@ source "$AIRLINE_DIR/lib/tmux.sh"
 source "$AIRLINE_DIR/lib/collections.sh"
 # shellcheck source=lib/render.sh
 source "$AIRLINE_DIR/lib/render.sh"
+# shellcheck source=lib/catalog.sh
+source "$AIRLINE_DIR/lib/catalog.sh"
 # shellcheck source=lib/runner.sh
 source "$AIRLINE_DIR/lib/runner.sh"
 # shellcheck source=lib/layout.sh

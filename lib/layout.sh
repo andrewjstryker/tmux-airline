@@ -66,7 +66,7 @@ _apply_public_unlocked () {
 _palette_select_unlocked () {
   local session="$1" name="$2" file element value missing="" rc=0
   local -A captured=()
-  file="$(_path_resolve "$session" palette "$name")"
+  file="$(catalog_resolve "$session" palette "$name")"
   [[ -n "$file" ]] || return 2
 
   _palette_stage_clear "$session"
@@ -119,7 +119,7 @@ _apply_adapter_unlocked () {
   [[ $# -gt 0 ]] || die "adapter use: need <name>"
   for name in "$@"; do
     [[ "$name" != */* ]] || die "adapter use: '$name' — bare name (or 'adapter load <path>')"
-    file="$(_path_resolve "$session" adapter "$name")"
+    file="$(catalog_resolve "$session" adapter "$name")"
     [[ -n "$file" ]] || die "adapter use: '$name' not found on the adapter path"
     _source_adapter "$session" "$file"
     coll_set_session "$session" adapters "$name" use "$name"
@@ -148,7 +148,7 @@ _reapply_adapters_unlocked () {
     IFS=$'\t' read -r kind handle <<< "$(coll_get_session "$session" adapters "$key")"
     case "$kind" in
       use)
-        file="$(_path_resolve "$session" adapter "$handle")"
+        file="$(catalog_resolve "$session" adapter "$handle")"
         [[ -n "$file" ]] || die "adapter use: '$handle' not found on the adapter path"
         _source_adapter "$session" "$file"
         ;;
@@ -158,7 +158,7 @@ _reapply_adapters_unlocked () {
         ;;
       "")
         # Upgrade names-only adapter membership written by pre-snapshot releases.
-        file="$(_path_resolve "$session" adapter "$key")"
+        file="$(catalog_resolve "$session" adapter "$key")"
         [[ -n "$file" ]] || continue
         _source_adapter "$session" "$file"
         coll_set_session "$session" adapters "$key" use "$key"
@@ -174,7 +174,7 @@ _reapply_adapters_unlocked () {
 _layout_file () {
   local session="$1" handle="$2"
   if [[ "$handle" == */* ]]; then [[ -f "$handle" ]] && printf '%s' "$handle"
-  else _path_resolve "$session" layout "$handle"; fi
+  else catalog_resolve "$session" layout "$handle"; fi
 }
 
 declare -gA AIRLINE_LAYOUT_CONFIG_SEGMENTS=()
@@ -222,7 +222,7 @@ _layout_declare_adapter_use () {
     [[ -n "$name" && "$name" != */* ]] || {
       _layout_contract_reject "adapter use needs bare names"; return;
     }
-    file="$(_path_resolve "$AIRLINE_LAYOUT_CONFIG_SESSION" adapter "$name")"
+    file="$(catalog_resolve "$AIRLINE_LAYOUT_CONFIG_SESSION" adapter "$name")"
     [[ -n "$file" ]] || { _layout_contract_reject "adapter '$name' was not found"; return; }
     [[ -z "${AIRLINE_LAYOUT_CONFIG_ADAPTER_SEEN[$name]:-}" ]] || {
       _layout_contract_reject "adapter '$name' was declared more than once"; return;
@@ -296,7 +296,7 @@ _layout_adapters_apply_unlocked () {
     handle="${AIRLINE_LAYOUT_CONFIG_ADAPTER_HANDLES[i]}"
     case "$kind" in
       use)
-        file="$(_path_resolve "$session" adapter "$handle")"
+        file="$(catalog_resolve "$session" adapter "$handle")"
         [[ -n "$file" ]] || return 1
         _source_adapter "$session" "$file" || return 1
         ;;
@@ -411,15 +411,15 @@ layout_palette_use () {
   [[ $# -eq 1 && -n "$1" ]] || die "palette use: need exactly one <name>"
   name="$1"; [[ "$name" != */* ]] || die "palette use: '$name' — use a bare name"
   s="$(_require_current_session)"
-  [[ -n "$(_path_resolve "$s" palette "$name")" ]] || die "palette use: '$name' not found on the palette path"
+  [[ -n "$(catalog_resolve "$s" palette "$name")" ]] || die "palette use: '$name' not found on the palette path"
   with_session_transaction "$s" config _palette_use_apply_unlocked "$s" "$name" || rc=$?
   if (( rc == AIRLINE_CONFIG_PALETTE_FAILURE )); then
     _config_problem "$s" airline-palette fail "palette '$name' is incomplete or could not be evaluated"
   else _config_problem "$s" airline-palette ok ""; fi
   (( rc == 0 )) || return "$rc"
 }
-layout_palette_list () { local s; s="$(_require_current_session)"; _path_list "$s" palette; }
-layout_palette_register () { local s; s="$(_require_current_session)"; _register "$s" palette "$@"; }
+layout_palette_list () { local s; s="$(_require_current_session)"; catalog_list "$s" palette; }
+layout_palette_register () { local s; s="$(_require_current_session)"; catalog_register "$s" palette "$@"; }
 
 layout_segment_show () {
   local s; s="$(_require_current_session)"
@@ -443,15 +443,15 @@ layout_adapter_load () {
   return "$rc"
 }
 layout_adapter_show () { _adapter_show "$(_require_current_session)"; }
-layout_adapter_list () { local s; s="$(_require_current_session)"; _path_list "$s" adapter; }
-layout_adapter_register () { local s; s="$(_require_current_session)"; _register "$s" adapter "$@"; }
+layout_adapter_list () { local s; s="$(_require_current_session)"; catalog_list "$s" adapter; }
+layout_adapter_register () { local s; s="$(_require_current_session)"; catalog_register "$s" adapter "$@"; }
 
 layout_use () {
   local s name rc=0
   [[ $# -eq 1 && -n "$1" ]] || die "layout use: need exactly one <name>"
   name="$1"; [[ "$name" != */* ]] || die "layout use: '$name' — bare name (or 'layout load <path>')"
   s="$(_require_current_session)"
-  [[ -n "$(_path_resolve "$s" layout "$name")" ]] || die "layout use: '$name' not found"
+  [[ -n "$(catalog_resolve "$s" layout "$name")" ]] || die "layout use: '$name' not found"
   with_session_transaction "$s" config _layout_use_render_unlocked "$s" "$name" || rc=$?
   case "$rc" in
     0) _config_problem "$s" airline-layout ok "" ;;
@@ -476,8 +476,8 @@ layout_load () {
   (( rc == 0 )) || return "$rc"
 }
 layout_show () { local s; s="$(_require_current_session)"; _layout_show "$s" "$@"; }
-layout_list () { local s; s="$(_require_current_session)"; _path_list "$s" layout; }
-layout_register () { local s; s="$(_require_current_session)"; _register "$s" layout "$@"; }
+layout_list () { local s; s="$(_require_current_session)"; catalog_list "$s" layout; }
+layout_register () { local s; s="$(_require_current_session)"; catalog_register "$s" layout "$@"; }
 
 _palette_use_apply_unlocked () {
   _apply_public_unlocked "$1" &&

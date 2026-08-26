@@ -6,6 +6,7 @@ load ../support/helper
 
 setup() {
   load_render
+  source "$PROJECT_ROOT/lib/catalog.sh"
   source "$PROJECT_ROOT/lib/runner.sh"
 }
 

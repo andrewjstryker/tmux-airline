@@ -39,8 +39,9 @@ a non-obvious boundary described here.
 | `airline.sh` | Public CLI: parses the grammar and delegates each command once | no |
 | `lib/help.sh` | Renders marked CLI grammar sections for help and completions | no |
 | `lib/lifecycle.sh` | Context, initialization, state, signals, problems, and locks | no |
+| `lib/catalog.sh` | Owns registered search paths and bare-name resolution | no |
 | `lib/layout.sh` | Palette, adapter, segment, and executable-layout behavior | no |
-| `lib/runner.sh` | Runner contracts, catalogs, mechanics, and orchestration | no |
+| `lib/runner.sh` | Runner contracts, mechanics, and orchestration | no |
 | `lib/render.sh` | Owns domain vocabulary and composes the bar | no |
 | `lib/collections.sh` | Stores and reduces variable-cardinality state | no |
 | `lib/tmux.sh` | Mechanical operations and airline namespace policy | **yes; sole application caller** |
@@ -65,6 +66,10 @@ graph TD
     CLI --> HELP[lib/help.sh]
     LIFE --> LOGIC[lib/render.sh]
     LAYOUT --> LOGIC
+    LIFE --> CAT[lib/catalog.sh]
+    LAYOUT --> CAT
+    RUNNER --> CAT
+    CAT --> COLL
     LIFE --> COLL[lib/collections.sh]
     LAYOUT --> COLL
     RUNNER --> COLL
@@ -74,7 +79,7 @@ graph TD
     RUNNER --> MECH
     LOGIC --> MECH
     COLL --> MECH
-    LIFE -. register .-> FILES[palettes · adapters · layouts · runner catalogs]
+    CAT -. register/resolve .-> FILES[palettes · adapters · layouts · runner catalogs]
     MECH ==> TMUX([tmux server]):::ext
 
     classDef ext fill:#eee,stroke:#999,color:#333,font-style:italic;
@@ -92,6 +97,10 @@ The important boundaries are:
 - `lib/collections.sh` is an airline abstraction above tmux's flat option store. It is
   used only for status, health, problem, adapter membership, and search paths.
   Fixed segment slots are scalar options, not collections.
+- `lib/catalog.sh` owns the common trust and lookup mechanism for every registered
+  element kind. Layout and runner own element behavior but use catalog's public
+  register, resolve, list, and path operations; they do not know the path collection
+  namespace or representation.
 - Palette and layout are independent axes: a palette chooses colors; a layout
   chooses adapters and segment strings. A palette change replays the active adapter
   declarations against the new colors without rerunning the layout program.
@@ -624,6 +633,7 @@ The same boundary makes most tests cheap:
 |-------|---------|----------------|
 | `core/tmux.bats` | real tmux | pins the mechanical contract that the fake must match |
 | `core/collections.bats` | in-memory fake | collection storage and reduction |
+| `core/catalog.bats` | in-memory fake | path priority, resolution, listing, and registration |
 | `core/render.bats` | in-memory fake | observable composition and projection behavior |
 | `runner/behavior.bats` | in-memory fake | runner element contracts and mechanics |
 | `runner/integration.bats` | real tmux subprocess | runner process and topology integration |

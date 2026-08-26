@@ -349,14 +349,14 @@ runner_definition_valid () (
 _runner_element_file () {   # <session> <kind> <bare-name>
   local session="$1" kind="$2" name="$3"
   [[ "$kind" == classify ]] && kind=classifier
-  _path_resolve "$session" "$kind" "$name"
+  catalog_resolve "$session" "$kind" "$name"
 }
 
 _runner_element_show () {   # <session> <classifier|filter|probe> <name>
   local session="$1" kind="$2" name="${3:-}" file summary usage="" interval=""
   [[ -n "$name" ]] || die "$kind show: need <name>"
   [[ "$name" != */* ]] || die "$kind show: need a bare name"
-  file="$(_path_resolve "$session" "$kind" "$name")"
+  file="$(catalog_resolve "$session" "$kind" "$name")"
   [[ -n "$file" ]] || die "$kind show: '$name' not found on the $kind path"
   case "$kind" in
     classifier)
@@ -385,7 +385,7 @@ _runner_definition_show () {   # <session> <name> [<runner-arg>...]
   local session="$1" name="${2:-}" file probe_args=""; shift 2 || true
   [[ -n "$name" ]] || die "runner show: need <name>"
   [[ "$name" != */* ]] || die "runner show: need a bare name"
-  file="$(_path_resolve "$session" runner "$name")"
+  file="$(catalog_resolve "$session" runner "$name")"
   [[ -n "$file" ]] || die "runner show: '$name' not found on the runner path"
   runner_definition_load "$file" || die "runner show: '$name' is invalid"
   runner_definition_metadata || die "runner show: '$name' has invalid metadata"
@@ -517,7 +517,7 @@ _runner_expand_named () {   # <session> <run|watch> [invocation...]
 
   name="$1"; shift
   [[ "$name" != */* ]] || die "runner $mode: runner must be a bare name"
-  file="$(_path_resolve "$session" runner "$name")"
+  file="$(catalog_resolve "$session" runner "$name")"
   [[ -n "$file" ]] || die "runner $mode: runner '$name' not found"
   runner_definition_load "$file" || die "runner $mode: runner '$name' is invalid"
   runner_definition_metadata || die "runner $mode: runner '$name' has invalid metadata"
@@ -839,18 +839,18 @@ _runner_watch_execute () {   # <session>; uses parsed watch specification
 }
 # CLI delegation targets for runner and its primitives.
 runner_classifier_show () { local s; s="$(_require_current_session)"; _runner_element_show "$s" classifier "$@"; }
-runner_classifier_list () { local s; s="$(_require_current_session)"; _path_list "$s" classifier; }
-runner_classifier_register () { local s; s="$(_require_current_session)"; _register "$s" classifier "$@"; }
+runner_classifier_list () { local s; s="$(_require_current_session)"; catalog_list "$s" classifier; }
+runner_classifier_register () { local s; s="$(_require_current_session)"; catalog_register "$s" classifier "$@"; }
 runner_filter_show () { local s; s="$(_require_current_session)"; _runner_element_show "$s" filter "$@"; }
-runner_filter_list () { local s; s="$(_require_current_session)"; _path_list "$s" filter; }
-runner_filter_register () { local s; s="$(_require_current_session)"; _register "$s" filter "$@"; }
+runner_filter_list () { local s; s="$(_require_current_session)"; catalog_list "$s" filter; }
+runner_filter_register () { local s; s="$(_require_current_session)"; catalog_register "$s" filter "$@"; }
 runner_probe_show () { local s; s="$(_require_current_session)"; _runner_element_show "$s" probe "$@"; }
-runner_probe_list () { local s; s="$(_require_current_session)"; _path_list "$s" probe; }
-runner_probe_register () { local s; s="$(_require_current_session)"; _register "$s" probe "$@"; }
+runner_probe_list () { local s; s="$(_require_current_session)"; catalog_list "$s" probe; }
+runner_probe_register () { local s; s="$(_require_current_session)"; catalog_register "$s" probe "$@"; }
 
 runner_show () { local s; s="$(_require_current_session)"; _runner_definition_show "$s" "$@"; }
-runner_list () { local s; s="$(_require_current_session)"; _path_list "$s" runner; }
-runner_register () { local s; s="$(_require_current_session)"; _register "$s" runner "$@"; }
+runner_list () { local s; s="$(_require_current_session)"; catalog_list "$s" runner; }
+runner_register () { local s; s="$(_require_current_session)"; catalog_register "$s" runner "$@"; }
 _runner_command () {   # <run|watch> [invocation...]
   local mode="$1" spawned="${AIRLINE_RUNNER_SPAWNED:-}" s; shift
   # Spawn provenance is process-local context, not command grammar. Consume it so

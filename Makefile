@@ -13,7 +13,7 @@ SHELLCHECK_SOURCES := airline airline.sh airline.tmux scripts/generate-completio
 	runners/probes/* runners/definitions/*)
 
 FAST_TESTS := test/architecture.bats test/cli/grammar.bats test/cli/completions.bats \
-	test/core/collections.bats test/core/render.bats test/runner/behavior.bats \
+	test/core/collections.bats test/core/catalog.bats test/core/render.bats test/runner/behavior.bats \
 	test/lifecycle/behavior.bats
 INTEGRATION_TESTS := test/lifecycle/integration.bats test/layout/integration.bats \
 	test/runner/integration.bats test/core/tmux.bats test/cli/wrapper.bats

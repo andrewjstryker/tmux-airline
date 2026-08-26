@@ -57,6 +57,7 @@ load_lifecycle() {
   source "$PROJECT_ROOT/test/support/fake-tmux.sh"
   source "$PROJECT_ROOT/lib/collections.sh"
   source "$PROJECT_ROOT/lib/render.sh"
+  source "$PROJECT_ROOT/lib/catalog.sh"
   source "$PROJECT_ROOT/lib/runner.sh"
   source "$PROJECT_ROOT/lib/layout.sh"
   source "$PROJECT_ROOT/lib/lifecycle.sh"
