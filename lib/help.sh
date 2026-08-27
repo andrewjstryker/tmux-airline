@@ -75,6 +75,7 @@ _help_annotation () {   # <noun-or-empty> <command>
 _help_usage () {
   printf 'airline — tmux-airline CLI\n\n'
   printf 'Usage: airline <noun> <verb> [<argument>...]\n'
+  printf '       airline version\n'
   printf '       airline help [<noun> [<verb>]]\n\n'
   printf 'Commands:\n'
   _help_arms root || return

@@ -31,7 +31,8 @@ setup() {
     runner_classifier_show runner_classifier_list runner_classifier_register \
     runner_filter_show runner_filter_list runner_filter_register \
     runner_probe_show runner_probe_list runner_probe_register \
-    runner_show runner_list runner_register runner_run runner_watch; do
+    runner_show runner_list runner_register runner_run runner_watch \
+    command_version; do
     eval "$fn () { _record_delegate \"\$@\"; }"
   done
 }
@@ -64,7 +65,18 @@ classifier show basic|runner_classifier_show <basic>
 filter list|runner_filter_list
 probe register /tmp/probes|runner_probe_register </tmp/probes>
 runner run tap -- true|runner_run <tap> <--> <true>
+version|command_version
 CASES
+}
+
+@test "version is read-only, argument-free, and sourced from VERSION" {
+  run env AIRLINE_DIR="$PROJECT_ROOT" bash "$PROJECT_ROOT/airline.sh" version
+  assert_success
+  assert_output "$(<"$PROJECT_ROOT/VERSION")"
+
+  run env AIRLINE_DIR="$PROJECT_ROOT" bash "$PROJECT_ROOT/airline.sh" version extra
+  assert_failure
+  assert_output --partial "version: takes no arguments"
 }
 
 @test "removed state and callback command vocabularies are rejected" {
@@ -98,6 +110,7 @@ CASES
   assert_success
   assert_output --partial "palette"
   assert_output --partial "runner"
+  assert_output --partial "version"
   assert_output --partial "list"
   assert_output --partial "--transient"
   refute_output --partial "list        — list"

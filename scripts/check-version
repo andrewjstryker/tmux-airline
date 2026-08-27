@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Validate and print the release version; optionally require a matching Git tag.
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IFS= read -r version < "$ROOT/VERSION" || {
+  printf 'check-version: cannot read VERSION\n' >&2
+  exit 1
+}
+
+if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  printf 'check-version: VERSION is not major.minor.patch: %s\n' "$version" >&2
+  exit 1
+fi
+
+if [[ $# -gt 1 ]]; then
+  printf 'usage: check-version [v<version>]\n' >&2
+  exit 1
+fi
+if [[ $# -eq 1 && "$1" != "v$version" ]]; then
+  printf 'check-version: tag %s does not match VERSION %s\n' "$1" "$version" >&2
+  exit 1
+fi
+
+printf '%s\n' "$version"

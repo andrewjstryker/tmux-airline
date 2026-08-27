@@ -105,6 +105,23 @@ teardown() { :; }
   assert_equal "$_FAKE_REDRAWS" 2
 }
 
+@test "identical status and health reports and absent clears do not redraw" {
+  signal_status_set agent active
+  signal_health_set context warn
+  assert_equal "$_FAKE_REDRAWS" 2
+  local writes="$_FAKE_WRITES"
+
+  signal_status_set agent active
+  signal_health_set context warn
+  assert_equal "$_FAKE_REDRAWS" 2
+  assert_equal "$_FAKE_WRITES" "$writes"
+
+  signal_status_clear missing
+  signal_health_clear missing
+  assert_equal "$_FAKE_REDRAWS" 2
+  assert_equal "$_FAKE_WRITES" "$writes"
+}
+
 @test "managed configuration problems use the same redraw-gated service" {
   signal_problem_report s1 airline-layout fail "layout failed"
   assert_equal "$_FAKE_REDRAWS" 1

@@ -146,9 +146,11 @@ The important boundaries are:
   element kind. Layout and runner own element behavior but use catalog's public
   register, resolve, list, and path operations; they do not know the path collection
   namespace or representation.
-- `lib/signal.sh` owns the complete attention-signal operation: validation,
+- `lib/signal.sh` owns runtime status, health, and problem reporting: validation,
   contributor mutation, badge projection, redraw gating, and transient consumption.
-  Layout and runner report managed problems through that public service.
+  A problem is specifically a session-scoped failure of airline or a contributor
+  to provide an advertised capability; it is not window or pane attention. Layout
+  and runner report managed problems through that public service.
 - Palette and layout are independent axes: a palette chooses colors; a layout
   chooses adapters and segment strings. A palette change replays the active adapter
   declarations against the new colors without rerunning the layout program.
@@ -169,7 +171,8 @@ The classification is mechanical:
 - A value is an option when something outside `render` writes it. A fixed value
   used only while rendering is a Bash constant.
 - Public versus private is a contract boundary. Users may set `@airline-*` and may
-  read `@airline-cli`; all other airline-managed state is read through the CLI.
+  read the published `@airline-cli` bootstrap handle; all other airline-managed
+  state, including the version, is read through the CLI.
 - Native tmux output is derived. Users configure the public inputs, not
   `status-left`, `window-status-format`, or the other rendered snapshots.
 
@@ -226,6 +229,12 @@ The two update modes are deliberately different:
 selections behind a session sentinel, and renders. Re-running it does not overwrite
 an existing session selection. A global `after-new-session` hook initializes future
 sessions using an explicit session target.
+
+`VERSION` is the sole release-version source. The read-only `airline version`
+command returns its value; `scripts/release` derives the annotated Git tag from it;
+and the tag-triggered GitHub workflow refuses to publish unless the tag is exactly
+`v<VERSION>`. The workflow creates the GitHub release from that verified tag, so the
+runtime contract, repository tag, and release name cannot be supplied independently.
 
 ### Render boundary
 
@@ -304,6 +313,7 @@ airline session init [-t <session>]
 airline session apply
 airline session show [state]
 airline session suspend | resume | toggle
+airline version
 airline help [<noun> [<verb>]]
 
 airline status   set <status-key> <active|result|attention> [--transient] [-t <window>]

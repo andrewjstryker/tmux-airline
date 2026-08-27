@@ -1,13 +1,13 @@
 # tmux-airline — installation and developer tasks.
 
-.PHONY: install completions check-completions test test-fast test-integration test-layout test-session test-signal test-transaction test-runner lint
+.PHONY: install completions check-completions check-version release test test-fast test-integration test-layout test-session test-signal test-transaction test-runner lint
 
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
 BASH_COMPLETION_DIR ?= $(PREFIX)/share/bash-completion/completions
 ZSH_COMPLETION_DIR ?= $(PREFIX)/share/zsh/site-functions
 
-SHELLCHECK_SOURCES := airline airline.sh airline.tmux scripts/generate-completions \
+SHELLCHECK_SOURCES := airline airline.sh airline.tmux scripts/check-version scripts/generate-completions scripts/release \
 	completions/airline.bash $(wildcard lib/*.sh layouts/adapters/* \
 	layouts/definitions/* layouts/helpers/* runners/classifiers/* runners/filters/* \
 	runners/probes/* runners/definitions/*)
@@ -20,7 +20,7 @@ INTEGRATION_TESTS := test/session/integration.bats test/layout/integration.bats 
 	test/transaction/integration.bats test/core/tmux.bats test/cli/wrapper.bats
 ALL_TESTS := $(FAST_TESTS) $(INTEGRATION_TESTS)
 
-install: check-completions
+install: check-version check-completions
 	install -d "$(DESTDIR)$(BINDIR)"
 	install -m 755 airline "$(DESTDIR)$(BINDIR)/airline"
 	install -d "$(DESTDIR)$(BASH_COMPLETION_DIR)"
@@ -38,7 +38,13 @@ check-completions:
 	diff -u completions/airline.bash "$$tmp/airline.bash"; \
 	diff -u completions/_airline "$$tmp/_airline"
 
-test:
+check-version:
+	@scripts/check-version >/dev/null
+
+release: check-version
+	@scripts/release
+
+test: check-version
 	bats $(ALL_TESTS)
 
 test-fast:

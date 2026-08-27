@@ -601,11 +601,15 @@ option-name conventions.
 
 > **Finding the CLI.** airline publishes its own path in the `@airline-cli`
 > tmux option on load, so a cooperating plugin never has to guess the install
-> location:
+> location. This bootstrap handle is the one managed option consumers read
+> directly; compatibility information remains behind the public CLI:
 >
 > ```shell
 > airline="$(tmux show -gqv @airline-cli)"
-> [ -n "$airline" ] && "$airline" status set agent active
+> if [ -n "$airline" ]; then
+>   version="$("$airline" version)"
+>   [ -n "$version" ] && "$airline" status set agent active
+> fi
 > ```
 >
 > The empty check doubles as an "is airline installed?" probe.
@@ -663,12 +667,13 @@ color, a health glyph, and a status glyph all at once without contention.
 ## Session problems
 
 An airline-aware widget can fail gracefully and report why through the
-session-scoped `problem` API. Problems are keyed contributors with a level
-and message. Airline retains every contributor for inspection, reduces them
-with the same `ok < warn < fail` model as health, and shows one aggregate glyph
-at the extreme right. The concept is the same; only the scope differs: health
-belongs to a window, while problems belong to a session. No problems renders
-nothing, and setting a problem to `ok` clears it without requiring a message.
+session-scoped `problem` API. A problem means that airline or one of its
+contributors cannot provide an advertised capability; it is not window or pane
+attention. Problems are keyed contributors with a level and message. Airline
+retains every contributor for inspection, reduces them with the same
+`ok < warn < fail` severity ladder as health, and shows one aggregate glyph at
+the extreme right. No problems renders nothing, and setting a problem to `ok`
+clears it without requiring a message.
 
 ```shell
 # Invoke the widget from a tmux format as: #(my-widget '#{session_id}')
@@ -714,9 +719,9 @@ diagnosing a stuck problem transaction never depends on acquiring that same lock
 
 ## The `airline` CLI
 
-One entry point drives everything. Public commands use a noun followed by a verb;
-help is the only exception. `-t` targets a window for status/health and a session
-for targeted initialization.
+One entry point drives everything. Domain commands use a noun followed by a verb;
+the read-only `version` command and help are root leaves. `-t` targets a window for
+status/health and a session for targeted initialization.
 Problem mutations instead take their owning session as a required first argument.
 
 ```

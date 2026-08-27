@@ -38,12 +38,13 @@ declare -gA _FAKE_BIND=()
 declare -g  _FAKE_WIN='@1'      # what current_window reports (override per test)
 declare -g  _FAKE_SESSION='s1'  # what current_session reports (override per test)
 declare -gi _FAKE_REDRAWS=0     # redraw call count (assertable if a test cares)
+declare -gi _FAKE_WRITES=0      # option mutation count (assertable for no-op paths)
 
 # Reset all fake state. Each test re-sources this file (via its loader), which
 # re-declares the arrays empty, so this is only needed to clear mid-test.
 fake_tmux_reset () {
   _FAKE_OPT=(); _FAKE_HOOK=(); _FAKE_BIND=()
-  _FAKE_WIN='@1'; _FAKE_SESSION='s1'; _FAKE_REDRAWS=0
+  _FAKE_WIN='@1'; _FAKE_SESSION='s1'; _FAKE_REDRAWS=0; _FAKE_WRITES=0
   _AIRLINE_TRANSACTION_CHANNEL=""
 }
 
@@ -73,8 +74,14 @@ _opt_list () {
   key="$(_fake_key "$@")"; name="${*: -1}"
   [[ -v "_FAKE_OPT[$key]" ]] && printf '%s %q' "$name" "${_FAKE_OPT[$key]}"
 }
-_opt_write () { _FAKE_OPT["$(_fake_key "$@")"]="${*: -1}"; }         # <scope…> <name> <value>
-_opt_clear () { unset "_FAKE_OPT[$(_fake_key "$@")]"; }
+_opt_write () {
+  (( _FAKE_WRITES++ )) || true
+  _FAKE_OPT["$(_fake_key "$@")"]="${*: -1}"
+} # <scope…> <name> <value>
+_opt_clear () {
+  (( _FAKE_WRITES++ )) || true
+  unset "_FAKE_OPT[$(_fake_key "$@")]"
+}
 
 #-----------------------------------------------------------------------------#
 # Standalone verb overrides

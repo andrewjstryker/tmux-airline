@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Create the one release tag derived from VERSION. Pushing it triggers GitHub's
+# release workflow; this command intentionally does not perform the push.
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+version="$("$ROOT/scripts/check-version")"
+tag="v$version"
+
+if [[ -n "$(git -C "$ROOT" status --porcelain)" ]]; then
+  printf 'release: working tree must be clean\n' >&2
+  exit 1
+fi
+if git -C "$ROOT" rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
+  printf 'release: tag already exists: %s\n' "$tag" >&2
+  exit 1
+fi
+
+git -C "$ROOT" tag -a "$tag" -m "tmux-airline $version"
+printf 'created %s; publish with: git push origin %s\n' "$tag" "$tag"

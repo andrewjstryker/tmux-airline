@@ -4,7 +4,7 @@
 # Generated from `airline help`; do not edit.
 _airline_children () {
   case "$1" in
-    '') printf %s help\ session\ palette\ segment\ adapter\ layout\ classifier\ filter\ probe\ runner\ signal\ status\ health\ problem\ transaction ;;
+    '') printf %s version\ help\ session\ palette\ segment\ adapter\ layout\ classifier\ filter\ probe\ runner\ signal\ status\ health\ problem\ transaction ;;
     session) printf %s init\ apply\ show\ suspend\ resume\ toggle ;;
     palette) printf %s show\ use\ list\ register ;;
     segment) printf %s show ;;
@@ -23,6 +23,7 @@ _airline_children () {
 }
 _airline_usage () {
   case "$1" in
+    version) printf %s '' ;;
     help) printf %s \[\<noun\>\ \[\<verb\>\]\] ;;
     session\ init) printf %s \[-t\ \<session\>\] ;;
     session\ apply) printf %s '' ;;
@@ -89,6 +90,7 @@ _airline_usage () {
 }
 _airline_description () {
   case "$1" in
+    version) printf %s Show\ the\ Airline\ release/API\ version ;;
     help) printf %s show\ command\ help ;;
     session\ init) printf %s seed\ defaults\,\ register\ paths\,\ publish\ the\ CLI\ handle\,\ and\ render ;;
     session\ apply) printf %s Commit\ global\ option\ edits\ and\ render\ the\ session ;;

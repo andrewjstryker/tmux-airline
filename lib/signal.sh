@@ -103,9 +103,18 @@ signal_clear_transient () {   # [-t <window>]
 
 _signal_set_unlocked () {   # <ns> <clear-value|""> <key> <value> <transient> <window>
   local ns="$1" clear_value="$2" key="$3" value="$4" transient="$5" win="$6"
+  local tuple desired
+  tuple="$(coll_get_window "$win" "$ns" "$key")"
   if [[ -n "$clear_value" && "$value" == "$clear_value" ]]; then
+    if ! coll_has_window "$win" "$ns" "$key" && [[ -z "$tuple" ]]; then
+      return 1
+    fi
     coll_unregister_window "$win" "$ns" "$key"
   else
+    desired="$(printf '%s\t%s' "$value" "$transient")"
+    if coll_has_window "$win" "$ns" "$key" && [[ "$tuple" == "$desired" ]]; then
+      return 1
+    fi
     coll_set_window "$win" "$ns" "$key" "$value" "$transient"
   fi
   _signal_project "$ns" "$win"
@@ -137,7 +146,11 @@ _signal_set () {   # <ns> <validator> <clear-value|""> <key> <value> [options]
 }
 
 _signal_clear_unlocked () {   # <ns> <key> <window>
-  local ns="$1" key="$2" win="$3"
+  local ns="$1" key="$2" win="$3" tuple
+  tuple="$(coll_get_window "$win" "$ns" "$key")"
+  if ! coll_has_window "$win" "$ns" "$key" && [[ -z "$tuple" ]]; then
+    return 1
+  fi
   coll_unregister_window "$win" "$ns" "$key"
   _signal_project "$ns" "$win"
 }

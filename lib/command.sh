@@ -19,4 +19,13 @@ command_current_session () {
 
 command_show_row () { printf '%-12s %s\n' "$1" "$2"; }
 
+# Read-only root command. VERSION is also the source used to create release tags,
+# so the public CLI and packaged release cannot acquire independent values.
+command_version () {
+  (( $# == 0 )) || command_die "version: takes no arguments"
+  local version
+  IFS= read -r version < "$AIRLINE_DIR/VERSION" || command_die "version: cannot read VERSION"
+  printf '%s\n' "$version"
+}
+
 # vim: ft=bash

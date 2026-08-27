@@ -47,8 +47,9 @@ declare -ga AIRLINE_PALETTE_ELEMENTS=(
 # (Not the positional backgrounds or text weights, which a signal never names.)
 declare -ga AIRLINE_PALETTE_TOKENS=(active alert stress ok special monitor copy zoom)
 
-# Health/problem levels, low→high. Both protocols share this operational ladder;
-# their only semantic difference is scope (window vs session).
+# Health/problem levels, low→high. Both protocols share this severity ladder,
+# but not their meaning: health is a window condition, while a problem says that
+# airline or one of its contributors cannot provide an advertised capability.
 declare -ga AIRLINE_CONDITION_LEVELS=(ok warn fail)
 declare -gA AIRLINE_CONDITION_COLOR=([ok]=ok [warn]=alert [fail]=stress)
 
