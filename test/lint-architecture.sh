@@ -4,8 +4,8 @@
 #
 # A — only tmux.sh may invoke the tmux command.
 # B — only tmux.sh may construct literal airline option names.
-# D — module-private functions stay private and public module calls follow the
-#     documented acyclic dependency graph.
+# D — module-private functions stay private and public module calls point to a
+#     lower architectural layer. `command` is the shared boundary helper.
 
 set -u
 
@@ -74,25 +74,21 @@ _check_b () {
   return "$rc"
 }
 
-_dependency_allowed () {   # <caller> <provider>
-  case "$1:$2" in
-    airline:command|airline:help|airline:session|airline:transaction|airline:signal|\
-    airline:layout|airline:runner|\
-    help:command|\
-    session:command|session:catalog|session:layout|session:render|session:tmux|\
-    transaction:command|transaction:tmux|\
-    signal:command|signal:collections|signal:render|signal:tmux|\
-    layout:command|layout:catalog|layout:collections|layout:render|layout:signal|layout:tmux|\
-    runner:command|runner:catalog|runner:collections|runner:signal|runner:tmux|\
-    catalog:collections|\
-    render:collections|render:tmux|\
-    collections:tmux|command:tmux) return 0 ;;
-    *) return 1 ;;
+_module_layer () {   # <module> -> integer; callers must be greater than providers
+  case "$1" in
+    tmux)                printf 0 ;;
+    collections)         printf 1 ;;
+    catalog|render)      printf 2 ;;
+    signal)              printf 3 ;;
+    layout|runner)       printf 4 ;;
+    help|session|transaction) printf 5 ;;
+    airline)             printf 6 ;;
+    *)                   return 1 ;;
   esac
 }
 
 _check_d () {
-  local provider symbol previous file line raw caller provider_name rc=0
+  local provider symbol previous file line raw caller provider_name caller_layer provider_layer rc=0
   local -a modules=()
   declare -A private_owner=() public_owner=()
   while IFS= read -r file; do modules+=("$file"); done < <(_module_sources)
@@ -126,7 +122,13 @@ _check_d () {
     [[ -n "$provider" && "$file" != "$provider" ]] || continue
     caller="$(_module_name "$file")"
     provider_name="$(_module_name "$provider")"
-    _dependency_allowed "$caller" "$provider_name" && continue
+    # CLI/context helpers are deliberately callable from every layer. Their own
+    # only lower dependency is the mechanical context-resolution boundary.
+    [[ "$provider_name" == command ]] && continue
+    [[ "$caller" == command && "$provider_name" == tmux ]] && continue
+    caller_layer="$(_module_layer "$caller")" || caller_layer=-1
+    provider_layer="$(_module_layer "$provider_name")" || provider_layer=-1
+    (( caller_layer > provider_layer )) && continue
     printf 'D-dependency: %s -> %s via %s at %s:%s:%s\n' \
       "$caller" "$provider_name" "$symbol" "${file#"$ROOT"/}" "$line" "$raw"
     rc=1

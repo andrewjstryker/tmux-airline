@@ -15,8 +15,9 @@ a non-obvious boundary described here.
 3. **The middle is logic.** Badge reduction, segment assembly, render expressions,
    and palette application use domain terms and do not call the `tmux` binary.
 4. **Dependencies point down.** `airline.sh` owns grammar and delegates once into
-   `lib/`; internal modules orchestrate rendering and collections, and application
-   tmux calls end in `lib/tmux.sh`. The graph is acyclic.
+   `lib/`; internal modules call public functions in lower layers directly, and
+   application tmux calls end in `lib/tmux.sh`. The graph is acyclic without
+   prescribing every individual cross-module edge.
 5. **Validate at the boundary; trust the interior.** CLI behavior handlers validate
    input once. Store and composition functions operate on validated values.
 6. **Enforce architecture at build time.** Bash has no useful visibility boundary,
@@ -104,6 +105,29 @@ graph TD
     MECH ==> TMUX([tmux server]):::ext
 
     classDef ext fill:#eee,stroke:#999,color:#333,font-style:italic;
+```
+
+The graph describes ordinary in-process calls. A tmux hook or a newly created pane
+starts a fresh Bash process and therefore enters through the public `airline.sh`
+CLI, which owns library loading, environment setup, argument validation, and
+dispatch. It does not manufacture a second private process protocol merely to skip
+the small public parser. Once loaded, modules call one another directly: a
+non-underscore function is a module service, while an underscore-prefixed function
+is private to the file that defines it.
+
+Build-time dependency enforcement uses the following coarse layers rather than an
+allowlist of every permitted pair. Calls must point to a strictly lower layer;
+`command` is a shared validation/context helper callable by every layer and itself
+depends only on the mechanical context-resolution boundary.
+
+```text
+airline
+  session / transaction / help
+  layout / runner
+  signal
+  catalog / render
+  collections
+  tmux
 ```
 
 The important boundaries are:
@@ -631,6 +655,23 @@ conventions:
 - `setif` returns success when it changed a value. Orchestration accumulates those
   results and redraws once only when rendered output changed.
 
+Owner-scoped transactions execute option work against a mutable in-memory
+workspace. After acquiring the lock, `tmux.sh` bulk-loads the global option tables
+and the transaction owner's session or window table. Existing scalar accessors read
+and update that desired snapshot with read-your-writes behavior; presence is tracked
+separately so unset and explicitly empty remain distinct. At the end, the mechanical
+layer compares desired state with the baseline and submits the ordered final writes
+as one tmux command sequence. Domain modules neither build batches nor pass option
+maps through their APIs.
+
+Commands whose effects are not ordinary option mutations are explicit workspace
+boundaries. `source-file` flushes pending writes and reloads the snapshot before
+evaluation continues. Redraw is deferred until changed writes have reached tmux.
+Transaction lock acquisition and release remain immediate and outside the option
+workspace. Actual process environment variables are not used as the state model:
+option names and values are arbitrary data, empty and absent differ, and state must
+not leak to child processes.
+
 Public accessors support global defaults and effective session reads. Private
 accessors support only session and window ownership, plus `prv_name` for embedding a
 private scalar in a tmux format. There is no private-global accessor.
@@ -646,10 +687,11 @@ private scalar in a tmux format. There is no private-global accessor.
   `@airline--` names in shell code. Palette and segment configuration spell public
   names because those names are the external contract.
 - **D — module boundaries:** a function whose name begins with `_` may be referenced
-  only by the module that defines it. Calls to public functions must follow the
-  explicit acyclic dependency graph above. The lint derives ownership from function
-  definitions, so palette and adapter helpers may retain useful primitive names
-  without filename-prefix ceremony.
+  only by the module that defines it. Calls to public functions must point to a
+  strictly lower architectural layer (apart from shared `command` helpers). The lint
+  derives ownership from function definitions, so palette and adapter helpers may
+  retain useful primitive names without filename-prefix ceremony and does not need
+  an exact edge allowlist.
 
 CLI grammar shape, exactly-once delegation, argument preservation, help generation,
 and completion drift are behavior tested by the CLI suites rather than labeled as

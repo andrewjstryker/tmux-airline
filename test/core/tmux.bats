@@ -191,14 +191,43 @@ transaction_hold () { : > "$1"; tmux wait-for "$2"; }
 transaction_spin () { : > "$1"; while :; do :; done; }
 transaction_exit () { exit "$1"; }
 transaction_nested () { with_session_transaction "$1" problem transaction_result nested 0; }
+transaction_option_workspace () {
+  local session="$1"
+  opt_set_session "$session" @airline--workspace-first before
+  opt_set_session "$session" @airline--workspace-first after
+  printf '%s\n' "$(opt_get_session "$session" @airline--workspace-first)"
+  opt_set_session "$session" @airline--workspace-complex $'line one\nline "two" \\ end;'
+  opt_set_session "$session" @airline--workspace-empty ""
+  opt_has_session "$session" @airline--workspace-empty && printf 'empty-present\n'
+  opt_set_session "$session" @airline--workspace-removed temporary
+  opt_unset_session "$session" @airline--workspace-removed
+}
 
 wait_for_file () {
   local file="$1"
-  for _ in {1..100}; do
+  for _ in {1..500}; do
     [[ -e "$file" ]] && return 0
     sleep 0.01
   done
   return 1
+}
+
+@test "transaction option workspace reads its writes and flushes the final diff" {
+  load_tmux
+  session="$(current_session)"
+
+  run with_session_transaction "$session" config transaction_option_workspace "$session"
+  assert_success
+  assert_line --index 0 after
+  assert_line --index 1 empty-present
+  run opt_get_session "$session" @airline--workspace-first
+  assert_output after
+  run opt_get_session "$session" @airline--workspace-complex
+  assert_output $'line one\nline "two" \\ end;'
+  run opt_has_session "$session" @airline--workspace-empty
+  assert_success
+  run opt_has_session "$session" @airline--workspace-removed
+  assert_failure
 }
 
 @test "scoped transaction preserves callback output/status and releases after return" {

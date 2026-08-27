@@ -77,15 +77,15 @@ _coll_has () {       # <scope> <target> <ns> <key> (exit status)
 
 _coll_register () {  # <scope> <target> <ns> <key> add to registry TAIL
   local scope="$1" target="$2" ns="$3" key="$4" cur
-  _coll_has "$scope" "$target" "$ns" "$key" && return 0
   cur="$(_coll_members "$scope" "$target" "$ns")"
+  case " $cur " in *" $key "*) return 0 ;; esac
   _coll_oset "$scope" "$target" "$(_coll_reg "$ns")" "${cur:+$cur }$key"
 }
 
 _coll_prepend () {   # <scope> <target> <ns> <key> add to registry HEAD
   local scope="$1" target="$2" ns="$3" key="$4" cur
-  _coll_has "$scope" "$target" "$ns" "$key" && return 0
   cur="$(_coll_members "$scope" "$target" "$ns")"
+  case " $cur " in *" $key "*) return 0 ;; esac
   _coll_oset "$scope" "$target" "$(_coll_reg "$ns")" "$key${cur:+ $cur}"
 }
 

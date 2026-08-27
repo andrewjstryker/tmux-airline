@@ -335,7 +335,7 @@ _seed_palette() {
   assert_output --partial "bg=colour234"   # inner-bg
   run get_option pane-active-border-style
   assert_output --partial "colour214"      # active
-  run get_option clock-mode-color
+  run get_option clock-mode-colour
   assert_output "colour134"                 # special
 }
 

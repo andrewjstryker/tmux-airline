@@ -33,22 +33,249 @@ _opt_list  () { tmux show-options -q  "$@"; }   # same, retaining name/presence
 _opt_write () { tmux set-option   -q  "$@"; }   # <scope…> <name> <value>
 _opt_clear () { tmux set-option   -qu "$@"; }   # <scope…> <name>
 
+# A transaction-local option workspace. tmux serializes listed values using its
+# configuration syntax (one escaped option per line), which lets us load an entire
+# scope with one client, serve scalar accessors from Bash, and submit the final
+# ordered diff as one command sequence. Presence is stored separately from value so
+# an explicitly empty user option remains distinct from an absent one.
+_AIRLINE_OPT_WORKSPACE=""
+_AIRLINE_OPT_OWNER_SCOPE=""
+_AIRLINE_OPT_OWNER_TARGET=""
+_AIRLINE_OPT_REDRAW=""
+declare -gA _AIRLINE_OPT_VALUE=()
+declare -gA _AIRLINE_OPT_PRESENT=()
+declare -gA _AIRLINE_OPT_BASE_VALUE=()
+declare -gA _AIRLINE_OPT_BASE_PRESENT=()
+declare -gA _AIRLINE_OPT_SCOPE=()
+declare -gA _AIRLINE_OPT_TARGET=()
+declare -gA _AIRLINE_OPT_NAME=()
+declare -gA _AIRLINE_OPT_DIRTY=()
+declare -ga _AIRLINE_OPT_DIRTY_ORDER=()
+
+_opt_key () {   # <destination-variable> <scope> <target> <name>
+  local -n destination="$1"
+  printf -v destination '%s\037%s\037%s' "$2" "$3" "$4"
+}
+
+_opt_decode () {   # <tmux-serialized-value> <destination-variable>
+  local encoded="$1"; local -n destination="$2"
+  if [[ ${#encoded} -ge 2 && "${encoded:0:1}" == '"' && "${encoded: -1}" == '"' ]]; then
+    encoded="${encoded:1:${#encoded}-2}"
+  fi
+  printf -v destination '%b' "$encoded"
+}
+
+_opt_snapshot_line () {   # <scope> <target> <serialized-option-line>
+  local scope="$1" target="$2" line="$3" name encoded value key
+  [[ -n "$line" ]] || return 0
+  name="${line%% *}"
+  encoded="${line#"$name"}"
+  encoded="${encoded# }"
+  _opt_decode "$encoded" value
+  _opt_key key "$scope" "$target" "$name"
+  _AIRLINE_OPT_VALUE["$key"]="$value"
+  _AIRLINE_OPT_PRESENT["$key"]=1
+  _AIRLINE_OPT_BASE_VALUE["$key"]="$value"
+  _AIRLINE_OPT_BASE_PRESENT["$key"]=1
+  _AIRLINE_OPT_SCOPE["$key"]="$scope"
+  _AIRLINE_OPT_TARGET["$key"]="$target"
+  _AIRLINE_OPT_NAME["$key"]="$name"
+}
+
+_opt_snapshot () {   # <global|session|window> <target>
+  local scope="$1" target="$2" line
+  case "$scope" in
+    global)
+      # Native global options occupy separate session and window tables. Load the
+      # window table first so an identically named user option in the ordinary
+      # global session table retains `set -g` / `show -g` precedence.
+      while IFS= read -r line; do _opt_snapshot_line global "" "$line"; done \
+        < <(_opt_list -gw)
+      while IFS= read -r line; do _opt_snapshot_line global "" "$line"; done \
+        < <(_opt_list -g)
+      ;;
+    session)
+      while IFS= read -r line; do _opt_snapshot_line session "$target" "$line"; done \
+        < <(_opt_list -t "$target")
+      ;;
+    window)
+      while IFS= read -r line; do _opt_snapshot_line window "$target" "$line"; done \
+        < <(_opt_list -w -t "$target")
+      ;;
+  esac
+}
+
+_opt_workspace_begin () {   # <session|window> <target>
+  local scope="$1" target="$2"
+  [[ -z "$_AIRLINE_OPT_WORKSPACE" ]] || return 2
+  _AIRLINE_OPT_VALUE=(); _AIRLINE_OPT_PRESENT=()
+  _AIRLINE_OPT_BASE_VALUE=(); _AIRLINE_OPT_BASE_PRESENT=()
+  _AIRLINE_OPT_SCOPE=(); _AIRLINE_OPT_TARGET=(); _AIRLINE_OPT_NAME=()
+  _AIRLINE_OPT_DIRTY=(); _AIRLINE_OPT_DIRTY_ORDER=()
+  _AIRLINE_OPT_REDRAW=""
+  _opt_snapshot global "" || return 1
+  _opt_snapshot "$scope" "$target" || return 1
+  _AIRLINE_OPT_OWNER_SCOPE="$scope"
+  _AIRLINE_OPT_OWNER_TARGET="$target"
+  _AIRLINE_OPT_WORKSPACE=1
+}
+
+_opt_workspace_end () {
+  _AIRLINE_OPT_WORKSPACE=""; _AIRLINE_OPT_REDRAW=""
+  _AIRLINE_OPT_OWNER_SCOPE=""; _AIRLINE_OPT_OWNER_TARGET=""
+  _AIRLINE_OPT_VALUE=(); _AIRLINE_OPT_PRESENT=()
+  _AIRLINE_OPT_BASE_VALUE=(); _AIRLINE_OPT_BASE_PRESENT=()
+  _AIRLINE_OPT_SCOPE=(); _AIRLINE_OPT_TARGET=(); _AIRLINE_OPT_NAME=()
+  _AIRLINE_OPT_DIRTY=(); _AIRLINE_OPT_DIRTY_ORDER=()
+}
+
+_opt_workspace_reload () {
+  local scope="$_AIRLINE_OPT_OWNER_SCOPE" target="$_AIRLINE_OPT_OWNER_TARGET"
+  [[ -n "$_AIRLINE_OPT_WORKSPACE" ]] || return 0
+  _opt_workspace_end
+  _opt_workspace_begin "$scope" "$target"
+}
+
+_opt_read () {   # <global|session|window> <target> <name>
+  local scope="$1" target="$2" name="$3" key
+  if [[ -n "$_AIRLINE_OPT_WORKSPACE" ]]; then
+    _opt_key key "$scope" "$target" "$name"
+    [[ -n "${_AIRLINE_OPT_PRESENT[$key]:-}" ]] && printf '%s' "${_AIRLINE_OPT_VALUE[$key]}"
+    return 0
+  fi
+  case "$scope" in
+    global)  _opt_show -g "$name" ;;
+    session) _opt_show -t "$target" "$name" ;;
+    window)  _opt_show -w -t "$target" "$name" ;;
+  esac
+}
+
+_opt_present () {   # <global|session|window> <target> <name>
+  local scope="$1" target="$2" name="$3" key
+  if [[ -n "$_AIRLINE_OPT_WORKSPACE" ]]; then
+    _opt_key key "$scope" "$target" "$name"
+    [[ -n "${_AIRLINE_OPT_PRESENT[$key]:-}" ]]
+    return
+  fi
+  case "$scope" in
+    global)  [[ -n "$(_opt_list -g "$name")" ]] ;;
+    session) [[ -n "$(_opt_list -t "$target" "$name")" ]] ;;
+    window)  [[ -n "$(_opt_list -w -t "$target" "$name")" ]] ;;
+  esac
+}
+
+_opt_mark_dirty () {   # <key>
+  local key="$1"
+  [[ -n "${_AIRLINE_OPT_DIRTY[$key]:-}" ]] || _AIRLINE_OPT_DIRTY_ORDER+=("$key")
+  _AIRLINE_OPT_DIRTY["$key"]=1
+}
+
+_opt_store () {   # <global|session|window> <target> <name> <value>
+  local scope="$1" target="$2" name="$3" value="$4" key
+  if [[ -z "$_AIRLINE_OPT_WORKSPACE" ]]; then
+    case "$scope" in
+      global)  _opt_write -g "$name" "$value" ;;
+      session) _opt_write -t "$target" "$name" "$value" ;;
+      window)  _opt_write -w -t "$target" "$name" "$value" ;;
+    esac
+    return
+  fi
+  _opt_key key "$scope" "$target" "$name"
+  _AIRLINE_OPT_VALUE["$key"]="$value"
+  _AIRLINE_OPT_PRESENT["$key"]=1
+  _AIRLINE_OPT_SCOPE["$key"]="$scope"
+  _AIRLINE_OPT_TARGET["$key"]="$target"
+  _AIRLINE_OPT_NAME["$key"]="$name"
+  _opt_mark_dirty "$key"
+}
+
+_opt_remove () {   # <global|session|window> <target> <name>
+  local scope="$1" target="$2" name="$3" key
+  if [[ -z "$_AIRLINE_OPT_WORKSPACE" ]]; then
+    case "$scope" in
+      global)  _opt_clear -g "$name" ;;
+      session) _opt_clear -t "$target" "$name" ;;
+      window)  _opt_clear -w -t "$target" "$name" ;;
+    esac
+    return
+  fi
+  _opt_key key "$scope" "$target" "$name"
+  unset '_AIRLINE_OPT_VALUE[$key]' '_AIRLINE_OPT_PRESENT[$key]'
+  _AIRLINE_OPT_SCOPE["$key"]="$scope"
+  _AIRLINE_OPT_TARGET["$key"]="$target"
+  _AIRLINE_OPT_NAME["$key"]="$name"
+  _opt_mark_dirty "$key"
+}
+
+_opt_escape_sequence_arg () {   # <value> <destination-variable>
+  local input="$1"; local -n destination="$2"
+  destination="$input"
+  # tmux treats an individual or trailing semicolon as a command separator even
+  # after shell argv parsing. One additional backslash makes it data.
+  [[ "$destination" == *';' ]] && destination="${destination%;}\\;"
+}
+
+_opt_workspace_flush () {
+  local key scope target name value changed="" redraw="$_AIRLINE_OPT_REDRAW"
+  local -a commands=()
+  [[ -n "$_AIRLINE_OPT_WORKSPACE" ]] || return 0
+  for key in "${_AIRLINE_OPT_DIRTY_ORDER[@]}"; do
+    if [[ -n "${_AIRLINE_OPT_PRESENT[$key]:-}" ]]; then
+      if [[ -n "${_AIRLINE_OPT_BASE_PRESENT[$key]:-}" &&
+            "${_AIRLINE_OPT_BASE_VALUE[$key]}" == "${_AIRLINE_OPT_VALUE[$key]}" ]]; then
+        continue
+      fi
+    elif [[ -z "${_AIRLINE_OPT_BASE_PRESENT[$key]:-}" ]]; then
+      continue
+    fi
+    scope="${_AIRLINE_OPT_SCOPE[$key]}"; target="${_AIRLINE_OPT_TARGET[$key]}"
+    name="${_AIRLINE_OPT_NAME[$key]}"
+    [[ ${#commands[@]} -eq 0 ]] || commands+=(';')
+    if [[ -n "${_AIRLINE_OPT_PRESENT[$key]:-}" ]]; then
+      _opt_escape_sequence_arg "${_AIRLINE_OPT_VALUE[$key]}" value
+      case "$scope" in
+        global)  commands+=(set-option -q -g "$name" "$value") ;;
+        session) commands+=(set-option -q -t "$target" "$name" "$value") ;;
+        window)  commands+=(set-option -q -w -t "$target" "$name" "$value") ;;
+      esac
+    else
+      case "$scope" in
+        global)  commands+=(set-option -qu -g "$name") ;;
+        session) commands+=(set-option -qu -t "$target" "$name") ;;
+        window)  commands+=(set-option -qu -w -t "$target" "$name") ;;
+      esac
+    fi
+    changed=1
+  done
+  if [[ -n "$changed" ]]; then
+    tmux "${commands[@]}" || return 1
+  fi
+  _AIRLINE_OPT_DIRTY=(); _AIRLINE_OPT_DIRTY_ORDER=()
+  _AIRLINE_OPT_BASE_VALUE=(); _AIRLINE_OPT_BASE_PRESENT=()
+  for key in "${!_AIRLINE_OPT_PRESENT[@]}"; do
+    _AIRLINE_OPT_BASE_PRESENT["$key"]=1
+    _AIRLINE_OPT_BASE_VALUE["$key"]="${_AIRLINE_OPT_VALUE[$key]}"
+  done
+  _AIRLINE_OPT_REDRAW=""
+  if [[ -n "$redraw" ]]; then tmux refresh-client -S 2>/dev/null || true; fi
+}
+
 # --- global scope ---
-opt_get_global   () { _opt_show  -g "$1"; }
-opt_set_global   () { _opt_write -g "$1" "$2"; }
-opt_unset_global () { _opt_clear -g "$1"; }
-opt_has_global   () { [[ -n "$(_opt_list -g "$1")" ]]; }
+opt_get_global   () { _opt_read    global "" "$1"; }
+opt_set_global   () { _opt_store   global "" "$1" "$2"; }
+opt_unset_global () { _opt_remove  global "" "$1"; }
+opt_has_global   () { _opt_present global "" "$1"; }
 
 # --- session scope (explicit session id/name) ---
-opt_get_session   () { _opt_show  -t "$1" "$2"; }
-opt_set_session   () { _opt_write -t "$1" "$2" "$3"; }
-opt_unset_session () { _opt_clear -t "$1" "$2"; }
-opt_has_session   () { [[ -n "$(_opt_list -t "$1" "$2")" ]]; }
+opt_get_session   () { _opt_read    session "$1" "$2"; }
+opt_set_session   () { _opt_store   session "$1" "$2" "$3"; }
+opt_unset_session () { _opt_remove  session "$1" "$2"; }
+opt_has_session   () { _opt_present session "$1" "$2"; }
 
 # --- window scope (explicit window id; "current" is resolved by the caller) ---
-opt_get_window   () { _opt_show  -w -t "$1" "$2"; }
-opt_set_window   () { _opt_write -w -t "$1" "$2" "$3"; }
-opt_unset_window () { _opt_clear -w -t "$1" "$2"; }
+opt_get_window   () { _opt_read   window "$1" "$2"; }
+opt_set_window   () { _opt_store  window "$1" "$2" "$3"; }
+opt_unset_window () { _opt_remove window "$1" "$2"; }
 
 # --- composed: get-or-default ---
 opt_getor_global () {
@@ -140,11 +367,22 @@ prv_unset_window () { opt_unset_window "$1" "@airline--$2"; }       # <win> <key
 # Force the status line to re-evaluate now. tmux only re-renders on
 # status-interval or incidental events, so a live option change would otherwise
 # lag; -S refreshes the status line. No attached client → harmless.
-redraw () { tmux refresh-client -S 2>/dev/null || true; }
+redraw () {
+  if [[ -n "$_AIRLINE_OPT_WORKSPACE" ]]; then _AIRLINE_OPT_REDRAW=1
+  else tmux refresh-client -S 2>/dev/null || true; fi
+}
 
 # Load a tmux source file (used for palette files).
-source_file () { tmux source-file "$1"; }
-source_file_session () { tmux source-file -t "$1" "$2"; }
+source_file () {
+  _opt_workspace_flush || return
+  tmux source-file "$1" || return
+  _opt_workspace_reload
+}
+source_file_session () {
+  _opt_workspace_flush || return
+  tmux source-file -t "$1" "$2" || return
+  _opt_workspace_reload
+}
 
 # The id (@n) of the window the caller is acting in — lets window-scoped callers
 # resolve "current" to an explicit id before calling opt_*_window.
@@ -251,6 +489,8 @@ _transaction_release () {   # <scope> <target> <namespace> <channel>
 _transaction_cleanup () {
   local channel="${_AIRLINE_TRANSACTION_CHANNEL:-}"
   [[ -n "$channel" ]] || return 0
+  _opt_workspace_flush || true
+  _opt_workspace_end
   _AIRLINE_TRANSACTION_CHANNEL=""
   _transaction_release \
     "$_AIRLINE_TRANSACTION_SCOPE" "$_AIRLINE_TRANSACTION_TARGET" \
@@ -282,7 +522,10 @@ _with_transaction () (   # <session|window> <target> <namespace> <callback> [<ar
   trap '_transaction_abort 129' HUP
   trap '_transaction_abort 130' INT
   trap '_transaction_abort 143' TERM
+  _opt_workspace_begin "$scope" "$target" || { _transaction_cleanup; return 1; }
   "$callback" "$@"; rc=$?
+  _opt_workspace_flush || { [[ $rc -ne 0 ]] || rc=1; }
+  _opt_workspace_end
   _transaction_cleanup
   trap - EXIT HUP INT TERM
   return "$rc"

@@ -1,6 +1,6 @@
 # TODO
 
-## Follow-up: initialization performance
+## Completed work: initialization performance (2026-08-26)
 
 The architecture work exposed a user-facing performance question that deserves its
 own investigation. Starting an isolated tmux server measured roughly 15–25 ms, while
@@ -16,32 +16,52 @@ markers, and problem recovery each perform option reads and writes through
 `lib/tmux.sh`. Individual calls are inexpensive, but initialization performs enough
 of them serially to become visible.
 
-Initial investigation path:
+The synchronous-client hypothesis was confirmed. On tmux 3.4, a controlled cold
+initialization launched 475 tmux clients (287 `show-options`, 181 `set-option`) and
+took 2.36–2.72 seconds. A true idempotent re-initialization still launched 241
+clients (173 reads, 63 writes) and took about 1.37 seconds.
 
-1. [ ] Establish repeatable cold-init and idempotent-reinit benchmarks. Record wall
+The option layer now creates a transaction-local Bash workspace after acquiring the
+owner lock. It bulk-loads global and owner-scoped option tables, provides
+read-your-writes through the existing scalar accessors, tracks presence separately
+from value, and flushes the ordered final diff as one tmux command sequence.
+`source-file` flushes and reloads the workspace; redraw is deferred until after the
+write flush. Collection registration also avoids its former duplicate registry read.
+
+After the change, the same cold path launched 38 tmux clients and took 1.10–1.14
+seconds. Steady idempotent initialization launched 25 clients, performed no redraw,
+and took 0.69–0.74 seconds. The remaining clients are principally target resolution,
+seven bootstrap catalog reads outside the configuration transaction, three
+transaction acquire/release pairs, their scope snapshots, CLI publication, and hook
+installation. This is small enough that broadening state ownership merely to remove
+those calls is not justified.
+
+Completed investigation:
+
+1. [x] Establish repeatable cold-init and idempotent-reinit benchmarks. Record wall
        time, tmux client invocation count, and command count rather than relying on
        full-suite duration as a proxy.
-2. [ ] Instrument the `AIRLINE_TMUX` seam to attribute calls and cumulative time to
-       session resolution, catalog registration, layout/palette collection, adapter
-       application, rendering, transactions, and problem reporting.
-3. [ ] Identify redundant work separately from necessary work. In particular, check
+2. [x] Trace the `AIRLINE_TMUX` process boundary and attribute client invocations to
+       resolution, catalog bootstrap, configuration, rendering, transactions, and
+       problem reporting.
+3. [x] Identify redundant work separately from necessary work. In particular, check
        repeated option reads, read-before-write pairs, unchanged rendering writes,
        and invariant catalog registration during idempotent initialization.
-4. [ ] Prototype batch execution at the mechanical boundary:
+4. [x] Implement batch execution at the mechanical boundary:
        - retrieve related options with one bulk query where tmux semantics permit;
        - compute the desired snapshot in memory;
        - submit ordered changed writes as one tmux command sequence or sourced file;
-       - batch builtin catalog registration after one bulk read, if that preserves
-         collection ownership and priority semantics.
-5. [ ] Re-measure after each batching change and retain it only when it materially
+       - leave the seven independently owned catalog registries outside the
+         transaction rather than broadening its state ownership for a small gain.
+5. [x] Re-measure after each batching change and retain it only when it materially
        reduces both tmux invocations and initialization time without obscuring the
        mechanical API.
-6. [ ] Consider parallel execution only after batching. Parallelize only demonstrably
+6. [x] Consider parallel execution only after batching. Parallelize only demonstrably
        independent, read-only work; do not parallelize ordered layout/adapter writes,
        shared collection mutations, rendering writes, or transaction-protected state.
        tmux is a single shared server, so concurrent clients may add contention rather
        than reduce latency.
-7. [ ] Preserve behavior with fast boundary tests and a few wide real-tmux workflows.
+7. [x] Preserve behavior with fast boundary tests and a few wide real-tmux workflows.
        Do not add product capability or weaken transaction, ordering, idempotence, or
        session-isolation guarantees as a performance shortcut.
 

@@ -414,8 +414,8 @@ render () {   # <session>
   local changed=1
   opt_setif_global pane-border-style         "fg=${PALETTE[primary]}"                       && changed=0
   opt_setif_global pane-active-border-style   "fg=${PALETTE[active]}"                        && changed=0
-  opt_setif_session "$AIRLINE_SESSION" display-panes-color        "${PALETTE[primary]}" && changed=0
-  opt_setif_session "$AIRLINE_SESSION" display-panes-active-color "${PALETTE[active]}"  && changed=0
+  opt_setif_session "$AIRLINE_SESSION" display-panes-colour        "${PALETTE[primary]}" && changed=0
+  opt_setif_session "$AIRLINE_SESSION" display-panes-active-colour "${PALETTE[active]}"  && changed=0
   opt_setif_session "$AIRLINE_SESSION" status-style \
     "fg=${PALETTE[secondary]} bg=${PALETTE[inner-bg]}" && changed=0
   opt_setif_session "$AIRLINE_SESSION" status-left-style \
@@ -424,7 +424,7 @@ render () {   # <session>
     "fg=${PALETTE[primary]} bg=${PALETTE[outer-bg]}" && changed=0
   opt_setif_session "$AIRLINE_SESSION" status-left  "$(_build_status_left)"  && changed=0
   opt_setif_session "$AIRLINE_SESSION" status-right "$(_build_status_right)" && changed=0
-  opt_setif_global clock-mode-color           "${PALETTE[special]}"                          && changed=0
+  opt_setif_global clock-mode-colour           "${PALETTE[special]}"                          && changed=0
   set_window_formats && changed=0
   [[ $changed -eq 0 ]] && redraw
   return $changed

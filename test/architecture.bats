@@ -46,12 +46,12 @@ LINT="$BATS_TEST_DIRNAME/lint-architecture.sh"
   fi
 }
 
-@test "Invariant D — private symbols and module dependency direction are enforced" {
+@test "Invariant D — private symbols and downward module layers are enforced" {
   run "$LINT" D
   if [[ "$status" -ne 0 ]]; then
     {
       echo "A module referenced another module's private function or called across"
-      echo "an edge absent from the documented dependency graph:"
+      echo "an upward or same-layer dependency:"
       echo
       printf '%s\n' "$output"
     } >&2
@@ -81,4 +81,14 @@ LINT="$BATS_TEST_DIRNAME/lint-architecture.sh"
   assert_failure
   assert_output --partial "D-private"
   assert_output --partial "D-dependency"
+}
+
+@test "Invariant D permits a new public call when it still points downward" {
+  local fixture="$BATS_TEST_TMPDIR/d-downward"
+  mkdir -p "$fixture/lib"
+  printf 'session_api () { signal_api; }\n' > "$fixture/lib/session.sh"
+  printf 'signal_api () { :; }\n' > "$fixture/lib/signal.sh"
+
+  run env AIRLINE_LINT_ROOT="$fixture" "$LINT" D
+  assert_success
 }
