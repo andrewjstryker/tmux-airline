@@ -16,9 +16,9 @@ setup() {
   run runner_classifier_run 0 ""
   assert_output ok
   run runner_classifier_run 7 ""
-  assert_output fail
+  assert_output "$(printf 'fail\tcommand exited with status 7')"
   run runner_classifier_run 143 15
-  assert_output fail
+  assert_output "$(printf 'fail\tcommand terminated by signal 15 (status 143)')"
 }
 
 @test "each element loader requires its own function contract" {
@@ -157,10 +157,10 @@ setup() {
   input_file="$BATS_TEST_TMPDIR/filter-input"
   printf 'server evidence\n' > "$input_file"
   export output_file
-  report_state() { printf '%s\n' "$1" >> "$output_file"; }
+  report_state() { printf '%s\n' "$*" >> "$output_file"; }
   airline_runner_filter() {
     local pid="$1" report="$2"
-    "$report" warn
+    "$report" warn "filter degraded"
     printf '%s\n' "$pid" >> "$output_file"
     sed -n '1p' >> "$output_file"
   }
@@ -168,7 +168,17 @@ setup() {
   runner_filter_start 4321 report_state "$input_file"
   wait "$AIRLINE_RUNNER_FILTER_PID"
   run cat "$output_file"
-  assert_output $'warn\n4321\nserver evidence'
+  assert_output $'warn filter degraded\n4321\nserver evidence'
+}
+
+@test "filter must emit at least one condition report" {
+  input_file="$BATS_TEST_TMPDIR/filter-input"
+  : > "$input_file"
+  airline_runner_filter() { :; }
+
+  runner_filter_start 4321 report_state "$input_file"
+  run runner_filter_wait "$AIRLINE_RUNNER_FILTER_PID"
+  assert_failure
 }
 
 @test "probe observations are sequential and repeat while the child lives" {
@@ -181,7 +191,7 @@ setup() {
   airline_runner_probe() {
     local report="$2"
     if [[ -e "$state_file" ]]; then "$report" ok
-    else : > "$state_file"; "$report" fail; fi
+    else : > "$state_file"; "$report" fail "probe unavailable"; fi
   }
 
   sleep 0.18 &
@@ -200,12 +210,14 @@ setup() {
     local report="$2"
     printf 'uninterpreted probe output\n'
     "$report" ok
-    "$report" fail
-    "$report" warn
+    "$report" fail "primary failed"
+    "$report" fail "secondary also failed"
+    "$report" warn "secondary degraded"
   }
   transcript="$BATS_TEST_TMPDIR/probe-transcript"
   runner_probe_once 4321 > "$transcript"
   assert_equal "$AIRLINE_RUNNER_PROBE_CONDITION" fail
+  assert_equal "$AIRLINE_RUNNER_PROBE_MESSAGE" "primary failed"
   run cat "$transcript"
   assert_output "uninterpreted probe output"
 
@@ -221,7 +233,7 @@ setup() {
 @test "http probe reports every endpoint and airline reduces the worst" {
   reports_file="$BATS_TEST_TMPDIR/http-reports"
   export reports_file
-  report_state() { printf '%s\n' "$1" >> "$reports_file"; }
+  report_state() { printf '%s\n' "$*" >> "$reports_file"; }
   curl() {
     local url="${*: -1}"
     if [[ "$url" == *unhealthy* ]]; then printf 503; else printf 204; fi
@@ -231,7 +243,7 @@ setup() {
     http://service/one http://service/unhealthy http://service/two
   assert_output $'ok 204 http://service/one\nfail 503 http://service/unhealthy\nok 204 http://service/two'
   run cat "$reports_file"
-  assert_output $'ok\nfail\nok'
+  assert_output $'ok\nfail HTTP 503 from http://service/unhealthy\nok'
 
   transcript="$BATS_TEST_TMPDIR/http-transcript"
   runner_probe_once 4321 \
@@ -246,7 +258,7 @@ setup() {
 @test "tap filter warns on a failed assertion and fails at completion" {
   output_file="$BATS_TEST_TMPDIR/tap-output"
   export output_file
-  report_state() { printf '%s\n' "$1" >> "$output_file"; }
+  report_state() { printf '%s\n' "$*" >> "$output_file"; }
   runner_filter_load "$PROJECT_ROOT/runners/filters/tap"
 
   airline_runner_filter 4321 report_state <<'TAP'
@@ -257,13 +269,13 @@ not ok 2 - second
 ok 3 - third
 TAP
   run cat "$output_file"
-  assert_output $'warn\nfail'
+  assert_output $'warn TAP assertion failed: not ok 2 - second\nfail TAP stream completed with unsuccessful assertions'
 }
 
 @test "tap filter ignores TODO failures and fails immediately on bailout" {
   output_file="$BATS_TEST_TMPDIR/tap-output"
   export output_file
-  report_state() { printf '%s\n' "$1" >> "$output_file"; }
+  report_state() { printf '%s\n' "$*" >> "$output_file"; }
   runner_filter_load "$PROJECT_ROOT/runners/filters/tap"
 
   airline_runner_filter 4321 report_state <<'TAP'
@@ -273,5 +285,20 @@ ok 2 - done
 Bail out! infrastructure disappeared
 TAP
   run cat "$output_file"
-  assert_output fail
+  assert_output "fail TAP bailout: Bail out! infrastructure disappeared"
+}
+
+@test "tap filter reports ok after a clean stream" {
+  output_file="$BATS_TEST_TMPDIR/tap-output"
+  export output_file
+  report_state() { printf '%s\n' "$*" >> "$output_file"; }
+  runner_filter_load "$PROJECT_ROOT/runners/filters/tap"
+
+  airline_runner_filter 4321 report_state <<'TAP'
+1..2
+ok 1 - first
+not ok 2 - later # TODO not implemented
+TAP
+  run cat "$output_file"
+  assert_output ok
 }

@@ -130,6 +130,18 @@ airline() {
     "$PROJECT_ROOT/airline.sh" "$@"
 }
 
+# Run the public CLI through a selective tmux failure shim. The shim remains a
+# process boundary, so these tests cover the exit status an external caller sees.
+airline_with_tmux_failure() {
+  local failure="$1" pane; shift
+  pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
+  TMUX_PANE="$pane" AIRLINE_DIR="$PROJECT_ROOT" \
+    AIRLINE_TMUX="bash $PROJECT_ROOT/test/support/tmux-fail.sh" \
+    AIRLINE_TEST_REAL_TMUX="$TMUX" AIRLINE_TEST_TMUX_SOCKET="$_bats_socket" \
+    AIRLINE_TEST_TMUX_FAILURE="$failure" \
+    "$PROJECT_ROOT/airline.sh" "$@"
+}
+
 # Run a config/control-plane command from a pane in an explicit session. TMUX_PANE is
 # the same native context tmux supplies to real pane child processes.
 airline_session() {

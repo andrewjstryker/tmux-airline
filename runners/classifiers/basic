@@ -7,5 +7,9 @@ AIRLINE_CLASSIFIER_SUMMARY='Map exit zero to ok and every other termination to f
 airline_runner_classify () {   # <exit-status> <signal>
   local status="$1" signal="$2"
   if [[ "$status" == 0 && -z "$signal" ]]; then printf 'ok\n'
-  else printf 'fail\n'; fi
+  elif [[ -n "$signal" ]]; then
+    printf 'fail\tcommand terminated by signal %s (status %s)\n' "$signal" "$status"
+  else
+    printf 'fail\tcommand exited with status %s\n' "$status"
+  fi
 }

@@ -6,12 +6,13 @@
 AIRLINE_FILTER_SUMMARY='Interpret top-level TAP assertions and bailouts'
 
 airline_runner_filter () {   # <pid> <report-function>
-  local _pid="$1" report="$2" line plan="" seen=0 failed=0 final=0
+  local _pid="$1" report="$2" line message plan="" seen=0 failed=0 final=0
   shopt -s nocasematch
 
   while IFS= read -r line || [[ -n "$line" ]]; do
     if [[ "$line" =~ ^Bail[[:space:]]out! ]]; then
-      "$report" fail
+      message="${line//$'\t'/ }"
+      "$report" fail "TAP bailout: $message"
       failed=1
       final=1
     elif [[ "$line" =~ ^1\.\.([0-9]+)([[:space:]]|$) ]]; then
@@ -20,19 +21,22 @@ airline_runner_filter () {   # <pid> <report-function>
       (( seen += 1 ))
       if [[ ! "$line" =~ \#[[:space:]]*(TODO|SKIP)([[:space:]]|$) ]]; then
         failed=1
-        "$report" warn
+        message="${line//$'\t'/ }"
+        "$report" warn "TAP assertion failed: $message"
       fi
     elif [[ "$line" =~ ^ok([[:space:]]|$) ]]; then
       (( seen += 1 ))
     fi
 
     if (( failed && ! final )) && [[ -n "$plan" ]] && (( seen >= plan )); then
-      "$report" fail
+      "$report" fail "TAP stream completed with unsuccessful assertions"
       final=1
     fi
   done
 
   if (( failed && ! final )); then
-    "$report" fail
+    "$report" fail "TAP stream ended with unsuccessful assertions"
+  elif (( ! failed )); then
+    "$report" ok
   fi
 }

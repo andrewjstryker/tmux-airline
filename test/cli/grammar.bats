@@ -54,7 +54,7 @@ session resume|session_resume
 session toggle|session_toggle
 signal clear-transient -t @3|signal_clear_transient <-t> <@3>
 status set build active --transient|signal_status_set <build> <active> <--transient>
-health clear cpu -t @2|signal_health_clear <cpu> <-t> <@2>
+health clear -t @2 cpu|signal_health_clear <-t> <@2> <cpu>
 problem set $1 cpu warn sensors-missing|signal_problem_set <$1> <cpu> <warn> <sensors-missing>
 transaction clear session $1 problem|transaction_clear_stale <session> <$1> <problem>
 palette use light|layout_palette_use <light>

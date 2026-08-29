@@ -1,5 +1,87 @@
 # TODO
 
+## Public CLI correctness
+
+The Agent integration review exposed two command-boundary defects. These are
+Airline CLI correctness issues rather than missing Agent capabilities: the existing
+status, health, and problem operations are the right public surface, but callers
+must be able to trust their exit status and declared grammar.
+
+### Mutation exit status
+
+- [x] Preserve operational failures from target resolution, transaction acquisition,
+      callback execution, workspace flush, and transaction release through the
+      public status, health, and problem commands. A diagnostic on stderr must not be
+      followed by exit status zero when the requested mutation did not complete.
+- [x] Keep the public exit contract binary: zero means a valid request completed,
+      whether Airline changed stored state or treated it as an idempotent no-op;
+      nonzero means validation or operation failed. Whether stored state or its
+      visible projection changed is Airline's private concern, not caller protocol.
+- [x] Track projection changes privately for redraw gating. In particular, changing
+      only a retained diagnostic message changes state but need not redraw an
+      unchanged aggregate badge.
+- [x] Do not run `command_die` inside command substitutions whose nonzero status can
+      be overwritten by subsequent commands. Resolve and validate window/session
+      targets in a control-flow shape that terminates the public command reliably.
+- [x] Apply the same failure propagation to idempotent sets and absent clears. Their
+      expected no-change result must remain successful without masking a real tmux
+      or transaction failure.
+- [x] Add failure-injection tests proving that invalid/unresolvable targets, failed
+      transaction acquisition, failed mutation flush, and failed problem reporting
+      return nonzero. Include process-level CLI tests, not only sourced-function
+      tests, so the observable exit contract is covered end to end.
+
+### Strict signal grammar
+
+- [x] Enforce the documented arity for status and health `set`, `clear`, and `show`.
+      Reject extra positional arguments instead of ignoring them or allowing a later
+      argument to replace the contributor key.
+- [x] Reject duplicate `-t` and duplicate `--transient` status options. Continue
+      accepting status options in every position allowed by its documented grammar.
+      Keep health's optional window target before its keyed condition tuple so the
+      trailing message is unambiguous and opaque.
+- [x] Validate status and health contributor keys against the collection invariant:
+      keys must be nonempty and contain no whitespace. Apply the same key validation
+      consistently to problem set, clear, and qualified show operations.
+- [x] Extend window-scoped health contributors with an opaque diagnostic message.
+      Require one for retained `warn` and `fail` conditions, reject tabs, and accept
+      none when `ok` clears the contributor. Keep health persistent: viewing a window
+      does not prove that its diagnostic was understood, so health is not transient.
+      Keep status message-free because its values have direct pane-display semantics.
+- [x] Make qualified health show return the retained `level<TAB>message` tuple and
+      include messages in the collection listing without changing badge reduction,
+      which continues to use only the severity field.
+- [x] Treat health and problem messages as opaque user-facing payload. Airline may
+      validate framing, retain, and display the text, but assigns it no meaning;
+      classifiers, filters, probes, and other reporters own the diagnostic content.
+- [x] Route health and problem through one scoped condition implementation for key
+      and message validation, tuple storage, idempotence, recovery, show formatting,
+      reduction, failure propagation, and redraw gating. Their only mechanical
+      differences are owner scope, namespace, and projected badge.
+- [x] Keep free-form problem messages opaque. Preserve the current ability to join a
+      multi-argument message while rejecting tabs, and make the documented grammar
+      accurately describe that behavior.
+- [x] Add table-driven grammar tests covering valid option orderings and rejection of
+      extra operands, duplicate options, whitespace-bearing keys, missing targets,
+      and malformed problem tuples. Verify rejected commands perform no mutation.
+
+Completion requires the process-level CLI to return zero only when a valid command
+completed successfully, including an idempotent no-op, and to reject every argv not
+described by the public grammar before entering a transaction.
+
+### Runner signal ownership
+
+- [x] Keep lifecycle status runner-owned: `active` while work is running, then a
+      transient classifier-derived `result` or `attention`. Classifier, filter, and
+      probe implementations remain tmux-independent and report normalized conditions.
+- [x] Retain a filter's final health report after EOF so stream evidence is not erased
+      by exit classification. Require at least one report, keep classifier and filter
+      contributors independent, and clear stale filter health when the next run starts.
+- [x] Make the shipped TAP filter report `ok` for a clean completed stream and retain
+      its terminal failure diagnostic for an unsuccessful stream.
+- [x] Keep probe health bounded by its observation lifecycle. Clear it when polling
+      stops because Airline can no longer claim the last observation is current.
+
 ## Completed work: initialization performance (2026-08-26)
 
 The architecture work exposed a user-facing performance question that deserves its

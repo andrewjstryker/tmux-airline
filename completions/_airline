@@ -62,10 +62,10 @@ _airline_usage () {
     status\ set) printf %s \<status-key\>\ \<active\|result\|attention\>\ \[--transient\]\ \[-t\ \<window\>\] ;;
     status\ clear) printf %s \<status-key\>\ \[-t\ \<window\>\] ;;
     status\ show) printf %s \[\<status-key\>\]\ \[-t\ \<window\>\] ;;
-    health\ set) printf %s \<health-key\>\ \<ok\|warn\|fail\>\ \[--transient\]\ \[-t\ \<window\>\] ;;
-    health\ clear) printf %s \<health-key\>\ \[-t\ \<window\>\] ;;
-    health\ show) printf %s \[\<health-key\>\]\ \[-t\ \<window\>\] ;;
-    problem\ set) printf %s \<session\>\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>\] ;;
+    health\ set) printf %s \[-t\ \<window\>\]\ \<health-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
+    health\ clear) printf %s \[-t\ \<window\>\]\ \<health-key\> ;;
+    health\ show) printf %s \[-t\ \<window\>\]\ \[\<health-key\>\] ;;
+    problem\ set) printf %s \<session\>\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
     problem\ clear) printf %s \<session\>\ \<problem-key\> ;;
     problem\ show) printf %s \[\<session\>\ \[\<problem-key\>\]\] ;;
     transaction\ show) printf %s '' ;;
@@ -184,7 +184,7 @@ _airline_zsh_describe_children () {
 }
 
 _airline_zsh () {
-  local top="${words[2]:-}" verb path previous semantic
+  local top="${words[2]:-}" verb path previous semantic base
   if (( CURRENT == 2 )); then _airline_zsh_describe_children ''; return; fi
   if [[ "$top" == help ]]; then
     if (( CURRENT == 3 )); then _airline_zsh_describe_children ''; return; fi
@@ -224,11 +224,18 @@ _airline_zsh () {
       ;;
     'status clear'|'status show') (( CURRENT == 4 )) && semantic=status-key ;;
     'health set')
-      if (( CURRENT == 4 )); then semantic=health-key
-      elif (( CURRENT == 5 )); then compadd ok warn fail; return
+      base=4; [[ "${words[4]:-}" == -t ]] && base=6
+      if (( CURRENT == base )); then
+        compadd ${(@f)$(_airline_zsh_dynamic health-key)} -t; return
+      elif (( CURRENT == base + 1 )); then compadd ok warn fail; return
       fi
       ;;
-    'health clear'|'health show') (( CURRENT == 4 )) && semantic=health-key ;;
+    'health clear'|'health show')
+      base=4; [[ "${words[4]:-}" == -t ]] && base=6
+      if (( CURRENT == base )); then
+        compadd ${(@f)$(_airline_zsh_dynamic health-key)} -t; return
+      fi
+      ;;
     'problem set')
       if (( CURRENT == 4 )); then semantic=session
       elif (( CURRENT == 5 )); then compadd ${(@f)$(_airline_zsh_problem_keys "${words[4]}")}; return

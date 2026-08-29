@@ -72,29 +72,31 @@ _coll_members () {   # <scope> <target> <ns> → space-delimited keys, registry 
 }
 
 _coll_has () {       # <scope> <target> <ns> <key> (exit status)
-  case " $(_coll_members "$1" "$2" "$3") " in *" $4 "*) return 0 ;; *) return 1 ;; esac
+  local members
+  members="$(_coll_members "$1" "$2" "$3")" || return 2
+  case " $members " in *" $4 "*) return 0 ;; *) return 1 ;; esac
 }
 
 _coll_register () {  # <scope> <target> <ns> <key> add to registry TAIL
   local scope="$1" target="$2" ns="$3" key="$4" cur
-  cur="$(_coll_members "$scope" "$target" "$ns")"
+  cur="$(_coll_members "$scope" "$target" "$ns")" || return
   case " $cur " in *" $key "*) return 0 ;; esac
   _coll_oset "$scope" "$target" "$(_coll_reg "$ns")" "${cur:+$cur }$key"
 }
 
 _coll_prepend () {   # <scope> <target> <ns> <key> add to registry HEAD
   local scope="$1" target="$2" ns="$3" key="$4" cur
-  cur="$(_coll_members "$scope" "$target" "$ns")"
+  cur="$(_coll_members "$scope" "$target" "$ns")" || return
   case " $cur " in *" $key "*) return 0 ;; esac
   _coll_oset "$scope" "$target" "$(_coll_reg "$ns")" "$key${cur:+ $cur}"
 }
 
 _coll_unregister () {  # <scope> <target> <ns> <key> drop member + tuple
   local scope="$1" target="$2" ns="$3" key="$4" cur out="" k
-  cur="$(_coll_members "$scope" "$target" "$ns")"
+  cur="$(_coll_members "$scope" "$target" "$ns")" || return
   for k in $cur; do [[ "$k" == "$key" ]] || out="${out:+$out }$k"; done
-  if [[ -n "$out" ]]; then _coll_oset "$scope" "$target" "$(_coll_reg "$ns")" "$out"
-  else _coll_ounset "$scope" "$target" "$(_coll_reg "$ns")"; fi
+  if [[ -n "$out" ]]; then _coll_oset "$scope" "$target" "$(_coll_reg "$ns")" "$out" || return
+  else _coll_ounset "$scope" "$target" "$(_coll_reg "$ns")" || return; fi
   _coll_ounset "$scope" "$target" "$(_coll_key "$ns" "$key")"
 }
 
@@ -104,7 +106,7 @@ _coll_get () {       # <scope> <target> <ns> <key> → tuple ("" if unset)
 
 _coll_set () {       # <scope> <target> <ns> <key> <field…> register + write tuple
   local scope="$1" target="$2" ns="$3" key="$4"; shift 4
-  _coll_register "$scope" "$target" "$ns" "$key"
+  _coll_register "$scope" "$target" "$ns" "$key" || return
   # Tab-join the fields in a subshell so IFS never leaks into _coll_oset — the
   # option layer (and the AIRLINE_TMUX shim) must run with the default IFS.
   _coll_oset "$scope" "$target" "$(_coll_key "$ns" "$key")" "$(IFS=$'\t'; printf '%s' "$*")"
@@ -117,9 +119,10 @@ _coll_set () {       # <scope> <target> <ns> <key> <field…> register + write t
 # ranking is passed in as data — collections owns no severity vocabulary.
 _coll_reduce () {    # <scope> <target> <ns> <order>
   local scope="$1" target="$2" ns="$3" order="$4"
-  local key tuple val o w rank best=-1 result=""
-  for key in $(_coll_members "$scope" "$target" "$ns"); do
-    tuple="$(_coll_get "$scope" "$target" "$ns" "$key")"
+  local key tuple val o w rank best=-1 result="" members
+  members="$(_coll_members "$scope" "$target" "$ns")" || return
+  for key in $members; do
+    tuple="$(_coll_get "$scope" "$target" "$ns" "$key")" || return
     val="${tuple%%$'\t'*}"                 # first field
     rank=-1; w=0
     for o in $order; do [[ "$o" == "$val" ]] && { rank=$w; break; }; ((w++)); done

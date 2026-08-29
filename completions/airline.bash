@@ -63,10 +63,10 @@ _airline_usage () {
     status\ set) printf %s \<status-key\>\ \<active\|result\|attention\>\ \[--transient\]\ \[-t\ \<window\>\] ;;
     status\ clear) printf %s \<status-key\>\ \[-t\ \<window\>\] ;;
     status\ show) printf %s \[\<status-key\>\]\ \[-t\ \<window\>\] ;;
-    health\ set) printf %s \<health-key\>\ \<ok\|warn\|fail\>\ \[--transient\]\ \[-t\ \<window\>\] ;;
-    health\ clear) printf %s \<health-key\>\ \[-t\ \<window\>\] ;;
-    health\ show) printf %s \[\<health-key\>\]\ \[-t\ \<window\>\] ;;
-    problem\ set) printf %s \<session\>\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>\] ;;
+    health\ set) printf %s \[-t\ \<window\>\]\ \<health-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
+    health\ clear) printf %s \[-t\ \<window\>\]\ \<health-key\> ;;
+    health\ show) printf %s \[-t\ \<window\>\]\ \[\<health-key\>\] ;;
+    problem\ set) printf %s \<session\>\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
     problem\ clear) printf %s \<session\>\ \<problem-key\> ;;
     problem\ show) printf %s \[\<session\>\ \[\<problem-key\>\]\] ;;
     transaction\ show) printf %s '' ;;
@@ -308,6 +308,18 @@ _airline_completion () {
       return
       ;;
   esac
+  if [[ "$path" == health\ * ]]; then
+    local offset=0 count
+    [[ "${prior[0]:-}" == -t ]] && offset=2
+    count=$(( ${#prior[@]} - offset ))
+    case "$verb:$count" in
+      set:0|clear:0|show:0)
+        COMPREPLY=( $(compgen -W "$(_airline_dynamic health-key) -t" -- "$current") )
+        ;;
+      set:1) COMPREPLY=( $(compgen -W 'ok warn fail' -- "$current") ) ;;
+    esac
+    return
+  fi
   case "$current" in
     -*) COMPREPLY=( $(compgen -W "$(_airline_option_values "$usage")" -- "$current") ); return ;;
   esac

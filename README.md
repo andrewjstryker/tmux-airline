@@ -393,12 +393,16 @@ runner's normalized result onto its existing channels:
 | Result | Status | Health |
 |--------|--------|--------|
 | `ok` | `result` | clear |
-| `warn` | `attention` | `warn` |
-| `fail` | `attention` | `fail` |
+| `warn` | `attention` | `warn` + classifier diagnostic |
+| `fail` | `attention` | `fail` + classifier diagnostic |
 
-Completion signals are transient. A command explains itself in its pane; airline
-does not rewrite the command or manufacture another description. A selected filter
-may interpret a copied output stream solely to project live health.
+Completion status is transient because the command output remains in its pane.
+Completion health is persistent and retains the classifier's opaque diagnostic;
+Airline does not manufacture or interpret that text. A selected filter may interpret
+a copied output stream to project live health with its own diagnostic. Its final
+stream condition is retained independently of classifier health. Probe health is
+cleared when probing stops because Airline can no longer assert that observation is
+current.
 
 ### Runner elements
 
@@ -413,8 +417,8 @@ AIRLINE_CLASSIFIER_SUMMARY='Interpret pytest termination'
 airline_runner_classify() { # <exit-status> <signal>
   case "$1" in
     0) printf 'ok\n' ;;
-    5) printf 'warn\n' ;; # for example, pytest collected no tests
-    *) printf 'fail\n' ;;
+    5) printf 'warn\tpytest collected no tests\n' ;;
+    *) printf 'fail\tpytest failed with status %s\n' "$1" ;;
   esac
 }
 ```
@@ -436,14 +440,22 @@ AIRLINE_FILTER_SUMMARY='Interpret top-level TAP output'
 airline_runner_filter() { # <pid> <report-function>
   local pid="$1" report="$2"
   while IFS= read -r line; do
-    # Interpret line, then report ok | warn | fail; later ok reports recovery.
+    # Report `ok` or `warn|fail "user-facing diagnostic"`.
+    # A later `ok` reports recovery.
   done
+  # Always finish with `ok`, or `warn|fail "user-facing diagnostic"`.
 }
 ```
 
+The filter must report at least once; exiting without a report is an integration
+failure. Airline retains the last report after EOF until the next run clears that
+filter contributor. The classifier and filter have separate health contributors,
+so a stream diagnostic is not erased by exit classification.
+
 Airline ships `tap` as the filtering example. It warns when a
 top-level TAP assertion fails, fails when the unsuccessful plan completes or the
-stream bails out, and leaves TODO/SKIP failures alone:
+stream bails out, reports `ok` after a clean stream, and leaves TODO/SKIP failures
+alone:
 
 ```sh
 airline runner run --filter tap -- bats --formatter tap test/
@@ -460,7 +472,8 @@ AIRLINE_PROBE_USAGE='<endpoint> [<endpoint>...]'
 airline_runner_probe() { # <lifecycle-pid> <report-function> [<arg>...]
   local pid="$1" report="$2"
   # Make one bounded query, write useful results to stdout, and call:
-  # "$report" ok|warn|fail
+  # "$report" ok
+  # "$report" warn|fail "user-facing diagnostic"
 }
 ```
 
@@ -489,8 +502,9 @@ airline runner watch http \
 
 At least one URL is required. For each endpoint the probe writes its condition,
 HTTP status, and URL to stdout. Each 2xx response reports `ok`; every other response
-or connection failure reports `fail`. Airline ignores the displayed text and
-reduces the callback reports to the worst condition. Each request has a two-second
+or connection failure reports `fail` with an endpoint diagnostic. Airline ignores
+probe stdout, reduces callback reports to the worst condition, and retains an
+opaque message reported at that severity. Each request has a two-second
 connection timeout and a five-second total timeout. Missing `curl` or invalid
 arguments use the problem API.
 
@@ -634,8 +648,8 @@ contributors; airline shows the **worst**. `ok` (or no contributor) shows
 **nothing** — a clean right side means healthy:
 
 ```tmux
-airline health set ctx fail          # ▲ broken (red)
-airline health set build warn        # △ degraded but running (amber)
+airline health set ctx fail "connection refused"     # ▲ broken (red)
+airline health set build warn "tests are still running with failures"
 # badge now shows one glyph at the worst level (fail)
 airline health set ctx ok            # recovery clears ctx; drops to warn
 airline health show                  # contributors + reduced result
@@ -646,20 +660,25 @@ clears that contributor, so it is equivalent to `clear <key>`. `warn` means the
 component degraded gracefully and can keep working; `fail` means it could not
 recover and is broken. `warn` uses the palette's amber `alert` role; `fail` uses
 its red `stress` role. Glyphs are fixed (a distinct shape per visible state, so
-badges stay legible without color). All badge commands accept `-t <target>` to
-act on a window other than the current one.
+badges stay legible without color). Every retained `warn` or `fail` condition has a
+diagnostic message; Airline retains it with the keyed contributor for `health show`,
+while badge reduction continues to use only the severity. Health's optional
+`-t <target>` precedes the keyed condition tuple so the trailing message stays
+opaque. Messages are user-facing text supplied by the reporter: Airline validates
+their framing but assigns them no meaning. Status commands accept their target
+option in any documented position.
 
-**Consume-on-view (`--transient`).** By default the setter owns clearing — a
-badge stays until something clears it. For a state whose setter can't observe
-that you've *seen* it (a finished job, an agent waiting for input), set it
-`--transient` and airline clears it once you've viewed the window and moved on:
+**Consume-on-view (`--transient`).** Status may be transient because the pane itself
+contains the result or request for input: viewing the window and moving on is a
+meaningful acknowledgement. Health is persistent because the pane need not contain
+its diagnostic; only its reporter may clear or recover the condition:
 
 ```tmux
 airline status set agent result --transient   # clears when you leave the window
-airline health set build fail --transient
 ```
 
-Transient signals clear after you leave the window; sticky ones are untouched.
+Transient status clears after you leave the window; sticky status and every health
+condition are untouched.
 
 Because color and badges live on different layers, a window can show a mode
 color, a health glyph, and a status glyph all at once without contention.
@@ -743,8 +762,8 @@ airline runner   show <runner> [<arg>...] | list | register <dir>
                      [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]] -- <command>...
                  watch [--here|--pane [-h|-v]|--window] [<runner>] [--probe <probe> [<arg>...]]
 airline status   set <status-key> <active|result|attention> [--transient] [-t <window>] | clear <status-key> [-t <window>] | show [<status-key>] [-t <window>]
-airline health   set <health-key> <ok|warn|fail> [--transient] [-t <window>] | clear <health-key> [-t <window>] | show [<health-key>] [-t <window>]
-airline problem  set <session> <problem-key> <ok|warn|fail> [<message>] | clear <session> <problem-key> | show [<session> [<problem-key>]]
+airline health   set [-t <window>] <health-key> <ok|warn|fail> [<message>...] | clear [-t <window>] <health-key> | show [-t <window>] [<health-key>]
+airline problem  set <session> <problem-key> <ok|warn|fail> [<message>...] | clear <session> <problem-key> | show [<session> [<problem-key>]]
 airline signal   clear-transient [-t <window>]
 airline transaction show | clear <session|window> <target> <namespace>
 ```

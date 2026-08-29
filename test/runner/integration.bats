@@ -15,6 +15,24 @@ setup() {
   $TMUX -L "$_bats_socket" -f /dev/null new-session -d -s bats
 }
 
+wait_for_pane_exit() { # <pane> <status>
+  local pane="$1" expected="$2" state="" dead="" status="" signal=""
+  for _ in {1..400}; do
+    state="$($TMUX -L "$_bats_socket" display-message -p -t "$pane" \
+      '#{pane_dead}:#{pane_dead_status}:#{pane_dead_signal}')"
+    IFS=: read -r dead status signal <<< "$state"
+    if [[ "$dead" == 1 && "$status" == "$expected" ]]; then
+      printf '%s\n' "$state"
+      return 0
+    fi
+    # Avoid starving the same tmux server while the spawned Airline process is
+    # publishing its terminal status and health through several transactions.
+    sleep 0.05
+  done
+  printf '%s\n' "$state"
+  return 1
+}
+
 # --- init -------------------------------------------------------------------
 @test "init exposes first-class element and runner catalogs" {
   airline session init
@@ -47,7 +65,7 @@ setup() {
   mkdir -p "$BATS_TEST_TMPDIR/classifiers" "$BATS_TEST_TMPDIR/filters" \
     "$BATS_TEST_TMPDIR/probes"
   printf '%s\n' 'AIRLINE_CLASSIFIER_SUMMARY="custom classifier"' \
-    'airline_runner_classify() { printf "warn\\n"; }' > "$BATS_TEST_TMPDIR/classifiers/custom"
+    'airline_runner_classify() { printf "warn\\tcustom classifier warning\\n"; }' > "$BATS_TEST_TMPDIR/classifiers/custom"
   printf '%s\n' 'AIRLINE_FILTER_SUMMARY="custom filter"' \
     'airline_runner_filter() { :; }' > "$BATS_TEST_TMPDIR/filters/custom"
   printf '%s\n' 'AIRLINE_PROBE_SUMMARY="custom probe"' 'AIRLINE_PROBE_USAGE=""' \
@@ -100,7 +118,7 @@ setup() {
   run airline status show "$key"
   assert_output attention
   run airline health show "$key"
-  assert_output fail
+  assert_output "$(printf 'fail\tcommand exited with status 7')"
 }
 
 @test "a registered classifier can interpret a nonzero exit as warn" {
@@ -109,7 +127,7 @@ setup() {
   key="runner-${pane#%}"
   mkdir -p "$BATS_TEST_TMPDIR/classifiers"
   printf '%s\n' 'AIRLINE_CLASSIFIER_SUMMARY="Interpret pytest exit status"' \
-    'airline_runner_classify() { [[ "$1" == 5 ]] && printf "warn\\n" || printf "fail\\n"; }' \
+    'airline_runner_classify() { [[ "$1" == 5 ]] && printf "warn\\tno tests collected\\n" || printf "fail\\tcommand failed\\n"; }' \
     > "$BATS_TEST_TMPDIR/classifiers/pytest"
   airline classifier register "$BATS_TEST_TMPDIR/classifiers"
 
@@ -118,7 +136,7 @@ setup() {
   run airline status show "$key"
   assert_output attention
   run airline health show "$key"
-  assert_output warn
+  assert_output "$(printf 'warn\tno tests collected')"
 }
 
 @test "a named runner composes monitoring while the caller supplies the command" {
@@ -148,7 +166,7 @@ setup() {
     'AIRLINE_PROBE_USAGE=""' \
     'AIRLINE_RUNNER_PROBE_INTERVAL=0.05' \
     'airline_runner_probe() {' \
-    '  [[ -e "$health_file" ]] && "$2" ok || "$2" fail' \
+    '  [[ -e "$health_file" ]] && "$2" ok || "$2" fail "service is unavailable"' \
     '}' > "$BATS_TEST_TMPDIR/probes/server"
   airline probe register "$BATS_TEST_TMPDIR/probes"
 
@@ -156,10 +174,10 @@ setup() {
   observed=""
   for _ in {1..100}; do
     observed="$(airline health show "$probe_key")"
-    [[ "$observed" == fail ]] && break
+    [[ "$observed" == "$(printf 'fail\tservice is unavailable')" ]] && break
     sleep 0.01
   done
-  assert_equal "$observed" fail
+  assert_equal "$observed" "$(printf 'fail\tservice is unavailable')"
 
   recovered=fail
   for _ in {1..100}; do
@@ -199,7 +217,7 @@ setup() {
     '  [[ -e "$observed_pid_file" ]] || printf "%s\n" "$1" > "$observed_pid_file"' \
     '  [[ -e "$observed_arg_file" ]] || printf "%s\n" "$3" > "$observed_arg_file"' \
     '  printf "polled %s\n" "$3"' \
-    '  [[ -e "$health_file" ]] && "$2" ok || "$2" fail' \
+    '  [[ -e "$health_file" ]] && "$2" ok || "$2" fail "service is unavailable"' \
     '}' > "$BATS_TEST_TMPDIR/probes/remote"
   printf '%s\n' \
     'airline_runner_metadata() {' \
@@ -223,10 +241,10 @@ setup() {
   observed=""
   for _ in {1..100}; do
     observed="$(airline health show "$probe_key")"
-    [[ "$observed" == fail ]] && break
+    [[ "$observed" == "$(printf 'fail\tservice is unavailable')" ]] && break
     sleep 0.01
   done
-  assert_equal "$observed" fail
+  assert_equal "$observed" "$(printf 'fail\tservice is unavailable')"
   run cat "$observed_pid_file"
   assert_output "$watch_pid"
   run cat "$observed_arg_file"
@@ -277,27 +295,45 @@ setup() {
   observed=""
   for _ in {1..100}; do
     observed="$(airline health show "$filter_key")"
-    [[ "$observed" == warn ]] && break
+    [[ "$observed" == warn$'\t'* ]] && break
     sleep 0.01
   done
-  assert_equal "$observed" warn
+  assert_equal "$observed" "$(printf 'warn\tTAP assertion failed: not ok 2 - second')"
 
   completed=""
   for _ in {1..100}; do
     completed="$(airline health show "$filter_key")"
-    [[ "$completed" == fail ]] && break
+    [[ "$completed" == fail$'\t'* ]] && break
     sleep 0.01
   done
-  assert_equal "$completed" fail
+  assert_equal "$completed" \
+    "$(printf 'fail\tTAP stream completed with unsuccessful assertions')"
 
   wait "$runner_pid" || runner_rc=$?
   assert_equal "${runner_rc:-0}" 1
   run cat "$output_file"
   assert_output --partial "not ok 2 - second"
   run airline health show "$filter_key"
-  assert_output ""
+  assert_output "$(printf 'fail\tTAP stream completed with unsuccessful assertions')"
   run airline health show "$key"
-  assert_output fail
+  assert_output "$(printf 'fail\tcommand exited with status 1')"
+}
+
+@test "filter health remains independent of successful exit classification" {
+  airline session init
+  pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
+  key="runner-${pane#%}"
+  filter_key="$key-filter"
+
+  run airline runner run --filter tap -- bash -c \
+    'printf "1..1\nnot ok 1 - semantic failure\n"'
+  assert_success
+  run airline status show "$key"
+  assert_output result
+  run airline health show "$key"
+  assert_output ""
+  run airline health show "$filter_key"
+  assert_output "$(printf 'fail\tTAP stream completed with unsuccessful assertions')"
 }
 
 @test "filter observes stdout by default and can merge stderr" {
@@ -307,7 +343,7 @@ setup() {
   export evidence_file
   printf '%s\n' \
     'AIRLINE_FILTER_SUMMARY="Capture filter input"' \
-    'airline_runner_filter() { sed -n l > "$evidence_file"; }' \
+    'airline_runner_filter() { sed -n l > "$evidence_file"; "$2" ok; }' \
     > "$BATS_TEST_TMPDIR/filters/capture"
   airline filter register "$BATS_TEST_TMPDIR/filters"
 
@@ -328,7 +364,7 @@ setup() {
   evidence_file="$BATS_TEST_TMPDIR/filter-evidence"
   export evidence_file
   printf '%s\n' 'AIRLINE_FILTER_SUMMARY="Capture filter input"' \
-    'airline_runner_filter() { sed -n l > "$evidence_file"; }' \
+    'airline_runner_filter() { sed -n l > "$evidence_file"; "$2" ok; }' \
     > "$BATS_TEST_TMPDIR/filters/capture"
   printf '%s\n' \
     'AIRLINE_PROBE_SUMMARY="Write visible probe evidence"' \
@@ -369,23 +405,16 @@ setup() {
   run $TMUX -L "$_bats_socket" display-message -p -t "$spawned" '#{pane_left}'
   refute_output "$origin_left"
 
-  dead=""
-  dead_status=""
-  dead_signal=""
-  for _ in {1..500}; do
-    state="$($TMUX -L "$_bats_socket" display-message -p -t "$spawned" \
-      '#{pane_dead}:#{pane_dead_status}:#{pane_dead_signal}')"
-    IFS=: read -r dead dead_status dead_signal <<< "$state"
-    [[ "$dead" == 1 && "$dead_status" == 9 ]] && break
-    sleep 0.01
-  done
+  run wait_for_pane_exit "$spawned" 9
+  assert_success
+  IFS=: read -r dead dead_status dead_signal <<< "$output"
   assert_equal "$dead" 1
   assert_equal "$dead_status" 9 "dead pane signal: ${dead_signal:-none}"
   window="$($TMUX -L "$_bats_socket" display-message -p -t "$spawned" '#{window_id}')"
   run airline status show "runner-${spawned#%}" -t "$window"
   assert_output attention
-  run airline health show "runner-${spawned#%}" -t "$window"
-  assert_output fail
+  run airline health show -t "$window" "runner-${spawned#%}"
+  assert_output "$(printf 'fail\tcommand exited with status 9')"
   run $TMUX -L "$_bats_socket" capture-pane -p -t "$spawned" -S -
   assert_output --partial "pane failure"
 }
@@ -398,13 +427,11 @@ setup() {
   spawned="$output"
   assert_regex "$spawned" '^%[0-9]+$'
 
-  dead=""
-  for _ in {1..200}; do
-    dead="$($TMUX -L "$_bats_socket" display-message -p -t "$spawned" '#{pane_dead}')"
-    [[ "$dead" == 1 ]] && break
-    sleep 0.01
-  done
+  run wait_for_pane_exit "$spawned" 0
+  assert_success
+  IFS=: read -r dead dead_status _ <<< "$output"
   assert_equal "$dead" 1
+  assert_equal "$dead_status" 0
   window="$($TMUX -L "$_bats_socket" display-message -p -t "$spawned" '#{window_id}')"
   run airline status show -t "$window"
   assert_output --partial "runner-${spawned#%}"

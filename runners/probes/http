@@ -23,7 +23,7 @@ airline_runner_probe () {   # <lifecycle-pid> <report-function> <endpoint> [<end
       "$report" ok
     else
       printf 'fail %s %s\n' "${code:-000}" "$endpoint"
-      "$report" fail
+      "$report" fail "HTTP ${code:-000} from $endpoint"
     fi
   done
 }

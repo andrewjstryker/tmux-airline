@@ -82,7 +82,7 @@ cmd_signal () {
   local verb="${1:-}"; shift || true
   # help:begin signal
   case "$verb" in
-    clear-transient) signal_clear_transient "$@" ;; #| [-t <window>] — consume transient status and health for a window
+    clear-transient) signal_clear_transient "$@" ;; #| [-t <window>] — consume transient status for a window
     *) command_die "unknown signal command: $verb" ;;
   esac
   # help:end signal
@@ -104,9 +104,9 @@ cmd_health () {
   local verb="${1:-}"; shift || true
   # help:begin health
   case "$verb" in
-    set)   signal_health_set "$@" ;;   #| <health-key> <ok|warn|fail> [--transient] [-t <window>] — set window health
-    clear) signal_health_clear "$@" ;; #| <health-key> [-t <window>] — clear window health
-    show)  signal_health_show "$@" ;;  #| [<health-key>] [-t <window>] — show a window's health
+    set)   signal_health_set "$@" ;;   #| [-t <window>] <health-key> <ok|warn|fail> [<message>...] — set window health
+    clear) signal_health_clear "$@" ;; #| [-t <window>] <health-key> — clear window health
+    show)  signal_health_show "$@" ;;  #| [-t <window>] [<health-key>] — show a window's health
     *) command_die "unknown health command: $verb" ;;
   esac
   # help:end health
@@ -116,7 +116,7 @@ cmd_problem () {
   local verb="${1:-}"; shift || true
   # help:begin problem
   case "$verb" in
-    set)   signal_problem_set "$@" ;;   #| <session> <problem-key> <ok|warn|fail> [<message>] — set or recover a session problem
+    set)   signal_problem_set "$@" ;;   #| <session> <problem-key> <ok|warn|fail> [<message>...] — set or recover a session problem
     clear) signal_problem_clear "$@" ;; #| <session> <problem-key> — clear a session problem
     show)  signal_problem_show "$@" ;;  #| [<session> [<problem-key>]] — show all sessions, one session, or one problem
     *) command_die "unknown problem command: $verb" ;;

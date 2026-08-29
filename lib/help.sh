@@ -88,7 +88,7 @@ _help_usage () {
     done
   done
   printf '\n  use loads a bare name from a registered dir; register blesses a location.\n'
-  printf '  --transient clears a signal when you focus away from its window.\n'
+  printf '  --transient clears status when you focus away from its window.\n'
 }
 
 help_command () {   # [<help|noun> [<verb>]]

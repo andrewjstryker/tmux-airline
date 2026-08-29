@@ -15,12 +15,22 @@ setup() {
   window="$($TMUX -L "$_bats_socket" display-message -p -t "$pane" '#{window_id}')"
 
   airline status set agent active -t "$pane"
-  airline health set agent warn -t "$pane"
+  airline health set -t "$pane" agent warn "agent is degraded"
 
   run wopt @airline--badge-status -t "$window"
   assert_output "active"
   run wopt @airline--badge-health -t "$window"
   assert_output "warn"
+}
+
+@test "health retains a diagnostic while projecting only its severity" {
+  airline health set api fail "connection refused" "after retry"
+
+  run airline health show api
+  assert_success
+  assert_output "$(printf 'fail\tconnection refused after retry')"
+  run wopt @airline--badge-health
+  assert_output fail
 }
 
 @test "problem contributors reduce to one session badge and recover independently" {
@@ -80,4 +90,40 @@ setup() {
   airline signal clear-transient -t "$win"
   run wopt @airline--badge-status
   assert_output "active"
+}
+
+@test "invalid signal argv and unresolved targets fail without mutation" {
+  run airline status set build active extra
+  assert_failure
+  run airline health set api fail
+  assert_failure
+  run airline status set build active -t missing-window
+  assert_failure
+  assert_output --partial "cannot resolve window 'missing-window'"
+
+  run wopt @airline--status
+  assert_output ""
+  run wopt @airline--health
+  assert_output ""
+}
+
+@test "process CLI propagates transaction acquisition failure" {
+  run airline_with_tmux_failure acquire status set build active
+  assert_failure
+}
+
+@test "process CLI propagates mutation flush failure" {
+  run airline_with_tmux_failure flush health set api fail "connection refused"
+  assert_failure
+}
+
+@test "process CLI propagates transaction release failure" {
+  run airline_with_tmux_failure release status set build active
+  assert_failure
+}
+
+@test "process CLI propagates failed problem reporting" {
+  session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
+  run airline_with_tmux_failure flush problem set "$session" cpu fail "sensor unavailable"
+  assert_failure
 }

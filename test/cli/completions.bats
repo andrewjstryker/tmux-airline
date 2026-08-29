@@ -32,7 +32,7 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   assert_equal "${COMPREPLY[*]}" "show use list register"
 
   COMP_WORDS=(airline health set build ""); COMP_CWORD=4; _airline_completion
-  assert_equal "${COMPREPLY[*]}" "ok warn fail --transient -t"
+  assert_equal "${COMPREPLY[*]}" "ok warn fail"
 }
 
 @test "bash completion resolves typed and contextual values through the airline CLI" {

@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 #
-# signal.sh — status, health, problems, and transient consumption.
+# signal.sh — status, health, problems, and transient status consumption.
 #
-# Status and health are window-scoped contributor collections; problems are
-# session-scoped. Signal owns validation, transactional mutation, projection
-# orchestration, redraw gating, and the consume-on-view hook.
+# Status is window-scoped display state: it is message-free and may be transient.
+# Health and problem are persistent keyed conditions with the same level/message
+# operations; health is owned by a window, while problem is owned by a session.
+#
+# Signal owns validation, transactional mutation, projection orchestration, redraw
+# gating, and the consume-on-view hook.
 
 # shellcheck shell=bash
 
@@ -20,262 +23,357 @@ _signal_status_valid () {
   return 1
 }
 
-# Store one managed session problem and refresh its aggregate projection. `ok` is
-# recovery, not retained state. Return 0 only when the visible badge changed.
-_signal_problem_store_unlocked () {   # <session> <key> <ok|warn|fail> [<message>]
-  local session="$1" key="$2" level="$3" message="${4:-}" tuple desired
-  local changed="" projected=1
-  if [[ "$level" == ok ]]; then
-    tuple="$(coll_get_session "$session" problem "$key")"
-    if coll_has_session "$session" problem "$key" || [[ -n "$tuple" ]]; then
-      coll_unregister_session "$session" problem "$key"
-      changed=1
-    fi
-  else
-    tuple="$(coll_get_session "$session" problem "$key")"
-    desired="$(printf '%s\t%s' "$level" "$message")"
-    if ! coll_has_session "$session" problem "$key" || [[ "$tuple" != "$desired" ]]; then
-      coll_set_session "$session" problem "$key" "$level" "$message"
-      changed=1
-    fi
-  fi
-  if [[ -n "$changed" ]] && render_problem_project "$session"; then projected=0; fi
-  return "$projected"
+_signal_validate_key () {   # <command> <key>
+  local command="$1" key="$2"
+  [[ -n "$key" ]] || command_die "$command: need <key>"
+  [[ "$key" != *[[:space:]]* ]] || command_die "$command: key must not contain whitespace"
 }
 
-_signal_problem_store () {   # <session> <key> <ok|warn|fail> [<message>]
-  with_session_transaction "$1" problem _signal_problem_store_unlocked "$@"
-}
-
-# Shared reporting path for airline-owned layout and runner problems. Managed
-# reporters already hold canonical session ids and validated tuples.
-signal_problem_report () {   # <session> <key> <ok|warn|fail> [<message>]
-  _signal_problem_store "$@" && redraw
-  return 0
-}
-
-_signal_ensure_transient_hook () {
-  opt_set_global focus-events on
-  hook_set "pane-focus-out[90]" \
-    "run-shell -b \"'$AIRLINE_DIR/airline.sh' signal clear-transient -t #{window_id}\""
-}
-
-_signal_project () {   # <status|health> <window>
-  case "$1" in
-    status) render_status_project "$2" ;;
-    health) render_health_project "$2" ;;
+_signal_validate_condition () {   # <command> <ok|warn|fail> <message>
+  local command="$1" level="$2" message="$3"
+  signal_condition_valid "$level" || command_die "$command: invalid level '$level'"
+  [[ "$message" != *$'\t'* ]] || command_die "$command: message must not contain a tab"
+  case "$level" in
+    ok) [[ -z "$message" ]] || command_die "$command: ok takes no <message>" ;;
+    warn|fail) [[ -n "$message" ]] || command_die "$command: need <message>" ;;
   esac
 }
 
-_signal_clear_transient_namespace_unlocked () {   # <window> <status|health>
-  local win="$1" ns="$2" changed="" key f1 f2
-  for key in $(coll_members_window "$win" "$ns"); do
-    IFS=$'\t' read -r f1 f2 <<< "$(coll_get_window "$win" "$ns" "$key")"
-    [[ "$f2" == 1 ]] && { coll_unregister_window "$win" "$ns" "$key"; changed=1; }
-  done
-  [[ -n "$changed" ]] || return 1
-  _signal_project "$ns" "$win"
+_signal_resolve_window () {   # <destination> <command> [<target>]
+  local -n destination="$1"
+  local command="$2" target="${3:-}" resolved
+  if [[ -z "$target" ]]; then
+    resolved="$(current_window)" || command_die "$command: cannot resolve current window"
+    target="$resolved"
+  fi
+  resolved="$(resolve_window "$target")" || command_die "$command: cannot resolve window '$target'"
+  [[ -n "$resolved" ]] || command_die "$command: cannot resolve window '$target'"
+  destination="$resolved"
 }
 
-signal_clear_transient () {   # [-t <window>]
-  local win="" ns changed=""
-  while (( $# )); do
-    case "$1" in
-      -t)
-        [[ $# -ge 2 && -n "$2" ]] || command_die "signal clear-transient: -t requires <window>"
-        [[ -z "$win" ]] || command_die "signal clear-transient: duplicate -t"
-        win="$2"
-        shift 2
-        ;;
-      *) command_die "signal clear-transient: unknown argument '$1'" ;;
-    esac
-  done
-  [[ -n "$win" ]] || win="$(current_window)"
-  win="$(resolve_window "$win")"
-  [[ -n "$win" ]] || command_die "signal clear-transient: cannot resolve window"
-  for ns in status health; do
-    with_window_transaction "$win" "$ns" _signal_clear_transient_namespace_unlocked \
-      "$win" "$ns" && changed=1
-  done
-  [[ -n "$changed" ]] && redraw
-  return 0
+_signal_resolve_session () {   # <destination> <command> <target>
+  local -n destination="$1"
+  local command="$2" target="$3" resolved
+  [[ -n "$target" ]] || command_die "$command: need <session>"
+  resolved="$(resolve_session_target "$target")" || \
+    command_die "$command: cannot resolve session '$target'"
+  [[ -n "$resolved" ]] || command_die "$command: cannot resolve session '$target'"
+  # shellcheck disable=SC2034 # assignment is through the caller-selected nameref
+  destination="$resolved"
 }
 
-_signal_set_unlocked () {   # <ns> <clear-value|""> <key> <value> <transient> <window>
-  local ns="$1" clear_value="$2" key="$3" value="$4" transient="$5" win="$6"
-  local tuple desired
-  tuple="$(coll_get_window "$win" "$ns" "$key")"
-  if [[ -n "$clear_value" && "$value" == "$clear_value" ]]; then
-    if ! coll_has_window "$win" "$ns" "$key" && [[ -z "$tuple" ]]; then
-      return 1
-    fi
-    coll_unregister_window "$win" "$ns" "$key"
+# Projection status is private redraw protocol: 0 means the aggregate scalar
+# changed, 1 means it did not. Public signal operations return ordinary success in
+# both cases; failures above 1 still propagate.
+_signal_project_and_redraw () {   # <status|health|problem> <owner>
+  local namespace="$1" owner="$2" rc=0
+  case "$namespace" in
+    status)  render_status_project "$owner" || rc=$? ;;
+    health)  render_health_project "$owner" || rc=$? ;;
+    problem) render_problem_project "$owner" || rc=$? ;;
+  esac
+  case "$rc" in
+    0) redraw ;;
+    1) return 0 ;;
+    *) return "$rc" ;;
+  esac
+}
+
+#-----------------------------------------------------------------------------#
+# Persistent conditions — common health/problem implementation
+#-----------------------------------------------------------------------------#
+
+_signal_condition_store_unlocked () {   # <window|session> <owner> <ns> <key> <level> <message>
+  local scope="$1" owner="$2" namespace="$3" key="$4" level="$5" message="$6"
+  local get="coll_get_$scope" has="coll_has_$scope" set="coll_set_$scope"
+  local unset="coll_unregister_$scope" tuple desired has_rc=0
+
+  tuple="$("$get" "$owner" "$namespace" "$key")" || return
+  "$has" "$owner" "$namespace" "$key" || has_rc=$?
+  (( has_rc <= 1 )) || return "$has_rc"
+
+  if [[ "$level" == ok ]]; then
+    if (( has_rc == 1 )) && [[ -z "$tuple" ]]; then return 0; fi
+    "$unset" "$owner" "$namespace" "$key" || return
   else
-    desired="$(printf '%s\t%s' "$value" "$transient")"
-    if coll_has_window "$win" "$ns" "$key" && [[ "$tuple" == "$desired" ]]; then
-      return 1
-    fi
-    coll_set_window "$win" "$ns" "$key" "$value" "$transient"
+    desired="$(printf '%s\t%s' "$level" "$message")"
+    if (( has_rc == 0 )) && [[ "$tuple" == "$desired" ]]; then return 0; fi
+    "$set" "$owner" "$namespace" "$key" "$level" "$message" || return
   fi
-  _signal_project "$ns" "$win"
+
+  _signal_project_and_redraw "$namespace" "$owner"
 }
 
-_signal_set () {   # <ns> <validator> <clear-value|""> <key> <value> [options]
-  local ns="$1" valid="$2" clear_value="$3"; shift 3
-  local key="" value="" transient="" win=""; local -a pos=()
-  while (( $# )); do
-    case "$1" in
-      --transient) transient=1; shift ;;
-      -t)
-        [[ $# -ge 2 && -n "$2" ]] || command_die "$ns set: -t requires <window>"
-        win="$2"
-        shift 2
-        ;;
-      *) pos+=("$1"); shift ;;
-    esac
-  done
-  key="${pos[0]:-}"; value="${pos[1]:-}"
-  [[ -n "$key" ]] || command_die "$ns set: need <key>"
-  "$valid" "$value" || command_die "$ns set: invalid value '$value'"
-  [[ -n "$win" ]] || win="$(current_window)"
-  win="$(resolve_window "$win")"
-  with_window_transaction "$win" "$ns" _signal_set_unlocked \
-    "$ns" "$clear_value" "$key" "$value" "$transient" "$win" && redraw
-  [[ -n "$transient" ]] && _signal_ensure_transient_hook
-  return 0
+_signal_condition_store () {   # <window|session> <owner> <health|problem> <key> <level> <message>
+  local scope="$1" owner="$2" namespace="$3" transaction="with_${1}_transaction"
+  "$transaction" "$owner" "$namespace" _signal_condition_store_unlocked "$@"
 }
 
-_signal_clear_unlocked () {   # <ns> <key> <window>
-  local ns="$1" key="$2" win="$3" tuple
-  tuple="$(coll_get_window "$win" "$ns" "$key")"
-  if ! coll_has_window "$win" "$ns" "$key" && [[ -z "$tuple" ]]; then
-    return 1
-  fi
-  coll_unregister_window "$win" "$ns" "$key"
-  _signal_project "$ns" "$win"
-}
-
-_signal_clear () {   # <ns> <key> [-t <window>]
-  local ns="$1"; shift
-  local key="" win=""
-  while (( $# )); do
-    case "$1" in
-      -t)
-        [[ $# -ge 2 && -n "$2" ]] || command_die "$ns clear: -t requires <window>"
-        win="$2"
-        shift 2
-        ;;
-      *) key="$1"; shift ;;
-    esac
-  done
-  [[ -n "$key" ]] || command_die "$ns clear: need <key>"
-  [[ -n "$win" ]] || win="$(current_window)"
-  win="$(resolve_window "$win")"
-  with_window_transaction "$win" "$ns" _signal_clear_unlocked "$ns" "$key" "$win" && redraw
-  return 0
-}
-
-_signal_show_unlocked () {   # <ns> <window> [<key>]
-  local ns="$1" win="$2" key="${3:-}" f1 f2 member
+_signal_condition_show_unlocked () {   # <window|session> <owner> <ns> [<key>] [<grouped>]
+  local scope="$1" owner="$2" namespace="$3" key="${4:-}" grouped="${5:-}"
+  local get="coll_get_$scope" members_fn="coll_members_$scope"
+  local members member tuple level message
   if [[ -n "$key" ]]; then
-    IFS=$'\t' read -r f1 _ <<< "$(coll_get_window "$win" "$ns" "$key")"
-    printf '%s\n' "$f1"
-    return 0
+    "$get" "$owner" "$namespace" "$key"
+    return
   fi
-  for member in $(coll_members_window "$win" "$ns"); do
-    IFS=$'\t' read -r f1 f2 <<< "$(coll_get_window "$win" "$ns" "$member")"
-    command_show_row "$member" "$f1${f2:+  (transient)}"
-  done
-}
-
-_signal_show () {   # <ns> [<key>] [-t <window>]
-  local ns="$1"; shift
-  local key="" win=""
-  while (( $# )); do
-    case "$1" in
-      -t)
-        [[ $# -ge 2 && -n "$2" ]] || command_die "$ns show: -t requires <window>"
-        win="$2"
-        shift 2
-        ;;
-      *) key="$1"; shift ;;
-    esac
-  done
-  [[ -n "$win" ]] || win="$(current_window)"
-  win="$(resolve_window "$win")"
-  with_window_transaction "$win" "$ns" _signal_show_unlocked "$ns" "$win" "$key"
-}
-
-_signal_problem_session () {   # <verb> <session-target>
-  local verb="$1" target="${2:-}" session
-  [[ -n "$target" ]] || command_die "problem $verb: need <session>"
-  session="$(resolve_session_target "$target")"
-  [[ -n "$session" ]] || command_die "problem $verb: cannot resolve session '$target'"
-  printf '%s' "$session"
-}
-
-signal_problem_set () {   # <session> <key> <level> [<message...>]
-  local target="${1:-}" key="${2:-}" level="${3:-}" message session
-  shift $(( $# < 3 ? $# : 3 ))
-  message="$*"
-  session="$(_signal_problem_session set "$target")"
-  [[ -n "$key" ]] || command_die "problem set: need <key>"
-  [[ "$key" != *[[:space:]]* ]] || command_die "problem set: key must not contain whitespace"
-  signal_condition_valid "$level" || command_die "problem set: invalid level '$level'"
-  if [[ "$level" != ok ]]; then
-    [[ -n "$message" ]] || command_die "problem set: need <message>"
-    [[ "$message" != *$'\t'* ]] || command_die "problem set: message must not contain a tab"
-  fi
-  _signal_problem_store "$session" "$key" "$level" "$message" && redraw
-  return 0
-}
-
-signal_problem_clear () {   # <session> <key>
-  local target="${1:-}" key="${2:-}" session
-  (( $# <= 2 )) || command_die "problem clear: too many arguments"
-  session="$(_signal_problem_session clear "$target")"
-  [[ -n "$key" ]] || command_die "problem clear: need <key>"
-  _signal_problem_store "$session" "$key" ok "" && redraw
-  return 0
-}
-
-_signal_problem_show_session_unlocked () {   # <session> [<key>] [<grouped=1>]
-  local session="$1" key="${2:-}" grouped="${3:-}" tuple level message member members
-  if [[ -n "$key" ]]; then
-    coll_get_session "$session" problem "$key"
-    return 0
-  fi
-  members="$(coll_members_session "$session" problem)"
-  [[ -z "$grouped" || -z "$members" ]] || printf '%s:\n' "$session"
+  members="$("$members_fn" "$owner" "$namespace")" || return
+  [[ -z "$grouped" || -z "$members" ]] || printf '%s:\n' "$owner"
   for member in $members; do
-    tuple="$(coll_get_session "$session" problem "$member")"
+    tuple="$("$get" "$owner" "$namespace" "$member")" || return
     IFS=$'\t' read -r level message <<< "$tuple"
     command_show_row "${grouped:+  }$member" "$level${message:+  $message}"
   done
 }
 
-_signal_problem_show_session () {   # <session> [<key>] [<grouped=1>]
-  with_session_transaction "$1" problem _signal_problem_show_session_unlocked "$@"
+_signal_condition_show () {   # <window|session> <owner> <health|problem> [<key>] [<grouped>]
+  local scope="$1" owner="$2" namespace="$3" transaction="with_${1}_transaction"
+  "$transaction" "$owner" "$namespace" _signal_condition_show_unlocked "$@"
 }
 
-signal_problem_show () {   # [<session> [<key>]]
-  local target="${1:-}" key="${2:-}" session
-  (( $# <= 2 )) || command_die "problem show: too many arguments"
-  if [[ -n "$target" ]]; then
-    session="$(_signal_problem_session show "$target")"
-    _signal_problem_show_session "$session" "$key"
+# Shared reporting path for airline-owned layout and runner problems. Managed
+# reporters already hold canonical session ids and validated tuples.
+signal_problem_report () {   # <session> <key> <ok|warn|fail> <message>
+  _signal_condition_store session "$1" problem "$2" "$3" "${4:-}"
+}
+
+#-----------------------------------------------------------------------------#
+# Status — window display state, optionally consumed after viewing
+#-----------------------------------------------------------------------------#
+
+_signal_ensure_transient_hook () {
+  opt_set_global focus-events on || return
+  hook_set "pane-focus-out[90]" \
+    "run-shell -b \"'$AIRLINE_DIR/airline.sh' signal clear-transient -t #{window_id}\""
+}
+
+_signal_status_set_unlocked () {   # <window> <key> <value> <transient>
+  local win="$1" key="$2" value="$3" transient="$4" tuple desired has_rc=0
+  tuple="$(coll_get_window "$win" status "$key")" || return
+  coll_has_window "$win" status "$key" || has_rc=$?
+  (( has_rc <= 1 )) || return "$has_rc"
+  desired="$(printf '%s\t%s' "$value" "$transient")"
+  if (( has_rc == 0 )) && [[ "$tuple" == "$desired" ]]; then return 0; fi
+  coll_set_window "$win" status "$key" "$value" "$transient" || return
+  _signal_project_and_redraw status "$win"
+}
+
+signal_status_set () {   # <key> <value> [--transient] [-t <window>]
+  local key value transient="" win="" seen_transient="" seen_target=""
+  local -a positionals=()
+  while (( $# )); do
+    case "$1" in
+      --transient)
+        [[ -z "$seen_transient" ]] || command_die "status set: duplicate --transient"
+        transient=1; seen_transient=1; shift
+        ;;
+      -t)
+        [[ $# -ge 2 && -n "$2" ]] || command_die "status set: -t requires <window>"
+        [[ -z "$seen_target" ]] || command_die "status set: duplicate -t"
+        [[ "$2" != -t && "$2" != --transient ]] || \
+          command_die "status set: -t requires <window>"
+        win="$2"; seen_target=1; shift 2
+        ;;
+      -*) command_die "status set: unknown option '$1'" ;;
+      *) positionals+=("$1"); shift ;;
+    esac
+  done
+  (( ${#positionals[@]} == 2 )) || command_die "status set: need exactly <key> <value>"
+  key="${positionals[0]}"; value="${positionals[1]}"
+  _signal_validate_key "status set" "$key"
+  _signal_status_valid "$value" || command_die "status set: invalid value '$value'"
+  _signal_resolve_window win "status set" "$win"
+  with_window_transaction "$win" status _signal_status_set_unlocked \
+    "$win" "$key" "$value" "$transient" || return
+  [[ -z "$transient" ]] || _signal_ensure_transient_hook
+}
+
+_signal_status_clear_unlocked () {   # <window> <key>
+  local win="$1" key="$2" tuple has_rc=0
+  tuple="$(coll_get_window "$win" status "$key")" || return
+  coll_has_window "$win" status "$key" || has_rc=$?
+  (( has_rc <= 1 )) || return "$has_rc"
+  if (( has_rc == 1 )) && [[ -z "$tuple" ]]; then return 0; fi
+  coll_unregister_window "$win" status "$key" || return
+  _signal_project_and_redraw status "$win"
+}
+
+signal_status_clear () {   # <key> [-t <window>]
+  local key win="" seen_target=""; local -a positionals=()
+  while (( $# )); do
+    case "$1" in
+      -t)
+        [[ $# -ge 2 && -n "$2" ]] || command_die "status clear: -t requires <window>"
+        [[ -z "$seen_target" ]] || command_die "status clear: duplicate -t"
+        [[ "$2" != -t && "$2" != --transient ]] || \
+          command_die "status clear: -t requires <window>"
+        win="$2"; seen_target=1; shift 2
+        ;;
+      -*) command_die "status clear: unknown option '$1'" ;;
+      *) positionals+=("$1"); shift ;;
+    esac
+  done
+  (( ${#positionals[@]} == 1 )) || command_die "status clear: need exactly <key>"
+  key="${positionals[0]}"
+  _signal_validate_key "status clear" "$key"
+  _signal_resolve_window win "status clear" "$win"
+  with_window_transaction "$win" status _signal_status_clear_unlocked "$win" "$key"
+}
+
+_signal_status_show_unlocked () {   # <window> [<key>]
+  local win="$1" key="${2:-}" tuple level transient member members
+  if [[ -n "$key" ]]; then
+    tuple="$(coll_get_window "$win" status "$key")" || return
+    printf '%s\n' "${tuple%%$'\t'*}"
     return 0
   fi
-  for session in $(list_sessions); do
-    _signal_problem_show_session "$session" "" 1
+  members="$(coll_members_window "$win" status)" || return
+  for member in $members; do
+    tuple="$(coll_get_window "$win" status "$member")" || return
+    IFS=$'\t' read -r level transient <<< "$tuple"
+    command_show_row "$member" "$level${transient:+  (transient)}"
   done
 }
 
-signal_status_set () { _signal_set status _signal_status_valid "" "$@"; }
-signal_status_clear () { _signal_clear status "$@"; }
-signal_status_show () { _signal_show status "$@"; }
-signal_health_set () { _signal_set health signal_condition_valid ok "$@"; }
-signal_health_clear () { _signal_clear health "$@"; }
-signal_health_show () { _signal_show health "$@"; }
+signal_status_show () {   # [<key>] [-t <window>]
+  local key="" win="" seen_target=""; local -a positionals=()
+  while (( $# )); do
+    case "$1" in
+      -t)
+        [[ $# -ge 2 && -n "$2" ]] || command_die "status show: -t requires <window>"
+        [[ -z "$seen_target" ]] || command_die "status show: duplicate -t"
+        [[ "$2" != -t && "$2" != --transient ]] || \
+          command_die "status show: -t requires <window>"
+        win="$2"; seen_target=1; shift 2
+        ;;
+      -*) command_die "status show: unknown option '$1'" ;;
+      *) positionals+=("$1"); shift ;;
+    esac
+  done
+  (( ${#positionals[@]} <= 1 )) || command_die "status show: too many arguments"
+  key="${positionals[0]:-}"
+  (( ${#positionals[@]} == 0 )) || _signal_validate_key "status show" "$key"
+  _signal_resolve_window win "status show" "$win"
+  with_window_transaction "$win" status _signal_status_show_unlocked "$win" "$key"
+}
+
+_signal_status_clear_transient_unlocked () {   # <window>
+  local win="$1" changed="" key tuple transient members
+  members="$(coll_members_window "$win" status)" || return
+  for key in $members; do
+    tuple="$(coll_get_window "$win" status "$key")" || return
+    transient="${tuple#*$'\t'}"
+    if [[ "$transient" == 1 ]]; then
+      coll_unregister_window "$win" status "$key" || return
+      changed=1
+    fi
+  done
+  [[ -n "$changed" ]] || return 0
+  _signal_project_and_redraw status "$win"
+}
+
+signal_clear_transient () {   # [-t <window>]
+  local win="" seen_target=""
+  while (( $# )); do
+    case "$1" in
+      -t)
+        [[ $# -ge 2 && -n "$2" ]] || command_die "signal clear-transient: -t requires <window>"
+        [[ -z "$seen_target" ]] || command_die "signal clear-transient: duplicate -t"
+        [[ "$2" != -t ]] || command_die "signal clear-transient: -t requires <window>"
+        win="$2"; seen_target=1; shift 2
+        ;;
+      *) command_die "signal clear-transient: unknown argument '$1'" ;;
+    esac
+  done
+  _signal_resolve_window win "signal clear-transient" "$win"
+  with_window_transaction "$win" status _signal_status_clear_transient_unlocked "$win"
+}
+
+#-----------------------------------------------------------------------------#
+# Health/problem public boundaries
+#-----------------------------------------------------------------------------#
+
+signal_health_set () {   # [-t <window>] <key> <ok> | <key> <warn|fail> <message...>
+  local win="" key level message
+  if [[ "${1:-}" == -t ]]; then
+    if (( $# < 3 )) || [[ -z "$2" ]]; then command_die "health set: -t requires <window>"; fi
+    win="$2"; shift 2
+  elif [[ "${1:-}" == -* ]]; then
+    command_die "health set: unknown option '$1'"
+  fi
+  key="${1:-}"; level="${2:-}"
+  shift $(( $# < 2 ? $# : 2 ))
+  message="$*"
+  _signal_validate_key "health set" "$key"
+  _signal_validate_condition "health set" "$level" "$message"
+  _signal_resolve_window win "health set" "$win"
+  _signal_condition_store window "$win" health "$key" "$level" "$message"
+}
+
+signal_health_clear () {   # [-t <window>] <key>
+  local win="" key
+  if [[ "${1:-}" == -t ]]; then
+    if (( $# < 3 )) || [[ -z "$2" ]]; then command_die "health clear: -t requires <window>"; fi
+    win="$2"; shift 2
+  elif [[ "${1:-}" == -* ]]; then
+    command_die "health clear: unknown option '$1'"
+  fi
+  (( $# == 1 )) || command_die "health clear: need exactly <key>"
+  key="$1"
+  _signal_validate_key "health clear" "$key"
+  _signal_resolve_window win "health clear" "$win"
+  _signal_condition_store window "$win" health "$key" ok ""
+}
+
+signal_health_show () {   # [-t <window>] [<key>]
+  local win="" key=""
+  if [[ "${1:-}" == -t ]]; then
+    if (( $# < 2 )) || [[ -z "$2" ]]; then command_die "health show: -t requires <window>"; fi
+    win="$2"; shift 2
+  elif [[ "${1:-}" == -* ]]; then
+    command_die "health show: unknown option '$1'"
+  fi
+  (( $# <= 1 )) || command_die "health show: too many arguments"
+  key="${1:-}"
+  (( $# == 0 )) || _signal_validate_key "health show" "$key"
+  _signal_resolve_window win "health show" "$win"
+  _signal_condition_show window "$win" health "$key"
+}
+
+signal_problem_set () {   # <session> <key> <ok> | <session> <key> <warn|fail> <message...>
+  local target="${1:-}" key="${2:-}" level="${3:-}" message session
+  shift $(( $# < 3 ? $# : 3 ))
+  message="$*"
+  [[ -n "$target" ]] || command_die "problem set: need <session>"
+  _signal_validate_key "problem set" "$key"
+  _signal_validate_condition "problem set" "$level" "$message"
+  _signal_resolve_session session "problem set" "$target"
+  _signal_condition_store session "$session" problem "$key" "$level" "$message"
+}
+
+signal_problem_clear () {   # <session> <key>
+  local target="${1:-}" key="${2:-}" session
+  (( $# <= 2 )) || command_die "problem clear: too many arguments"
+  [[ -n "$target" ]] || command_die "problem clear: need <session>"
+  _signal_validate_key "problem clear" "$key"
+  _signal_resolve_session session "problem clear" "$target"
+  _signal_condition_store session "$session" problem "$key" ok ""
+}
+
+signal_problem_show () {   # [<session> [<key>]]
+  local target="${1:-}" key="${2:-}" session sessions
+  (( $# <= 2 )) || command_die "problem show: too many arguments"
+  if (( $# > 0 )); then
+    [[ -n "$target" ]] || command_die "problem show: session must not be empty"
+    (( $# < 2 )) || _signal_validate_key "problem show" "$key"
+    _signal_resolve_session session "problem show" "$target"
+    _signal_condition_show session "$session" problem "$key"
+    return
+  fi
+  sessions="$(list_sessions)" || return
+  for session in $sessions; do
+    _signal_condition_show session "$session" problem "" 1 || return
+  done
+}
 
 # vim: ft=bash

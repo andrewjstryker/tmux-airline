@@ -37,18 +37,39 @@ teardown() { :; }
 }
 
 @test "health recovery clears its contributor" {
-  signal_health_set cpu fail
+  signal_health_set cpu fail "sensor unavailable"
   run signal_health_show cpu
-  assert_output fail
+  assert_output "$(printf 'fail\tsensor unavailable')"
   signal_health_set cpu ok
   run signal_health_show cpu
   assert_output ""
 }
 
-@test "health validates levels at the command boundary" {
-  run signal_health_set disk warpspeed
+@test "health retains opaque diagnostics without redrawing an unchanged badge" {
+  signal_health_set api fail "connection refused" "after -t retry"
+  run signal_health_show api
+  assert_output "$(printf 'fail\tconnection refused after -t retry')"
+  run signal_health_show
+  assert_output --partial "connection refused after -t retry"
+  assert_equal "$_FAKE_REDRAWS" 1
+  [[ -z "${_FAKE_HOOK[pane-focus-out[90]]:-}" ]]
+
+  local writes="$_FAKE_WRITES"
+  signal_health_set api fail "request timed out"
+  assert_equal "$_FAKE_REDRAWS" 1
+  [[ "$_FAKE_WRITES" -gt "$writes" ]]
+  run signal_health_show api
+  assert_output "$(printf 'fail\trequest timed out')"
+
+  run signal_health_set api fail $'bad\tmessage'
   assert_failure
-  assert_output --partial "invalid value"
+  assert_output --partial "message must not contain a tab"
+}
+
+@test "health validates levels at the command boundary" {
+  run signal_health_set disk warpspeed message
+  assert_failure
+  assert_output --partial "invalid level"
 }
 
 @test "problem behavior reduces contributors and records recovery" {
@@ -79,6 +100,7 @@ teardown() { :; }
 @test "clear-transient removes only transient contributors" {
   signal_status_set build active
   signal_status_set review attention --transient
+  signal_health_set api fail "connection refused"
   assert_equal "${_FAKE_HOOK[pane-focus-out[90]]}" \
     "run-shell -b \"'$AIRLINE_DIR/airline.sh' signal clear-transient -t #{window_id}\""
   signal_clear_transient -t "$_FAKE_WIN"
@@ -86,12 +108,92 @@ teardown() { :; }
   assert_output active
   run signal_status_show review
   assert_output ""
+  run signal_health_show api
+  assert_output "$(printf 'fail\tconnection refused')"
 }
 
 @test "signal target options validate at the boundary" {
   run signal_clear_transient -t
   assert_failure
   assert_output --partial "-t requires <window>"
+}
+
+@test "status and health enforce exact grammar before mutation" {
+  local writes="$_FAKE_WRITES" argv
+  while IFS= read -r argv; do
+    run $argv
+    assert_failure "$argv"
+    assert_equal "$_FAKE_WRITES" "$writes" "$argv"
+  done <<'CASES'
+signal_status_set build active extra
+signal_status_set build active -t @1 -t @1
+signal_status_set build active --transient --transient
+signal_status_clear build extra
+signal_status_show build extra
+signal_health_set api fail
+signal_health_set api ok unexpected-message
+signal_health_set --transient api fail message
+signal_health_clear api --transient
+CASES
+
+  run signal_status_set 'bad key' active
+  assert_failure
+  run signal_status_clear 'bad key'
+  assert_failure
+  run signal_health_show 'bad key'
+  assert_failure
+  assert_equal "$_FAKE_WRITES" "$writes"
+}
+
+@test "valid signal option orderings remain accepted" {
+  signal_status_set --transient -t "$_FAKE_WIN" build result
+  signal_health_set -t "$_FAKE_WIN" api warn "slow response"
+  run signal_health_show -t "$_FAKE_WIN" api
+  assert_output "$(printf 'warn\tslow response')"
+}
+
+@test "signal services propagate resolution, transaction, callback, and reporting failures" {
+  resolve_window () { return 9; }
+  run signal_status_set build active -t missing
+  assert_failure 2
+  assert_output --partial "cannot resolve window 'missing'"
+
+  resolve_window () { printf '%s' "$1"; }
+  with_window_transaction () { return 7; }
+  run signal_health_clear api
+  assert_failure 7
+
+  with_window_transaction () { local callback="$3"; shift 3; "$callback" "$@"; }
+  _signal_status_set_unlocked () { return 6; }
+  run signal_status_set build active
+  assert_failure 6
+
+  with_session_transaction () { return 5; }
+  run signal_problem_report s1 airline-layout fail "layout failed"
+  assert_failure 5
+}
+
+@test "problem keys are validated consistently before mutation" {
+  local writes="$_FAKE_WRITES"
+  run signal_problem_set s1 'bad key' warn message
+  assert_failure
+  run signal_problem_clear s1 'bad key'
+  assert_failure
+  run signal_problem_show s1 'bad key'
+  assert_failure
+  assert_equal "$_FAKE_WRITES" "$writes"
+}
+
+@test "health and problem share the same retained condition tuple" {
+  signal_health_set api fail "connection refused"
+  signal_problem_set s1 api fail "connection refused"
+  assert_equal "$(coll_get_window "$_FAKE_WIN" health api)" \
+    "$(coll_get_session s1 problem api)"
+
+  run signal_health_show api
+  assert_output "$(printf 'fail\tconnection refused')"
+  run signal_problem_show s1 api
+  assert_output "$(printf 'fail\tconnection refused')"
 }
 
 @test "identical problem reports and absent clears do not redraw" {
@@ -107,12 +209,12 @@ teardown() { :; }
 
 @test "identical status and health reports and absent clears do not redraw" {
   signal_status_set agent active
-  signal_health_set context warn
+  signal_health_set context warn "context pressure"
   assert_equal "$_FAKE_REDRAWS" 2
   local writes="$_FAKE_WRITES"
 
   signal_status_set agent active
-  signal_health_set context warn
+  signal_health_set context warn "context pressure"
   assert_equal "$_FAKE_REDRAWS" 2
   assert_equal "$_FAKE_WRITES" "$writes"
 

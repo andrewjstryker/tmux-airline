@@ -83,24 +83,24 @@ _opt_snapshot_line () {   # <scope> <target> <serialized-option-line>
 }
 
 _opt_snapshot () {   # <global|session|window> <target>
-  local scope="$1" target="$2" line
+  local scope="$1" target="$2" line raw
   case "$scope" in
     global)
       # Native global options occupy separate session and window tables. Load the
       # window table first so an identically named user option in the ordinary
       # global session table retains `set -g` / `show -g` precedence.
-      while IFS= read -r line; do _opt_snapshot_line global "" "$line"; done \
-        < <(_opt_list -gw)
-      while IFS= read -r line; do _opt_snapshot_line global "" "$line"; done \
-        < <(_opt_list -g)
+      raw="$(_opt_list -gw)" || return
+      while IFS= read -r line; do _opt_snapshot_line global "" "$line"; done <<< "$raw"
+      raw="$(_opt_list -g)" || return
+      while IFS= read -r line; do _opt_snapshot_line global "" "$line"; done <<< "$raw"
       ;;
     session)
-      while IFS= read -r line; do _opt_snapshot_line session "$target" "$line"; done \
-        < <(_opt_list -t "$target")
+      raw="$(_opt_list -t "$target")" || return
+      while IFS= read -r line; do _opt_snapshot_line session "$target" "$line"; done <<< "$raw"
       ;;
     window)
-      while IFS= read -r line; do _opt_snapshot_line window "$target" "$line"; done \
-        < <(_opt_list -w -t "$target")
+      raw="$(_opt_list -w -t "$target")" || return
+      while IFS= read -r line; do _opt_snapshot_line window "$target" "$line"; done <<< "$raw"
       ;;
   esac
 }
@@ -504,7 +504,8 @@ _transaction_abort () {   # <exit-status>
 }
 
 _with_transaction () (   # <session|window> <target> <namespace> <callback> [<arg>...]
-  local scope="$1" target="$2" namespace="$3" callback="$4" channel started metadata rc; shift 4
+  local scope="$1" target="$2" namespace="$3" callback="$4" channel started metadata
+  local rc=0 release_rc=0; shift 4
   [[ -z "${_AIRLINE_TRANSACTION_CHANNEL:-}" ]] || {
     printf 'airline: nested state transaction (%s)\n' "$_AIRLINE_TRANSACTION_CHANNEL" >&2
     return 2
@@ -523,11 +524,16 @@ _with_transaction () (   # <session|window> <target> <namespace> <callback> [<ar
   trap '_transaction_abort 130' INT
   trap '_transaction_abort 143' TERM
   _opt_workspace_begin "$scope" "$target" || { _transaction_cleanup; return 1; }
-  "$callback" "$@"; rc=$?
+  "$callback" "$@" || rc=$?
   _opt_workspace_flush || { [[ $rc -ne 0 ]] || rc=1; }
   _opt_workspace_end
-  _transaction_cleanup
+  _transaction_release "$scope" "$target" "$namespace" "$channel" || release_rc=$?
+  _AIRLINE_TRANSACTION_CHANNEL=""
+  _AIRLINE_TRANSACTION_SCOPE=""
+  _AIRLINE_TRANSACTION_TARGET=""
+  _AIRLINE_TRANSACTION_NAMESPACE=""
   trap - EXIT HUP INT TERM
+  [[ $rc -ne 0 || $release_rc -eq 0 ]] || rc=$release_rc
   return "$rc"
 )
 

@@ -319,10 +319,10 @@ airline help [<noun> [<verb>]]
 airline status   set <status-key> <active|result|attention> [--transient] [-t <window>]
                  clear <status-key> [-t <window>]
                  show [<status-key>] [-t <window>]
-airline health   set <health-key> <ok|warn|fail> [--transient] [-t <window>]
-                 clear <health-key> [-t <window>]
-                 show [<health-key>] [-t <window>]
-airline problem  set <session> <problem-key> <ok|warn|fail> [<message>]
+airline health   set [-t <window>] <health-key> <ok|warn|fail> [<message>...]
+                 clear [-t <window>] <health-key>
+                 show [-t <window>] [<health-key>]
+airline problem  set <session> <problem-key> <ok|warn|fail> [<message>...]
                  clear <session> <problem-key>
                  show [<session> [<problem-key>]]
 airline signal   clear-transient [-t <window>]
@@ -346,6 +346,11 @@ All listed commands are public. Tmux hooks use targeted public session and signa
 operations rather than a separate callback vocabulary. Spawned runner panes and
 windows re-enter through public `runner run/watch --here` commands; process-local
 spawn context arms pane retention before validation without adding command grammar.
+
+The process exit contract is binary: zero means a valid request completed,
+including an idempotent no-op; any nonzero status means validation or operation
+failed. Individual nonzero values are implementation details, not a caller-facing
+error taxonomy.
 
 The parser arms are also the grammar source. Explicit `help:begin` / `help:end`
 markers delimit each noun without depending on function or `case` formatting;
@@ -381,8 +386,11 @@ installs both artifacts with the PATH shim.
   through the common runner core. Pane placement accepts tmux's native `-h` and
   `-v` orientation modifiers; omitting one preserves tmux's default split.
 - `-t` accepts a window target for status and health. A pane target is valid where
-  tmux can resolve its owning window. Problem mutations instead require a session
-  as their first positional argument; a bare problem show reads every session.
+  tmux can resolve its owning window. Health places `-t <window>` before its keyed
+  tuple so every trailing message word is opaque. Problem mutations instead require
+  a session as their first positional argument; a bare problem show reads every
+  session. Health and problem require a user-facing message for `warn` and `fail`;
+  `ok` is message-free recovery and removes the keyed condition.
 - Session state is the active/suspended axis. Suspension derives a muted palette and
   traps the prefix; airline itself installs no key binding. `session show state`
   returns its raw scripting value.
@@ -476,28 +484,27 @@ exists only where that program assigns richer meaning to termination, such as a
 dedicated exit code for "no tests collected" that should be `warn` rather than
 `fail`.
 
-Airline owns the projection from normalized job state to its existing channels:
+Airline owns lifecycle status. Runner elements remain tmux-independent and report
+normalized observations that core projects onto health:
 
-| Process state | Classified health | Status | Health |
-|---------------|-------------------|--------|--------|
+| Process state | Classifier result | Runner status | Classifier health |
+|---------------|-------------------|---------------|-------------------|
 | running | not yet observed | `active` | clear |
-| running | `ok` | `active` | clear |
-| running | `warn` | `active` | `warn` |
-| running | `fail` | `active` | `fail` |
 | exited | `ok` | `result --transient` | clear |
-| exited | `warn` | `attention --transient` | `warn --transient` |
-| exited | `fail` | `attention --transient` | `fail --transient` |
+| exited | `warn` | `attention --transient` | `warn` + diagnostic |
+| exited | `fail` | `attention --transient` | `fail` + diagnostic |
 
 The classifier is terminal and one-shot. It does not launch processes, mutate tmux,
-write airline signals, or generate a user-facing message. Airline returns the
-child's original exit status rather than replacing it with the classification.
+or write airline signals. It supplies the user-facing diagnostic for a retained
+`warn` or `fail` condition. Airline returns the child's original exit status rather
+than replacing it with the classification.
 The concrete trusted-shell contract is:
 
 ```bash
 AIRLINE_CLASSIFIER_SUMMARY='Interpret this program termination'
 
 airline_runner_classify() { # <exit-status> <signal>
-  # Print exactly one of: ok, warn, fail
+  # Print `ok` or `<warn|fail><TAB><message>`.
 }
 ```
 
@@ -505,7 +512,7 @@ airline_runner_classify() { # <exit-status> <signal>
 
 A long-lived process may become unhealthy and later repair itself without exiting.
 One run invocation may additionally select a filter, a probe, or both. Each reports
-current state as `ok`, `warn`, or `fail` while the
+current state as `ok`, or as `warn`/`fail` with a diagnostic message, while the
 process remains active. Reports are state, not transitions: repeated observations
 are safe, and a later `ok` clears that observer's health contributor after recovery.
 
@@ -516,7 +523,8 @@ small mechanics that are common across implementations.
 
 A filter reads a tee'd copy of stdout by default. `--merge-stderr` applies ordinary
 `2>&1` semantics before the tee. The filter consumes through EOF and calls the
-supplied reporter when its interpretation changes:
+supplied reporter when its interpretation changes. It must report at least once,
+and its final call must describe the completed stream:
 
 ```bash
 AIRLINE_FILTER_SUMMARY='Interpret this command output'
@@ -524,10 +532,20 @@ AIRLINE_FILTER_SUMMARY='Interpret this command output'
 airline_runner_filter() { # <pid> <report-function>
   local pid="$1" report="$2"
   while IFS= read -r line; do
-    # Interpret line, then call: "$report" ok|warn|fail
+    # Interpret line, then call either:
+    # "$report" ok
+    # "$report" warn|fail "diagnostic message"
   done
+  # Finish with `ok`, or `warn|fail "diagnostic message"`.
 }
 ```
+
+Airline rejects a filter that exits without a report. The filter contributor is
+cleared when the next run starts, updated by progressive reports, and retained after
+EOF. It therefore preserves stream evidence that may be richer than, or independent
+of, the classifier's interpretation of the process exit. Classifier and filter use
+separate contributors; neither overwrites the other. Both remain subordinate to the
+single runner-owned status lifecycle.
 
 A probe is justified when a bounded API or state query provides current information
 that the process does not write to its selected output streams. The implementation
@@ -543,7 +561,8 @@ AIRLINE_PROBE_USAGE='<endpoint> [<endpoint>...]'
 airline_runner_probe() { # <lifecycle-pid> <report-function> [<arg>...]
   local pid="$1" report="$2"
   # Perform one bounded query, write user-facing evidence to stdout, and call:
-  # "$report" ok|warn|fail
+  # "$report" ok
+  # "$report" warn|fail "diagnostic message"
 }
 ```
 
@@ -551,11 +570,15 @@ The probe must bound its own I/O. Airline supplies no persistence, retries beyon
 the next scheduled observation, restart policy, or general job management. A
 nonzero probe exit, no reporter calls, or an invalid reported value is an integration
 problem; a valid later result clears it. Airline reduces multiple reports from one
-invocation to their worst condition. Probe stdout is an uninterpreted human channel:
+invocation to their worst condition and retains an opaque diagnostic reported at
+that severity. Probe stdout is an uninterpreted human channel:
 airline passes it to the pane and assigns no meaning to its format. During `run` it
 bypasses the command-output tee, so a selected filter cannot observe it. During
 `watch` it is the visible polling transcript. Filter and probe use independent
-health contributors.
+health contributors. Probe health has a different lifetime from filter health: it
+asserts only the most recent bounded observation while probing is active. Airline
+clears that contributor when the run or watch lifecycle stops because it can no
+longer claim the observation is current.
 
 `runner watch` owns a probe lifecycle without launching a command:
 
@@ -573,9 +596,11 @@ that already owns richer scheduling or callbacks may still drive the public heal
 API directly; that is an alternative integration shape, not a remote/local boundary.
 
 Finite jobs normally need only classification, though a test protocol can use a
-filter to expose failures before the suite exits. The shipped `tap` filter observes
-top-level TAP output: an ordinary `not ok` warns while the suite can continue, and
-completion with a failure or `Bail out!` fails. TODO/SKIP failures are ignored.
+filter to expose failures before the suite exits and retain its terminal stream
+diagnostic afterward. The shipped `tap` filter observes top-level TAP output: an
+ordinary `not ok` warns while the suite can continue, completion with a failure or
+`Bail out!` fails, and a clean completed stream reports `ok`. TODO/SKIP failures are
+ignored.
 Servers launched by `run` may use a filter, a probe, or both before classification
 at eventual exit. Remote services may use a probe-only watch. The shipped `http`
 probe accepts one or more endpoints, writes the condition, HTTP status, and endpoint
@@ -602,17 +627,24 @@ Collection rules:
 - Membership is explicit; entries are never discovered by parsing option names.
 - `set` writes the entire tuple and registers the key. `unregister` also removes the
   tuple.
-- Keys may contain `-`. Registry keys cannot contain spaces; problem messages may
-  contain spaces but not tabs.
+- Keys may contain `-`. Registry keys cannot contain whitespace. Status tuples hold
+  `<level>\t<transient>`; health and problem condition tuples both hold
+  `<level>\t<message>`. Diagnostic messages may contain spaces but not tabs.
 - Storage is never rendered directly. A domain-specific caller reduces the
   collection and projects the result to `badge-status`, `badge-health`, or
   `badge-problem`.
 - Reduction receives its ranking as data, keeping `lib/collections.sh` free of status,
   health, and problem semantics.
 
-Health and problem share the condition ladder `ok < warn < fail`. `ok` or absence is
-normal and invisible; `warn` maps to `alert`; `fail` maps to `stress`. Health is
-window-scoped and may be transient. Problem is session-scoped and retains a message.
+Health and problem share one persistent condition service and the ladder
+`ok < warn < fail`. `ok` or absence is normal and invisible; `warn` maps to `alert`;
+`fail` maps to `stress`. Every retained condition includes a diagnostic message.
+Health is window-scoped and problem is session-scoped; their owner, namespace, and
+projected badge differ, while validation, storage, recovery, inspection, and redraw
+gating are common. Neither condition is cleared merely because a window was viewed.
+Messages are opaque user-facing payload: Airline validates framing, stores and shows
+the text, but assigns it no meaning. Reporters and classifier/filter/probe
+implementations own the diagnostic content.
 Problems are encountered and cleared independently by each session; linked windows
 do not propagate or synchronize them. Airline canonicalizes the caller-supplied
 session and mutates only that scope.
