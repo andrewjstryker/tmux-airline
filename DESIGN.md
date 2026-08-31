@@ -333,14 +333,14 @@ airline help [<noun> [<verb>]]
 airline status   set <status-key> <active|result|attention> [--transient] [-t <window>]
                  clear [<status-key>] [-t <window>]
                  show [<status-key>] [-t <window>]
-airline health   set [-t <window>] <health-key> <ok|warn|fail> [<message>...]
-                 clear [-t <window>] <health-key>
-                 show [-t <window>] [<health-key>]
-airline problem  set [--pane <pane-id>] <problem-key> <ok|warn|fail> [<message>...]
-                 close [--pane <pane-id>|--session <session-id>] [<problem-key>]
-                 clear <problem-key>
-                 resolve <problem-key>
-                 show [--all] [<problem-key>]
+airline health   set [-t <window>] <contributor> <health-key> <ok|warn|fail> [<message>...]
+                 clear [-t <window>] <contributor> <health-key>
+                 show [-t <window>] [<contributor> [<health-key>]]
+airline problem  set [--pane <pane-id>] <contributor> <problem-key> <ok|warn|fail> [<message>...]
+                 close [--pane <pane-id>|--session <session-id>] [<contributor> [<problem-key>]]
+                 clear <contributor> <problem-key>
+                 resolve <contributor> <problem-key>
+                 show [--all] [<contributor> [<problem-key>]]
 airline transaction show
                     clear <global|session|window> <target> <namespace>
 
@@ -403,6 +403,7 @@ installs both artifacts with the PATH shim.
 - `-t` accepts a window target for status and health. A pane target is valid where
   tmux can resolve its owning window. Health places `-t <window>` before its keyed
   tuple so every trailing message word is opaque. Problems are globally visible.
+  Health and problem take contributor and claim as separate identity fields.
   `problem set` attributes a claim to the current session unless `--pane` supplies
   a pane origin; lifecycle hooks close claims for destroyed origins. Health and
   problem require a user-facing message for `warn` and `fail`; `ok` is message-free
@@ -644,10 +645,12 @@ Collection rules:
 - Membership is explicit; entries are never discovered by parsing option names.
 - `set` writes the entire tuple and registers the key. `unregister` also removes the
   tuple.
-- Keys are opaque and cannot contain whitespace. Status tuples hold
+- Public identity fields are opaque and cannot contain whitespace or `:`. Status tuples hold
   `<level>\t<transient>` and health tuples hold `<level>\t<message>`. Problem ledger
   tuples hold `<badge|none>\t<active|closed|cleared>\t<last-level>\t<last-message>`;
-  active claim tuples hold `<key>\t<pane|session>\t<origin>\t<level>\t<message>`.
+  active claim tuples hold
+  `<contributor>\t<key>\t<pane|session>\t<origin>\t<level>\t<message>`. Health and
+  problem use a private composite collection member derived from contributor and key.
   Diagnostic messages may contain spaces but not tabs.
 - Storage is never rendered directly. A domain-specific caller reduces the
   collection and projects the result to `badge-status`, `badge-health`, or
@@ -663,28 +666,27 @@ Reporters and classifier/filter/probe implementations own the diagnostic content
 
 ### Contributor identity contract
 
-Airline does not register contributor names or attempt to detect independently
-chosen key collisions. Reusable contributors qualify retained health and problem
-keys by convention as `<contributor>/<claim>[/<instance>]`; Airline treats the
-result as opaque data. Contributor names are stable software identities, claims are
-stable conditions or capabilities, and optional instances distinguish concurrent
-reporters within the same native owner. Severity and messages never participate in
-identity.
+Airline does not register contributor names or attempt to prove which software owns
+one. Health and problem nevertheless retain contributor and claim key as separate
+identity fields, so independently developed contributors may safely choose the same
+claim key. Contributor names are stable software identities; claim keys are stable
+conditions or capabilities and may include an instance component for concurrent
+reporters. Severity and messages never participate in identity.
 
-The convention applies at the external reporting boundary, not mechanically to
-every internal key. Airline-owned subsystems use stable reserved identifiers such
-as `airline-layout` and `airline-palette`; their writers and lifecycle are already
-under one owner, so additional qualification would add no collision protection.
+Airline-owned configuration reports use contributor `airline` and the stable claim
+keys `airline-layout` and `airline-palette`. Layout and palette selection APIs do not
+gain contributor identity; only their diagnostic reports use the signal contract.
+Runner classifiers, filters, and probes report using kind-and-element contributor
+identities so extensions with the same claim key cannot overwrite one another.
 
-A contributor owns only its qualified keys and performs recovery only against those
-keys. Breaking that contract may overwrite or clear another contributor's state.
+A contributor mutates and recovers only its own claims. Airline cannot detect a
+caller impersonating another contributor, so ownership remains a behavioral contract.
 Status does not gain a separate contributor field: its key is an ownership token
-within one window and the pane contains the explanation. A health key identifies
-the contributor-owned diagnostic shown by `health show`. A problem key identifies
-a contributor capability globally; its claim records separately retain pane or
-session origins. Multiple origins of the same contributor capability therefore
-aggregate, while similarly worded failures from different contributors remain
-separate problems.
+within one window and the pane contains the explanation. Health identity is
+contributor plus claim key within a window. Problem identity is contributor plus
+claim key globally; claim records separately retain pane or session origins.
+Multiple origins of one contributor capability therefore aggregate, while the same
+claim key from different contributors remains separate.
 
 Failure to provide an advertised contributor capability belongs in problem.
 Successfully observing an unhealthy domain result belongs in health, and attention

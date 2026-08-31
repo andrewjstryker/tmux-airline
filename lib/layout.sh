@@ -419,17 +419,17 @@ _layout_report_configuration_result () {   # <session> <rc> <operation>
   local session="$1" rc="$2" operation="$3" message
   case "$rc" in
     0)
-      signal_problem_report "$session" "$AIRLINE_PROBLEM_PALETTE" ok ""
-      [[ "$operation" != init ]] || signal_problem_report "$session" "$AIRLINE_PROBLEM_LAYOUT" ok ""
+      signal_problem_report "$session" airline "$AIRLINE_PROBLEM_PALETTE" ok ""
+      [[ "$operation" != init ]] || signal_problem_report "$session" airline "$AIRLINE_PROBLEM_LAYOUT" ok ""
       ;;
     "$AIRLINE_CONFIG_PALETTE_FAILURE")
-      signal_problem_report "$session" "$AIRLINE_PROBLEM_PALETTE" fail \
+      signal_problem_report "$session" airline "$AIRLINE_PROBLEM_PALETTE" fail \
         "$operation could not resolve a complete palette"
       ;;
     *)
       message="$(prv_get_session "$session" "$AIRLINE_CONFIG_ERROR")"
       [[ -n "$message" ]] || message="$operation could not apply a layout"
-      signal_problem_report "$session" "$AIRLINE_PROBLEM_LAYOUT" fail "$message"
+      signal_problem_report "$session" airline "$AIRLINE_PROBLEM_LAYOUT" fail "$message"
       ;;
   esac
 }
@@ -472,8 +472,8 @@ layout_palette_use () {
   [[ -n "$(catalog_resolve "$s" palette "$name")" ]] || command_die "palette use: '$name' not found on the palette path"
   with_session_transaction "$s" config _palette_use_apply_unlocked "$s" "$name" || rc=$?
   if (( rc == AIRLINE_CONFIG_PALETTE_FAILURE )); then
-    signal_problem_report "$s" "$AIRLINE_PROBLEM_PALETTE" fail "palette '$name' is incomplete or could not be evaluated"
-  else signal_problem_report "$s" "$AIRLINE_PROBLEM_PALETTE" ok ""; fi
+    signal_problem_report "$s" airline "$AIRLINE_PROBLEM_PALETTE" fail "palette '$name' is incomplete or could not be evaluated"
+  else signal_problem_report "$s" airline "$AIRLINE_PROBLEM_PALETTE" ok ""; fi
   (( rc == 0 )) || return "$rc"
 }
 layout_palette_list () { local s; s="$(command_current_session)"; catalog_list "$s" palette; }
@@ -488,7 +488,7 @@ layout_adapter_use () {
   local s rc=0; s="$(command_current_session)"
   with_session_transaction "$s" config _adapter_use_render_unlocked "$s" "$@" || rc=$?
   if (( rc == AIRLINE_CONFIG_PALETTE_FAILURE )); then
-    signal_problem_report "$s" "$AIRLINE_PROBLEM_PALETTE" fail "adapter use could not resolve a complete palette"
+    signal_problem_report "$s" airline "$AIRLINE_PROBLEM_PALETTE" fail "adapter use could not resolve a complete palette"
   fi
   return "$rc"
 }
@@ -496,7 +496,7 @@ layout_adapter_load () {
   local s rc=0; s="$(command_current_session)"
   with_session_transaction "$s" config _adapter_load_render_unlocked "$s" "$@" || rc=$?
   if (( rc == AIRLINE_CONFIG_PALETTE_FAILURE )); then
-    signal_problem_report "$s" "$AIRLINE_PROBLEM_PALETTE" fail "adapter load could not resolve a complete palette"
+    signal_problem_report "$s" airline "$AIRLINE_PROBLEM_PALETTE" fail "adapter load could not resolve a complete palette"
   fi
   return "$rc"
 }
@@ -512,10 +512,10 @@ layout_use () {
   [[ -n "$(catalog_resolve "$s" layout "$name")" ]] || command_die "layout use: '$name' not found"
   with_session_transaction "$s" config _layout_use_render_unlocked "$s" "$name" || rc=$?
   case "$rc" in
-    0) signal_problem_report "$s" "$AIRLINE_PROBLEM_LAYOUT" ok "" ;;
+    0) signal_problem_report "$s" airline "$AIRLINE_PROBLEM_LAYOUT" ok "" ;;
     "$AIRLINE_CONFIG_PALETTE_FAILURE")
-      signal_problem_report "$s" "$AIRLINE_PROBLEM_PALETTE" fail "layout use could not resolve a complete palette" ;;
-    *) signal_problem_report "$s" "$AIRLINE_PROBLEM_LAYOUT" fail "$(_layout_problem_message "$s" "$name")" ;;
+      signal_problem_report "$s" airline "$AIRLINE_PROBLEM_PALETTE" fail "layout use could not resolve a complete palette" ;;
+    *) signal_problem_report "$s" airline "$AIRLINE_PROBLEM_LAYOUT" fail "$(_layout_problem_message "$s" "$name")" ;;
   esac
   (( rc == 0 )) || return "$rc"
 }
@@ -526,10 +526,10 @@ layout_load () {
   s="$(command_current_session)"
   with_session_transaction "$s" config _layout_load_render_unlocked "$s" "$abs" || rc=$?
   case "$rc" in
-    0) signal_problem_report "$s" "$AIRLINE_PROBLEM_LAYOUT" ok "" ;;
+    0) signal_problem_report "$s" airline "$AIRLINE_PROBLEM_LAYOUT" ok "" ;;
     "$AIRLINE_CONFIG_PALETTE_FAILURE")
-      signal_problem_report "$s" "$AIRLINE_PROBLEM_PALETTE" fail "layout load could not resolve a complete palette" ;;
-    *) signal_problem_report "$s" "$AIRLINE_PROBLEM_LAYOUT" fail "$(_layout_problem_message "$s" "$abs")" ;;
+      signal_problem_report "$s" airline "$AIRLINE_PROBLEM_PALETTE" fail "layout load could not resolve a complete palette" ;;
+    *) signal_problem_report "$s" airline "$AIRLINE_PROBLEM_LAYOUT" fail "$(_layout_problem_message "$s" "$abs")" ;;
   esac
   (( rc == 0 )) || return "$rc"
 }

@@ -63,14 +63,14 @@ _airline_usage () {
     status\ set) printf %s \<status-key\>\ \<active\|result\|attention\>\ \[--transient\]\ \[-t\ \<window\>\] ;;
     status\ clear) printf %s \[\<status-key\>\]\ \[-t\ \<window\>\] ;;
     status\ show) printf %s \[\<status-key\>\]\ \[-t\ \<window\>\] ;;
-    health\ set) printf %s \[-t\ \<window\>\]\ \<health-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
-    health\ clear) printf %s \[-t\ \<window\>\]\ \<health-key\> ;;
-    health\ show) printf %s \[-t\ \<window\>\]\ \[\<health-key\>\] ;;
-    problem\ set) printf %s \[--pane\ \<pane-id\>\]\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
-    problem\ close) printf %s \[--pane\ \<pane-id\>\|--session\ \<session-id\>\]\ \[\<problem-key\>\] ;;
-    problem\ clear) printf %s \<problem-key\> ;;
-    problem\ resolve) printf %s \<problem-key\> ;;
-    problem\ show) printf %s \[--all\]\ \[\<problem-key\>\] ;;
+    health\ set) printf %s \[-t\ \<window\>\]\ \<contributor\>\ \<health-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
+    health\ clear) printf %s \[-t\ \<window\>\]\ \<contributor\>\ \<health-key\> ;;
+    health\ show) printf %s \[-t\ \<window\>\]\ \[\<contributor\>\ \[\<health-key\>\]\] ;;
+    problem\ set) printf %s \[--pane\ \<pane-id\>\]\ \<contributor\>\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
+    problem\ close) printf %s \[--pane\ \<pane-id\>\|--session\ \<session-id\>\]\ \[\<contributor\>\ \[\<problem-key\>\]\] ;;
+    problem\ clear) printf %s \<contributor\>\ \<problem-key\> ;;
+    problem\ resolve) printf %s \<contributor\>\ \<problem-key\> ;;
+    problem\ show) printf %s \[--all\]\ \[\<contributor\>\ \[\<problem-key\>\]\] ;;
     transaction\ show) printf %s '' ;;
     transaction\ clear) printf %s \<global\|session\|window\>\ \<target\>\ \<namespace\> ;;
     session) printf %s '' ;;
@@ -172,10 +172,10 @@ _airline_dynamic () {   # <semantic-type>
       ;;
     segment) command airline segment show 2>/dev/null | while read -r line _; do printf '%s\n' "$line"; done ;;
     status-key) command airline status show 2>/dev/null | while read -r line _; do printf '%s\n' "$line"; done ;;
-    health-key) command airline health show 2>/dev/null | while read -r line _; do printf '%s\n' "$line"; done ;;
-    problem-key) command airline problem show --all 2>/dev/null | while IFS= read -r line; do
-      case "$line" in '  '*) ;; *) printf '%s\n' "${line%% *}" ;; esac
-    done ;;
+    health-contributor) command airline health show 2>/dev/null | awk '{print $1}' | sort -u ;;
+    health-key) command airline health show 2>/dev/null | awk '{print $2}' | sort -u ;;
+    problem-contributor) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $1}' | sort -u ;;
+    problem-key) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $2}' | sort -u ;;
     session) command tmux list-sessions -F '#{session_name}' 2>/dev/null || true ;;
     session-id) command tmux list-sessions -F '#{session_id}' 2>/dev/null || true ;;
     pane-id) command tmux list-panes -a -F '#{pane_id}' 2>/dev/null || true ;;
@@ -330,9 +330,10 @@ _airline_completion () {
     count=$(( ${#prior[@]} - offset ))
     case "$verb:$count" in
       set:0|clear:0|show:0)
-        COMPREPLY=( $(compgen -W "$(_airline_dynamic health-key) -t" -- "$current") )
+        COMPREPLY=( $(compgen -W "$(_airline_dynamic health-contributor) -t" -- "$current") )
         ;;
-      set:1) COMPREPLY=( $(compgen -W 'ok warn fail' -- "$current") ) ;;
+      set:1|clear:1|show:1) COMPREPLY=( $(compgen -W "$(_airline_dynamic health-key)" -- "$current") ) ;;
+      set:2) COMPREPLY=( $(compgen -W 'ok warn fail' -- "$current") ) ;;
     esac
     return
   fi
@@ -345,9 +346,11 @@ _airline_completion () {
       set:0|close:0|clear:0|resolve:0|show:0)
         token=""
         if (( ${#prior[@]} == 0 )); then token="$(_airline_option_values "$usage" || true)"; fi
-        COMPREPLY=( $(compgen -W "$(_airline_dynamic problem-key) $token" -- "$current") )
+        COMPREPLY=( $(compgen -W "$(_airline_dynamic problem-contributor) $token" -- "$current") )
         return ;;
-      set:1) COMPREPLY=( $(compgen -W 'ok warn fail' -- "$current") ); return ;;
+      set:1|close:1|clear:1|resolve:1|show:1)
+        COMPREPLY=( $(compgen -W "$(_airline_dynamic problem-key)" -- "$current") ); return ;;
+      set:2) COMPREPLY=( $(compgen -W 'ok warn fail' -- "$current") ); return ;;
     esac
   fi
   if [[ "$path" == 'transaction clear' ]]; then

@@ -629,43 +629,37 @@ option-name conventions.
 >
 > The empty check doubles as an "is airline installed?" probe.
 
-### Contributor keys
+### Contributor identity
 
-Airline deliberately does not maintain a registry of plugin names. Signal keys are
-opaque, whitespace-free identifiers, and independently developed contributors are
-responsible for choosing noncolliding names. Reusable contributors should qualify
-health and problem keys using a stable form such as:
+Health and problem reporters supply two distinct identifiers: a stable contributor
+name and a claim key owned by that contributor. Airline does not maintain a plugin
+registry or try to prove ownership, but it stores both fields so two independent
+contributors can safely use the same claim key. For example, `tmux-online`
+`connectivity` and `tmux-cpu` `connectivity` are separate claims.
 
-```text
-<contributor>/<claim>[/<instance>]
-```
-
-For example, `tmux-online/connectivity` identifies a health claim and
-`tmux-cpu/sensors` identifies an advertised capability that may have a problem.
-Airline does not parse the separators or attempt to prove ownership.
-
-This convention is for reporters that independently choose public signal keys. It
-does not rename Airline-owned subsystem problems: configuration lifecycle remains
-`airline-layout` and `airline-palette`, whose keys and writers are both controlled by
-Airline.
+Airline-owned configuration reports use contributor `airline` with the stable claim
+keys `airline-layout` and `airline-palette`; palette and layout names themselves do
+not gain contributor qualification. Runner extensions report as concrete contributors
+such as `airline-runner-classifier-basic` or `airline-runner-probe-http`, keeping
+classifier, filter, and probe claims independent.
 
 The contributor contract is:
 
-- own, update, recover, and clear only keys beneath the contributor's namespace;
+- use a stable software identity as the contributor and mutate only its claims;
 - keep severity and diagnostic text out of the key so identity remains stable;
-- add an instance component when concurrent instances can report independently;
+- include an instance in the claim key when concurrent instances report independently;
 - use `ok` or `clear` when a retained health claim recovers, and `problem set ...
   ok` when a capability recovers;
 - report an inability to provide the contributor's advertised capability as a
   problem, while successfully observed unhealthy domain state remains health.
 
 Status is intentionally lighter. Its key only needs to be unique among active
-status contributors in one window because the pane itself contains the explanation.
-Health keys identify the diagnostic rows returned by `health show`. Problem keys
-identify contributor capabilities globally, while Airline separately records the
-pane or session origins currently claiming each problem. Violating the naming
-contract may allow one contributor to overwrite or clear another contributor's
-claim; Airline does not add a registration system to prevent that convention error.
+status entries in one window because the pane itself contains the explanation.
+Health identity is contributor plus claim key within a window. Problem identity is
+contributor plus claim key globally, while Airline separately records the pane or
+session origins currently asserting it. Contributors and keys must be nonempty and
+contain neither whitespace nor `:`; the colon is reserved for private storage
+framing.
 
 **Status** (left) — a window's app-status, at one of three levels. Many
 contributors can report under their own keys; airline shows the highest-ranked
@@ -687,16 +681,16 @@ contributors; airline shows the **worst**. `ok` (or no contributor) shows
 **nothing** — a clean right side means healthy:
 
 ```tmux
-airline health set example-agent/context fail "connection refused"     # ▲ broken (red)
-airline health set example-build/tests warn "tests are still running with failures"
+airline health set example-agent context fail "connection refused"     # ▲ broken (red)
+airline health set example-build tests warn "tests are still running with failures"
 # badge now shows one glyph at the worst level (fail)
-airline health set example-agent/context ok  # recovery clears it; drops to warn
-airline health show                  # contributors + reduced result
+airline health set example-agent context ok  # recovery clears it; drops to warn
+airline health show                         # contributor + key + condition
 ```
 
 Health and problem share the levels `ok < warn < fail`. `ok` means reporter
 recovery: it removes that reporter's contribution. For health this is equivalent to
-`clear <key>`; problem has a ledger lifecycle described below. `warn` means the
+`clear <contributor> <key>`; problem has a ledger lifecycle described below. `warn` means the
 component degraded gracefully and can keep working; `fail` means it could not
 recover and is broken. `warn` uses the palette's amber `alert` role; `fail` uses its
 red `stress` role. Glyphs are fixed (a distinct shape per visible state, so badges
@@ -735,25 +729,25 @@ one aggregate glyph at the extreme right.
 
 ```shell
 if ! command -v sensors >/dev/null 2>&1; then
-  airline problem set tmux-cpu/sensors warn "required program 'sensors' was not found"
+  airline problem set tmux-cpu sensors warn "required program 'sensors' was not found"
   printf '?'
   exit 0
 fi
 
-airline problem set tmux-cpu/sensors ok
+airline problem set tmux-cpu sensors ok
 ```
 
 By default, a claim belongs to the current session context. A pane-hosted reporter
 can preserve its origin explicitly with `problem set --pane "$TMUX_PANE" ...`.
-Several panes and sessions may claim the same key independently; one reporter's
-recovery removes only its own claim. Airline installs tmux pane/session close hooks
-to retire claims when their contributors disappear.
+Several panes and sessions may assert the same contributor/key pair independently;
+one origin's recovery removes only its own claim. Airline installs tmux pane/session
+close hooks to retire claims when their origins disappear.
 
-`problem show` lists only active problems. `problem clear <key>` acknowledges a
+`problem show` lists only active problems. `problem clear <contributor> <key>` acknowledges a
 problem and hides it without discarding history or active claims. A later report
 updates the entry but does not make a cleared problem visible again. Use `problem
-show --all [<key>]` to inspect the complete `active`, `closed`, and `cleared`
-lifecycle ledger and its current origins. `problem resolve <key>` deletes the entry
+show --all [<contributor> [<key>]]` to inspect the complete `active`, `closed`, and `cleared`
+lifecycle ledger and its current origins. `problem resolve <contributor> <key>` deletes the entry
 and every claim; reporter recovery with `set ... ok` also deletes it when the final
 claim is removed. `problem close` is normally hook-driven, but is public so jobs may
 retire pane- or session-origin claims explicitly.
@@ -802,8 +796,8 @@ airline runner   show <runner> [<arg>...] | list | register <dir>
                      [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]] -- <command>...
                  watch [--here|--pane [-h|-v]|--window] [<runner>] [--probe <probe> [<arg>...]]
 airline status   set <status-key> <active|result|attention> [--transient] [-t <window>] | clear [<status-key>] [-t <window>] | show [<status-key>] [-t <window>]
-airline health   set [-t <window>] <health-key> <ok|warn|fail> [<message>...] | clear [-t <window>] <health-key> | show [-t <window>] [<health-key>]
-airline problem  set [--pane <pane-id>] <problem-key> <ok|warn|fail> [<message>...] | close [--pane <pane-id>|--session <session-id>] [<problem-key>] | clear <problem-key> | resolve <problem-key> | show [--all] [<problem-key>]
+airline health   set [-t <window>] <contributor> <health-key> <ok|warn|fail> [<message>...] | clear [-t <window>] <contributor> <health-key> | show [-t <window>] [<contributor> [<health-key>]]
+airline problem  set [--pane <pane-id>] <contributor> <problem-key> <ok|warn|fail> [<message>...] | close [--pane <pane-id>|--session <session-id>] [<contributor> [<problem-key>]] | clear <contributor> <problem-key> | resolve <contributor> <problem-key> | show [--all] [<contributor> [<problem-key>]]
 airline transaction show | clear <global|session|window> <target> <namespace>
 ```
 
@@ -828,7 +822,9 @@ window names through the installed CLI.
 ## Development
 
 For the architecture, internal boundaries, design rationale, and testing strategy,
-see [DESIGN.md](DESIGN.md).
+see [DESIGN.md](DESIGN.md). Completed project work is summarized in
+[CHANGELOG.md](CHANGELOG.md); prospective consolidation work lives in
+[TODO.md](TODO.md).
 
 The full suite still exercises real isolated tmux servers:
 

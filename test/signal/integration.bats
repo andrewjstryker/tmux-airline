@@ -15,20 +15,20 @@ setup() {
   window="$($TMUX -L "$_bats_socket" display-message -p -t "$pane" '#{window_id}')"
 
   airline status set agent active -t "$pane"
-  airline health set -t "$pane" example-agent/context warn "agent is degraded"
+  airline health set -t "$pane" example-agent context warn "agent is degraded"
 
   run wopt @airline--badge-status -t "$window"
   assert_output "active"
   run wopt @airline--badge-health -t "$window"
   assert_output "warn"
-  run airline health show -t "$pane" example-agent/context
+  run airline health show -t "$pane" example-agent context
   assert_output "$(printf 'warn\tagent is degraded')"
 }
 
 @test "health retains a diagnostic while projecting only its severity" {
-  airline health set api fail "connection refused" "after retry"
+  airline health set test api fail "connection refused" "after retry"
 
-  run airline health show api
+  run airline health show test api
   assert_success
   assert_output "$(printf 'fail\tconnection refused after retry')"
   run wopt @airline--badge-health
@@ -38,8 +38,8 @@ setup() {
 @test "global problem ledger is visible in every initialized session" {
   airline session init
   session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
-  airline problem set example-cpu/sensors warn "required program 'sensors' was not found"
-  airline problem set example-battery/query fail "battery query timed out"
+  airline problem set example-cpu sensors warn "required program 'sensors' was not found"
+  airline problem set example-battery query fail "battery query timed out"
   run get_option @airline--badge-problem
   assert_output "fail"
   run $TMUX -L "$_bats_socket" display-message -p -t "$session" '#{E:status-right}'
@@ -52,21 +52,21 @@ setup() {
   assert_output --partial "▲"
 
   run airline problem show
-  assert_output --partial "example-cpu/sensors"
+  assert_output --partial "example-cpu"
   assert_output --partial "sensors"
-  assert_output --partial "example-battery/query"
+  assert_output --partial "example-battery"
   assert_output --partial "battery query timed out"
 
-  airline problem set example-battery/query ok
+  airline problem set example-battery query ok
   run get_option @airline--badge-problem
   assert_output "warn"
-  airline problem clear example-cpu/sensors
+  airline problem clear example-cpu sensors
   run get_option @airline--badge-problem
   assert_output ""
-  run airline problem show --all example-cpu/sensors
+  run airline problem show --all example-cpu sensors
   assert_output --partial "cleared"
-  airline problem resolve example-cpu/sensors
-  run airline problem show example-cpu/sensors
+  airline problem resolve example-cpu sensors
+  run airline problem show example-cpu sensors
   assert_output ""
 }
 
@@ -76,14 +76,14 @@ setup() {
   pane="$($TMUX -L "$_bats_socket" split-window -dP -F '#{pane_id}' -t bats \
     "tmux wait-for -S '$ready'; tmux wait-for '$release'")"
   $TMUX -L "$_bats_socket" wait-for "$ready"
-  airline problem set --pane "$pane" example-cpu/sensors fail "sensor unavailable"
+  airline problem set --pane "$pane" example-cpu sensors fail "sensor unavailable"
   run get_option @airline--badge-problem
   assert_output fail
 
   $TMUX -L "$_bats_socket" wait-for -S "$release"
   output=active
   for _ in {1..100}; do
-    output="$(airline problem show --all example-cpu/sensors)"
+    output="$(airline problem show --all example-cpu sensors)"
     [[ "$output" == *closed* ]] && break
     sleep 0.01
   done
@@ -97,11 +97,11 @@ setup() {
   airline session init
   first="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
   second="$($TMUX -L "$_bats_socket" split-window -dP -F '#{pane_id}' -t bats)"
-  airline problem set --pane "$first" example-cpu/sensors warn "first degraded"
-  airline problem set --pane "$second" example-cpu/sensors fail "second failed"
-  airline problem close --pane "$second" example-cpu/sensors
+  airline problem set --pane "$first" example-cpu sensors warn "first degraded"
+  airline problem set --pane "$second" example-cpu sensors fail "second failed"
+  airline problem close --pane "$second" example-cpu sensors
 
-  run airline problem show example-cpu/sensors
+  run airline problem show example-cpu sensors
   assert_output --partial "active  warn"
   assert_output --partial "pane:$first"
   refute_output --partial "pane:$second"
@@ -122,7 +122,7 @@ setup() {
 @test "invalid signal argv and unresolved targets fail without mutation" {
   run airline status set build active extra
   assert_failure
-  run airline health set api fail
+  run airline health set test api fail
   assert_failure
   run airline status set build active -t missing-window
   assert_failure
@@ -140,7 +140,7 @@ setup() {
 }
 
 @test "process CLI propagates mutation flush failure" {
-  run airline_with_tmux_failure flush health set api fail "connection refused"
+  run airline_with_tmux_failure flush health set test api fail "connection refused"
   assert_failure
 }
 
@@ -150,6 +150,6 @@ setup() {
 }
 
 @test "process CLI propagates failed problem reporting" {
-  run airline_with_tmux_failure flush problem set cpu fail "sensor unavailable"
+  run airline_with_tmux_failure flush problem set test cpu fail "sensor unavailable"
   assert_failure
 }

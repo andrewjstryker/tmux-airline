@@ -53,11 +53,11 @@ session resume|session_resume
 session toggle|session_toggle
 status set build active --transient|signal_status_set <build> <active> <--transient>
 status clear -t @3|signal_status_clear <-t> <@3>
-health clear -t @2 cpu|signal_health_clear <-t> <@2> <cpu>
-problem set --pane %2 cpu warn sensors-missing|signal_problem_set <--pane> <%2> <cpu> <warn> <sensors-missing>
-problem close --pane %2 cpu|signal_problem_close <--pane> <%2> <cpu>
-problem clear cpu|signal_problem_clear <cpu>
-problem resolve cpu|signal_problem_resolve <cpu>
+health clear -t @2 sensors cpu|signal_health_clear <-t> <@2> <sensors> <cpu>
+problem set --pane %2 sensors cpu warn sensors-missing|signal_problem_set <--pane> <%2> <sensors> <cpu> <warn> <sensors-missing>
+problem close --pane %2 sensors cpu|signal_problem_close <--pane> <%2> <sensors> <cpu>
+problem clear sensors cpu|signal_problem_clear <sensors> <cpu>
+problem resolve sensors cpu|signal_problem_resolve <sensors> <cpu>
 transaction clear global server problem|transaction_clear_stale <global> <server> <problem>
 palette use light|layout_palette_use <light>
 segment show left-out|layout_segment_show <left-out>

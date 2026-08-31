@@ -94,9 +94,9 @@ cmd_health () {
   local verb="${1:-}"; shift || true
   # help:begin health
   case "$verb" in
-    set)   signal_health_set "$@" ;;   #| [-t <window>] <health-key> <ok|warn|fail> [<message>...] — set window health
-    clear) signal_health_clear "$@" ;; #| [-t <window>] <health-key> — clear window health
-    show)  signal_health_show "$@" ;;  #| [-t <window>] [<health-key>] — show a window's health
+    set)   signal_health_set "$@" ;;   #| [-t <window>] <contributor> <health-key> <ok|warn|fail> [<message>...] — set window health
+    clear) signal_health_clear "$@" ;; #| [-t <window>] <contributor> <health-key> — clear window health
+    show)  signal_health_show "$@" ;;  #| [-t <window>] [<contributor> [<health-key>]] — show a window's health
     *) command_die "unknown health command: $verb" ;;
   esac
   # help:end health
@@ -106,11 +106,11 @@ cmd_problem () {
   local verb="${1:-}"; shift || true
   # help:begin problem
   case "$verb" in
-    set)     signal_problem_set "$@" ;;     #| [--pane <pane-id>] <problem-key> <ok|warn|fail> [<message>...] — report or recover an origin claim
-    close)   signal_problem_close "$@" ;;   #| [--pane <pane-id>|--session <session-id>] [<problem-key>] — close an origin's claims
-    clear)   signal_problem_clear "$@" ;;   #| <problem-key> — acknowledge and hide a global problem
-    resolve) signal_problem_resolve "$@" ;; #| <problem-key> — delete a resolved problem and its claims
-    show)    signal_problem_show "$@" ;;    #| [--all] [<problem-key>] — show active problems or the complete lifecycle ledger
+    set)     signal_problem_set "$@" ;;     #| [--pane <pane-id>] <contributor> <problem-key> <ok|warn|fail> [<message>...] — report or recover an origin claim
+    close)   signal_problem_close "$@" ;;   #| [--pane <pane-id>|--session <session-id>] [<contributor> [<problem-key>]] — close an origin's claims
+    clear)   signal_problem_clear "$@" ;;   #| <contributor> <problem-key> — acknowledge and hide a global problem
+    resolve) signal_problem_resolve "$@" ;; #| <contributor> <problem-key> — delete a resolved problem and its claims
+    show)    signal_problem_show "$@" ;;    #| [--all] [<contributor> [<problem-key>]] — show active problems or the complete lifecycle ledger
     *) command_die "unknown problem command: $verb" ;;
   esac
   # help:end problem

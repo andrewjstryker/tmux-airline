@@ -435,17 +435,23 @@ _runner_definition_show () {   # <session> <name> [<runner-arg>...]
 AIRLINE_RUNNER_SESSION=""
 AIRLINE_RUNNER_WINDOW=""
 AIRLINE_RUNNER_FILTER_KEY=""
-AIRLINE_RUNNER_FILTER_PROBLEM=""
+AIRLINE_RUNNER_FILTER_PROBLEM_CONTRIBUTOR=""
+AIRLINE_RUNNER_FILTER_PROBLEM_KEY=""
 AIRLINE_RUNNER_PROBE_KEY=""
-AIRLINE_RUNNER_PROBE_PROBLEM=""
+AIRLINE_RUNNER_PROBE_PROBLEM_CONTRIBUTOR=""
+AIRLINE_RUNNER_PROBE_PROBLEM_KEY=""
 
-_runner_problem_key () {   # <classifier|filter|probe> <element> <load|classify|filter|probe>
-  local kind="$1" name="${2##*/}" claim="$3"
+_runner_element_contributor () {   # <classifier|filter|probe> <element>
+  local kind="$1" name="${2##*/}"
   name="${name//[^a-zA-Z0-9_-]/-}"
-  printf 'airline-runner/%s/%s/%s' "$kind" "$name" "$claim"
+  printf 'airline-runner-%s-%s' "$kind" "$name"
 }
 
 _runner_claim_key () {   # <pane> <claim>
+  printf '%s/%s' "${1#%}" "$2"
+}
+
+_runner_status_key () {   # <pane> <claim>
   printf 'airline-runner/%s/%s' "${1#%}" "$2"
 }
 
@@ -461,12 +467,15 @@ _runner_filter_report () {   # <ok> | <warn|fail> <message>
   local condition="${1:-}" message="${2:-}" diagnostic
   if (( $# < 1 || $# > 2 )) || ! _runner_condition_report_valid "$condition" "$message"; then
     diagnostic="${condition//$'\t'/ }"
-    signal_problem_report "$AIRLINE_RUNNER_SESSION" "$AIRLINE_RUNNER_FILTER_PROBLEM" fail \
+    signal_problem_report "$AIRLINE_RUNNER_SESSION" \
+      "$AIRLINE_RUNNER_FILTER_PROBLEM_CONTRIBUTOR" "$AIRLINE_RUNNER_FILTER_PROBLEM_KEY" fail \
       "runner filter emitted invalid condition report '${diagnostic}'"
     return 1
   fi
-  signal_problem_report "$AIRLINE_RUNNER_SESSION" "$AIRLINE_RUNNER_FILTER_PROBLEM" ok ""
+  signal_problem_report "$AIRLINE_RUNNER_SESSION" \
+    "$AIRLINE_RUNNER_FILTER_PROBLEM_CONTRIBUTOR" "$AIRLINE_RUNNER_FILTER_PROBLEM_KEY" ok ""
   signal_health_set -t "$AIRLINE_RUNNER_WINDOW" \
+    "$AIRLINE_RUNNER_FILTER_PROBLEM_CONTRIBUTOR" \
     "$AIRLINE_RUNNER_FILTER_KEY" "$condition" ${message:+"$message"}
 }
 
@@ -474,30 +483,34 @@ _runner_probe_report () {   # <ok> | <warn|fail> <message>
   local condition="${1:-}" message="${2:-}" diagnostic
   if (( $# < 1 || $# > 2 )) || ! _runner_condition_report_valid "$condition" "$message"; then
     diagnostic="${condition//$'\t'/ }"
-    signal_problem_report "$AIRLINE_RUNNER_SESSION" "$AIRLINE_RUNNER_PROBE_PROBLEM" fail \
+    signal_problem_report "$AIRLINE_RUNNER_SESSION" \
+      "$AIRLINE_RUNNER_PROBE_PROBLEM_CONTRIBUTOR" "$AIRLINE_RUNNER_PROBE_PROBLEM_KEY" fail \
       "runner probe emitted invalid condition report '${diagnostic}'"
     return 1
   fi
-  signal_problem_report "$AIRLINE_RUNNER_SESSION" "$AIRLINE_RUNNER_PROBE_PROBLEM" ok ""
+  signal_problem_report "$AIRLINE_RUNNER_SESSION" \
+    "$AIRLINE_RUNNER_PROBE_PROBLEM_CONTRIBUTOR" "$AIRLINE_RUNNER_PROBE_PROBLEM_KEY" ok ""
   signal_health_set -t "$AIRLINE_RUNNER_WINDOW" \
+    "$AIRLINE_RUNNER_PROBE_PROBLEM_CONTRIBUTOR" \
     "$AIRLINE_RUNNER_PROBE_KEY" "$condition" ${message:+"$message"}
 }
 
 _runner_probe_error () {
-  signal_problem_report "$AIRLINE_RUNNER_SESSION" "$AIRLINE_RUNNER_PROBE_PROBLEM" fail \
+  signal_problem_report "$AIRLINE_RUNNER_SESSION" \
+    "$AIRLINE_RUNNER_PROBE_PROBLEM_CONTRIBUTOR" "$AIRLINE_RUNNER_PROBE_PROBLEM_KEY" fail \
     "runner probe failed or emitted an invalid condition"
 }
 
-_runner_finish () {   # <condition> <message> <window> <key>
-  local condition="$1" message="$2" win="$3" key="$4"
+_runner_finish () {   # <condition> <message> <window> <health-contributor> <health-key> <status-key>
+  local condition="$1" message="$2" win="$3" contributor="$4" health_key="$5" status_key="$6"
   case "$condition" in
     ok)
-      signal_health_set -t "$win" "$key" ok
-      signal_status_set "$key" result --transient -t "$win"
+      signal_health_set -t "$win" "$contributor" "$health_key" ok
+      signal_status_set "$status_key" result --transient -t "$win"
       ;;
     warn|fail)
-      signal_health_set -t "$win" "$key" "$condition" "$message"
-      signal_status_set "$key" attention --transient -t "$win"
+      signal_health_set -t "$win" "$contributor" "$health_key" "$condition" "$message"
+      signal_status_set "$status_key" attention --transient -t "$win"
       ;;
   esac
 }
@@ -690,19 +703,19 @@ _runner_normalize_spec () {   # <run|watch>
 # stdout/stderr remain visible in the pane. A filter gets a tee'd copy of its declared
 # stream; a probe performs sequential periodic observations without overlapping.
 _runner_execute () {   # <session>; uses parsed run specification
-  local session="$1" file pane win key filter_key probe_key
-  local load_problem classify_problem filter_problem probe_problem streams=""
+  local session="$1" file pane win key status_key filter_key probe_key
+  local classifier_contributor filter_contributor probe_contributor streams=""
   local child_pid filter_pid="" probe_pid="" rc=0 signal="" classification condition message
 
   pane="$(current_pane)"
   win="$(resolve_window "$pane")"
   key="$(_runner_claim_key "$pane" command)"
+  status_key="$(_runner_status_key "$pane" command)"
   filter_key="$(_runner_claim_key "$pane" filter)"
   probe_key="$(_runner_claim_key "$pane" probe)"
-  load_problem="$(_runner_problem_key classifier "$AIRLINE_RUNNER_CLASSIFIER" load)"
-  classify_problem="$(_runner_problem_key classifier "$AIRLINE_RUNNER_CLASSIFIER" classify)"
-  filter_problem="$(_runner_problem_key filter "$AIRLINE_RUNNER_FILTER" filter)"
-  probe_problem="$(_runner_problem_key probe "$AIRLINE_RUNNER_PROBE" probe)"
+  classifier_contributor="$(_runner_element_contributor classifier "$AIRLINE_RUNNER_CLASSIFIER")"
+  filter_contributor="$(_runner_element_contributor filter "$AIRLINE_RUNNER_FILTER")"
+  probe_contributor="$(_runner_element_contributor probe "$AIRLINE_RUNNER_PROBE")"
   file="$(_runner_element_file "$session" classify "$AIRLINE_RUNNER_CLASSIFIER")"
   runner_classifier_load "$file" || return 2
   if [[ -n "$AIRLINE_RUNNER_FILTER" ]]; then
@@ -713,18 +726,20 @@ _runner_execute () {   # <session>; uses parsed run specification
     file="$(_runner_element_file "$session" probe "$AIRLINE_RUNNER_PROBE")"
     runner_probe_load "$file" || return 2
   fi
-  signal_problem_report "$session" "$load_problem" ok ""
+  signal_problem_report "$session" "$classifier_contributor" load ok ""
 
-  signal_health_set -t "$win" "$key" ok
-  signal_health_set -t "$win" "$filter_key" ok
-  signal_health_set -t "$win" "$probe_key" ok
-  signal_status_set "$key" active -t "$win"
+  signal_health_set -t "$win" "$classifier_contributor" "$key" ok
+  [[ -z "$AIRLINE_RUNNER_FILTER" ]] || \
+    signal_health_set -t "$win" "$filter_contributor" "$filter_key" ok
+  [[ -z "$AIRLINE_RUNNER_PROBE" ]] || \
+    signal_health_set -t "$win" "$probe_contributor" "$probe_key" ok
+  signal_status_set "$status_key" active -t "$win"
 
   if [[ -n "$AIRLINE_RUNNER_FILTER" ]]; then
     streams=stdout
     if ! runner_stream_prepare "$streams"; then
       runner_stream_cleanup
-      signal_problem_report "$session" "$filter_problem" fail "runner filter '$AIRLINE_RUNNER_FILTER' could not prepare"
+      signal_problem_report "$session" "$filter_contributor" filter fail "runner filter '$AIRLINE_RUNNER_FILTER' could not prepare"
       return 2
     fi
     trap runner_stream_cleanup EXIT
@@ -742,9 +757,11 @@ _runner_execute () {   # <session>; uses parsed run specification
   AIRLINE_RUNNER_SESSION="$session"
   AIRLINE_RUNNER_WINDOW="$win"
   AIRLINE_RUNNER_FILTER_KEY="$filter_key"
-  AIRLINE_RUNNER_FILTER_PROBLEM="$filter_problem"
+  AIRLINE_RUNNER_FILTER_PROBLEM_CONTRIBUTOR="$filter_contributor"
+  AIRLINE_RUNNER_FILTER_PROBLEM_KEY=filter
   AIRLINE_RUNNER_PROBE_KEY="$probe_key"
-  AIRLINE_RUNNER_PROBE_PROBLEM="$probe_problem"
+  AIRLINE_RUNNER_PROBE_PROBLEM_CONTRIBUTOR="$probe_contributor"
+  AIRLINE_RUNNER_PROBE_PROBLEM_KEY=probe
   if [[ -n "$AIRLINE_RUNNER_FILTER" ]]; then
     runner_filter_start "$child_pid" _runner_filter_report "$AIRLINE_RUNNER_STREAM_INPUT"
     filter_pid="$AIRLINE_RUNNER_FILTER_PID"
@@ -762,7 +779,7 @@ _runner_execute () {   # <session>; uses parsed run specification
     runner_stream_wait || true
   fi
   if ! runner_filter_wait "$filter_pid"; then
-    signal_problem_report "$session" "$filter_problem" fail "runner filter '$AIRLINE_RUNNER_FILTER' failed"
+    signal_problem_report "$session" "$filter_contributor" filter fail "runner filter '$AIRLINE_RUNNER_FILTER' failed"
   fi
   if [[ -n "$streams" ]]; then
     runner_stream_cleanup
@@ -770,20 +787,22 @@ _runner_execute () {   # <session>; uses parsed run specification
   fi
   # A filter's EOF report describes completed output and remains useful after the
   # process exits. The next run clears this pane-qualified contributor at startup.
-  signal_health_set -t "$win" "$probe_key" ok
+  [[ -z "$AIRLINE_RUNNER_PROBE" ]] || \
+    signal_health_set -t "$win" "$probe_contributor" "$probe_key" ok
   (( rc > 128 )) && signal="$((rc - 128))"
 
   if classification="$(runner_classifier_run "$rc" "$signal")"; then
     condition="${classification%%$'\t'*}"
     if [[ "$classification" == *$'\t'* ]]; then message="${classification#*$'\t'}"
     else message=""; fi
-    signal_problem_report "$session" "$classify_problem" ok ""
-    _runner_finish "$condition" "$message" "$win" "$key"
+    signal_problem_report "$session" "$classifier_contributor" classify ok ""
+    _runner_finish "$condition" "$message" "$win" \
+      "$classifier_contributor" "$key" "$status_key"
   else
-    signal_problem_report "$session" "$classify_problem" fail \
+    signal_problem_report "$session" "$classifier_contributor" classify fail \
       "runner classifier '$AIRLINE_RUNNER_CLASSIFIER' failed or emitted an invalid condition"
-    signal_health_set -t "$win" "$key" ok
-    signal_status_set "$key" attention --transient -t "$win"
+    signal_health_set -t "$win" "$classifier_contributor" "$key" ok
+    signal_status_set "$status_key" attention --transient -t "$win"
   fi
   return "$rc"
 }
@@ -824,26 +843,28 @@ _runner_invoke () {   # <session> <run|watch> [spec...]
 
 # Watch external state without manufacturing a placeholder command.
 _runner_watch_execute () {   # <session>; uses parsed watch specification
-  local session="$1" file pane win key probe_key probe_problem
+  local session="$1" file pane win key status_key probe_key probe_contributor
   local interval watch_pid="$BASHPID" watch_rc=0 sleep_pid=""
 
   pane="$(current_pane)"
   win="$(resolve_window "$pane")"
   key="$(_runner_claim_key "$pane" watch)"
+  status_key="$(_runner_status_key "$pane" watch)"
   probe_key="$(_runner_claim_key "$pane" watch-probe)"
-  probe_problem="$(_runner_problem_key probe "$AIRLINE_RUNNER_PROBE" probe)"
+  probe_contributor="$(_runner_element_contributor probe "$AIRLINE_RUNNER_PROBE")"
   file="$(_runner_element_file "$session" probe "$AIRLINE_RUNNER_PROBE")"
   runner_probe_load "$file" || return 2
-  signal_problem_report "$session" "$(_runner_problem_key probe "$AIRLINE_RUNNER_PROBE" load)" ok ""
+  signal_problem_report "$session" "$probe_contributor" load ok ""
 
   AIRLINE_RUNNER_SESSION="$session"
   AIRLINE_RUNNER_WINDOW="$win"
   AIRLINE_RUNNER_PROBE_KEY="$probe_key"
-  AIRLINE_RUNNER_PROBE_PROBLEM="$probe_problem"
+  AIRLINE_RUNNER_PROBE_PROBLEM_CONTRIBUTOR="$probe_contributor"
+  AIRLINE_RUNNER_PROBE_PROBLEM_KEY=probe
   interval="${AIRLINE_RUNNER_PROBE_INTERVAL:-5}"
 
-  signal_health_set -t "$win" "$probe_key" ok
-  signal_status_set "$key" active -t "$win"
+  signal_health_set -t "$win" "$probe_contributor" "$probe_key" ok
+  signal_status_set "$status_key" active -t "$win"
 
   trap 'watch_rc=130; [[ -n "$sleep_pid" ]] && kill "$sleep_pid" 2>/dev/null || true' INT
   trap 'watch_rc=143; [[ -n "$sleep_pid" ]] && kill "$sleep_pid" 2>/dev/null || true' TERM
@@ -862,8 +883,8 @@ _runner_watch_execute () {   # <session>; uses parsed watch specification
   done
   trap - INT TERM HUP
 
-  signal_health_clear -t "$win" "$probe_key"
-  signal_status_clear "$key" -t "$win"
+  signal_health_clear -t "$win" "$probe_contributor" "$probe_key"
+  signal_status_clear "$status_key" -t "$win"
   return "$watch_rc"
 }
 # CLI delegation targets for runner and its primitives.

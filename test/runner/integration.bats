@@ -103,7 +103,7 @@ wait_for_pane_exit() { # <pane> <status>
   assert_output "job output"
   run airline status show "$key"
   assert_output result
-  run airline health show "$key"
+  run airline health show airline-runner-classifier-basic "${pane#%}/command"
   assert_output ""
 }
 
@@ -117,7 +117,7 @@ wait_for_pane_exit() { # <pane> <status>
   assert_output "failed output"
   run airline status show "$key"
   assert_output attention
-  run airline health show "$key"
+  run airline health show airline-runner-classifier-basic "${pane#%}/command"
   assert_output "$(printf 'fail\tcommand exited with status 7')"
 }
 
@@ -135,7 +135,7 @@ wait_for_pane_exit() { # <pane> <status>
   assert_failure 5
   run airline status show "$key"
   assert_output attention
-  run airline health show "$key"
+  run airline health show airline-runner-classifier-pytest "${pane#%}/command"
   assert_output "$(printf 'warn\tno tests collected')"
 }
 
@@ -157,7 +157,7 @@ wait_for_pane_exit() { # <pane> <status>
   session="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{session_id}')"
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
   key="airline-runner/${pane#%}/command"
-  probe_key="airline-runner/${pane#%}/probe"
+  probe_key="${pane#%}/probe"
   mkdir -p "$BATS_TEST_TMPDIR/probes"
   health_file="$BATS_TEST_TMPDIR/healthy"
   export health_file
@@ -173,7 +173,7 @@ wait_for_pane_exit() { # <pane> <status>
   airline runner run --probe server -- bash -c 'sleep 0.15; touch "$health_file"; sleep 0.5' & runner_pid=$!
   observed=""
   for _ in {1..100}; do
-    observed="$(airline health show "$probe_key")"
+    observed="$(airline health show airline-runner-probe-server "$probe_key")"
     [[ "$observed" == "$(printf 'fail\tservice is unavailable')" ]] && break
     sleep 0.01
   done
@@ -181,7 +181,7 @@ wait_for_pane_exit() { # <pane> <status>
 
   recovered=fail
   for _ in {1..100}; do
-    recovered="$(airline health show "$probe_key")"
+    recovered="$(airline health show airline-runner-probe-server "$probe_key")"
     [[ -z "$recovered" ]] && break
     sleep 0.01
   done
@@ -190,7 +190,7 @@ wait_for_pane_exit() { # <pane> <status>
   assert_output active
 
   wait "$runner_pid"
-  run airline problem show airline-runner/probe/server/probe
+  run airline problem show airline-runner-probe-server probe
   assert_output ""
   run airline status show "$key"
   assert_output result
@@ -201,7 +201,7 @@ wait_for_pane_exit() { # <pane> <status>
   session="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{session_id}')"
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
   key="airline-runner/${pane#%}/watch"
-  probe_key="airline-runner/${pane#%}/watch-probe"
+  probe_key="${pane#%}/watch-probe"
   mkdir -p "$BATS_TEST_TMPDIR/probes" "$BATS_TEST_TMPDIR/runners"
   health_file="$BATS_TEST_TMPDIR/healthy"
   observed_pid_file="$BATS_TEST_TMPDIR/watcher-pid"
@@ -240,7 +240,7 @@ wait_for_pane_exit() { # <pane> <status>
 
   observed=""
   for _ in {1..100}; do
-    observed="$(airline health show "$probe_key")"
+    observed="$(airline health show airline-runner-probe-remote "$probe_key")"
     [[ "$observed" == "$(printf 'fail\tservice is unavailable')" ]] && break
     sleep 0.01
   done
@@ -257,7 +257,7 @@ wait_for_pane_exit() { # <pane> <status>
   touch "$health_file"
   recovered=fail
   for _ in {1..100}; do
-    recovered="$(airline health show "$probe_key")"
+    recovered="$(airline health show airline-runner-probe-remote "$probe_key")"
     [[ -z "$recovered" ]] && break
     sleep 0.01
   done
@@ -268,9 +268,9 @@ wait_for_pane_exit() { # <pane> <status>
   assert_equal "${watch_rc:-0}" 143
   run airline status show "$key"
   assert_output ""
-  run airline health show "$probe_key"
+  run airline health show airline-runner-probe-remote "$probe_key"
   assert_output ""
-  run airline problem show airline-runner/probe/remote/probe
+  run airline problem show airline-runner-probe-remote probe
   assert_output ""
 }
 
@@ -285,7 +285,7 @@ wait_for_pane_exit() { # <pane> <status>
   airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
   key="airline-runner/${pane#%}/command"
-  filter_key="airline-runner/${pane#%}/filter"
+  filter_key="${pane#%}/filter"
   output_file="$BATS_TEST_TMPDIR/tap-stream"
 
   airline runner run --filter tap -- bash -c \
@@ -294,7 +294,7 @@ wait_for_pane_exit() { # <pane> <status>
 
   observed=""
   for _ in {1..100}; do
-    observed="$(airline health show "$filter_key")"
+    observed="$(airline health show airline-runner-filter-tap "$filter_key")"
     [[ "$observed" == warn$'\t'* ]] && break
     sleep 0.01
   done
@@ -302,7 +302,7 @@ wait_for_pane_exit() { # <pane> <status>
 
   completed=""
   for _ in {1..100}; do
-    completed="$(airline health show "$filter_key")"
+    completed="$(airline health show airline-runner-filter-tap "$filter_key")"
     [[ "$completed" == fail$'\t'* ]] && break
     sleep 0.01
   done
@@ -313,9 +313,9 @@ wait_for_pane_exit() { # <pane> <status>
   assert_equal "${runner_rc:-0}" 1
   run cat "$output_file"
   assert_output --partial "not ok 2 - second"
-  run airline health show "$filter_key"
+  run airline health show airline-runner-filter-tap "$filter_key"
   assert_output "$(printf 'fail\tTAP stream completed with unsuccessful assertions')"
-  run airline health show "$key"
+  run airline health show airline-runner-classifier-basic "${pane#%}/command"
   assert_output "$(printf 'fail\tcommand exited with status 1')"
 }
 
@@ -323,16 +323,16 @@ wait_for_pane_exit() { # <pane> <status>
   airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
   key="airline-runner/${pane#%}/command"
-  filter_key="airline-runner/${pane#%}/filter"
+  filter_key="${pane#%}/filter"
 
   run airline runner run --filter tap -- bash -c \
     'printf "1..1\nnot ok 1 - semantic failure\n"'
   assert_success
   run airline status show "$key"
   assert_output result
-  run airline health show "$key"
+  run airline health show airline-runner-classifier-basic "${pane#%}/command"
   assert_output ""
-  run airline health show "$filter_key"
+  run airline health show airline-runner-filter-tap "$filter_key"
   assert_output "$(printf 'fail\tTAP stream completed with unsuccessful assertions')"
 }
 
@@ -413,7 +413,7 @@ wait_for_pane_exit() { # <pane> <status>
   window="$($TMUX -L "$_bats_socket" display-message -p -t "$spawned" '#{window_id}')"
   run airline status show "airline-runner/${spawned#%}/command" -t "$window"
   assert_output attention
-  run airline health show -t "$window" "airline-runner/${spawned#%}/command"
+  run airline health show -t "$window" airline-runner-classifier-basic "${spawned#%}/command"
   assert_output "$(printf 'fail\tcommand exited with status 9')"
   run $TMUX -L "$_bats_socket" capture-pane -p -t "$spawned" -S -
   assert_output --partial "pane failure"

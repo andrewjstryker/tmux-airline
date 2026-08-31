@@ -56,7 +56,7 @@ awk '
 # Every semantic placeholder must be either completable or explicitly opaque.
 while IFS= read -r semantic; do
   case "$semantic" in
-    adapter|classifier|dir|file|filter|health-key|layout|message|namespace|palette|\
+    adapter|classifier|contributor|dir|file|filter|health-key|layout|message|namespace|palette|\
       palette-element|pane-id|probe|problem-key|runner|segment|session|session-id|status-key|target|window|\
       arg|argument|command|noun|verb) ;;
     *) printf "generate-completions: unknown help placeholder <%s>\n" "$semantic" >&2; exit 1 ;;
@@ -127,10 +127,10 @@ _airline_dynamic () {   # <semantic-type>
       ;;
     segment) command airline segment show 2>/dev/null | while read -r line _; do printf '%s\n' "$line"; done ;;
     status-key) command airline status show 2>/dev/null | while read -r line _; do printf '%s\n' "$line"; done ;;
-    health-key) command airline health show 2>/dev/null | while read -r line _; do printf '%s\n' "$line"; done ;;
-    problem-key) command airline problem show --all 2>/dev/null | while IFS= read -r line; do
-      case "$line" in '  '*) ;; *) printf '%s\n' "${line%% *}" ;; esac
-    done ;;
+    health-contributor) command airline health show 2>/dev/null | awk '{print $1}' | sort -u ;;
+    health-key) command airline health show 2>/dev/null | awk '{print $2}' | sort -u ;;
+    problem-contributor) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $1}' | sort -u ;;
+    problem-key) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $2}' | sort -u ;;
     session) command tmux list-sessions -F '#{session_name}' 2>/dev/null || true ;;
     session-id) command tmux list-sessions -F '#{session_id}' 2>/dev/null || true ;;
     pane-id) command tmux list-panes -a -F '#{pane_id}' 2>/dev/null || true ;;
@@ -285,9 +285,10 @@ _airline_completion () {
     count=$(( ${#prior[@]} - offset ))
     case "$verb:$count" in
       set:0|clear:0|show:0)
-        COMPREPLY=( $(compgen -W "$(_airline_dynamic health-key) -t" -- "$current") )
+        COMPREPLY=( $(compgen -W "$(_airline_dynamic health-contributor) -t" -- "$current") )
         ;;
-      set:1) COMPREPLY=( $(compgen -W 'ok warn fail' -- "$current") ) ;;
+      set:1|clear:1|show:1) COMPREPLY=( $(compgen -W "$(_airline_dynamic health-key)" -- "$current") ) ;;
+      set:2) COMPREPLY=( $(compgen -W 'ok warn fail' -- "$current") ) ;;
     esac
     return
   fi
@@ -300,9 +301,11 @@ _airline_completion () {
       set:0|close:0|clear:0|resolve:0|show:0)
         token=""
         if (( ${#prior[@]} == 0 )); then token="$(_airline_option_values "$usage" || true)"; fi
-        COMPREPLY=( $(compgen -W "$(_airline_dynamic problem-key) $token" -- "$current") )
+        COMPREPLY=( $(compgen -W "$(_airline_dynamic problem-contributor) $token" -- "$current") )
         return ;;
-      set:1) COMPREPLY=( $(compgen -W 'ok warn fail' -- "$current") ); return ;;
+      set:1|close:1|clear:1|resolve:1|show:1)
+        COMPREPLY=( $(compgen -W "$(_airline_dynamic problem-key)" -- "$current") ); return ;;
+      set:2) COMPREPLY=( $(compgen -W 'ok warn fail' -- "$current") ); return ;;
     esac
   fi
   if [[ "$path" == 'transaction clear' ]]; then
@@ -350,7 +353,10 @@ _airline_zsh_dynamic () {
     palette-element) command airline palette show 2>/dev/null | awk '$1 != "name" {print $1}' ;;
     segment) command airline segment show 2>/dev/null | awk '{print $1}' ;;
     status-key) command airline status show 2>/dev/null | awk '{print $1}' ;;
-    health-key) command airline health show 2>/dev/null | awk '{print $1}' ;;
+    health-contributor) command airline health show 2>/dev/null | awk '{print $1}' | sort -u ;;
+    health-key) command airline health show 2>/dev/null | awk '{print $2}' | sort -u ;;
+    problem-contributor) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $1}' | sort -u ;;
+    problem-key) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $2}' | sort -u ;;
     session) command tmux list-sessions -F '#{session_name}' 2>/dev/null ;;
     window) command tmux list-windows -a -F '#{window_id}' 2>/dev/null ;;
   esac
@@ -408,41 +414,55 @@ _airline_zsh () {
     'health set')
       base=4; [[ "${words[4]:-}" == -t ]] && base=6
       if (( CURRENT == base )); then
-        compadd ${(@f)$(_airline_zsh_dynamic health-key)} -t; return
-      elif (( CURRENT == base + 1 )); then compadd ok warn fail; return
+        compadd ${(@f)$(_airline_zsh_dynamic health-contributor)} -t; return
+      elif (( CURRENT == base + 1 )); then
+        compadd ${(@f)$(_airline_zsh_dynamic health-key)}; return
+      elif (( CURRENT == base + 2 )); then compadd ok warn fail; return
       fi
       ;;
     'health clear'|'health show')
       base=4; [[ "${words[4]:-}" == -t ]] && base=6
       if (( CURRENT == base )); then
-        compadd ${(@f)$(_airline_zsh_dynamic health-key)} -t; return
+        compadd ${(@f)$(_airline_zsh_dynamic health-contributor)} -t; return
+      elif (( CURRENT == base + 1 )); then
+        compadd ${(@f)$(_airline_zsh_dynamic health-key)}; return
       fi
       ;;
     'problem set')
       if [[ "${words[4]:-}" == --pane ]]; then
         if (( CURRENT == 5 )); then semantic=pane-id
-        elif (( CURRENT == 6 )); then semantic=problem-key
-        elif (( CURRENT == 7 )); then compadd ok warn fail; return
+        elif (( CURRENT == 6 )); then semantic=problem-contributor
+        elif (( CURRENT == 7 )); then semantic=problem-key
+        elif (( CURRENT == 8 )); then compadd ok warn fail; return
         fi
-      elif (( CURRENT == 4 )); then compadd ${(@f)$(_airline_zsh_dynamic problem-key)} --pane; return
-      elif (( CURRENT == 5 )); then compadd ok warn fail; return
+      elif (( CURRENT == 4 )); then compadd ${(@f)$(_airline_zsh_dynamic problem-contributor)} --pane; return
+      elif (( CURRENT == 5 )); then semantic=problem-key
+      elif (( CURRENT == 6 )); then compadd ok warn fail; return
       fi
       ;;
     'problem close')
       if [[ "${words[4]:-}" == --pane ]]; then
         if (( CURRENT == 5 )); then semantic=pane-id
-        elif (( CURRENT == 6 )); then semantic=problem-key
+        elif (( CURRENT == 6 )); then semantic=problem-contributor
+        elif (( CURRENT == 7 )); then semantic=problem-key
         fi
       elif [[ "${words[4]:-}" == --session ]]; then
         if (( CURRENT == 5 )); then semantic=session-id
-        elif (( CURRENT == 6 )); then semantic=problem-key
+        elif (( CURRENT == 6 )); then semantic=problem-contributor
+        elif (( CURRENT == 7 )); then semantic=problem-key
         fi
-      elif (( CURRENT == 4 )); then compadd ${(@f)$(_airline_zsh_dynamic problem-key)} --pane --session; return
+      elif (( CURRENT == 4 )); then compadd ${(@f)$(_airline_zsh_dynamic problem-contributor)} --pane --session; return
+      elif (( CURRENT == 5 )); then semantic=problem-key
       fi
       ;;
-    'problem clear'|'problem resolve') (( CURRENT == 4 )) && semantic=problem-key ;;
+    'problem clear'|'problem resolve')
+      if (( CURRENT == 4 )); then semantic=problem-contributor
+      elif (( CURRENT == 5 )); then semantic=problem-key
+      fi ;;
     'problem show')
-      (( CURRENT == 4 )) && { compadd ${(@f)$(_airline_zsh_dynamic problem-key)} --all; return; }
+      if (( CURRENT == 4 )); then compadd ${(@f)$(_airline_zsh_dynamic problem-contributor)} --all; return
+      elif (( CURRENT == 5 )); then semantic=problem-key
+      fi
       ;;
     'transaction clear')
       if (( CURRENT == 4 )); then compadd global session window; return
