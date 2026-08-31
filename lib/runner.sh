@@ -362,10 +362,6 @@ runner_definition_project () {   # <run|watch>
   fi
 }
 
-runner_definition_valid () (
-  runner_definition_load "$1" && runner_definition_metadata && runner_definition_configure
-)
-
 #-----------------------------------------------------------------------------#
 # Runner command behavior
 #-----------------------------------------------------------------------------#
@@ -443,10 +439,14 @@ AIRLINE_RUNNER_FILTER_PROBLEM=""
 AIRLINE_RUNNER_PROBE_KEY=""
 AIRLINE_RUNNER_PROBE_PROBLEM=""
 
-_runner_problem_key () {   # <element> <load|classify|filter|probe>
-  local name="${1##*/}"
+_runner_problem_key () {   # <classifier|filter|probe> <element> <load|classify|filter|probe>
+  local kind="$1" name="${2##*/}" claim="$3"
   name="${name//[^a-zA-Z0-9_-]/-}"
-  printf 'airline-runner-%s-%s' "$name" "$2"
+  printf 'airline-runner/%s/%s/%s' "$kind" "$name" "$claim"
+}
+
+_runner_claim_key () {   # <pane> <claim>
+  printf 'airline-runner/%s/%s' "${1#%}" "$2"
 }
 
 _runner_condition_report_valid () {   # <ok|warn|fail> <message>
@@ -696,13 +696,13 @@ _runner_execute () {   # <session>; uses parsed run specification
 
   pane="$(current_pane)"
   win="$(resolve_window "$pane")"
-  key="runner-${pane#%}"
-  filter_key="$key-filter"
-  probe_key="$key-probe"
-  load_problem="$(_runner_problem_key "$AIRLINE_RUNNER_CLASSIFIER" load)"
-  classify_problem="$(_runner_problem_key "$AIRLINE_RUNNER_CLASSIFIER" classify)"
-  filter_problem="$(_runner_problem_key "$AIRLINE_RUNNER_FILTER" filter)"
-  probe_problem="$(_runner_problem_key "$AIRLINE_RUNNER_PROBE" probe)"
+  key="$(_runner_claim_key "$pane" command)"
+  filter_key="$(_runner_claim_key "$pane" filter)"
+  probe_key="$(_runner_claim_key "$pane" probe)"
+  load_problem="$(_runner_problem_key classifier "$AIRLINE_RUNNER_CLASSIFIER" load)"
+  classify_problem="$(_runner_problem_key classifier "$AIRLINE_RUNNER_CLASSIFIER" classify)"
+  filter_problem="$(_runner_problem_key filter "$AIRLINE_RUNNER_FILTER" filter)"
+  probe_problem="$(_runner_problem_key probe "$AIRLINE_RUNNER_PROBE" probe)"
   file="$(_runner_element_file "$session" classify "$AIRLINE_RUNNER_CLASSIFIER")"
   runner_classifier_load "$file" || return 2
   if [[ -n "$AIRLINE_RUNNER_FILTER" ]]; then
@@ -829,12 +829,12 @@ _runner_watch_execute () {   # <session>; uses parsed watch specification
 
   pane="$(current_pane)"
   win="$(resolve_window "$pane")"
-  key="runner-${pane#%}-watch"
-  probe_key="$key-probe"
-  probe_problem="$(_runner_problem_key "$AIRLINE_RUNNER_PROBE" probe)"
+  key="$(_runner_claim_key "$pane" watch)"
+  probe_key="$(_runner_claim_key "$pane" watch-probe)"
+  probe_problem="$(_runner_problem_key probe "$AIRLINE_RUNNER_PROBE" probe)"
   file="$(_runner_element_file "$session" probe "$AIRLINE_RUNNER_PROBE")"
   runner_probe_load "$file" || return 2
-  signal_problem_report "$session" "$(_runner_problem_key "$AIRLINE_RUNNER_PROBE" load)" ok ""
+  signal_problem_report "$session" "$(_runner_problem_key probe "$AIRLINE_RUNNER_PROBE" load)" ok ""
 
   AIRLINE_RUNNER_SESSION="$session"
   AIRLINE_RUNNER_WINDOW="$win"

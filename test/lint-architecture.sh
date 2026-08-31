@@ -106,7 +106,14 @@ _check_d () {
       private_owner[$symbol]="$provider"
     done < <(sed -nE 's/^(_[a-zA-Z][a-zA-Z0-9_]*)[[:space:]]*\(\).*/\1/p' "$provider")
     while IFS= read -r symbol; do
-      [[ -n "$symbol" ]] && public_owner[$symbol]="$provider"
+      [[ -n "$symbol" ]] || continue
+      previous="${public_owner[$symbol]:-}"
+      if [[ -n "$previous" && "$previous" != "$provider" ]]; then
+        printf 'D-public: duplicate public symbol %s in %s and %s\n' \
+          "$symbol" "${previous#"$ROOT"/}" "${provider#"$ROOT"/}"
+        rc=1
+      fi
+      public_owner[$symbol]="$provider"
     done < <(sed -nE 's/^([a-zA-Z][a-zA-Z0-9_]*)[[:space:]]*\(\).*/\1/p' "$provider")
   done
 

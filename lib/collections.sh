@@ -2,8 +2,9 @@
 #
 # collections.sh — dynamic keyed collections.
 #
-# Status and health hold per-window contributors; problem holds session-scoped
-# widget failures. Tmux's flat option store has no collection concept, so this
+# Status and health hold per-window contributors; the problem ledger and its
+# active origin claims are server-global. Tmux's flat option store has no
+# collection concept, so this
 # adds one mechanically. It is domain-free: namespace and severity ordering
 # arrive as data (see coll_reduce); it knows nothing about glyphs or severities.
 #
@@ -26,9 +27,9 @@
 # shellcheck shell=bash
 
 #-----------------------------------------------------------------------------#
-# Option I/O, scope-polymorphic. Scope and target are explicit so session names,
-# session ids, and window ids are all ordinary data. These are the ONLY bridge to
-# the option layer; everything below goes through them.
+# Option I/O, scope-polymorphic across Airline's legal private-state owners.
+# Scope and target are explicit so session names, session ids, and window ids are
+# ordinary data. These are the ONLY bridge to the option layer.
 #-----------------------------------------------------------------------------#
 _coll_oget () {   # <global|session|window> <target> <name>
   case "$1" in
@@ -58,10 +59,6 @@ _coll_ounset () { # <global|session|window> <target> <name>
 # double dash. So this file holds the scheme but not the literal prefix.
 _coll_reg () { prv_name "$1"; }           # ns       → registry option  (@airline--<ns>)
 _coll_key () { prv_name "$1-$2"; }        # ns key   → tuple option     (@airline--<ns>-<key>)
-
-# Public name constructor: the private tuple option for (ns, key). The single home
-# for the @airline--<ns>-<key> scheme, so callers never hand-build a private name.
-coll_optname () { _coll_key "$@"; }                    # <ns> <key> → option name
 
 #-----------------------------------------------------------------------------#
 # Private cores — operate on (scope, target, ns, …); public wrappers bake scope.
@@ -135,9 +132,7 @@ _coll_reduce () {    # <scope> <target> <ns> <order>
 # Exported collection interface — mirrors opt_* scope suffixes.
 #-----------------------------------------------------------------------------#
 
-# --- global scope ---
-coll_register_global   () { _coll_register   global "" "$@"; }
-coll_prepend_global    () { _coll_prepend    global "" "$@"; }
+# --- global scope (server-wide problem lifecycle ledger only) ---
 coll_unregister_global () { _coll_unregister global "" "$@"; }
 coll_has_global        () { _coll_has        global "" "$@"; }
 coll_members_global    () { _coll_members    global "" "$@"; }
@@ -156,8 +151,6 @@ coll_set_session        () { _coll_set        session "$@"; }
 coll_reduce_session     () { _coll_reduce     session "$@"; }
 
 # --- window scope (explicit window id first, per opt_*_window) ---
-coll_register_window   () { _coll_register   window "$@"; }
-coll_prepend_window    () { _coll_prepend    window "$@"; }
 coll_unregister_window () { _coll_unregister window "$@"; }
 coll_has_window        () { _coll_has        window "$@"; }
 coll_members_window    () { _coll_members    window "$@"; }

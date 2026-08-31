@@ -3,7 +3,7 @@
 # Generated from `airline help`; do not edit.
 _airline_children () {
   case "$1" in
-    '') printf %s version\ help\ session\ palette\ segment\ adapter\ layout\ classifier\ filter\ probe\ runner\ signal\ status\ health\ problem\ transaction ;;
+    '') printf %s version\ help\ session\ palette\ segment\ adapter\ layout\ classifier\ filter\ probe\ runner\ status\ health\ problem\ transaction ;;
     session) printf %s init\ apply\ show\ suspend\ resume\ toggle ;;
     palette) printf %s show\ use\ list\ register ;;
     segment) printf %s show ;;
@@ -15,7 +15,7 @@ _airline_children () {
     runner) printf %s show\ list\ register\ run\ watch ;;
     status) printf %s set\ clear\ show ;;
     health) printf %s set\ clear\ show ;;
-    problem) printf %s set\ clear\ show ;;
+    problem) printf %s set\ close\ clear\ resolve\ show ;;
     transaction) printf %s show\ clear ;;
     *) return 1 ;;
   esac
@@ -60,16 +60,18 @@ _airline_usage () {
     runner\ run) printf %s \[--here\|--pane\ \[-h\|-v\]\|--window\]\ \[\<runner\>\]\ \[--classify\ \<classifier\>\]\ \[--filter\ \<filter\>\ \[--merge-stderr\]\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\ --\ \<command\>... ;;
     runner\ watch) printf %s \[--here\|--pane\ \[-h\|-v\]\|--window\]\ \[\<runner\>\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\] ;;
     status\ set) printf %s \<status-key\>\ \<active\|result\|attention\>\ \[--transient\]\ \[-t\ \<window\>\] ;;
-    status\ clear) printf %s \<status-key\>\ \[-t\ \<window\>\] ;;
+    status\ clear) printf %s \[\<status-key\>\]\ \[-t\ \<window\>\] ;;
     status\ show) printf %s \[\<status-key\>\]\ \[-t\ \<window\>\] ;;
     health\ set) printf %s \[-t\ \<window\>\]\ \<health-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
     health\ clear) printf %s \[-t\ \<window\>\]\ \<health-key\> ;;
     health\ show) printf %s \[-t\ \<window\>\]\ \[\<health-key\>\] ;;
-    problem\ set) printf %s \<session\>\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
-    problem\ clear) printf %s \<session\>\ \<problem-key\> ;;
-    problem\ show) printf %s \[\<session\>\ \[\<problem-key\>\]\] ;;
+    problem\ set) printf %s \[--pane\ \<pane-id\>\]\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
+    problem\ close) printf %s \[--pane\ \<pane-id\>\|--session\ \<session-id\>\]\ \[\<problem-key\>\] ;;
+    problem\ clear) printf %s \<problem-key\> ;;
+    problem\ resolve) printf %s \<problem-key\> ;;
+    problem\ show) printf %s \[--all\]\ \[\<problem-key\>\] ;;
     transaction\ show) printf %s '' ;;
-    transaction\ clear) printf %s \<session\|window\>\ \<target\>\ \<namespace\> ;;
+    transaction\ clear) printf %s \<global\|session\|window\>\ \<target\>\ \<namespace\> ;;
     session) printf %s '' ;;
     palette) printf %s '' ;;
     segment) printf %s '' ;;
@@ -79,7 +81,6 @@ _airline_usage () {
     filter) printf %s '' ;;
     probe) printf %s '' ;;
     runner) printf %s '' ;;
-    signal) printf %s '' ;;
     status) printf %s '' ;;
     health) printf %s '' ;;
     problem) printf %s '' ;;
@@ -127,14 +128,16 @@ _airline_description () {
     runner\ run) printf %s run\ a\ command\ with\ monitoring ;;
     runner\ watch) printf %s watch\ probe\ state\ until\ interrupted ;;
     status\ set) printf %s set\ app\ status ;;
-    status\ clear) printf %s clear\ app\ status ;;
+    status\ clear) printf %s clear\ one\ status\ or\ consume\ transient\ statuses ;;
     status\ show) printf %s show\ a\ window\'s\ app\ status ;;
     health\ set) printf %s set\ window\ health ;;
     health\ clear) printf %s clear\ window\ health ;;
     health\ show) printf %s show\ a\ window\'s\ health ;;
-    problem\ set) printf %s set\ or\ recover\ a\ session\ problem ;;
-    problem\ clear) printf %s clear\ a\ session\ problem ;;
-    problem\ show) printf %s show\ all\ sessions\,\ one\ session\,\ or\ one\ problem ;;
+    problem\ set) printf %s report\ or\ recover\ an\ origin\ claim ;;
+    problem\ close) printf %s close\ an\ origin\'s\ claims ;;
+    problem\ clear) printf %s acknowledge\ and\ hide\ a\ global\ problem ;;
+    problem\ resolve) printf %s delete\ a\ resolved\ problem\ and\ its\ claims ;;
+    problem\ show) printf %s show\ active\ problems\ or\ the\ complete\ lifecycle\ ledger ;;
     transaction\ show) printf %s List\ outstanding\ transactions\ and\ owner\ state ;;
     transaction\ clear) printf %s release\ one\ stale\ transaction ;;
     session) printf %s session\ commands ;;
@@ -146,7 +149,6 @@ _airline_description () {
     filter) printf %s filter\ commands ;;
     probe) printf %s probe\ commands ;;
     runner) printf %s runner\ commands ;;
-    signal) printf %s signal\ commands ;;
     status) printf %s status\ commands ;;
     health) printf %s health\ commands ;;
     problem) printf %s problem\ commands ;;
@@ -168,10 +170,6 @@ _airline_zsh_dynamic () {
     session) command tmux list-sessions -F '#{session_name}' 2>/dev/null ;;
     window) command tmux list-windows -a -F '#{window_id}' 2>/dev/null ;;
   esac
-}
-
-_airline_zsh_problem_keys () {
-  command airline problem show "$1" 2>/dev/null | awk '{print $1}'
 }
 
 _airline_zsh_describe_children () {
@@ -237,21 +235,42 @@ _airline_zsh () {
       fi
       ;;
     'problem set')
-      if (( CURRENT == 4 )); then semantic=session
-      elif (( CURRENT == 5 )); then compadd ${(@f)$(_airline_zsh_problem_keys "${words[4]}")}; return
-      elif (( CURRENT == 6 )); then compadd ok warn fail; return
+      if [[ "${words[4]:-}" == --pane ]]; then
+        if (( CURRENT == 5 )); then semantic=pane-id
+        elif (( CURRENT == 6 )); then semantic=problem-key
+        elif (( CURRENT == 7 )); then compadd ok warn fail; return
+        fi
+      elif (( CURRENT == 4 )); then compadd ${(@f)$(_airline_zsh_dynamic problem-key)} --pane; return
+      elif (( CURRENT == 5 )); then compadd ok warn fail; return
       fi
       ;;
-    'problem clear'|'problem show')
-      if (( CURRENT == 4 )); then semantic=session
-      elif (( CURRENT == 5 )); then compadd ${(@f)$(_airline_zsh_problem_keys "${words[4]}")}; return
+    'problem close')
+      if [[ "${words[4]:-}" == --pane ]]; then
+        if (( CURRENT == 5 )); then semantic=pane-id
+        elif (( CURRENT == 6 )); then semantic=problem-key
+        fi
+      elif [[ "${words[4]:-}" == --session ]]; then
+        if (( CURRENT == 5 )); then semantic=session-id
+        elif (( CURRENT == 6 )); then semantic=problem-key
+        fi
+      elif (( CURRENT == 4 )); then compadd ${(@f)$(_airline_zsh_dynamic problem-key)} --pane --session; return
       fi
+      ;;
+    'problem clear'|'problem resolve') (( CURRENT == 4 )) && semantic=problem-key ;;
+    'problem show')
+      (( CURRENT == 4 )) && { compadd ${(@f)$(_airline_zsh_dynamic problem-key)} --all; return; }
       ;;
     'transaction clear')
-      if (( CURRENT == 4 )); then compadd session window; return
-      elif (( CURRENT == 5 )); then compadd ${(@f)$(_airline_zsh_dynamic "${words[4]}")}; return
+      if (( CURRENT == 4 )); then compadd global session window; return
+      elif (( CURRENT == 5 )); then
+        [[ "${words[4]}" == global ]] && compadd server || compadd ${(@f)$(_airline_zsh_dynamic "${words[4]}")}
+        return
       elif (( CURRENT == 6 )); then
-        [[ "${words[4]}" == session ]] && compadd config problem || compadd status health
+        case "${words[4]}" in
+          global) compadd problem ;;
+          session) compadd config ;;
+          window) compadd status health ;;
+        esac
         return
       fi
       ;;

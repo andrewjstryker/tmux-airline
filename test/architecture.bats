@@ -83,6 +83,17 @@ LINT="$BATS_TEST_DIRNAME/lint-architecture.sh"
   assert_output --partial "D-dependency"
 }
 
+@test "Invariant D catches duplicate public symbols in the sourced namespace" {
+  local fixture="$BATS_TEST_TMPDIR/d-public"
+  mkdir -p "$fixture/lib"
+  printf 'shared_service () { :; }\n' > "$fixture/lib/catalog.sh"
+  printf 'shared_service () { :; }\n' > "$fixture/lib/render.sh"
+
+  run env AIRLINE_LINT_ROOT="$fixture" "$LINT" D
+  assert_failure
+  assert_output --partial "D-public: duplicate public symbol shared_service"
+}
+
 @test "Invariant D permits a new public call when it still points downward" {
   local fixture="$BATS_TEST_TMPDIR/d-downward"
   mkdir -p "$fixture/lib"

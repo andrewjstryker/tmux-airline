@@ -50,7 +50,7 @@ AIRLINE_HELP_GROUP_NOUNS=(
   'session'
   'palette segment adapter layout'
   'classifier filter probe runner'
-  'signal status health problem'
+  'status health problem'
   'transaction'
 )
 AIRLINE_NOUNS="${AIRLINE_HELP_GROUP_NOUNS[*]}"
@@ -78,22 +78,12 @@ cmd_session () {
   # help:end session
 }
 
-cmd_signal () {
-  local verb="${1:-}"; shift || true
-  # help:begin signal
-  case "$verb" in
-    clear-transient) signal_clear_transient "$@" ;; #| [-t <window>] — consume transient status for a window
-    *) command_die "unknown signal command: $verb" ;;
-  esac
-  # help:end signal
-}
-
 cmd_status () {
   local verb="${1:-}"; shift || true
   # help:begin status
   case "$verb" in
     set)   signal_status_set "$@" ;;   #| <status-key> <active|result|attention> [--transient] [-t <window>] — set app status
-    clear) signal_status_clear "$@" ;; #| <status-key> [-t <window>] — clear app status
+    clear) signal_status_clear "$@" ;; #| [<status-key>] [-t <window>] — clear one status or consume transient statuses
     show)  signal_status_show "$@" ;;  #| [<status-key>] [-t <window>] — show a window's app status
     *) command_die "unknown status command: $verb" ;;
   esac
@@ -116,9 +106,11 @@ cmd_problem () {
   local verb="${1:-}"; shift || true
   # help:begin problem
   case "$verb" in
-    set)   signal_problem_set "$@" ;;   #| <session> <problem-key> <ok|warn|fail> [<message>...] — set or recover a session problem
-    clear) signal_problem_clear "$@" ;; #| <session> <problem-key> — clear a session problem
-    show)  signal_problem_show "$@" ;;  #| [<session> [<problem-key>]] — show all sessions, one session, or one problem
+    set)     signal_problem_set "$@" ;;     #| [--pane <pane-id>] <problem-key> <ok|warn|fail> [<message>...] — report or recover an origin claim
+    close)   signal_problem_close "$@" ;;   #| [--pane <pane-id>|--session <session-id>] [<problem-key>] — close an origin's claims
+    clear)   signal_problem_clear "$@" ;;   #| <problem-key> — acknowledge and hide a global problem
+    resolve) signal_problem_resolve "$@" ;; #| <problem-key> — delete a resolved problem and its claims
+    show)    signal_problem_show "$@" ;;    #| [--all] [<problem-key>] — show active problems or the complete lifecycle ledger
     *) command_die "unknown problem command: $verb" ;;
   esac
   # help:end problem
@@ -129,7 +121,7 @@ cmd_transaction () {
   # help:begin transaction
   case "$verb" in
     show)  transaction_show "$@" ;;        #| — list outstanding transactions and owner state
-    clear) transaction_clear_stale "$@" ;; #| <session|window> <target> <namespace> — release one stale transaction
+    clear) transaction_clear_stale "$@" ;; #| <global|session|window> <target> <namespace> — release one stale transaction
     *) command_die "unknown transaction command: $verb" ;;
   esac
   # help:end transaction
@@ -252,7 +244,6 @@ main () {
   # help:begin root
   case "$cmd" in
     session)  cmd_session "$@" ;;
-    signal)   cmd_signal  "$@" ;;
     status)   cmd_status  "$@" ;;
     health)   cmd_health  "$@" ;;
     problem)  cmd_problem "$@" ;;

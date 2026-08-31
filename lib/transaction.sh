@@ -12,10 +12,10 @@ transaction_show () {
   transaction_list
 }
 
-transaction_clear_stale () {   # <session|window> <target> <namespace>
+transaction_clear_stale () {   # <global|session|window> <target> <namespace>
   local scope="${1:-}" target="${2:-}" namespace="${3:-}" rc=0
   (( $# == 3 )) || command_die \
-    "transaction clear: need <session|window> <target> <namespace>"
+    "transaction clear: need <global|session|window> <target> <namespace>"
   transaction_clear "$scope" "$target" "$namespace" || rc=$?
   case "$rc" in
     0) ;;

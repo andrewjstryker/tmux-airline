@@ -45,8 +45,6 @@ declare -ga AIRLINE_PALETTE_ELEMENTS=(
 # the window modes. Condition and status levels are semantic, so their selectors
 # map levels to palette roles through the tables below.
 # (Not the positional backgrounds or text weights, which a signal never names.)
-declare -ga AIRLINE_PALETTE_TOKENS=(active alert stress ok special monitor copy zoom)
-
 # Health/problem levels, low→high. Both protocols share this severity ladder,
 # but not their meaning: health is a window condition, while a problem says that
 # airline or one of its contributors cannot provide an advertised capability.
@@ -55,12 +53,12 @@ declare -gA AIRLINE_CONDITION_COLOR=([ok]=ok [warn]=alert [fail]=stress)
 
 # PRIVATE state — BARE keys into the private (@airline--) namespace; the prefix is
 # tmux.sh's (prv_name / prv_*), so render never spells it. Status and health are
-# window-scoped projections; problem is a session-scoped projection rendered at
+# window-scoped projections; problem is a server-global projection rendered at
 # the extreme right. Each is reduced from its contributor collection at
 # set/clear time and read live through a token→color selector.
 AIRLINE_KEY_STATUS='badge-status'        # left badge:  reduced app-status level
 AIRLINE_KEY_HEALTH='badge-health'        # right badge: reduced window condition level
-AIRLINE_KEY_PROBLEM='badge-problem'      # session badge: reduced problem level
+AIRLINE_KEY_PROBLEM='badge-problem'      # global badge: reduced active problem level
 AIRLINE_KEY_SUSPENDED='suspended'        # private flag: dim palette for nested sessions
 # SC2034: these two are consumed by the `airline` CLI (init), which sources this
 # file — shellcheck can't trace the cross-file use.
@@ -118,11 +116,13 @@ declare -gA PALETTE
 # Read every palette element into PALETTE, then apply the suspended dimming when the
 # private suspended flag is 1 (flat, muted palette for nested sessions).
 render_palette_load () {
-  local el
+  local el value
   for el in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
-    PALETTE[$el]="$(cfg_get_session "$AIRLINE_SESSION" "$el")"
+    value="$(cfg_get_session "$AIRLINE_SESSION" "$el")" || return
+    PALETTE[$el]="$value"
   done
-  if [[ "$(prv_get_session "$AIRLINE_SESSION" "$AIRLINE_KEY_SUSPENDED")" == 1 ]]; then
+  value="$(prv_get_session "$AIRLINE_SESSION" "$AIRLINE_KEY_SUSPENDED")" || return
+  if [[ "$value" == 1 ]]; then
     _palette_suspend
   fi
 }
@@ -245,17 +245,6 @@ _window_mode_pick () {   # <in-mode> <none>
 # selector tmux re-evaluates per window — the selector leg of the render model.
 # The side (left vs right) tells the two badges apart, so their colors may overlap.
 
-# A live expression mapping a token-valued option to its baked palette color, falling
-# back to <fallback> when the option is empty or holds an unknown token. Used for
-# window modes, whose tokens are palette role names.
-_palette_token_expr () {   # <option-name> <fallback-color>
-  local option="$1" expr="$2" tok
-  for tok in "${AIRLINE_PALETTE_TOKENS[@]}"; do
-    expr="#{?#{==:#{$option},$tok},${PALETTE[$tok]},$expr}"
-  done
-  printf '%s' "$expr"
-}
-
 # The same, for the status ladder, whose levels are NOT palette role names: each level
 # maps through AIRLINE_STATUS_COLOR to its baked color (e.g. result → PALETTE[ok]).
 _status_token_expr () {   # <option-name> <fallback-color>
@@ -292,10 +281,9 @@ _glyph_expr () {   # <option-name> <fallback-glyph> <map-array-name>
 # terminals vary in honoring blink. Pair with a trailing `#[noblink]` so it can't leak.
 _blink_when () { printf '#{?#{==:#{%s},%s},#[blink],}' "$1" "$2"; }   # <option> <token>
 
-# Session problem badge: one renderer-owned indicator at the extreme right. It
-# inherits the final right-side background (inner-bg when there are no segments).
-# The session scalar resolves independently per session and the expression
-# collapses to zero width when no widget reports a problem.
+# Global problem badge: one renderer-owned indicator at the extreme right. It
+# inherits the final right-side background (inner-bg when there are no segments)
+# and collapses to zero width when no open problem has active claims.
 _problem_expr () {
   local bg="$1" problem_opt
   problem_opt="$(prv_name "$AIRLINE_KEY_PROBLEM")"
@@ -307,61 +295,72 @@ _problem_expr () {
     "$(_glyph_expr "$problem_opt" "$AIRLINE_GLYPH_PROBLEM" AIRLINE_HEALTH_GLYPH)"
 }
 
-# Project a window's reduced collection value into its badge scalar: the highest-
-# ranked entry among the window's contributors, or clear when none rank. Called by
-# `status`/`health` `set`/`clear` at runtime; the window format reads the scalar
-# live. Returns 0 when the rendered value changed (so the caller can gate a redraw).
-_project () {   # <win> <ns> <ranking> <badge-key>
-  local win="$1" ns="$2" ranking="$3" key="$4" top
-  top="$(coll_reduce_window "$win" "$ns" "$ranking")"
+# Project a signal's reduced collection value into its native badge scalar. Scope
+# changes storage mechanics, not the reduction/projection algorithm. Mutation
+# failure uses exit status; change is returned through a caller-owned destination
+# so the signal orchestration can gate the appropriate redraw.
+_project () {   # <destination> <window|global> <owner> <ns> <ranking> <badge-key>
+  local -n destination="$1"
+  local scope="$2" owner="$3" ns="$4" ranking="$5" key="$6"
+  local top current option_changed=""
+  destination=""
+  case "$scope" in
+    window) top="$(coll_reduce_window "$owner" "$ns" "$ranking")" || return ;;
+    global) top="$(coll_reduce_global "$ns" "$ranking")" || return ;;
+  esac
   if [[ -n "$top" ]]; then
-    prv_setif_window "$win" "$key" "$top"
+    case "$scope" in
+      window) prv_setif_window option_changed "$owner" "$key" "$top" || return ;;
+      global) prv_setif_global option_changed "$key" "$top" || return ;;
+    esac
+    destination="$option_changed"
   else
-    [[ -n "$(prv_get_window "$win" "$key")" ]] || return 1
-    prv_unset_window "$win" "$key"
+    case "$scope" in
+      window) current="$(prv_get_window "$owner" "$key")" || return ;;
+      global) current="$(prv_get_global "$key")" || return ;;
+    esac
+    [[ -n "$current" ]] || return 0
+    case "$scope" in
+      window) prv_unset_window "$owner" "$key" || return ;;
+      global) prv_unset_global "$key" || return ;;
+    esac
+    # shellcheck disable=SC2034 # assignment is through the caller-selected nameref
+    destination=1
   fi
 }
 
 # Status: every level shows (absence is the blank), so project the reduce verbatim.
-render_status_project () {   # <win>
-  _project "$1" status "${AIRLINE_STATUS_LEVELS[*]}" "$AIRLINE_KEY_STATUS"
+render_status_project () {   # <destination> <win>
+  _project "$1" window "$2" status "${AIRLINE_STATUS_LEVELS[*]}" "$AIRLINE_KEY_STATUS"
 }
 
-# Health: a clean badge means healthy, so an `ok`/none reduce projects as blank.
-render_health_project () {   # <win>
-  local win="$1" max
-  max="$(coll_reduce_window "$win" health "${AIRLINE_CONDITION_LEVELS[*]}")"
-  case "$max" in fail|warn) ;; *) max="" ;; esac
-  if [[ -n "$max" ]]; then
-    prv_setif_window "$win" "$AIRLINE_KEY_HEALTH" "$max"
-  else
-    [[ -n "$(prv_get_window "$win" "$AIRLINE_KEY_HEALTH")" ]] || return 1
-    prv_unset_window "$win" "$AIRLINE_KEY_HEALTH"
-  fi
+# Health recovery removes its condition, so absence naturally projects blank.
+render_health_project () {   # <destination> <win>
+  _project "$1" window "$2" health "warn fail" "$AIRLINE_KEY_HEALTH"
 }
 
-# Problem: session-scoped widget problems use the shared condition ladder and
-# reduce to one overall badge. An `ok`/none result is visually healthy (blank).
-render_problem_project () {   # <session>
-  local session="$1" max
-  max="$(coll_reduce_session "$session" problem "${AIRLINE_CONDITION_LEVELS[*]}")"
-  case "$max" in fail|warn) ;; *) max="" ;; esac
-  if [[ -n "$max" ]]; then
-    prv_setif_session "$session" "$AIRLINE_KEY_PROBLEM" "$max"
-  else
-    [[ -n "$(prv_get_session "$session" "$AIRLINE_KEY_PROBLEM")" ]] || return 1
-    prv_unset_session "$session" "$AIRLINE_KEY_PROBLEM"
-  fi
+# Problem ledger tuples place their display severity first. Active/open entries
+# carry warn/fail; closed and user-cleared entries carry an empty first field, so
+# ordinary collection reduction produces the global visible severity.
+render_problem_project () {   # <destination> <server-owner>
+  _project "$1" global "${2:-server}" problem \
+    "warn fail" "$AIRLINE_KEY_PROBLEM"
 }
 
 #-----------------------------------------------------------------------------#
 # Window formats — the window-list styling, with the status and health badges
 # woven in around the name (status left, health right).
 #-----------------------------------------------------------------------------#
-# Returns 0 when any rendered option actually changed (so render can gate one
-# redraw across the whole bar), 1 when every value was already current.
+# Successful change detection is carried privately so a no-op and a tmux failure
+# cannot share an exit status.
+_render_setif () {
+  local function="$1" changed=""; shift
+  "$function" changed "$@" || return
+  [[ -z "$changed" ]] || _AIRLINE_RENDER_CHANGED=1
+}
+
 set_window_formats () {
-  local bg="${PALETTE[inner-bg]}" active_bg="${PALETTE[active]}" template changed=1
+  local bg="${PALETTE[inner-bg]}" active_bg="${PALETTE[active]}" template
   template="$AIRLINE_TMPL_WINDOW"
 
   # Mode signal. inactive: fill the background; active: tint the name foreground.
@@ -385,18 +384,27 @@ set_window_formats () {
   local health_expr
   health_expr="#{?$health_opt, #[fg=$(_condition_token_expr "$health_opt" "${PALETTE[primary]}")]$(_blink_when "$health_opt" fail)$(_glyph_expr "$health_opt" "$AIRLINE_GLYPH_HEALTH" AIRLINE_HEALTH_GLYPH)#[noblink],}"
 
-  opt_setif_global window-status-separator " " && changed=0
+  _render_setif opt_setif_session "$AIRLINE_SESSION" window-status-separator " " || return
   # inactive: the whole tab fills with the mode color (flat inner-bg when no mode).
-  opt_setif_global window-status-format \
-    "#[bg=${mode_color}]${status_expr}#[fg=${inactive_fg}]${template}${health_expr}" && changed=0
-  opt_setif_global window-status-style          "fg=${PALETTE[primary]} bg=$bg"     && changed=0
-  opt_setif_global window-status-last-style     "fg=${PALETTE[emphasized]} bg=$bg"  && changed=0
-  opt_setif_global window-status-activity-style "fg=${PALETTE[alert]} bg=$bg"       && changed=0
-  opt_setif_global window-status-bell-style     "fg=${PALETTE[stress]} bg=$bg"      && changed=0
+  _render_setif opt_setif_session "$AIRLINE_SESSION" window-status-format \
+    "#[bg=${mode_color}]${status_expr}#[fg=${inactive_fg}]${template}${health_expr}" || return
+  _render_setif opt_setif_session "$AIRLINE_SESSION" window-status-style          "fg=${PALETTE[primary]} bg=$bg" || return
+  _render_setif opt_setif_session "$AIRLINE_SESSION" window-status-last-style     "fg=${PALETTE[emphasized]} bg=$bg" || return
+  _render_setif opt_setif_session "$AIRLINE_SESSION" window-status-activity-style "fg=${PALETTE[alert]} bg=$bg" || return
+  _render_setif opt_setif_session "$AIRLINE_SESSION" window-status-bell-style     "fg=${PALETTE[stress]} bg=$bg" || return
   # active: a constant active-color highlight block, name foreground tinted by mode.
-  opt_setif_global window-status-current-format \
-    "$(_chev_right "$bg" "$active_bg") ${status_expr}#[fg=${mode_color}]${template}${health_expr} $(_chev_left "$active_bg" "$bg")" && changed=0
-  return $changed
+  _render_setif opt_setif_session "$AIRLINE_SESSION" window-status-current-format \
+    "$(_chev_right "$bg" "$active_bg") ${status_expr}#[fg=${mode_color}]${template}${health_expr} $(_chev_left "$active_bg" "$bg")"
+}
+
+set_window_styles () {
+  local win windows
+  windows="$(list_windows "$AIRLINE_SESSION")" || return
+  for win in $windows; do
+    _render_setif opt_setif_window "$win" pane-border-style "fg=${PALETTE[primary]}" || return
+    _render_setif opt_setif_window "$win" pane-active-border-style "fg=${PALETTE[active]}" || return
+    _render_setif opt_setif_window "$win" clock-mode-colour "${PALETTE[special]}" || return
+  done
 }
 
 #-----------------------------------------------------------------------------#
@@ -407,28 +415,28 @@ set_window_formats () {
 # #{?…} selectors then decide which baked color shows). `apply` and `init` call this;
 # it does NOT seed defaults or publish the CLI path — those are init's
 # job. Idempotent and redraw-gated: it rewrites only options whose value changed
-# (opt_setif_*) and redraws once iff any did. Returns 0 when something changed
-# (a redraw happened), 1 when the bar was already current.
+# (opt_setif_*) and redraws once iff any did. Returns ordinary success for both a
+# changed render and a no-op; option read/write failures propagate.
 render () {   # <session>
   local AIRLINE_SESSION="$1"
-  render_palette_load
-  local changed=1
-  opt_setif_global pane-border-style         "fg=${PALETTE[primary]}"                       && changed=0
-  opt_setif_global pane-active-border-style   "fg=${PALETTE[active]}"                        && changed=0
-  opt_setif_session "$AIRLINE_SESSION" display-panes-colour        "${PALETTE[primary]}" && changed=0
-  opt_setif_session "$AIRLINE_SESSION" display-panes-active-colour "${PALETTE[active]}"  && changed=0
-  opt_setif_session "$AIRLINE_SESSION" status-style \
-    "fg=${PALETTE[secondary]} bg=${PALETTE[inner-bg]}" && changed=0
-  opt_setif_session "$AIRLINE_SESSION" status-left-style \
-    "fg=${PALETTE[primary]} bg=${PALETTE[outer-bg]}" && changed=0
-  opt_setif_session "$AIRLINE_SESSION" status-right-style \
-    "fg=${PALETTE[primary]} bg=${PALETTE[outer-bg]}" && changed=0
-  opt_setif_session "$AIRLINE_SESSION" status-left  "$(_build_status_left)"  && changed=0
-  opt_setif_session "$AIRLINE_SESSION" status-right "$(_build_status_right)" && changed=0
-  opt_setif_global clock-mode-colour           "${PALETTE[special]}"                          && changed=0
-  set_window_formats && changed=0
-  [[ $changed -eq 0 ]] && redraw
-  return $changed
+  local left right
+  _AIRLINE_RENDER_CHANGED=""
+  render_palette_load || return
+  left="$(_build_status_left)" || return
+  right="$(_build_status_right)" || return
+  _render_setif opt_setif_session "$AIRLINE_SESSION" display-panes-colour        "${PALETTE[primary]}" || return
+  _render_setif opt_setif_session "$AIRLINE_SESSION" display-panes-active-colour "${PALETTE[active]}" || return
+  _render_setif opt_setif_session "$AIRLINE_SESSION" status-style \
+    "fg=${PALETTE[secondary]} bg=${PALETTE[inner-bg]}" || return
+  _render_setif opt_setif_session "$AIRLINE_SESSION" status-left-style \
+    "fg=${PALETTE[primary]} bg=${PALETTE[outer-bg]}" || return
+  _render_setif opt_setif_session "$AIRLINE_SESSION" status-right-style \
+    "fg=${PALETTE[primary]} bg=${PALETTE[outer-bg]}" || return
+  _render_setif opt_setif_session "$AIRLINE_SESSION" status-left "$left" || return
+  _render_setif opt_setif_session "$AIRLINE_SESSION" status-right "$right" || return
+  set_window_styles || return
+  set_window_formats || return
+  [[ -z "$_AIRLINE_RENDER_CHANGED" ]] || redraw
 }
 
 # vim: ft=bash

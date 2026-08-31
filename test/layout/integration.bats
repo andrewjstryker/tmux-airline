@@ -46,12 +46,12 @@ write_layout() {   # <path> <configure-body>
   assert_output --partial "is incomplete"
   run airline palette show name
   assert_output custom
-  run airline problem show "$session" airline-palette
-  assert_output "$(printf "fail\tpalette 'broken' is incomplete or could not be evaluated")"
+  run airline problem show airline-palette
+  assert_output --partial "palette 'broken' is incomplete or could not be evaluated"
 
   cp "$PROJECT_ROOT/layouts/palettes/default" "$BATS_TMPDIR/incomplete/broken"
   airline palette use broken
-  run airline problem show "$session" airline-palette
+  run airline problem show airline-palette
   assert_output ""
   run airline palette use light       # a shipped bare name → found in layouts/palettes
   assert_success
@@ -74,7 +74,7 @@ write_layout() {   # <path> <configure-body>
   airline session init
   $TMUX -L "$_bats_socket" set -g @airline-active colour201
   airline session apply
-  run get_option window-status-current-format
+  run sopt window-status-current-format
   assert_output --partial "colour201"   # rendered into the bar (active highlight)
   airline palette use light
   $TMUX -L "$_bats_socket" set -g @airline-active colour201
@@ -240,13 +240,13 @@ write_layout() {   # <path> <configure-body>
   assert_output --partial "unknown segment slot 'nowhere'"
   run airline layout show name
   assert_output adaptive
-  run airline problem show "$session" airline-layout
-  assert_output "$(printf "fail\tlayout 'broken' unknown segment slot 'nowhere'")"
+  run airline problem show airline-layout
+  assert_output --partial "layout 'broken' unknown segment slot 'nowhere'"
 
   write_layout "$BATS_TMPDIR/invalid-layout/broken" \
     '  "$declare" segment left-out "RECOVERED"'
   airline layout use broken
-  run airline problem show "$session" airline-layout
+  run airline problem show airline-layout
   assert_output ""
   mkdir -p "$BATS_TMPDIR/ambiguous-layout"
   write_layout "$BATS_TMPDIR/ambiguous-layout/duplicate" \
@@ -269,13 +269,13 @@ write_layout() {   # <path> <configure-body>
   airline layout register "$BATS_TMPDIR/failing-layout"
   run airline layout use unstable
   assert_failure
-  run airline problem show "$session" airline-layout
-  assert_output "$(printf "fail\tlayout 'unstable' could not be evaluated")"
+  run airline problem show airline-layout
+  assert_output --partial "layout 'unstable' could not be evaluated"
 
   write_layout "$BATS_TMPDIR/failing-layout/unstable" \
     '  "$declare" segment left-out "RECOVERED"'
   airline layout use unstable
-  run airline problem show "$session" airline-layout
+  run airline problem show airline-layout
   assert_output ""
 }
 

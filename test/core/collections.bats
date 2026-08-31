@@ -16,33 +16,36 @@ teardown() { :; }
 
 @test "register adds keys in order; members lists them; has tests membership" {
   load_collections
-  coll_register_global status build
-  coll_register_global status deploy
-  run coll_members_global status
+  session="$(current_session)"
+  coll_register_session "$session" status build
+  coll_register_session "$session" status deploy
+  run coll_members_session "$session" status
   assert_output "build deploy"
-  coll_has_global status build
-  ! coll_has_global status nope
+  coll_has_session "$session" status build
+  ! coll_has_session "$session" status nope
 }
 
 @test "prepend adds to the front; register to the tail" {
   load_collections
-  coll_register_global status build      # tail
-  coll_prepend_global  status deploy     # head
-  run coll_members_global status
+  session="$(current_session)"
+  coll_register_session "$session" status build      # tail
+  coll_prepend_session  "$session" status deploy     # head
+  run coll_members_session "$session" status
   assert_output "deploy build"
 }
 
 @test "register is idempotent" {
   load_collections
-  coll_register_global status build
-  coll_register_global status build
-  run coll_members_global status
+  session="$(current_session)"
+  coll_register_session "$session" status build
+  coll_register_session "$session" status build
+  run coll_members_session "$session" status
   assert_output "build"
 }
 
 @test "members is empty for an untouched collection" {
   load_collections
-  run coll_members_global status
+  run coll_members_session "$(current_session)" status
   assert_output ""
 }
 
@@ -50,43 +53,40 @@ teardown() { :; }
 
 @test "set auto-registers and round-trips a multi-field tab tuple" {
   load_collections
-  coll_set_global status build "●" 20
-  coll_has_global status build               # set implies membership
-  run coll_get_global status build
+  session="$(current_session)"
+  coll_set_session "$session" status build "●" 20
+  coll_has_session "$session" status build               # set implies membership
+  run coll_get_session "$session" status build
   # fields are tab-joined
   assert_output "$(printf '●\t20')"
   # and split back by index
-  IFS=$'\t' read -r glyph prio <<< "$(coll_get_global status build)"
+  IFS=$'\t' read -r glyph prio <<< "$(coll_get_session "$session" status build)"
   [ "$glyph" = "●" ]
   [ "$prio" = "20" ]
 }
 
-@test "coll_optname builds the private tuple option name" {
-  load_collections
-  run coll_optname status build
-  assert_output "@airline--status-build"
-}
-
 @test "get is empty for an unset key" {
   load_collections
-  run coll_get_global status missing
+  run coll_get_session "$(current_session)" status missing
   assert_output ""
 }
 
-@test "a key may contain dashes" {
+@test "a key may use a contributor-qualified path" {
   load_collections
-  coll_set_global health agent-7 alert
-  run coll_members_global health
-  assert_output "agent-7"
-  run coll_get_global health agent-7
+  session="$(current_session)"
+  coll_set_session "$session" health example-agent/context alert
+  run coll_members_session "$session" health
+  assert_output "example-agent/context"
+  run coll_get_session "$session" health example-agent/context
   assert_output "alert"
 }
 
 @test "set overwrites the whole tuple" {
   load_collections
-  coll_set_global status build "●" 20
-  coll_set_global status build "▲" 50
-  run coll_get_global status build
+  session="$(current_session)"
+  coll_set_session "$session" status build "●" 20
+  coll_set_session "$session" status build "▲" 50
+  run coll_get_session "$session" status build
   assert_output "$(printf '▲\t50')"
 }
 
@@ -94,49 +94,58 @@ teardown() { :; }
 
 @test "unregister drops the key from the registry and unsets its tuple" {
   load_collections
-  coll_set_global status build "●" 20
-  coll_set_global status deploy "■" 30
-  coll_unregister_global status build
-  run coll_members_global status
+  session="$(current_session)"
+  coll_set_session "$session" status build "●" 20
+  coll_set_session "$session" status deploy "■" 30
+  coll_unregister_session "$session" status build
+  run coll_members_session "$session" status
   assert_output "deploy"
-  run coll_get_global status build
+  run coll_get_session "$session" status build
   assert_output ""
-  ! coll_has_global status build
+  ! coll_has_session "$session" status build
 }
 
 @test "unregistering the last key clears the registry option" {
   load_collections
-  coll_set_global status build "●" 20
-  coll_unregister_global status build
-  run coll_members_global status
+  session="$(current_session)"
+  coll_set_session "$session" status build "●" 20
+  coll_unregister_session "$session" status build
+  run coll_members_session "$session" status
   assert_output ""
 }
 
 # --- scope independence -----------------------------------------------------
 
-@test "global, session, and window collections are independent" {
+@test "session and window collections are independent" {
   load_collections
   win="$(current_window)"
   session="$(current_session)"
-  coll_set_global status build "●" 20
   coll_set_session "$session" status build stress "session problem"
   coll_set_window "$win" status build ok
-  run coll_members_global status
-  assert_output "build"
-  run coll_get_global status build
-  assert_output "$(printf '●\t20')"
   run coll_get_session "$session" status build
   assert_output "$(printf 'stress\tsession problem')"
   run coll_get_window "$win" status build
   assert_output "ok"
 }
 
+@test "global collections retain server-wide ledger state" {
+  load_collections
+  coll_set_global problem cpu fail active fail "sensors missing"
+  run coll_get_global problem cpu
+  assert_output "$(printf 'fail\tactive\tfail\tsensors missing')"
+  run coll_reduce_global problem "ok warn fail"
+  assert_output fail
+  coll_unregister_global problem cpu
+  run coll_members_global problem
+  assert_output ""
+}
+
 @test "session collection reduces the highest-ranked first field" {
   load_collections
   session="$(current_session)"
-  coll_set_session "$session" problem cpu warn "sensors missing"
-  coll_set_session "$session" problem battery fail "query timed out"
-  run coll_reduce_session "$session" problem "ok warn fail"
+  coll_set_session "$session" sample cpu warn "sensors missing"
+  coll_set_session "$session" sample battery fail "query timed out"
+  run coll_reduce_session "$session" sample "ok warn fail"
   assert_output "fail"
 }
 

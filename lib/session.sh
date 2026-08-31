@@ -9,6 +9,11 @@ _session_bootstrap () {   # <session>
   pub_set "$AIRLINE_KEY_CLI" "$AIRLINE_DIR/airline.sh"
   hook_set "after-new-session[90]" \
     "run-shell -b \"'$AIRLINE_DIR/airline.sh' session init -t '#{session_id}'\""
+  hook_set_airline_window_styles
+  signal_problem_install_hooks
+  # Remove the pre-ledger session projection so it cannot shadow the global
+  # badge after upgrading an already initialized tmux server.
+  prv_unset_session "$session" "$AIRLINE_KEY_PROBLEM"
 
   catalog_register_builtin "$session" palette "$AIRLINE_DIR/layouts/palettes"
   catalog_register_builtin "$session" adapter "$AIRLINE_DIR/layouts/adapters"
@@ -26,7 +31,7 @@ _session_state_word () {   # <session>
     printf 'suspended\n' || printf 'active\n'
 }
 
-_session_state_set () {   # <session> <1=suspended|0=active>
+_session_state_set_unlocked () {   # <session> <1=suspended|0=active>
   local session="$1" value="$2"
   prv_set_session "$session" "$AIRLINE_KEY_SUSPENDED" "$value"
   if [[ "$value" == 1 ]]; then
@@ -36,7 +41,11 @@ _session_state_set () {   # <session> <1=suspended|0=active>
     opt_unset_session "$session" prefix
     opt_unset_session "$session" key-table
   fi
-  render "$session" || true
+  render "$session"
+}
+
+_session_state_set () {   # <session> <1=suspended|0=active>
+  with_session_transaction "$1" config _session_state_set_unlocked "$@"
 }
 
 _session_configuration_show_unlocked () {   # <session>

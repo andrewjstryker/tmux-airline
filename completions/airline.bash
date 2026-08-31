@@ -4,7 +4,7 @@
 # Generated from `airline help`; do not edit.
 _airline_children () {
   case "$1" in
-    '') printf %s version\ help\ session\ palette\ segment\ adapter\ layout\ classifier\ filter\ probe\ runner\ signal\ status\ health\ problem\ transaction ;;
+    '') printf %s version\ help\ session\ palette\ segment\ adapter\ layout\ classifier\ filter\ probe\ runner\ status\ health\ problem\ transaction ;;
     session) printf %s init\ apply\ show\ suspend\ resume\ toggle ;;
     palette) printf %s show\ use\ list\ register ;;
     segment) printf %s show ;;
@@ -16,7 +16,7 @@ _airline_children () {
     runner) printf %s show\ list\ register\ run\ watch ;;
     status) printf %s set\ clear\ show ;;
     health) printf %s set\ clear\ show ;;
-    problem) printf %s set\ clear\ show ;;
+    problem) printf %s set\ close\ clear\ resolve\ show ;;
     transaction) printf %s show\ clear ;;
     *) return 1 ;;
   esac
@@ -61,16 +61,18 @@ _airline_usage () {
     runner\ run) printf %s \[--here\|--pane\ \[-h\|-v\]\|--window\]\ \[\<runner\>\]\ \[--classify\ \<classifier\>\]\ \[--filter\ \<filter\>\ \[--merge-stderr\]\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\ --\ \<command\>... ;;
     runner\ watch) printf %s \[--here\|--pane\ \[-h\|-v\]\|--window\]\ \[\<runner\>\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\] ;;
     status\ set) printf %s \<status-key\>\ \<active\|result\|attention\>\ \[--transient\]\ \[-t\ \<window\>\] ;;
-    status\ clear) printf %s \<status-key\>\ \[-t\ \<window\>\] ;;
+    status\ clear) printf %s \[\<status-key\>\]\ \[-t\ \<window\>\] ;;
     status\ show) printf %s \[\<status-key\>\]\ \[-t\ \<window\>\] ;;
     health\ set) printf %s \[-t\ \<window\>\]\ \<health-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
     health\ clear) printf %s \[-t\ \<window\>\]\ \<health-key\> ;;
     health\ show) printf %s \[-t\ \<window\>\]\ \[\<health-key\>\] ;;
-    problem\ set) printf %s \<session\>\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
-    problem\ clear) printf %s \<session\>\ \<problem-key\> ;;
-    problem\ show) printf %s \[\<session\>\ \[\<problem-key\>\]\] ;;
+    problem\ set) printf %s \[--pane\ \<pane-id\>\]\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
+    problem\ close) printf %s \[--pane\ \<pane-id\>\|--session\ \<session-id\>\]\ \[\<problem-key\>\] ;;
+    problem\ clear) printf %s \<problem-key\> ;;
+    problem\ resolve) printf %s \<problem-key\> ;;
+    problem\ show) printf %s \[--all\]\ \[\<problem-key\>\] ;;
     transaction\ show) printf %s '' ;;
-    transaction\ clear) printf %s \<session\|window\>\ \<target\>\ \<namespace\> ;;
+    transaction\ clear) printf %s \<global\|session\|window\>\ \<target\>\ \<namespace\> ;;
     session) printf %s '' ;;
     palette) printf %s '' ;;
     segment) printf %s '' ;;
@@ -80,7 +82,6 @@ _airline_usage () {
     filter) printf %s '' ;;
     probe) printf %s '' ;;
     runner) printf %s '' ;;
-    signal) printf %s '' ;;
     status) printf %s '' ;;
     health) printf %s '' ;;
     problem) printf %s '' ;;
@@ -128,14 +129,16 @@ _airline_description () {
     runner\ run) printf %s run\ a\ command\ with\ monitoring ;;
     runner\ watch) printf %s watch\ probe\ state\ until\ interrupted ;;
     status\ set) printf %s set\ app\ status ;;
-    status\ clear) printf %s clear\ app\ status ;;
+    status\ clear) printf %s clear\ one\ status\ or\ consume\ transient\ statuses ;;
     status\ show) printf %s show\ a\ window\'s\ app\ status ;;
     health\ set) printf %s set\ window\ health ;;
     health\ clear) printf %s clear\ window\ health ;;
     health\ show) printf %s show\ a\ window\'s\ health ;;
-    problem\ set) printf %s set\ or\ recover\ a\ session\ problem ;;
-    problem\ clear) printf %s clear\ a\ session\ problem ;;
-    problem\ show) printf %s show\ all\ sessions\,\ one\ session\,\ or\ one\ problem ;;
+    problem\ set) printf %s report\ or\ recover\ an\ origin\ claim ;;
+    problem\ close) printf %s close\ an\ origin\'s\ claims ;;
+    problem\ clear) printf %s acknowledge\ and\ hide\ a\ global\ problem ;;
+    problem\ resolve) printf %s delete\ a\ resolved\ problem\ and\ its\ claims ;;
+    problem\ show) printf %s show\ active\ problems\ or\ the\ complete\ lifecycle\ ledger ;;
     transaction\ show) printf %s List\ outstanding\ transactions\ and\ owner\ state ;;
     transaction\ clear) printf %s release\ one\ stale\ transaction ;;
     session) printf %s session\ commands ;;
@@ -147,7 +150,6 @@ _airline_description () {
     filter) printf %s filter\ commands ;;
     probe) printf %s probe\ commands ;;
     runner) printf %s runner\ commands ;;
-    signal) printf %s signal\ commands ;;
     status) printf %s status\ commands ;;
     health) printf %s health\ commands ;;
     problem) printf %s problem\ commands ;;
@@ -171,9 +173,22 @@ _airline_dynamic () {   # <semantic-type>
     segment) command airline segment show 2>/dev/null | while read -r line _; do printf '%s\n' "$line"; done ;;
     status-key) command airline status show 2>/dev/null | while read -r line _; do printf '%s\n' "$line"; done ;;
     health-key) command airline health show 2>/dev/null | while read -r line _; do printf '%s\n' "$line"; done ;;
+    problem-key) command airline problem show --all 2>/dev/null | while IFS= read -r line; do
+      case "$line" in '  '*) ;; *) printf '%s\n' "${line%% *}" ;; esac
+    done ;;
     session) command tmux list-sessions -F '#{session_name}' 2>/dev/null || true ;;
+    session-id) command tmux list-sessions -F '#{session_id}' 2>/dev/null || true ;;
+    pane-id) command tmux list-panes -a -F '#{pane_id}' 2>/dev/null || true ;;
     window) command tmux list-windows -a -F '#{window_id}' 2>/dev/null || true ;;
   esac
+}
+
+_airline_complete_dynamic () {   # <semantic-type> <prefix>
+  local candidate
+  COMPREPLY=()
+  while IFS= read -r candidate; do
+    if [[ "$candidate" == "$2"* ]]; then COMPREPLY+=("$candidate"); fi
+  done < <(_airline_dynamic "$1")
 }
 
 _airline_values () {   # <usage-token>
@@ -219,8 +234,8 @@ _airline_argument_position () {   # already-entered leaf arguments
   for arg in "$@"; do
     if [[ -n "$skip" ]]; then skip=""; continue; fi
     case "$arg" in
-      -t|--classify|--filter|--probe) skip=1 ;;
-      --here|--pane|--window|-h|-v|--merge-stderr) ;;
+      -t|--pane|--session|--classify|--filter|--probe) skip=1 ;;
+      --here|--window|-h|-v|--merge-stderr) ;;
       --) ;;
       *) ((count++)) || true ;;
     esac
@@ -237,13 +252,6 @@ _airline_option_values () {   # <usage>
     for part in "${parts[@]}"; do
       [[ "$part" == -* && "$part" != -- ]] && printf '%s\n' "$part"
     done
-  done
-}
-
-_airline_problem_keys () {   # <session>
-  local line
-  command airline problem show "$1" 2>/dev/null | while read -r line _; do
-    printf '%s\n' "$line"
   done
 }
 
@@ -307,6 +315,14 @@ _airline_completion () {
       COMPREPLY=( $(compgen -W "$(_airline_dynamic "$token")" -- "$current") )
       return
       ;;
+    --pane)
+      _airline_complete_dynamic pane-id "$current"
+      return
+      ;;
+    --session)
+      _airline_complete_dynamic session-id "$current"
+      return
+      ;;
   esac
   if [[ "$path" == health\ * ]]; then
     local offset=0 count
@@ -324,17 +340,30 @@ _airline_completion () {
     -*) COMPREPLY=( $(compgen -W "$(_airline_option_values "$usage")" -- "$current") ); return ;;
   esac
   position="$(_airline_argument_position "${prior[@]}")"
-  if [[ "$path" == 'problem set' || "$path" == 'problem clear' || "$path" == 'problem show' ]] &&
-     (( position == 1 )); then
-    COMPREPLY=( $(compgen -W "$(_airline_problem_keys "${prior[0]}")" -- "$current") )
-    return
+  if [[ "$path" == problem\ * ]]; then
+    case "$verb:$position" in
+      set:0|close:0|clear:0|resolve:0|show:0)
+        token=""
+        if (( ${#prior[@]} == 0 )); then token="$(_airline_option_values "$usage" || true)"; fi
+        COMPREPLY=( $(compgen -W "$(_airline_dynamic problem-key) $token" -- "$current") )
+        return ;;
+      set:1) COMPREPLY=( $(compgen -W 'ok warn fail' -- "$current") ); return ;;
+    esac
   fi
   if [[ "$path" == 'transaction clear' ]]; then
-    if (( position == 1 )); then
-      COMPREPLY=( $(compgen -W "$(_airline_dynamic "${prior[0]}")" -- "$current") )
+    if (( position == 0 )); then
+      COMPREPLY=( $(compgen -W 'global session window' -- "$current") )
+      return
+    elif (( position == 1 )); then
+      if [[ "${prior[0]}" == global ]]; then token=server; else token="$(_airline_dynamic "${prior[0]}")"; fi
+      COMPREPLY=( $(compgen -W "$token" -- "$current") )
       return
     elif (( position == 2 )); then
-      [[ "${prior[0]}" == session ]] && token='config problem' || token='status health'
+      case "${prior[0]}" in
+        global) token=problem ;;
+        session) token=config ;;
+        window) token='status health' ;;
+      esac
       COMPREPLY=( $(compgen -W "$token" -- "$current") )
       return
     fi

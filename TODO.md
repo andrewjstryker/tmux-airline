@@ -1,5 +1,99 @@
 # TODO
 
+## Architecture follow-up (2026-08-28)
+
+This work follows the architectural review of the configuration, rendering, option
+workspace, and internal module surfaces. The first four items were completed in
+order; the architecture lint was strengthened only after their resulting module/API
+shape settled. User-visible behavior is preserved except where an item explicitly
+corrects an ownership or failure-reporting defect.
+
+### 1. Render output at its native owner
+
+- [x] Keep the committed palette and layout session-owned all the way through
+      rendering. Write `window-status-*` formats and styles to the target session,
+      not the global session defaults.
+- [x] Write `pane-border-style`, `pane-active-border-style`, and
+      `clock-mode-colour` at window scope for every window belonging to the target
+      session. Ensure a newly created window receives the owning session's rendered
+      values without borrowing the palette most recently rendered by another
+      session.
+- [x] Do not let independent session configuration transactions race over shared
+      palette-derived global output.
+- [x] Add a real-tmux, two-session regression test using distinct palettes. Verify
+      both existing and newly created windows retain their session's status formats,
+      pane styles, and clock color after either session is rendered again.
+
+Completion requires every palette-derived native option to have the same effective
+owner as its committed source, including tmux inheritance for future windows.
+
+### 2. Decide failed-workspace semantics proportionately
+
+- [x] Treat rollback as a design choice, not as an ACID requirement. The audit found
+      that ordinary option staging could be discarded cheaply, but palette evaluation
+      deliberately flushes the workspace, executes a trusted tmux source file, and
+      reloads it. General rollback would need a second original-state model plus
+      compensating tmux writes and still could not reverse arbitrary side effects from
+      trusted executable definitions or adapters.
+- [x] Do not add partial rollback that would protect only callbacks without workspace
+      boundaries while making the overall `transaction` name appear stronger. Keep
+      the current commit-on-callback-return behavior needed for failure diagnostics
+      and palette-stage cleanup.
+- [x] Define the transaction guarantee narrowly: owner/namespace serialization,
+      read-your-writes, ordered option batching, redraw deferral, lock cleanup, and
+      stale-owner recovery. It does not promise rollback when a callback fails.
+- [x] Keep public operations structured to validate before mutation and commit domain
+      state only after trusted definitions have passed their declaration contracts.
+      Accept the residual partial-write risk of a trusted executable that fails while
+      applying effects; the command reports failure and the managed problem records
+      the degraded capability.
+- [x] Pin the chosen behavior at the mechanical boundary so a future one-line
+      discard change cannot silently break palette cleanup or failure diagnostics.
+
+Decision: rollback is not proportionate to the remaining exposure. Revisit only if
+Airline stops evaluating trusted tmux/Bash extensions inside the protected operation
+or a concrete user-visible partial-write failure justifies that added machinery.
+
+### 3. Separate mutation failure from change detection
+
+- [x] Give option mutation an ordinary success/failure result and communicate
+      changed-versus-unchanged through private data rather than overloading exit
+      status 1.
+- [x] Propagate render failures through session apply, palette/layout operations,
+      suspend/resume, and signal projection while preserving redraw gating for
+      successful no-ops.
+- [x] Add failure-injection coverage for direct rendering and workspace-flush paths.
+      A valid unchanged operation remains successful; a failed tmux write does not.
+
+### 4. Remove unjustified internal surface
+
+- [x] Audit unused collection and option helpers by intended ownership, not only by
+      reference count. Before deleting one, decide whether its absence exposes a
+      missed use of the common abstraction or whether it represents speculative
+      symmetry.
+- [x] Remove global private-collection operations while no domain owns global state.
+      Reintroduce only the narrow accessors required if the state model later gains
+      a genuine server-global owner. Review unused window collection wrappers,
+      `coll_optname`, `opt_getor_*`, and namespace accessors under the same standard.
+- [x] Remove tests that preserve deleted hypothetical APIs; retain or add tests for
+      the smaller supported internal surface and its ownership rules.
+
+The audit removed the then-unused global collection surface, unused window register/prepend
+wrappers, the public collection option-name constructor, `opt_getor_*`, unused
+global/config unset wrappers, the unused global `setif`, the non-targeted source-file
+wrapper, unused hook-unset and key-binding primitives, a dead palette-expression
+builder, and a runner-definition validity wrapper used only by its test. The later
+global problem-ledger design reintroduced the minimal private-global option and
+collection operations because they now have a concrete owner and caller.
+
+### 5. Strengthen symbol-boundary lint after items 1-4
+
+- [x] Reject duplicate public function definitions across sourced library modules.
+      Bash uses one process-global function namespace, so a source-order override is
+      an architectural collision just as a duplicate private symbol is.
+- [x] Re-evaluate the layer map and checked source set after the preceding API and
+      ownership changes, then update the design document and lint fixtures together.
+
 ## Public CLI correctness
 
 The Agent integration review exposed two command-boundary defects. These are
@@ -230,14 +324,13 @@ the agreed bar for a private entry point.
 
       Have the hook call that public command with `#{session_id}`.
 
-- [x] Replace `_unfocus` with a public semantic operation that consumes all transient
-      status and health contributors for a target window. The operation must retain
-      the current transaction and redraw-gating behavior. Choose final grammar based
-      on the signal/attention model rather than exposing the tmux hook name; for
-      example:
+- [x] Replace `_unfocus` with the normal public status-clear operation. A keyed clear
+      removes one contributor; a keyless clear consumes every transient status
+      contributor for the target window in one transaction while preserving sticky
+      status and redraw gating:
 
       ```text
-      airline signal clear-transient -t <window>
+      airline status clear -t <window>
       ```
 
       Have the `pane-focus-out` hook translate the tmux event into that operation.
@@ -413,3 +506,58 @@ decreased.
 - [x] Any net increase in effective code size has a documented architectural reason;
       otherwise the rework reduces effective production/test complexity.
 - [x] All lint and test suites pass.
+
+## Global problem lifecycle ledger
+
+The problem API is server-global: users never need a session id to inspect a
+problem, and an active problem is immediately visible in every Airline status bar.
+Origins are retained only to distinguish independent claims and automate lifecycle
+transitions.
+
+- [x] Route status, health, and problem through the same internal mutation shape:
+      native-owner transaction, lifecycle callback, common reduction/projection,
+      and redraw gating.
+- [x] Keep status and health window-scoped; make the problem ledger, claims, badge,
+      and transaction server-global.
+- [x] Support `problem set [--pane <pane-id>] <key> <ok|warn|fail> [message]`.
+      Omitted `--pane` records the current session as origin; a pane id preserves a
+      pane-hosted contributor's identity.
+- [x] Support `problem close [--pane <pane-id>|--session <session-id>] [key]` and
+      install tmux pane/session lifecycle hooks that close the matching claims.
+- [x] Model ledger states explicitly: `active` while contributors claim the problem,
+      `closed` when the last contributor disappears, and `cleared` when the user has
+      acknowledged it. Resolution deletes the ledger entry.
+- [x] Give `clear` consistent user semantics across signals: normal `show` no longer
+      displays the item. Status and health implement that by removal; problem keeps
+      a cleared history entry.
+- [x] Make `problem show` list active entries only and `problem show --all` include
+      active, closed, and cleared entries with lifecycle and origin detail.
+- [x] Ensure `problem set` reopens `closed` but never un-clears `cleared`. Reporter
+      `ok` removes only that origin's claim and deletes the ledger when the final
+      claim demonstrates recovery. `problem resolve <key>` explicitly deletes all
+      claims and history.
+- [x] Keep duplicate origin/key mutations, absent close/clear/resolve operations,
+      projection, and redraw behavior idempotent.
+- [x] Regenerate completions, synchronize user/design documentation, and pass the
+      complete lint, behavior, and real-tmux integration suites.
+
+## Contributor identity contract
+
+- [x] Keep contributor identity convention-based rather than adding a global
+      registration or collision-detection system Airline cannot make authoritative.
+- [x] Define retained health and problem keys as contributor-qualified opaque keys,
+      conventionally `<contributor>/<claim>[/<instance>]`.
+- [x] Keep status lightweight: its key is an ownership token within one window and
+      does not gain a separate contributor or origin model.
+- [x] Retain problem origins independently of the qualified problem key so multiple
+      runtime instances of one contributor capability aggregate without conflating
+      different contributors.
+- [x] Apply qualification at the external reporting boundary, not mechanically to
+      Airline-owned layout and palette lifecycle keys; retain the stable reserved
+      `airline-layout` and `airline-palette` identifiers.
+- [x] Require contributors to mutate only their own keys, keep state out of identity,
+      report recovery explicitly, and use problem for failures of advertised
+      capability rather than observed domain health.
+- [x] Distinguish Airline runner element kinds where an internal collision is
+      possible, validate qualified external keys through real tmux storage,
+      synchronize documentation, and pass the full suite.

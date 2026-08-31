@@ -113,7 +113,9 @@ CLI, which owns library loading, environment setup, argument validation, and
 dispatch. It does not manufacture a second private process protocol merely to skip
 the small public parser. Once loaded, modules call one another directly: a
 non-underscore function is a module service, while an underscore-prefixed function
-is private to the file that defines it.
+is private to the file that defines it. Because every library is sourced into one
+Bash function namespace, public service names must also be unique across modules;
+the dependency lint rejects source-order overrides.
 
 Build-time dependency enforcement uses the following coarse layers rather than an
 allowlist of every permitted pair. Calls must point to a strictly lower layer;
@@ -148,9 +150,10 @@ The important boundaries are:
   namespace or representation.
 - `lib/signal.sh` owns runtime status, health, and problem reporting: validation,
   contributor mutation, badge projection, redraw gating, and transient consumption.
-  A problem is specifically a session-scoped failure of airline or a contributor
-  to provide an advertised capability; it is not window or pane attention. Layout
-  and runner report managed problems through that public service.
+  All three signals follow the same mutation pipeline, with lifecycle policy kept
+  in signal-specific callbacks. A problem is a server-global failure of airline or
+  a contributor to provide an advertised capability; it is not window or pane
+  attention. Layout and runner report managed problems through that public service.
 - Palette and layout are independent axes: a palette chooses colors; a layout
   chooses adapters and segment strings. A palette change replays the active adapter
   declarations against the new colors without rerunning the layout program.
@@ -193,9 +196,9 @@ the user selects that palette or layout again when they want its complete defini
 Private state exists at its native owner:
 
 - status and health contributors and their projected badges are window-scoped;
-- problems, palette/layout selections, guards, paths, suspension,
-  committed configuration, and adapter declarations are session-scoped;
-- there is no private-global state.
+- the problem ledger, origin claims, and projected problem badge are server-global;
+- palette/layout selections, guards, paths, suspension, committed configuration,
+  and adapter declarations are session-scoped.
 
 ### Apply and live updates
 
@@ -228,7 +231,10 @@ The two update modes are deliberately different:
 `init` publishes `@airline-cli`, installs missing default palette and layout
 selections behind a session sentinel, and renders. Re-running it does not overwrite
 an existing session selection. A global `after-new-session` hook initializes future
-sessions using an explicit session target.
+sessions using an explicit session target. Because tmux has global defaults but no
+session defaults for window options, an `after-new-window` hook copies the creating
+session's committed palette roles directly into the new window's pane-border and
+clock options without starting another Airline process.
 
 `VERSION` is the sole release-version source. The read-only `airline version`
 command returns its value; `scripts/release` derives the annotated Git tag from it;
@@ -250,6 +256,14 @@ The status bar contains three kinds of value:
 
 The rule is: **colors are baked; selectors and readings are live.** `apply` renders
 only what must be baked.
+
+Rendered output is written at its native tmux owner. Status bars, window-list
+formats, and their styles are session options. Pane-border styles and clock color
+are window options, so render updates every window in the target session and the
+new-window hook initializes future windows. No palette-derived output is written to
+tmux's global session or global window defaults. A tmux window linked into multiple
+sessions remains one native window and therefore has one set of window-owned pane
+and clock options; this is tmux ownership rather than Airline state leakage.
 
 ## Configuration kinds
 
@@ -317,17 +331,18 @@ airline version
 airline help [<noun> [<verb>]]
 
 airline status   set <status-key> <active|result|attention> [--transient] [-t <window>]
-                 clear <status-key> [-t <window>]
+                 clear [<status-key>] [-t <window>]
                  show [<status-key>] [-t <window>]
 airline health   set [-t <window>] <health-key> <ok|warn|fail> [<message>...]
                  clear [-t <window>] <health-key>
                  show [-t <window>] [<health-key>]
-airline problem  set <session> <problem-key> <ok|warn|fail> [<message>...]
-                 clear <session> <problem-key>
-                 show [<session> [<problem-key>]]
-airline signal   clear-transient [-t <window>]
+airline problem  set [--pane <pane-id>] <problem-key> <ok|warn|fail> [<message>...]
+                 close [--pane <pane-id>|--session <session-id>] [<problem-key>]
+                 clear <problem-key>
+                 resolve <problem-key>
+                 show [--all] [<problem-key>]
 airline transaction show
-                    clear <session|window> <target> <namespace>
+                    clear <global|session|window> <target> <namespace>
 
 airline palette  show [name|<palette-element>] | list | use <palette> | register <dir>
 airline segment  show [<segment>]
@@ -342,7 +357,7 @@ airline runner   show <runner> [<arg>...] | list | register <dir>
                  watch [--here|--pane [-h|-v]|--window] [<runner>] [--probe <probe> [<arg>...]]
 ```
 
-All listed commands are public. Tmux hooks use targeted public session and signal
+All listed commands are public. Tmux hooks use targeted public session and status
 operations rather than a separate callback vocabulary. Spawned runner panes and
 windows re-enter through public `runner run/watch --here` commands; process-local
 spawn context arms pane retention before validation without adding command grammar.
@@ -387,10 +402,12 @@ installs both artifacts with the PATH shim.
   `-v` orientation modifiers; omitting one preserves tmux's default split.
 - `-t` accepts a window target for status and health. A pane target is valid where
   tmux can resolve its owning window. Health places `-t <window>` before its keyed
-  tuple so every trailing message word is opaque. Problem mutations instead require
-  a session as their first positional argument; a bare problem show reads every
-  session. Health and problem require a user-facing message for `warn` and `fail`;
-  `ok` is message-free recovery and removes the keyed condition.
+  tuple so every trailing message word is opaque. Problems are globally visible.
+  `problem set` attributes a claim to the current session unless `--pane` supplies
+  a pane origin; lifecycle hooks close claims for destroyed origins. Health and
+  problem require a user-facing message for `warn` and `fail`; `ok` is message-free
+  reporter recovery. For health it removes the condition; for problem it removes
+  only that reporter's claim.
 - Session state is the active/suspended axis. Suspension derives a muted palette and
   traps the prefix; airline itself installs no key binding. `session show state`
   returns its raw scripting value.
@@ -613,9 +630,9 @@ an airline problem. Airline does not copy command diagnostics into problems.
 
 ## Collections and badge projection
 
-Status and health hold zero or more contributors per window. Problem holds zero or
-more failures per session. Each collection uses an explicit registry and a tuple per
-member:
+Status and health hold zero or more contributors per window. Problem uses a
+server-global lifecycle ledger plus a server-global set of active origin claims.
+Each collection uses an explicit registry and a tuple per member:
 
 ```text
 @airline--<namespace>       space-delimited member registry
@@ -627,27 +644,76 @@ Collection rules:
 - Membership is explicit; entries are never discovered by parsing option names.
 - `set` writes the entire tuple and registers the key. `unregister` also removes the
   tuple.
-- Keys may contain `-`. Registry keys cannot contain whitespace. Status tuples hold
-  `<level>\t<transient>`; health and problem condition tuples both hold
-  `<level>\t<message>`. Diagnostic messages may contain spaces but not tabs.
+- Keys are opaque and cannot contain whitespace. Status tuples hold
+  `<level>\t<transient>` and health tuples hold `<level>\t<message>`. Problem ledger
+  tuples hold `<badge|none>\t<active|closed|cleared>\t<last-level>\t<last-message>`;
+  active claim tuples hold `<key>\t<pane|session>\t<origin>\t<level>\t<message>`.
+  Diagnostic messages may contain spaces but not tabs.
 - Storage is never rendered directly. A domain-specific caller reduces the
   collection and projects the result to `badge-status`, `badge-health`, or
   `badge-problem`.
 - Reduction receives its ranking as data, keeping `lib/collections.sh` free of status,
   health, and problem semantics.
 
-Health and problem share one persistent condition service and the ladder
-`ok < warn < fail`. `ok` or absence is normal and invisible; `warn` maps to `alert`;
-`fail` maps to `stress`. Every retained condition includes a diagnostic message.
-Health is window-scoped and problem is session-scoped; their owner, namespace, and
-projected badge differ, while validation, storage, recovery, inspection, and redraw
-gating are common. Neither condition is cleared merely because a window was viewed.
-Messages are opaque user-facing payload: Airline validates framing, stores and shows
-the text, but assigns it no meaning. Reporters and classifier/filter/probe
-implementations own the diagnostic content.
-Problems are encountered and cleared independently by each session; linked windows
-do not propagate or synchronize them. Airline canonicalizes the caller-supplied
-session and mutates only that scope.
+Health and problem share the ladder `ok < warn < fail`. `ok` or absence is normal
+and invisible; `warn` maps to `alert`; `fail` maps to `stress`. Every retained
+condition includes a diagnostic message. Messages are opaque user-facing payload:
+Airline validates framing, stores and shows the text, but assigns it no meaning.
+Reporters and classifier/filter/probe implementations own the diagnostic content.
+
+### Contributor identity contract
+
+Airline does not register contributor names or attempt to detect independently
+chosen key collisions. Reusable contributors qualify retained health and problem
+keys by convention as `<contributor>/<claim>[/<instance>]`; Airline treats the
+result as opaque data. Contributor names are stable software identities, claims are
+stable conditions or capabilities, and optional instances distinguish concurrent
+reporters within the same native owner. Severity and messages never participate in
+identity.
+
+The convention applies at the external reporting boundary, not mechanically to
+every internal key. Airline-owned subsystems use stable reserved identifiers such
+as `airline-layout` and `airline-palette`; their writers and lifecycle are already
+under one owner, so additional qualification would add no collision protection.
+
+A contributor owns only its qualified keys and performs recovery only against those
+keys. Breaking that contract may overwrite or clear another contributor's state.
+Status does not gain a separate contributor field: its key is an ownership token
+within one window and the pane contains the explanation. A health key identifies
+the contributor-owned diagnostic shown by `health show`. A problem key identifies
+a contributor capability globally; its claim records separately retain pane or
+session origins. Multiple origins of the same contributor capability therefore
+aggregate, while similarly worded failures from different contributors remain
+separate problems.
+
+Failure to provide an advertised contributor capability belongs in problem.
+Successfully observing an unhealthy domain result belongs in health, and attention
+whose details are already visible in the pane belongs in status. These semantic
+rules are contractual rather than inferred from key spelling.
+
+The three signal types use one orchestration path: resolve the native owner, enter
+its transaction, apply a lifecycle callback, reduce/project the collection, and
+redraw only when presentation changed. Their lifecycle policies differ:
+
+- Status is window-scoped. Keyed `clear` removes one contributor. Keyless `clear`
+  removes every transient contributor in the window, which lets the focus hook use
+  the same lifecycle operation without exposing a separate cleanup verb.
+- Health is window-scoped and persistent until reporter recovery or explicit
+  `clear`; both operations remove the contributor.
+- Problem is server-global. `clear` has the same user meaning—hide the problem from
+  normal `show`—but records `cleared` in its ledger rather than deleting history.
+
+A problem ledger entry is `active` while one or more claims remain, `closed` when
+its final origin is gone, and `cleared` after user acknowledgement. `problem set`
+adds or updates one origin claim. It reopens `closed`, but never un-clears
+`cleared`. `problem close` removes matching origin claims, normally from tmux's
+pane and session lifecycle hooks. `problem show` lists only active entries;
+`problem show --all` includes closed and cleared history plus active origins.
+Reporter recovery (`set ... ok`) removes that reporter's claim and deletes the
+ledger when the last claim resolves. `problem resolve` explicitly removes all
+claims and the ledger entry. This delete-on-resolution rule is distinct from close:
+closed history records that the contributors disappeared without demonstrating
+that the capability recovered.
 
 Problem is the common capability-failure channel. Every integration and airline
 internal concern that cannot work as promised reports a problem at the appropriate
@@ -665,8 +731,8 @@ layout that made them. Internal problem changes use the same redraw-gated path a
 public problem API.
 
 Dynamic collection operations run in owner-scoped transactions: status and health
-serialize by `(window, namespace)`, while problems serialize by `(session,
-namespace)`. The registry, contributor tuple, reduction, and projected badge
+serialize by `(window, namespace)`, while problems serialize by the single
+`(global, server, problem)` owner. The registry, contributor tuple, reduction, and projected badge
 therefore form one logical mutation even when background evaluations overlap.
 `lib/tmux.sh` owns acquisition, an atomic owner-scoped marker, cleanup, stale-owner
 detection, and recovery. Transaction callbacks run in a subshell so transaction-local
@@ -692,19 +758,32 @@ conventions:
 - Session- and window-scoped functions take explicit targets. Callers resolve an
   omitted target once and pass the resulting id downward.
 - `opt_*` handles native option mechanics; `pub_*` and `prv_*` add airline namespace
-  policy; standalone wrappers cover redraw, source-file, target resolution, hooks,
-  and binds.
-- `setif` returns success when it changed a value. Orchestration accumulates those
-  results and redraws once only when rendered output changed.
+  policy; standalone wrappers cover redraw, session-targeted palette sourcing,
+  target resolution, hooks, and runner pane/window placement.
+- `setif` uses ordinary success/failure status and writes changed-versus-unchanged to
+  a caller-selected Bash variable. Orchestration accumulates that private result and
+  redraws once only when rendered output changed; a successful no-op cannot mask or
+  resemble a failed tmux mutation.
 
 Owner-scoped transactions execute option work against a mutable in-memory
 workspace. After acquiring the lock, `tmux.sh` bulk-loads the global option tables
-and the transaction owner's session or window table. Existing scalar accessors read
-and update that desired snapshot with read-your-writes behavior; presence is tracked
-separately so unset and explicitly empty remain distinct. At the end, the mechanical
-layer compares desired state with the baseline and submits the ordered final writes
-as one tmux command sequence. Domain modules neither build batches nor pass option
-maps through their APIs.
+and the transaction owner's session or window table. Additional native owners, such
+as the windows receiving one session's rendered styles, are loaded lazily on first
+access. Existing scalar accessors read and update that desired snapshot with
+read-your-writes behavior; presence is tracked separately so unset and explicitly
+empty remain distinct. At the end, the mechanical layer compares desired state with
+the baseline and submits the ordered final writes as one tmux command sequence.
+Domain modules neither build batches nor pass option maps through their APIs.
+
+Transaction means serialized, coherent option work rather than database rollback.
+The callback has read-your-writes behavior, changed options are submitted in order,
+redraw follows the writes, and the owner lock is released on return or a trapped
+termination. Staged writes are still flushed when a callback returns nonzero: this
+preserves failure diagnostics and cleanup around palette evaluation. In particular,
+`source-file` is an external workspace boundary and trusted executable definitions
+or adapters may have effects that cannot be reversed. Public operations therefore
+validate declarations before domain commit and report a failed capability, but do
+not promise to undo every effect of a trusted executable that fails while applying.
 
 Commands whose effects are not ordinary option mutations are explicit workspace
 boundaries. `source-file` flushes pending writes and reloads the snapshot before
@@ -715,8 +794,10 @@ option names and values are arbitrary data, empty and absent differ, and state m
 not leak to child processes.
 
 Public accessors support global defaults and effective session reads. Private
-accessors support only session and window ownership, plus `prv_name` for embedding a
-private scalar in a tmux format. There is no private-global accessor.
+accessors support global, session, and window ownership, plus `prv_name` for
+embedding a private scalar in a tmux format. Global private state is reserved for
+data whose native owner really is the tmux server, currently the problem ledger,
+origin claims, badge, and transaction marker.
 
 ## Enforcement and testing
 

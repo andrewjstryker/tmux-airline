@@ -96,7 +96,7 @@ wait_for_pane_exit() { # <pane> <status>
 @test "runner here streams output, returns the child status, and projects success" {
   airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
-  key="runner-${pane#%}"
+  key="airline-runner/${pane#%}/command"
 
   run airline runner run -- bash -c 'printf "job output\\n"'
   assert_success
@@ -110,7 +110,7 @@ wait_for_pane_exit() { # <pane> <status>
 @test "runner here preserves a failed exit and projects attention plus fail" {
   airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
-  key="runner-${pane#%}"
+  key="airline-runner/${pane#%}/command"
 
   run airline runner run -- bash -c 'printf "failed output\\n"; exit 7'
   assert_failure 7
@@ -124,7 +124,7 @@ wait_for_pane_exit() { # <pane> <status>
 @test "a registered classifier can interpret a nonzero exit as warn" {
   airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
-  key="runner-${pane#%}"
+  key="airline-runner/${pane#%}/command"
   mkdir -p "$BATS_TEST_TMPDIR/classifiers"
   printf '%s\n' 'AIRLINE_CLASSIFIER_SUMMARY="Interpret pytest exit status"' \
     'airline_runner_classify() { [[ "$1" == 5 ]] && printf "warn\\tno tests collected\\n" || printf "fail\\tcommand failed\\n"; }' \
@@ -156,8 +156,8 @@ wait_for_pane_exit() { # <pane> <status>
   airline session init
   session="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{session_id}')"
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
-  key="runner-${pane#%}"
-  probe_key="$key-probe"
+  key="airline-runner/${pane#%}/command"
+  probe_key="airline-runner/${pane#%}/probe"
   mkdir -p "$BATS_TEST_TMPDIR/probes"
   health_file="$BATS_TEST_TMPDIR/healthy"
   export health_file
@@ -190,7 +190,7 @@ wait_for_pane_exit() { # <pane> <status>
   assert_output active
 
   wait "$runner_pid"
-  run airline problem show "$session" airline-runner-server-probe
+  run airline problem show airline-runner/probe/server/probe
   assert_output ""
   run airline status show "$key"
   assert_output result
@@ -200,8 +200,8 @@ wait_for_pane_exit() { # <pane> <status>
   airline session init
   session="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{session_id}')"
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
-  key="runner-${pane#%}-watch"
-  probe_key="$key-probe"
+  key="airline-runner/${pane#%}/watch"
+  probe_key="airline-runner/${pane#%}/watch-probe"
   mkdir -p "$BATS_TEST_TMPDIR/probes" "$BATS_TEST_TMPDIR/runners"
   health_file="$BATS_TEST_TMPDIR/healthy"
   observed_pid_file="$BATS_TEST_TMPDIR/watcher-pid"
@@ -270,7 +270,7 @@ wait_for_pane_exit() { # <pane> <status>
   assert_output ""
   run airline health show "$probe_key"
   assert_output ""
-  run airline problem show "$session" airline-runner-remote-probe
+  run airline problem show airline-runner/probe/remote/probe
   assert_output ""
 }
 
@@ -284,8 +284,8 @@ wait_for_pane_exit() { # <pane> <status>
 @test "tap runner preserves output and filters progressive test health" {
   airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
-  key="runner-${pane#%}"
-  filter_key="$key-filter"
+  key="airline-runner/${pane#%}/command"
+  filter_key="airline-runner/${pane#%}/filter"
   output_file="$BATS_TEST_TMPDIR/tap-stream"
 
   airline runner run --filter tap -- bash -c \
@@ -322,8 +322,8 @@ wait_for_pane_exit() { # <pane> <status>
 @test "filter health remains independent of successful exit classification" {
   airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
-  key="runner-${pane#%}"
-  filter_key="$key-filter"
+  key="airline-runner/${pane#%}/command"
+  filter_key="airline-runner/${pane#%}/filter"
 
   run airline runner run --filter tap -- bash -c \
     'printf "1..1\nnot ok 1 - semantic failure\n"'
@@ -411,9 +411,9 @@ wait_for_pane_exit() { # <pane> <status>
   assert_equal "$dead" 1
   assert_equal "$dead_status" 9 "dead pane signal: ${dead_signal:-none}"
   window="$($TMUX -L "$_bats_socket" display-message -p -t "$spawned" '#{window_id}')"
-  run airline status show "runner-${spawned#%}" -t "$window"
+  run airline status show "airline-runner/${spawned#%}/command" -t "$window"
   assert_output attention
-  run airline health show -t "$window" "runner-${spawned#%}"
+  run airline health show -t "$window" "airline-runner/${spawned#%}/command"
   assert_output "$(printf 'fail\tcommand exited with status 9')"
   run $TMUX -L "$_bats_socket" capture-pane -p -t "$spawned" -S -
   assert_output --partial "pane failure"
@@ -434,7 +434,7 @@ wait_for_pane_exit() { # <pane> <status>
   assert_equal "$dead_status" 0
   window="$($TMUX -L "$_bats_socket" display-message -p -t "$spawned" '#{window_id}')"
   run airline status show -t "$window"
-  assert_output --partial "runner-${spawned#%}"
+  assert_output --partial "airline-runner/${spawned#%}/command"
   assert_output --partial result
   run $TMUX -L "$_bats_socket" capture-pane -p -t "$spawned" -S -
   assert_output --partial "window success"

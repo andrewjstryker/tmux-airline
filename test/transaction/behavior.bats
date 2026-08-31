@@ -23,7 +23,7 @@ setup() {
 @test "clear validates its tuple before reaching transaction mechanics" {
   run transaction_clear_stale session s1
   assert_failure
-  assert_output --partial "need <session|window> <target> <namespace>"
+  assert_output --partial "need <global|session|window> <target> <namespace>"
 }
 
 @test "clear translates mechanical recovery outcomes" {

@@ -41,11 +41,15 @@ setup() {
     '  "$1" classify basic' \
     '  "$1" filter tap' \
     '}' > "$BATS_TEST_TMPDIR/runner"
-  run runner_definition_valid "$BATS_TEST_TMPDIR/runner"
+  runner_definition_load "$BATS_TEST_TMPDIR/runner"
+  runner_definition_metadata
+  run runner_definition_configure
   assert_success
 
   sed -i 's/"$1" filter tap/"$1" placement pane/' "$BATS_TEST_TMPDIR/runner"
-  run runner_definition_valid "$BATS_TEST_TMPDIR/runner"
+  runner_definition_load "$BATS_TEST_TMPDIR/runner"
+  runner_definition_metadata
+  run runner_definition_configure
   assert_failure
 }
 

@@ -18,7 +18,7 @@ Features:
   tmux-prefix-highlight from the active palette
 - Discoverable process **runner catalogs** with exit classifiers, stream filters,
   state probes, named run/watch compositions, and pane/window placement
-- Session-wide widget **problems**, reduced to one extreme-right warning with
+- Server-global widget **problems**, reduced to one extreme-right warning with
   full diagnostics available through the CLI
 - Suspend/resume for nested tmux sessions
 
@@ -288,8 +288,8 @@ Airline validates the whole declaration before replacing private layout state.
 Unknown or duplicate slots, invalid adapters, nested Airline commands, and stdout
 are errors. Omitted slots are intentionally empty. Put the file in a registered
 layout directory and select it by filename. A failed selection preserves the last
-committed layout and raises the session's `airline-layout` problem; a successful
-layout selection clears it.
+committed layout and raises the global `airline-layout` problem with that session as
+its origin; a successful layout selection resolves that origin's claim.
 
 The **window-list entry** itself is fixed as `#I:#W` (index:name) and styled by
 the window colors below rather than configured as a segment.
@@ -578,7 +578,8 @@ Airline maps its state onto tmux's normal scopes:
 - Session-public options written while evaluating palette/layout files are cleared;
   they are not another user configuration scope.
 - Status and health belong to a window; `-t` accepts a pane or window target.
-- Problems belong to a session; background jobs should pass `-t <session>`.
+- Problems belong to the tmux server. A pane-hosted reporter may preserve its
+  runtime origin with `problem set --pane <pane-id>`.
 
 A window entry has three layers, owned by two parties. **airline** owns the
 entry's *color* (the name itself); **plugins** speak through two *badges* that
@@ -628,6 +629,44 @@ option-name conventions.
 >
 > The empty check doubles as an "is airline installed?" probe.
 
+### Contributor keys
+
+Airline deliberately does not maintain a registry of plugin names. Signal keys are
+opaque, whitespace-free identifiers, and independently developed contributors are
+responsible for choosing noncolliding names. Reusable contributors should qualify
+health and problem keys using a stable form such as:
+
+```text
+<contributor>/<claim>[/<instance>]
+```
+
+For example, `tmux-online/connectivity` identifies a health claim and
+`tmux-cpu/sensors` identifies an advertised capability that may have a problem.
+Airline does not parse the separators or attempt to prove ownership.
+
+This convention is for reporters that independently choose public signal keys. It
+does not rename Airline-owned subsystem problems: configuration lifecycle remains
+`airline-layout` and `airline-palette`, whose keys and writers are both controlled by
+Airline.
+
+The contributor contract is:
+
+- own, update, recover, and clear only keys beneath the contributor's namespace;
+- keep severity and diagnostic text out of the key so identity remains stable;
+- add an instance component when concurrent instances can report independently;
+- use `ok` or `clear` when a retained health claim recovers, and `problem set ...
+  ok` when a capability recovers;
+- report an inability to provide the contributor's advertised capability as a
+  problem, while successfully observed unhealthy domain state remains health.
+
+Status is intentionally lighter. Its key only needs to be unique among active
+status contributors in one window because the pane itself contains the explanation.
+Health keys identify the diagnostic rows returned by `health show`. Problem keys
+identify contributor capabilities globally, while Airline separately records the
+pane or session origins currently claiming each problem. Violating the naming
+contract may allow one contributor to overwrite or clear another contributor's
+claim; Airline does not add a registration system to prevent that convention error.
+
 **Status** (left) — a window's app-status, at one of three levels. Many
 contributors can report under their own keys; airline shows the highest-ranked
 one:
@@ -648,25 +687,24 @@ contributors; airline shows the **worst**. `ok` (or no contributor) shows
 **nothing** — a clean right side means healthy:
 
 ```tmux
-airline health set ctx fail "connection refused"     # ▲ broken (red)
-airline health set build warn "tests are still running with failures"
+airline health set example-agent/context fail "connection refused"     # ▲ broken (red)
+airline health set example-build/tests warn "tests are still running with failures"
 # badge now shows one glyph at the worst level (fail)
-airline health set ctx ok            # recovery clears ctx; drops to warn
+airline health set example-agent/context ok  # recovery clears it; drops to warn
 airline health show                  # contributors + reduced result
 ```
 
-Health and problem share the levels `ok < warn < fail`. `ok` means normal and
-clears that contributor, so it is equivalent to `clear <key>`. `warn` means the
+Health and problem share the levels `ok < warn < fail`. `ok` means reporter
+recovery: it removes that reporter's contribution. For health this is equivalent to
+`clear <key>`; problem has a ledger lifecycle described below. `warn` means the
 component degraded gracefully and can keep working; `fail` means it could not
-recover and is broken. `warn` uses the palette's amber `alert` role; `fail` uses
-its red `stress` role. Glyphs are fixed (a distinct shape per visible state, so
-badges stay legible without color). Every retained `warn` or `fail` condition has a
-diagnostic message; Airline retains it with the keyed contributor for `health show`,
-while badge reduction continues to use only the severity. Health's optional
-`-t <target>` precedes the keyed condition tuple so the trailing message stays
-opaque. Messages are user-facing text supplied by the reporter: Airline validates
-their framing but assigns them no meaning. Status commands accept their target
-option in any documented position.
+recover and is broken. `warn` uses the palette's amber `alert` role; `fail` uses its
+red `stress` role. Glyphs are fixed (a distinct shape per visible state, so badges
+stay legible without color). Every retained `warn` or `fail` condition has a
+diagnostic message. Health's optional `-t <target>` precedes the keyed condition
+tuple so the trailing message stays opaque. Messages are user-facing text supplied
+by the reporter: Airline validates their framing but assigns them no meaning.
+Status commands accept their target option in any documented position.
 
 **Consume-on-view (`--transient`).** Status may be transient because the pane itself
 contains the result or request for input: viewing the window and moving on is a
@@ -678,45 +716,47 @@ airline status set agent result --transient   # clears when you leave the window
 ```
 
 Transient status clears after you leave the window; sticky status and every health
-condition are untouched.
+condition are untouched. The focus hook performs the same public operation as a
+caller: `status clear -t <window>` with no key removes every transient contributor
+in that window. Supplying a key clears that one contributor regardless of whether
+it is transient.
 
 Because color and badges live on different layers, a window can show a mode
 color, a health glyph, and a status glyph all at once without contention.
 
-## Session problems
+## Global problems
 
-An airline-aware widget can fail gracefully and report why through the
-session-scoped `problem` API. A problem means that airline or one of its
-contributors cannot provide an advertised capability; it is not window or pane
-attention. Problems are keyed contributors with a level and message. Airline
-retains every contributor for inspection, reduces them with the same
-`ok < warn < fail` severity ladder as health, and shows one aggregate glyph at
-the extreme right. No problems renders nothing, and setting a problem to `ok`
-clears it without requiring a message.
+An airline-aware widget can fail gracefully and report why through the global
+`problem` API. A problem means that Airline or one of its contributors cannot
+provide an advertised capability; it is not window or pane attention. Active
+problems are immediately visible in every initialized session. Airline reduces
+their claims with the same `ok < warn < fail` severity ladder as health and shows
+one aggregate glyph at the extreme right.
 
 ```shell
-# Invoke the widget from a tmux format as: #(my-widget '#{session_id}')
-session="${1:?widget requires its tmux session id}"
-
 if ! command -v sensors >/dev/null 2>&1; then
-  airline problem set "$session" cpu warn "required program 'sensors' was not found"
+  airline problem set tmux-cpu/sensors warn "required program 'sensors' was not found"
   printf '?'
   exit 0
 fi
 
-airline problem clear "$session" cpu
+airline problem set tmux-cpu/sensors ok
 ```
 
-Several widgets may report independently; clearing the worst problem naturally
-downgrades the aggregate to the next level. Mutations require their session as
-the first argument and never propagate through linked windows. Two sessions may
-encounter and clear the same underlying problem independently.
+By default, a claim belongs to the current session context. A pane-hosted reporter
+can preserve its origin explicitly with `problem set --pane "$TMUX_PANE" ...`.
+Several panes and sessions may claim the same key independently; one reporter's
+recovery removes only its own claim. Airline installs tmux pane/session close hooks
+to retire claims when their contributors disappear.
 
-Bare `problem show` lists problems from every session, grouped by canonical
-session id. `problem show <session>` narrows the listing, and `problem show
-<session> <key>` returns one problem as a raw, tab-delimited
-`level<TAB>message` tuple. Tmux status formats can supply the precise evaluation
-context as `#{session_id}`; callers do not need to infer it from `TMUX_PANE`.
+`problem show` lists only active problems. `problem clear <key>` acknowledges a
+problem and hides it without discarding history or active claims. A later report
+updates the entry but does not make a cleared problem visible again. Use `problem
+show --all [<key>]` to inspect the complete `active`, `closed`, and `cleared`
+lifecycle ledger and its current origins. `problem resolve <key>` deletes the entry
+and every claim; reporter recovery with `set ... ok` also deletes it when the final
+claim is removed. `problem close` is normally hook-driven, but is public so jobs may
+retire pane- or session-origin claims explicitly.
 
 ### Transaction recovery
 
@@ -728,7 +768,7 @@ diagnostics make that rare state discoverable and recoverable:
 airline transaction show
 # scope<TAB>owner<TAB>namespace<TAB>active|stale<TAB>pid<TAB>age-seconds
 
-airline transaction clear session '$1' problem
+airline transaction clear global server problem
 airline transaction clear window '@3' status
 ```
 
@@ -741,7 +781,7 @@ diagnosing a stuck problem transaction never depends on acquiring that same lock
 One entry point drives everything. Domain commands use a noun followed by a verb;
 the read-only `version` command and help are root leaves. `-t` targets a window for
 status/health and a session for targeted initialization.
-Problem mutations instead take their owning session as a required first argument.
+Problems are server-global; an optional pane id identifies a pane-hosted origin.
 
 ```
 airline session init [-t <session>]  # initialize the current or selected session
@@ -761,11 +801,10 @@ airline runner   show <runner> [<arg>...] | list | register <dir>
                  run [--here|--pane [-h|-v]|--window] [<runner>] [--classify <classifier>]
                      [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]] -- <command>...
                  watch [--here|--pane [-h|-v]|--window] [<runner>] [--probe <probe> [<arg>...]]
-airline status   set <status-key> <active|result|attention> [--transient] [-t <window>] | clear <status-key> [-t <window>] | show [<status-key>] [-t <window>]
+airline status   set <status-key> <active|result|attention> [--transient] [-t <window>] | clear [<status-key>] [-t <window>] | show [<status-key>] [-t <window>]
 airline health   set [-t <window>] <health-key> <ok|warn|fail> [<message>...] | clear [-t <window>] <health-key> | show [-t <window>] [<health-key>]
-airline problem  set <session> <problem-key> <ok|warn|fail> [<message>...] | clear <session> <problem-key> | show [<session> [<problem-key>]]
-airline signal   clear-transient [-t <window>]
-airline transaction show | clear <session|window> <target> <namespace>
+airline problem  set [--pane <pane-id>] <problem-key> <ok|warn|fail> [<message>...] | close [--pane <pane-id>|--session <session-id>] [<problem-key>] | clear <problem-key> | resolve <problem-key> | show [--all] [<problem-key>]
+airline transaction show | clear <global|session|window> <target> <namespace>
 ```
 
 Two conventions run through it:

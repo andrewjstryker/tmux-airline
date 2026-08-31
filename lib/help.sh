@@ -89,6 +89,7 @@ _help_usage () {
   done
   printf '\n  use loads a bare name from a registered dir; register blesses a location.\n'
   printf '  --transient clears status when you focus away from its window.\n'
+  printf '  Reusable health/problem keys should be contributor-qualified (for example plugin/claim).\n'
 }
 
 help_command () {   # [<help|noun> [<verb>]]

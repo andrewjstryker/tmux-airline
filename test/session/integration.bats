@@ -34,7 +34,7 @@ setup() {
 
   run sopt status-style
   assert_output --partial "bg=colour234"
-  run get_option window-status-current-format
+  run sopt window-status-current-format
   assert_output --partial "#I:#W"
 
   run airline session show
@@ -79,13 +79,53 @@ setup() {
   assert_output "default"
 }
 
+@test "rendered palette output remains owned by each session and its windows" {
+  $TMUX -L "$_bats_socket" new-session -d -s other
+  airline_session bats session init
+  airline_session other session init
+
+  airline_session bats palette use dark
+  airline_session other palette use light
+
+  bats_session="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{session_id}')"
+  other_session="$($TMUX -L "$_bats_socket" display-message -p -t other '#{session_id}')"
+  bats_window="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{window_id}')"
+  other_window="$($TMUX -L "$_bats_socket" display-message -p -t other '#{window_id}')"
+
+  run sopt window-status-current-format -t "$bats_session"
+  assert_output --partial "colour214"
+  run sopt window-status-current-format -t "$other_session"
+  assert_output --partial "colour136"
+  run wopt pane-border-style -t "$bats_window"
+  assert_output "fg=colour250"
+  run wopt pane-active-border-style -t "$other_window"
+  assert_output "fg=colour136"
+  run wopt clock-mode-colour -t "$other_window"
+  assert_output "colour128"
+
+  new_window="$($TMUX -L "$_bats_socket" new-window -d -P -F '#{window_id}' -t bats:)"
+  run wopt pane-border-style -t "$new_window"
+  assert_output "fg=colour250"
+  run wopt pane-active-border-style -t "$new_window"
+  assert_output "fg=colour214"
+  run wopt clock-mode-colour -t "$new_window"
+  assert_output "colour134"
+
+  # Re-rendering either session must not replace the other's native output.
+  airline_session other session apply
+  run sopt window-status-current-format -t "$bats_session"
+  assert_output --partial "colour214"
+  run wopt pane-active-border-style -t "$new_window"
+  assert_output "fg=colour214"
+}
+
 # --- apply / use ------------------------------------------------------------
 
 @test "apply renders current inputs and show reports the resulting configuration" {
   airline session init
   $TMUX -L "$_bats_socket" set -g @airline-active "colour201"
   airline session apply
-  run get_option window-status-current-format
+  run sopt window-status-current-format
   assert_output --partial "colour201"
   run airline session show
   assert_success

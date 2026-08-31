@@ -37,9 +37,12 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 
 @test "bash completion resolves typed and contextual values through the airline CLI" {
   mkdir -p "$BATS_TEST_TMPDIR/bin"
-  printf '#!/usr/bin/env bash\ncase "$1 $2" in\n  "palette list") printf "dark\\nlight\\n" ;;\n  "adapter list") printf "battery\\ncpu\\n" ;;\n  "problem show") printf "build  warn\\ndeploy  fail\\n" ;;\nesac\n' \
+  printf '#!/usr/bin/env bash\ncase "$1 $2" in\n  "palette list") printf "dark\\nlight\\n" ;;\n  "adapter list") printf "battery\\ncpu\\n" ;;\n  "problem show") printf "example/build       active  warn\\nexample/deploy      active  fail\\n" ;;\nesac\n' \
     > "$BATS_TEST_TMPDIR/bin/airline"
+  printf '#!/usr/bin/env bash\ncase "$1" in\n  list-panes) printf "%%2\\n%%3\\n" ;;\n  list-sessions) printf "\\$1\\n\\$2\\n" ;;\nesac\n' \
+    > "$BATS_TEST_TMPDIR/bin/tmux"
   chmod +x "$BATS_TEST_TMPDIR/bin/airline"
+  chmod +x "$BATS_TEST_TMPDIR/bin/tmux"
   PATH="$BATS_TEST_TMPDIR/bin:$PATH"
   # shellcheck source=/dev/null
   source "$PROJECT_ROOT/completions/airline.bash"
@@ -50,10 +53,19 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   COMP_WORDS=(airline adapter use battery c); COMP_CWORD=4; _airline_completion
   assert_equal "${COMPREPLY[*]}" cpu
 
-  COMP_WORDS=(airline problem clear work d); COMP_CWORD=4; _airline_completion
-  assert_equal "${COMPREPLY[*]}" deploy
+  COMP_WORDS=(airline problem clear example/d); COMP_CWORD=3; _airline_completion
+  assert_equal "${COMPREPLY[*]}" example/deploy
 
-  COMP_WORDS=(airline transaction clear session work p); COMP_CWORD=5; _airline_completion
+  COMP_WORDS=(airline problem set --pane %3 ""); COMP_CWORD=5; _airline_completion
+  assert_equal "${COMPREPLY[*]}" "example/build example/deploy"
+
+  COMP_WORDS=(airline problem set --pane %3 example/build w); COMP_CWORD=6; _airline_completion
+  assert_equal "${COMPREPLY[*]}" warn
+
+  COMP_WORDS=(airline problem close --session '$'); COMP_CWORD=4; _airline_completion
+  assert_equal "${COMPREPLY[*]}" '$1 $2'
+
+  COMP_WORDS=(airline transaction clear global server p); COMP_CWORD=5; _airline_completion
   assert_equal "${COMPREPLY[*]}" problem
 }
 

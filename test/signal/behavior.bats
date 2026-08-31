@@ -72,48 +72,122 @@ teardown() { :; }
   assert_output --partial "invalid level"
 }
 
-@test "problem behavior reduces contributors and records recovery" {
-  signal_problem_set s1 cpu warn "sensors missing"
-  signal_problem_set s1 battery fail "query timed out"
-  run signal_problem_show s1 cpu
-  assert_output "$(printf 'warn\tsensors missing')"
-  signal_problem_clear s1 battery
-  signal_problem_set s1 cpu ok
-  run signal_problem_show s1 cpu
+@test "status health and problem mutations share one projection pipeline" {
+  local calls=""
+  _signal_project_and_redraw () { calls+="${calls:+ }$1:$2:$3"; }
+
+  signal_status_set build active
+  signal_health_set api warn "slow"
+  signal_problem_set cpu fail "missing"
+
+  assert_equal "$calls" "window:@1:status window:@1:health global:server:problem"
+}
+
+@test "global problems retain independent session and pane claims" {
+  signal_problem_set cpu warn "sensors missing"
+  signal_problem_set --pane %2 cpu fail "query timed out"
+  run signal_problem_show --all cpu
+  assert_output --partial "active  fail"
+  assert_output --partial "session:s1"
+  assert_output --partial "pane:%2"
+  run prv_get_global "$AIRLINE_KEY_PROBLEM"
+  assert_output fail
+
+  signal_problem_set --pane %2 cpu ok
+  run prv_get_global "$AIRLINE_KEY_PROBLEM"
+  assert_output warn
+  signal_problem_set cpu ok
+  run signal_problem_show --all cpu
   assert_output ""
 }
 
 @test "problem validates its public tuple contract" {
   run signal_problem_set
   assert_failure
-  assert_output --partial "need <session>"
-  run signal_problem_set s1 cpu bogus message
+  assert_output --partial "need <key>"
+  run signal_problem_set cpu bogus message
   assert_failure
-  run signal_problem_set s1 cpu warn
+  run signal_problem_set cpu warn
   assert_failure
   assert_output --partial "need <message>"
-  run signal_problem_clear s1
+  run signal_problem_set --pane
   assert_failure
-  assert_output --partial "need <key>"
+  assert_output --partial "--pane requires <pane-id>"
+  run signal_problem_clear
+  assert_failure
+  assert_output --partial "need exactly <key>"
 }
 
-@test "clear-transient removes only transient contributors" {
+@test "clear stays cleared until explicit recovery removes the ledger" {
+  signal_problem_set cpu fail "sensors missing"
+  signal_problem_clear cpu
+  run signal_problem_show cpu
+  assert_output ""
+  run signal_problem_show --all cpu
+  assert_output --partial "cleared  fail"
+  run prv_get_global "$AIRLINE_KEY_PROBLEM"
+  assert_output ""
+
+  signal_problem_set cpu fail "still missing"
+  run signal_problem_show --all cpu
+  assert_output --partial "cleared  fail  still missing"
+  run prv_get_global "$AIRLINE_KEY_PROBLEM"
+  assert_output ""
+
+  signal_problem_set cpu ok
+  run signal_problem_show cpu
+  assert_output ""
+}
+
+@test "closing the final origin retains a closed ledger and resolve deletes it" {
+  signal_problem_set --pane %2 cpu warn "sensors missing"
+  signal_problem_close --pane %2
+  run signal_problem_show cpu
+  assert_output ""
+  run signal_problem_show --all cpu
+  assert_output --partial "closed  warn  sensors missing"
+  refute_output --partial "pane:%2"
+  run prv_get_global "$AIRLINE_KEY_PROBLEM"
+  assert_output ""
+
+  # A contributor that never held this claim cannot resolve its closed history.
+  _FAKE_SESSION=s2
+  signal_problem_set cpu ok
+  run signal_problem_show --all cpu
+  assert_output --partial "closed"
+
+  signal_problem_resolve cpu
+  run signal_problem_show cpu
+  assert_output ""
+}
+
+@test "keyless status clear removes only transient contributors" {
   signal_status_set build active
   signal_status_set review attention --transient
   signal_health_set api fail "connection refused"
   assert_equal "${_FAKE_HOOK[pane-focus-out[90]]}" \
-    "run-shell -b \"'$AIRLINE_DIR/airline.sh' signal clear-transient -t #{window_id}\""
-  signal_clear_transient -t "$_FAKE_WIN"
+    "run-shell -b \"'$AIRLINE_DIR/airline.sh' status clear -t #{window_id}\""
+  signal_status_clear -t "$_FAKE_WIN"
   run signal_status_show build
   assert_output active
   run signal_status_show review
   assert_output ""
   run signal_health_show api
   assert_output "$(printf 'fail\tconnection refused')"
+
+  local redraws="$_FAKE_REDRAWS" writes="$_FAKE_WRITES"
+  signal_status_clear -t "$_FAKE_WIN"
+  assert_equal "$_FAKE_REDRAWS" "$redraws"
+  assert_equal "$_FAKE_WRITES" "$writes"
+
+  signal_status_set deploy result --transient
+  signal_status_clear deploy
+  run signal_status_show deploy
+  assert_output ""
 }
 
 @test "signal target options validate at the boundary" {
-  run signal_clear_transient -t
+  run signal_status_clear -t
   assert_failure
   assert_output --partial "-t requires <window>"
 }
@@ -168,42 +242,50 @@ CASES
   run signal_status_set build active
   assert_failure 6
 
-  with_session_transaction () { return 5; }
+  with_global_transaction () { return 5; }
   run signal_problem_report s1 airline-layout fail "layout failed"
   assert_failure 5
 }
 
 @test "problem keys are validated consistently before mutation" {
   local writes="$_FAKE_WRITES"
-  run signal_problem_set s1 'bad key' warn message
+  run signal_problem_set 'bad key' warn message
   assert_failure
-  run signal_problem_clear s1 'bad key'
+  run signal_problem_clear 'bad key'
   assert_failure
-  run signal_problem_show s1 'bad key'
+  run signal_problem_show 'bad key'
   assert_failure
   assert_equal "$_FAKE_WRITES" "$writes"
 }
 
-@test "health and problem share the same retained condition tuple" {
+@test "problem ledger and claims retain severity and diagnostic framing" {
   signal_health_set api fail "connection refused"
-  signal_problem_set s1 api fail "connection refused"
-  assert_equal "$(coll_get_window "$_FAKE_WIN" health api)" \
-    "$(coll_get_session s1 problem api)"
+  signal_problem_set api fail "connection refused"
+  assert_equal "$(coll_get_global problem api)" \
+    "$(printf 'fail\tactive\tfail\tconnection refused')"
+  assert_equal "$(coll_get_global problem-claim session:s1:api)" \
+    "$(printf 'api\tsession\ts1\tfail\tconnection refused')"
 
   run signal_health_show api
   assert_output "$(printf 'fail\tconnection refused')"
-  run signal_problem_show s1 api
-  assert_output "$(printf 'fail\tconnection refused')"
+  run signal_problem_show api
+  assert_output --partial "session:s1"
 }
 
-@test "identical problem reports and absent clears do not redraw" {
-  signal_problem_set s1 cpu warn "sensors missing"
+@test "identical problem reports and absent lifecycle operations do not redraw" {
+  signal_problem_set cpu warn "sensors missing"
   assert_equal "$_FAKE_REDRAWS" 1
-  signal_problem_set s1 cpu warn "sensors missing"
+  local writes="$_FAKE_WRITES"
+  signal_problem_set cpu warn "sensors missing"
   assert_equal "$_FAKE_REDRAWS" 1
-  signal_problem_clear s1 cpu
+  assert_equal "$_FAKE_WRITES" "$writes"
+  signal_problem_clear cpu
   assert_equal "$_FAKE_REDRAWS" 2
-  signal_problem_clear s1 cpu
+  signal_problem_clear cpu
+  assert_equal "$_FAKE_REDRAWS" 2
+  signal_problem_close --pane %9
+  assert_equal "$_FAKE_REDRAWS" 2
+  signal_problem_resolve missing
   assert_equal "$_FAKE_REDRAWS" 2
 }
 

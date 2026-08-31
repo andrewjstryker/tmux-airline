@@ -50,6 +50,7 @@ declare -gA _AIRLINE_OPT_SCOPE=()
 declare -gA _AIRLINE_OPT_TARGET=()
 declare -gA _AIRLINE_OPT_NAME=()
 declare -gA _AIRLINE_OPT_DIRTY=()
+declare -gA _AIRLINE_OPT_LOADED=()
 declare -ga _AIRLINE_OPT_DIRTY_ORDER=()
 
 _opt_key () {   # <destination-variable> <scope> <target> <name>
@@ -83,7 +84,7 @@ _opt_snapshot_line () {   # <scope> <target> <serialized-option-line>
 }
 
 _opt_snapshot () {   # <global|session|window> <target>
-  local scope="$1" target="$2" line raw
+  local scope="$1" target="$2" line raw table_key
   case "$scope" in
     global)
       # Native global options occupy separate session and window tables. Load the
@@ -103,18 +104,27 @@ _opt_snapshot () {   # <global|session|window> <target>
       while IFS= read -r line; do _opt_snapshot_line window "$target" "$line"; done <<< "$raw"
       ;;
   esac
+  printf -v table_key '%s\037%s' "$scope" "$target"
+  _AIRLINE_OPT_LOADED["$table_key"]=1
 }
 
-_opt_workspace_begin () {   # <session|window> <target>
+_opt_snapshot_if_needed () {   # <global|session|window> <target>
+  local table_key
+  [[ -n "$_AIRLINE_OPT_WORKSPACE" ]] || return 0
+  printf -v table_key '%s\037%s' "$1" "$2"
+  [[ -n "${_AIRLINE_OPT_LOADED[$table_key]:-}" ]] || _opt_snapshot "$1" "$2"
+}
+
+_opt_workspace_begin () {   # <global|session|window> <target>
   local scope="$1" target="$2"
   [[ -z "$_AIRLINE_OPT_WORKSPACE" ]] || return 2
   _AIRLINE_OPT_VALUE=(); _AIRLINE_OPT_PRESENT=()
   _AIRLINE_OPT_BASE_VALUE=(); _AIRLINE_OPT_BASE_PRESENT=()
   _AIRLINE_OPT_SCOPE=(); _AIRLINE_OPT_TARGET=(); _AIRLINE_OPT_NAME=()
-  _AIRLINE_OPT_DIRTY=(); _AIRLINE_OPT_DIRTY_ORDER=()
+  _AIRLINE_OPT_DIRTY=(); _AIRLINE_OPT_LOADED=(); _AIRLINE_OPT_DIRTY_ORDER=()
   _AIRLINE_OPT_REDRAW=""
   _opt_snapshot global "" || return 1
-  _opt_snapshot "$scope" "$target" || return 1
+  [[ "$scope" == global ]] || _opt_snapshot "$scope" "$target" || return 1
   _AIRLINE_OPT_OWNER_SCOPE="$scope"
   _AIRLINE_OPT_OWNER_TARGET="$target"
   _AIRLINE_OPT_WORKSPACE=1
@@ -126,7 +136,7 @@ _opt_workspace_end () {
   _AIRLINE_OPT_VALUE=(); _AIRLINE_OPT_PRESENT=()
   _AIRLINE_OPT_BASE_VALUE=(); _AIRLINE_OPT_BASE_PRESENT=()
   _AIRLINE_OPT_SCOPE=(); _AIRLINE_OPT_TARGET=(); _AIRLINE_OPT_NAME=()
-  _AIRLINE_OPT_DIRTY=(); _AIRLINE_OPT_DIRTY_ORDER=()
+  _AIRLINE_OPT_DIRTY=(); _AIRLINE_OPT_LOADED=(); _AIRLINE_OPT_DIRTY_ORDER=()
 }
 
 _opt_workspace_reload () {
@@ -139,6 +149,7 @@ _opt_workspace_reload () {
 _opt_read () {   # <global|session|window> <target> <name>
   local scope="$1" target="$2" name="$3" key
   if [[ -n "$_AIRLINE_OPT_WORKSPACE" ]]; then
+    _opt_snapshot_if_needed "$scope" "$target" || return
     _opt_key key "$scope" "$target" "$name"
     [[ -n "${_AIRLINE_OPT_PRESENT[$key]:-}" ]] && printf '%s' "${_AIRLINE_OPT_VALUE[$key]}"
     return 0
@@ -153,6 +164,7 @@ _opt_read () {   # <global|session|window> <target> <name>
 _opt_present () {   # <global|session|window> <target> <name>
   local scope="$1" target="$2" name="$3" key
   if [[ -n "$_AIRLINE_OPT_WORKSPACE" ]]; then
+    _opt_snapshot_if_needed "$scope" "$target" || return
     _opt_key key "$scope" "$target" "$name"
     [[ -n "${_AIRLINE_OPT_PRESENT[$key]:-}" ]]
     return
@@ -257,7 +269,10 @@ _opt_workspace_flush () {
     _AIRLINE_OPT_BASE_VALUE["$key"]="${_AIRLINE_OPT_VALUE[$key]}"
   done
   _AIRLINE_OPT_REDRAW=""
-  if [[ -n "$redraw" ]]; then tmux refresh-client -S 2>/dev/null || true; fi
+  case "$redraw" in
+    all) _redraw_all_now ;;
+    ?*)  tmux refresh-client -S 2>/dev/null || true ;;
+  esac
 }
 
 # --- global scope ---
@@ -277,36 +292,25 @@ opt_get_window   () { _opt_read   window "$1" "$2"; }
 opt_set_window   () { _opt_store  window "$1" "$2" "$3"; }
 opt_unset_window () { _opt_remove window "$1" "$2"; }
 
-# --- composed: get-or-default ---
-opt_getor_global () {
-  local v; v="$(opt_get_global "$1")"
-  if [[ -n $v ]]; then printf '%s' "$v"; else printf '%s' "$2"; fi
-}
-opt_getor_session () {
-  local v; v="$(opt_get_session "$1" "$2")"
-  if [[ -n $v ]]; then printf '%s' "$v"; else printf '%s' "$3"; fi
-}
-opt_getor_window () {
-  local v; v="$(opt_get_window "$1" "$2")"
-  if [[ -n $v ]]; then printf '%s' "$v"; else printf '%s' "$3"; fi
-}
-
 # --- composed: set-if-needed (write only when the value changes) ---
-# Returns 0 (success) and writes when the value moved; returns 1 (no write) when
-# the option already holds the value. Lets callers gate a redraw:
-#   opt_setif_global status-left "$bar" && redraw
-opt_setif_global () {
-  [[ "$(opt_get_global "$1")" == "$2" ]] && return 1
-  opt_set_global "$1" "$2"
+# Mutations use ordinary success/failure status. The caller-selected destination is
+# set to 1 when a write was needed and left empty for a successful no-op, keeping
+# redraw gating out of the public exit-status contract.
+_opt_setif () {   # <destination> <global|session|window> <target> <name> <value>
+  local -n destination="$1"
+  local scope="$2" target="$3" name="$4" value="$5" current
+  destination=""
+  # Load a non-owner table in this shell before the getter's command substitution;
+  # otherwise Bash would discard the lazy snapshot with that subshell.
+  _opt_snapshot_if_needed "$scope" "$target" || return
+  current="$(_opt_read "$scope" "$target" "$name")" || return
+  [[ "$current" != "$value" ]] || return 0
+  _opt_store "$scope" "$target" "$name" "$value" || return
+  destination=1
 }
-opt_setif_session () {
-  [[ "$(opt_get_session "$1" "$2")" == "$3" ]] && return 1
-  opt_set_session "$1" "$2" "$3"
-}
-opt_setif_window () {
-  [[ "$(opt_get_window "$1" "$2")" == "$3" ]] && return 1
-  opt_set_window "$1" "$2" "$3"
-}
+opt_setif_global  () { _opt_setif "$1" global  "" "$2" "$3"; }
+opt_setif_session () { _opt_setif "$1" session "$2" "$3" "$4"; }
+opt_setif_window  () { _opt_setif "$1" window  "$2" "$3" "$4"; }
 
 #-----------------------------------------------------------------------------#
 # Airline option namespaces — POLICY (DESIGN.md §State model / §Enforcement)
@@ -330,7 +334,6 @@ opt_setif_window () {
 # --- public configuration: durable input exists at global scope only ---
 pub_get   () { opt_get_global   "@airline-$1"; }        # <key>
 pub_set   () { opt_set_global   "@airline-$1" "$2"; }   # <key> <value>
-pub_unset () { opt_unset_global "@airline-$1"; }        # <key>
 pub_has   () { opt_has_global   "@airline-$1"; }        # <key>
 
 # Palette files retain their native tmux surface. Airline evaluates one in the
@@ -344,20 +347,27 @@ stage_unset_session () { opt_unset_session "$1" "@airline-$2"; }       # <sessio
 # CLI read this snapshot; only airline writes it.
 cfg_get_session   () { prv_get_session   "$1" "config-$2"; }       # <session> <key>
 cfg_set_session   () { prv_set_session   "$1" "config-$2" "$3"; } # <session> <key> <value>
-cfg_unset_session () { prv_unset_session "$1" "config-$2"; }       # <session> <key>
 
 # --- private: name builder (for composition / format embedding, not get/set) ---
 # collections builds its <ns> / <ns>-<key> scheme on this; render embeds a badge
 # option name in a live selector with it. The single home for the @airline-- prefix.
 prv_name () { printf '@airline--%s' "$1"; }             # <key> → option name
 
-# --- private accessors (session and window scope; never global) ---
+# --- private accessors ---
+# Global private state is deliberately narrow: only the server-wide problem
+# ledger and its projected badge use it. Configuration remains public-global;
+# all other managed state retains its native session/window owner.
+prv_get_global   () { opt_get_global   "@airline--$1"; }       # <key>
+prv_set_global   () { opt_set_global   "@airline--$1" "$2"; } # <key> <value>
+prv_setif_global () { opt_setif_global "$1" "@airline--$2" "$3"; } # <dest> <key> <value>
+prv_unset_global () { opt_unset_global "@airline--$1"; }       # <key>
+
 prv_get_session   () { opt_get_session   "$1" "@airline--$2"; }       # <session> <key>
 prv_set_session   () { opt_set_session   "$1" "@airline--$2" "$3"; } # <session> <key> <value>
-prv_setif_session () { opt_setif_session "$1" "@airline--$2" "$3"; } # <session> <key> <value>
+prv_setif_session () { opt_setif_session "$1" "$2" "@airline--$3" "$4"; } # <dest> <session> <key> <value>
 prv_unset_session () { opt_unset_session "$1" "@airline--$2"; }       # <session> <key>
 prv_get_window   () { opt_get_window   "$1" "@airline--$2"; }       # <win> <key>
-prv_setif_window () { opt_setif_window "$1" "@airline--$2" "$3"; }  # <win> <key> <value>
+prv_setif_window () { opt_setif_window "$1" "$2" "@airline--$3" "$4"; }  # <dest> <win> <key> <value>
 prv_unset_window () { opt_unset_window "$1" "@airline--$2"; }       # <win> <key>
 
 #-----------------------------------------------------------------------------#
@@ -372,12 +382,23 @@ redraw () {
   else tmux refresh-client -S 2>/dev/null || true; fi
 }
 
-# Load a tmux source file (used for palette files).
-source_file () {
-  _opt_workspace_flush || return
-  tmux source-file "$1" || return
-  _opt_workspace_reload
+_redraw_all_now () {
+  local clients client
+  clients="$(tmux list-clients -F '#{client_name}' 2>/dev/null)" || return 0
+  while IFS= read -r client; do
+    [[ -n "$client" ]] || continue
+    tmux refresh-client -S -t "$client" 2>/dev/null || true
+  done <<< "$clients"
 }
+
+# A global projection is visible in every initialized session, so refresh every
+# attached client rather than only the hook/command's current client.
+redraw_all () {
+  if [[ -n "$_AIRLINE_OPT_WORKSPACE" ]]; then _AIRLINE_OPT_REDRAW=all
+  else _redraw_all_now; fi
+}
+
+# Load a palette file into one explicit session evaluation surface.
 source_file_session () {
   _opt_workspace_flush || return
   tmux source-file -t "$1" "$2" || return
@@ -395,6 +416,7 @@ current_pane () {
   if [[ -n "${TMUX_PANE:-}" ]]; then tmux display-message -p -t "$TMUX_PANE" '#{pane_id}'
   else tmux display-message -p '#{pane_id}'; fi
 }
+resolve_pane () { tmux display-message -p -t "$1" '#{pane_id}'; }
 current_path () {
   if [[ -n "${TMUX_PANE:-}" ]]; then tmux display-message -p -t "$TMUX_PANE" '#{pane_current_path}'
   else tmux display-message -p '#{pane_current_path}'; fi
@@ -413,6 +435,8 @@ resolve_session_target () { tmux display-message -p -t "$1:" '#{session_id}'; }
 # Canonical ids for every live session, one per line. Used by cross-session reads;
 # mutations always resolve and touch exactly one caller-supplied session.
 list_sessions () { tmux list-sessions -F '#{session_id}'; }
+
+list_windows () { tmux list-windows -t "$1:" -F '#{window_id}'; }
 
 # The id ($n) of the session the caller is acting in. A process launched from a
 # pane receives TMUX_PANE from tmux, so give that native target back to tmux for an
@@ -446,7 +470,15 @@ runner_retain_pane () { tmux set-option -p -t "$1" remain-on-exit on; }
 # Hooks (the pane-focus-out consume-on-view callback). <spec> is a full hook
 # name, optionally indexed, e.g. "pane-focus-out[90]".
 hook_set   () { tmux set-hook -g  "$1" "$2"; }
-hook_unset () { tmux set-hook -gu "$1"; }
+
+# A new window has no session-specific window-option defaults in tmux. Copy the
+# owning session's committed palette roles into the three palette-derived window
+# options immediately after creation. -F expands the private session options in
+# the hook's native session/window context before storing concrete option values.
+hook_set_airline_window_styles () {
+  tmux set-hook -g "after-new-window[90]" \
+    "set-option -qFw pane-border-style 'fg=#{@airline--config-primary}' ; set-option -qFw pane-active-border-style 'fg=#{@airline--config-active}' ; set-option -qFw clock-mode-colour '#{@airline--config-special}'"
+}
 
 # Run one callback while holding a lock scoped to an airline state owner and
 # namespace. Higher layers declare the transaction boundary without knowing the
@@ -459,7 +491,7 @@ _AIRLINE_TRANSACTION_NAMESPACE=""
 
 _transaction_marker_name () { printf '@airline--transaction-%s' "$1"; }
 
-_transaction_channel () {   # <session|window> <canonical-target> <namespace>
+_transaction_channel () {   # <global|session|window> <canonical-target> <namespace>
   local scope="$1" target="$2" namespace="$3"
   target="${target//[^a-zA-Z0-9_-]/_}"
   printf 'airline-%s-%s-%s' "$scope" "$target" "$namespace"
@@ -472,6 +504,7 @@ _transaction_acquire () {   # <scope> <target> <namespace> <channel> <metadata>
   local scope="$1" target="$2" namespace="$3" channel="$4" metadata="$5"
   local marker; marker="$(_transaction_marker_name "$namespace")"
   case "$scope" in
+    global)  tmux wait-for -L "$channel" \; set-option -q -g "$marker" "$metadata" ;;
     session) tmux wait-for -L "$channel" \; set-option -q    -t "$target" "$marker" "$metadata" ;;
     window)  tmux wait-for -L "$channel" \; set-option -q -w -t "$target" "$marker" "$metadata" ;;
   esac || { tmux wait-for -U "$channel" 2>/dev/null || true; return 1; }
@@ -481,6 +514,7 @@ _transaction_release () {   # <scope> <target> <namespace> <channel>
   local scope="$1" target="$2" namespace="$3" channel="$4"
   local marker; marker="$(_transaction_marker_name "$namespace")"
   case "$scope" in
+    global)  tmux set-option -qu -g "$marker" \; wait-for -U "$channel" ;;
     session) tmux set-option -qu    -t "$target" "$marker" \; wait-for -U "$channel" ;;
     window)  tmux set-option -qu -w -t "$target" "$marker" \; wait-for -U "$channel" ;;
   esac
@@ -503,7 +537,7 @@ _transaction_abort () {   # <exit-status>
   exit "$status"
 }
 
-_with_transaction () (   # <session|window> <target> <namespace> <callback> [<arg>...]
+_with_transaction () (   # <global|session|window> <target> <namespace> <callback> [<arg>...]
   local scope="$1" target="$2" namespace="$3" callback="$4" channel started metadata
   local rc=0 release_rc=0; shift 4
   [[ -z "${_AIRLINE_TRANSACTION_CHANNEL:-}" ]] || {
@@ -545,11 +579,16 @@ with_window_transaction () {    # <window> <namespace> <callback> [<arg>...]
   _with_transaction window "$@"
 }
 
+with_global_transaction () {    # <namespace> <callback> [<arg>...]
+  _with_transaction global server "$@"
+}
+
 # Outstanding transaction markers are the observable lock registry. Output is
 # tab-delimited: <scope> <owner> <namespace> <active|stale> <pid> <age-seconds>.
-_transaction_list_owner () {   # <session|window> <target>
+_transaction_list_owner () {   # <global|session|window> <target>
   local scope="$1" target="$2" raw name metadata namespace pid started now age state
   case "$scope" in
+    global)  raw="$(_opt_list -g)" ;;
     session) raw="$(_opt_list -t "$target")" ;;
     window)  raw="$(_opt_list -w -t "$target")" ;;
   esac
@@ -567,6 +606,7 @@ _transaction_list_owner () {   # <session|window> <target>
 
 transaction_list () {
   local target seen=" "
+  _transaction_list_owner global server
   for target in $(list_sessions); do _transaction_list_owner session "$target"; done
   for target in $(tmux list-windows -a -F '#{window_id}'); do
     case "$seen" in *" $target "*) continue ;; esac
@@ -577,16 +617,18 @@ transaction_list () {
 
 # Clear one STALE marker and its wait-for channel. A live owner is never forcibly
 # unlocked: its later cleanup could otherwise release a successor's lock.
-transaction_clear () {   # <session|window> <target> <namespace>
+transaction_clear () {   # <global|session|window> <target> <namespace>
   local scope="$1" target="$2" namespace="$3" metadata pid channel marker
   [[ "$namespace" =~ ^[a-zA-Z0-9_-]+$ ]] || return 2
   case "$scope" in
+    global)  [[ "$target" == server ]] || return 2 ;;
     session) target="$(resolve_session_target "$target")" || return 2 ;;
     window)  target="$(resolve_window "$target")" || return 2 ;;
     *) return 2 ;;
   esac
   marker="$(_transaction_marker_name "$namespace")"
   case "$scope" in
+    global)  metadata="$(opt_get_global "$marker")" ;;
     session) metadata="$(opt_get_session "$target" "$marker")" ;;
     window)  metadata="$(opt_get_window "$target" "$marker")" ;;
   esac
@@ -597,10 +639,5 @@ transaction_clear () {   # <session|window> <target> <namespace>
   channel="$(_transaction_channel "$scope" "$target" "$namespace")"
   _transaction_release "$scope" "$target" "$namespace" "$channel"
 }
-
-# Key bindings — a primitive for callers; airline itself binds no keys (a user wires
-# their own, e.g. `bind F12 run "#{@airline-cli} state toggle"`). <table> is a key-table.
-key_bind   () { tmux bind-key   -T "$1" "$2" "$3"; }
-key_unbind () { tmux unbind-key -T "$1" "$2"; }
 
 # vim: ft=bash

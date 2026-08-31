@@ -11,13 +11,11 @@ setup() {
 
 @test "diagnostics are empty normally and clear rejects a missing marker" {
   airline session init
-  session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
-
   run airline transaction show
   assert_success
   assert_output ""
 
-  run airline transaction clear session "$session" problem
+  run airline transaction clear global server problem
   assert_failure
   assert_output --partial "no such outstanding transaction"
 }

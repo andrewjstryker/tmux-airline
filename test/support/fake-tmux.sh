@@ -5,7 +5,7 @@
 # tmux.sh is the ONE place airline talks to tmux (Invariant A), and it bottoms out
 # in three private cores (_opt_show/_opt_write/_opt_clear) plus a few standalone
 # verbs. This file sources the REAL tmux.sh — so every composed function above the
-# leaves (opt_setif_*, opt_getor_*, the scope wrappers, and all of collections.sh /
+# leaves (opt_setif_*, the scope wrappers, and all of collections.sh /
 # render.sh) runs unmodified and under test — then replaces only those leaves with
 # bash associative arrays. No tmux process, no socket: a layer test that used to
 # spin up and tear down a server now runs in-process.
@@ -34,17 +34,17 @@ source "${PROJECT_ROOT:?fake-tmux.sh: PROJECT_ROOT must be set}/lib/tmux.sh"
 # it can never collide with an option name or window id.
 declare -gA _FAKE_OPT=()
 declare -gA _FAKE_HOOK=()
-declare -gA _FAKE_BIND=()
 declare -g  _FAKE_WIN='@1'      # what current_window reports (override per test)
 declare -g  _FAKE_SESSION='s1'  # what current_session reports (override per test)
+declare -ga _FAKE_WINDOWS=('@1')
 declare -gi _FAKE_REDRAWS=0     # redraw call count (assertable if a test cares)
 declare -gi _FAKE_WRITES=0      # option mutation count (assertable for no-op paths)
 
 # Reset all fake state. Each test re-sources this file (via its loader), which
 # re-declares the arrays empty, so this is only needed to clear mid-test.
 fake_tmux_reset () {
-  _FAKE_OPT=(); _FAKE_HOOK=(); _FAKE_BIND=()
-  _FAKE_WIN='@1'; _FAKE_SESSION='s1'; _FAKE_REDRAWS=0; _FAKE_WRITES=0
+  _FAKE_OPT=(); _FAKE_HOOK=()
+  _FAKE_WIN='@1'; _FAKE_SESSION='s1'; _FAKE_WINDOWS=('@1'); _FAKE_REDRAWS=0; _FAKE_WRITES=0
   _AIRLINE_TRANSACTION_CHANNEL=""
 }
 
@@ -87,18 +87,19 @@ _opt_clear () {
 # Standalone verb overrides
 #-----------------------------------------------------------------------------#
 redraw         () { (( _FAKE_REDRAWS++ )) || true; }
+redraw_all     () { (( _FAKE_REDRAWS++ )) || true; }
 current_window () { printf '%s' "$_FAKE_WIN"; }
 resolve_window () { printf '%s' "$1"; }
 current_pane () { printf '%%1'; }
+resolve_pane () { printf '%s' "$1"; }
 current_path () { printf '/tmp'; }
 current_session () { printf '%s' "$_FAKE_SESSION"; }
 resolve_session () { printf '%s' "$1"; }
 resolve_session_target () { printf '%s' "$1"; }
 list_sessions () { printf '%s\n' "$_FAKE_SESSION"; }
+list_windows  () { printf '%s\n' "${_FAKE_WINDOWS[@]}"; }
 hook_set       () { _FAKE_HOOK["$1"]="$2"; }
-hook_unset     () { unset "_FAKE_HOOK[$1]"; }
-key_bind       () { _FAKE_BIND["$1 $2"]="$3"; }
-key_unbind     () { unset "_FAKE_BIND[$1 $2]"; }
+hook_set_airline_window_styles () { _FAKE_HOOK[after-new-window[90]]=airline-window-styles; }
 runner_open_pane () { printf '%%2'; }
 runner_open_window () { printf '%%2'; }
 runner_retain_pane () { :; }
@@ -108,29 +109,10 @@ runner_retain_pane () { :; }
 # and scheduling are exercised exhaustively by tmux.bats against a real server.
 with_session_transaction () { local callback="$3"; shift 3; "$callback" "$@"; }
 with_window_transaction  () { local callback="$3"; shift 3; "$callback" "$@"; }
-
-# Load a tmux config file (palettes). Only the lines airline ships are
-# modelled: `set`/`set-option` with optional `-g`, then NAME VALUE. Values may be
-# quoted (e.g. "%Y-%m-%d %H:%M") or contain '#' (format strings like #S), so the
-# line is re-split with the shell — these are airline's own trusted data files.
-# Blank lines and whole-line comments (first non-space char '#') are skipped; an
-# inline '#' is never treated as a comment (it is part of a format value).
-source_file () {   # <file>
-  local line trimmed name val; local -a t
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    trimmed="${line#"${line%%[![:space:]]*}"}"
-    [[ -z "$trimmed" || "${trimmed:0:1}" == '#' ]] && continue
-    eval "t=($trimmed)" 2>/dev/null || continue
-    local i=1
-    [[ "${t[1]:-}" == -g ]] && i=2
-    name="${t[$i]:-}"; val="${t[$((i+1))]:-}"
-    [[ -n "$name" ]] && _FAKE_OPT["g\037$name"]="$val"
-  done < "$1"
-}
+with_global_transaction  () { local callback="$2"; shift 2; "$callback" "$@"; }
 
 # Session-targeted palette source. Palette commands omit -g, so their public
-# options land in the selected session while ordinary source_file retains the
-# global configuration-file behavior above.
+# options land in the selected session evaluation surface.
 source_file_session () {   # <session> <file>
   local session="$1" file="$2" line trimmed name val; local -a t
   while IFS= read -r line || [[ -n "$line" ]]; do

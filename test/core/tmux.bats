@@ -28,41 +28,6 @@ load ../support/helper
   assert_output "a b  c"
 }
 
-@test "opt_unset_global removes the option" {
-  load_tmux
-  opt_set_global @airline-x hello
-  opt_unset_global @airline-x
-  run opt_get_global @airline-x
-  assert_output ""
-}
-
-@test "opt_unset_global on a missing option is harmless" {
-  load_tmux
-  run opt_unset_global @airline-missing
-  assert_success
-}
-
-@test "opt_getor_global returns default when unset, value when set" {
-  load_tmux
-  run opt_getor_global @airline-x 42
-  assert_output "42"
-  opt_set_global @airline-x 7
-  run opt_getor_global @airline-x 42
-  assert_output "7"
-}
-
-@test "opt_setif_global writes and signals change only when the value moves" {
-  load_tmux
-  run opt_setif_global @airline-x a   # unset -> a : changed
-  assert_success
-  run opt_setif_global @airline-x a   # a -> a    : no change
-  assert_failure
-  run opt_setif_global @airline-x b   # a -> b    : changed
-  assert_success
-  run opt_get_global @airline-x
-  assert_output "b"
-}
-
 # --- scalar options: session ------------------------------------------------
 
 @test "opt_set_session / opt_get_session round-trip at session scope" {
@@ -96,10 +61,10 @@ load ../support/helper
 @test "opt_setif_session gates on change" {
   load_tmux
   session="$(current_session)"
-  run opt_setif_session "$session" @airline-problem alert
-  assert_success
-  run opt_setif_session "$session" @airline-problem alert
-  assert_failure
+  changed=""; opt_setif_session changed "$session" @airline-problem alert
+  assert_equal "$changed" 1
+  changed=stale; opt_setif_session changed "$session" @airline-problem alert
+  assert_equal "$changed" ""
 }
 
 # --- scalar options: window -------------------------------------------------
@@ -135,10 +100,10 @@ load ../support/helper
 @test "opt_setif_window gates on change" {
   load_tmux
   win="$(current_window)"
-  run opt_setif_window "$win" @airline-health alert
-  assert_success
-  run opt_setif_window "$win" @airline-health alert
-  assert_failure
+  changed=""; opt_setif_window changed "$win" @airline-health alert
+  assert_equal "$changed" 1
+  changed=stale; opt_setif_window changed "$win" @airline-health alert
+  assert_equal "$changed" ""
 }
 
 # --- standalone verbs -------------------------------------------------------
@@ -202,6 +167,15 @@ transaction_option_workspace () {
   opt_set_session "$session" @airline--workspace-removed temporary
   opt_unset_session "$session" @airline--workspace-removed
 }
+transaction_stage_then_fail () {
+  opt_set_session "$1" @airline--workspace-failure retained
+  return 7
+}
+transaction_global_workspace () {
+  opt_set_global @airline--workspace-global before
+  opt_set_global @airline--workspace-global after
+  opt_get_global @airline--workspace-global
+}
 
 wait_for_file () {
   local file="$1"
@@ -230,6 +204,18 @@ wait_for_file () {
   assert_failure
 }
 
+@test "global transaction owns a server-wide option workspace" {
+  load_tmux
+
+  run with_global_transaction problem transaction_global_workspace
+  assert_success
+  assert_output after
+  run opt_get_global @airline--workspace-global
+  assert_output after
+  run transaction_list
+  assert_output ""
+}
+
 @test "scoped transaction preserves callback output/status and releases after return" {
   load_tmux
   session="$(current_session)"
@@ -243,6 +229,16 @@ wait_for_file () {
   run with_session_transaction "$session" problem transaction_result reused 0
   assert_success
   assert_output "reused"
+}
+
+@test "failed callbacks retain staged diagnostics; transactions do not promise rollback" {
+  load_tmux
+  session="$(current_session)"
+
+  run with_session_transaction "$session" config transaction_stage_then_fail "$session"
+  assert_failure 7
+  run opt_get_session "$session" @airline--workspace-failure
+  assert_output retained
 }
 
 @test "scoped transaction releases its lock when a callback exits" {
@@ -462,31 +458,9 @@ wait_for_file () {
   refute_output "$origin_top"
 }
 
-@test "source_file loads a tmux file that sets options" {
-  load_tmux
-  f="$BATS_TMPDIR/airline-palette-$BATS_TEST_NUMBER"
-  printf 'set-option -g @airline-loaded yes\n' > "$f"
-  source_file "$f"
-  run opt_get_global @airline-loaded
-  assert_output "yes"
-}
-
-@test "hook_set / hook_unset register and clear a hook" {
+@test "hook_set registers an indexed hook" {
   load_tmux
   hook_set "pane-focus-out[90]" "display-message hi"
   run tmux show-hooks -g pane-focus-out
   assert_output --partial "pane-focus-out[90]"
-  hook_unset "pane-focus-out[90]"
-  run tmux show-hooks -g pane-focus-out
-  refute_output --partial "pane-focus-out[90]"
-}
-
-@test "key_bind / key_unbind register and clear a binding" {
-  load_tmux
-  key_bind root F12 "display-message suspended"
-  run tmux list-keys -T root
-  assert_output --partial "F12"
-  key_unbind root F12
-  run tmux list-keys -T root
-  refute_output --partial "F12"
 }

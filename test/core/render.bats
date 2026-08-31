@@ -92,10 +92,10 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run get_option window-status-format
+  run sopt window-status-format
   assert_output --partial "#I:#W"               # the name template
   assert_output --partial "window_zoomed_flag"  # the mode expression
-  run get_option window-status-style
+  run sopt window-status-style
   assert_output --partial "fg=colour250"        # primary
   assert_output --partial "bg=colour234"        # inner-bg
 }
@@ -106,7 +106,7 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run get_option window-status-format
+  run sopt window-status-format
   # bg is a mode selector: zoom→81, copy→75, monitor→109, else inner-bg 234
   assert_output --partial "bg=#{?#{window_zoomed_flag},colour81"
   assert_output --partial "monitor-activity,colour109,colour234"   # else flat inner-bg
@@ -116,7 +116,7 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run get_option window-status-format
+  run sopt window-status-format
   # fg: inner-bg knockout when in any mode, primary (250) when flat
   assert_output --partial "#[fg=#{?#{window_zoomed_flag},colour234"
   assert_output --partial "monitor-activity,colour234,colour250"
@@ -126,7 +126,7 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run get_option window-status-current-format
+  run sopt window-status-current-format
   assert_output --partial "bg=colour214"          # active highlight, not a mode selector
   refute_output --partial "bg=#{?#{window_zoomed_flag}"  # active bg never varies with mode
 }
@@ -135,7 +135,7 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run get_option window-status-current-format
+  run sopt window-status-current-format
   # name fg is the mode color, falling back to inner-bg knockout
   assert_output --partial "#[fg=#{?#{window_zoomed_flag},colour81"
   assert_output --partial "monitor-activity,colour109,colour234"   # monitor tint, else knockout
@@ -148,7 +148,7 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run get_option window-status-format
+  run sopt window-status-format
   assert_output --partial "@airline--badge-status"   # the projected reduced-level scalar
   assert_output --partial "●"                        # a badge glyph (result level)
 }
@@ -157,7 +157,7 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run get_option window-status-format
+  run sopt window-status-format
   # level→color pairs unique to the status ladder (health has no result/attention)
   assert_output --partial "result},colour114"      # result → ok
   assert_output --partial "attention},colour208"   # attention → alert
@@ -167,7 +167,7 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run get_option window-status-format
+  run sopt window-status-format
   assert_output --partial "active},○"          # a shape per level, redundant with color
   assert_output --partial "result},●"
   assert_output --partial "attention},◆"
@@ -178,7 +178,7 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run get_option window-status-format
+  run sopt window-status-format
   assert_output --partial "warn},△"
   assert_output --partial "fail},▲"
   assert_output --partial "fail},#[blink]"
@@ -188,7 +188,7 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run get_option window-status-format
+  run sopt window-status-format
   [[ "$output" == *"@airline--badge-status"*"#I:#W"*"@airline--badge-health"* ]]
 }
 
@@ -198,7 +198,7 @@ _seed_palette() {
   coll_set_window "$win" status build  active
   coll_set_window "$win" status test   result
   coll_set_window "$win" status review attention
-  render_status_project "$win"
+  render_status_project changed "$win"
   run opt_get_window "$win" @airline--badge-status
   assert_output "attention"
 }
@@ -206,30 +206,29 @@ _seed_palette() {
 @test "render_status_project leaves a blank badge when nothing reports" {
   load_render
   win="$(current_window)"
-  render_status_project "$win" || true   # returns 1 = nothing to render (redraw-gate signal)
+  render_status_project changed "$win"
+  assert_equal "$changed" ""
   run opt_get_window "$win" @airline--badge-status
   assert_output ""
 }
 
-@test "render_status_project signals change via exit status (gate a redraw)" {
+@test "render_status_project reports change separately from success" {
   load_render
   win="$(current_window)"
   coll_set_window "$win" status build active
-  # Call directly (not via `run`) so the badge write persists in this shell; capture
-  # status with `|| rc=$?` to keep bats' errexit from aborting on the no-change 1.
-  rc=0; render_status_project "$win" || rc=$?   # unset -> active : changed
-  assert_equal "$rc" 0
-  rc=0; render_status_project "$win" || rc=$?   # active -> active : no change
-  assert_equal "$rc" 1
+  changed=""; render_status_project changed "$win"
+  assert_equal "$changed" 1
+  changed=stale; render_status_project changed "$win"
+  assert_equal "$changed" ""
 }
 
 @test "render_status_project clears the badge when the top contributor is removed" {
   load_render
   win="$(current_window)"
   coll_set_window "$win" status review attention
-  render_status_project "$win"
+  render_status_project changed "$win"
   coll_unregister_window "$win" status review
-  render_status_project "$win"
+  render_status_project changed "$win"
   run opt_get_window "$win" @airline--badge-status
   assert_output ""
 }
@@ -238,7 +237,7 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run get_option window-status-format
+  run sopt window-status-format
   assert_output --partial "@airline--badge-health"   # the projected reduced-level scalar
 }
 
@@ -248,7 +247,7 @@ _seed_palette() {
   coll_set_window "$win" health cpu ok
   coll_set_window "$win" health disk warn
   coll_set_window "$win" health net fail
-  render_health_project "$win"
+  render_health_project changed "$win"
   run opt_get_window "$win" @airline--badge-health
   assert_output "fail"
 }
@@ -257,33 +256,34 @@ _seed_palette() {
   load_render
   win="$(current_window)"
   coll_set_window "$win" health cpu ok
-  render_health_project "$win" || true   # returns 1 = nothing to render (redraw-gate signal)
+  render_health_project changed "$win"
+  assert_equal "$changed" ""
   run opt_get_window "$win" @airline--badge-health
   assert_output ""
 }
 
-@test "render_health_project signals change via exit status (gate a redraw)" {
+@test "render_health_project reports change separately from success" {
   load_render
   win="$(current_window)"
   coll_set_window "$win" health net fail
-  rc=0; render_health_project "$win" || rc=$?   # unset -> fail : changed
-  assert_equal "$rc" 0
-  rc=0; render_health_project "$win" || rc=$?   # fail -> fail : no change
-  assert_equal "$rc" 1
+  changed=""; render_health_project changed "$win"
+  assert_equal "$changed" 1
+  changed=stale; render_health_project changed "$win"
+  assert_equal "$changed" ""
 }
 
 @test "render_health_project clears the badge when the worst contributor is removed" {
   load_render
   win="$(current_window)"
   coll_set_window "$win" health net fail
-  render_health_project "$win"
+  render_health_project changed "$win"
   coll_unregister_window "$win" health net
-  render_health_project "$win"
+  render_health_project changed "$win"
   run opt_get_window "$win" @airline--badge-health
   assert_output ""
 }
 
-# --- session problems: contributors reduce to one overall badge -------------
+# --- global problems: open ledger entries reduce to one overall badge --------
 
 @test "problem badge is renderer-owned at the extreme right" {
   load_render
@@ -298,29 +298,28 @@ _seed_palette() {
   assert_output --partial "fail},#[blink]"
 }
 
-@test "render_problem_project reduces session contributors to the worst level" {
+@test "render_problem_project reduces active global ledger entries" {
   load_render
-  session="$(current_session)"
-  coll_set_session "$session" problem cpu warn "sensors missing"
-  coll_set_session "$session" problem battery fail "query timed out"
-  render_problem_project "$session"
-  run opt_get_session "$session" @airline--badge-problem
+  coll_set_global problem cpu warn active warn "sensors missing"
+  coll_set_global problem battery fail active fail "query timed out"
+  coll_set_global problem ignored none cleared fail "acknowledged"
+  render_problem_project changed
+  run opt_get_global @airline--badge-problem
   assert_output "fail"
 }
 
-@test "render_problem_project downgrades and clears as problems recover" {
+@test "render_problem_project downgrades and clears the global badge" {
   load_render
-  session="$(current_session)"
-  coll_set_session "$session" problem cpu warn "sensors missing"
-  coll_set_session "$session" problem battery fail "query timed out"
-  render_problem_project "$session"
-  coll_unregister_session "$session" problem battery
-  render_problem_project "$session"
-  run opt_get_session "$session" @airline--badge-problem
+  coll_set_global problem cpu warn active warn "sensors missing"
+  coll_set_global problem battery fail active fail "query timed out"
+  render_problem_project changed
+  coll_unregister_global problem battery
+  render_problem_project changed
+  run opt_get_global @airline--badge-problem
   assert_output "warn"
-  coll_unregister_session "$session" problem cpu
-  render_problem_project "$session"
-  run opt_get_session "$session" @airline--badge-problem
+  coll_unregister_global problem cpu
+  render_problem_project changed
+  run opt_get_global @airline--badge-problem
   assert_output ""
 }
 
@@ -333,9 +332,9 @@ _seed_palette() {
   run sopt status-style
   assert_output --partial "fg=colour245"   # secondary
   assert_output --partial "bg=colour234"   # inner-bg
-  run get_option pane-active-border-style
+  run wopt pane-active-border-style
   assert_output --partial "colour214"      # active
-  run get_option clock-mode-colour
+  run wopt clock-mode-colour
   assert_output "colour134"                 # special
 }
 
@@ -355,16 +354,25 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run get_option window-status-format
+  run sopt window-status-format
   assert_output --partial "#I:#W"
 }
 
-@test "render is redraw-gated: a no-op second call reports no change" {
+@test "render is redraw-gated while successful no-ops remain successful" {
   load_render
   _seed_palette
   cfg_set_session "$AIRLINE_SESSION" segment-left-out "LOAD"
-  rc=0; render "$AIRLINE_SESSION" || rc=$?   # first call: everything changes
-  assert_equal "$rc" 0
-  rc=0; render "$AIRLINE_SESSION" || rc=$?   # identical state: nothing changes
-  assert_equal "$rc" 1
+  render "$AIRLINE_SESSION"
+  first_redraws="$_FAKE_REDRAWS"
+  render "$AIRLINE_SESSION"
+  assert_equal "$_FAKE_REDRAWS" "$first_redraws"
+}
+
+@test "render propagates an option mutation failure" {
+  load_render
+  _seed_palette
+  _opt_write () { return 72; }
+
+  run render "$AIRLINE_SESSION"
+  assert_failure 72
 }
