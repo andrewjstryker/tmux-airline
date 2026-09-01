@@ -16,11 +16,11 @@ _catalog_error () { printf 'airline: %s\n' "$*" >&2; return 2; }
 catalog_register_builtin () {   # <session> <kind> <dir>
   local session="$1" kind="$2" dir="$3"
   [[ -d "$dir" ]] || return 0
-  coll_register_session "$session" "$(_catalog_namespace "$kind")" "$dir"
+  coll_register session "$session" "$(_catalog_namespace "$kind")" "$dir"
 }
 
 catalog_paths () {   # <session> <kind> -> space-delimited priority order
-  coll_members_session "$1" "$(_catalog_namespace "$2")"
+  coll_members session "$1" "$(_catalog_namespace "$2")"
 }
 
 # Resolve a bare name to the first file on the kind's path. A slash is rejected:
@@ -55,7 +55,7 @@ catalog_register () {   # <session> <kind> <dir>
   local session="$1" kind="$2" dir="${3:-}"
   (( $# == 3 )) || { _catalog_error "$kind register: need exactly one <dir>"; return; }
   [[ -d "$dir" ]] || { _catalog_error "$kind register: no such directory: $dir"; return; }
-  coll_prepend_session "$session" "$(_catalog_namespace "$kind")" "$dir"
+  coll_prepend session "$session" "$(_catalog_namespace "$kind")" "$dir"
 }
 
 # vim: ft=bash

@@ -192,12 +192,12 @@ _seed_palette() {
   [[ "$output" == *"@airline--badge-status"*"#I:#W"*"@airline--badge-health"* ]]
 }
 
-@test "render_status_project reduces contributors to the highest level" {
+@test "render_status_project reduces entries to the highest level" {
   load_render
   win="$(current_window)"
-  coll_set_window "$win" status build  active
-  coll_set_window "$win" status test   result
-  coll_set_window "$win" status review attention
+  coll_set window "$win" status build  active
+  coll_set window "$win" status test   result
+  coll_set window "$win" status review attention
   render_status_project changed "$win"
   run opt_get_window "$win" @airline--badge-status
   assert_output "attention"
@@ -215,19 +215,19 @@ _seed_palette() {
 @test "render_status_project reports change separately from success" {
   load_render
   win="$(current_window)"
-  coll_set_window "$win" status build active
+  coll_set window "$win" status build active
   changed=""; render_status_project changed "$win"
   assert_equal "$changed" 1
   changed=stale; render_status_project changed "$win"
   assert_equal "$changed" ""
 }
 
-@test "render_status_project clears the badge when the top contributor is removed" {
+@test "render_status_project clears the badge when the top entry is removed" {
   load_render
   win="$(current_window)"
-  coll_set_window "$win" status review attention
+  coll_set window "$win" status review attention
   render_status_project changed "$win"
-  coll_unregister_window "$win" status review
+  coll_unregister window "$win" status review
   render_status_project changed "$win"
   run opt_get_window "$win" @airline--badge-status
   assert_output ""
@@ -241,12 +241,12 @@ _seed_palette() {
   assert_output --partial "@airline--badge-health"   # the projected reduced-level scalar
 }
 
-@test "render_health_project reduces contributors to the worst level scalar" {
+@test "render_health_project reduces claims to the worst level scalar" {
   load_render
   win="$(current_window)"
-  coll_set_window "$win" health cpu ok
-  coll_set_window "$win" health disk warn
-  coll_set_window "$win" health net fail
+  coll_set window "$win" health cpu ok
+  coll_set window "$win" health disk warn
+  coll_set window "$win" health net fail
   render_health_project changed "$win"
   run opt_get_window "$win" @airline--badge-health
   assert_output "fail"
@@ -255,7 +255,7 @@ _seed_palette() {
 @test "render_health_project leaves a blank badge when only ok reports" {
   load_render
   win="$(current_window)"
-  coll_set_window "$win" health cpu ok
+  coll_set window "$win" health cpu ok
   render_health_project changed "$win"
   assert_equal "$changed" ""
   run opt_get_window "$win" @airline--badge-health
@@ -265,19 +265,19 @@ _seed_palette() {
 @test "render_health_project reports change separately from success" {
   load_render
   win="$(current_window)"
-  coll_set_window "$win" health net fail
+  coll_set window "$win" health net fail
   changed=""; render_health_project changed "$win"
   assert_equal "$changed" 1
   changed=stale; render_health_project changed "$win"
   assert_equal "$changed" ""
 }
 
-@test "render_health_project clears the badge when the worst contributor is removed" {
+@test "render_health_project clears the badge when the worst claim is removed" {
   load_render
   win="$(current_window)"
-  coll_set_window "$win" health net fail
+  coll_set window "$win" health net fail
   render_health_project changed "$win"
-  coll_unregister_window "$win" health net
+  coll_unregister window "$win" health net
   render_health_project changed "$win"
   run opt_get_window "$win" @airline--badge-health
   assert_output ""
@@ -300,9 +300,9 @@ _seed_palette() {
 
 @test "render_problem_project reduces active global ledger entries" {
   load_render
-  coll_set_global problem cpu warn active warn "sensors missing"
-  coll_set_global problem battery fail active fail "query timed out"
-  coll_set_global problem ignored none cleared fail "acknowledged"
+  coll_set global server problem cpu warn active warn "sensors missing"
+  coll_set global server problem battery fail active fail "query timed out"
+  coll_set global server problem ignored none cleared fail "acknowledged"
   render_problem_project changed
   run opt_get_global @airline--badge-problem
   assert_output "fail"
@@ -310,14 +310,14 @@ _seed_palette() {
 
 @test "render_problem_project downgrades and clears the global badge" {
   load_render
-  coll_set_global problem cpu warn active warn "sensors missing"
-  coll_set_global problem battery fail active fail "query timed out"
+  coll_set global server problem cpu warn active warn "sensors missing"
+  coll_set global server problem battery fail active fail "query timed out"
   render_problem_project changed
-  coll_unregister_global problem battery
+  coll_unregister global server problem battery
   render_problem_project changed
   run opt_get_global @airline--badge-problem
   assert_output "warn"
-  coll_unregister_global problem cpu
+  coll_unregister global server problem cpu
   render_problem_project changed
   run opt_get_global @airline--badge-problem
   assert_output ""

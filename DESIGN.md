@@ -143,13 +143,15 @@ The important boundaries are:
   callback. They never receive a tmux handle, target session, or private-state access.
 - `lib/collections.sh` is an airline abstraction above tmux's flat option store. It is
   used only for status, health, problem, adapter membership, and search paths.
-  Fixed segment slots are scalar options, not collections.
+  Fixed segment slots are scalar options, not collections. Its operations take
+  `global`, `session`, or `window` as their first argument and the native owner as
+  their second; namespace, tuple contents, and reduction order are caller policy.
 - `lib/catalog.sh` owns the common trust and lookup mechanism for every registered
   element kind. Layout and runner own element behavior but use catalog's public
   register, resolve, list, and path operations; they do not know the path collection
   namespace or representation.
 - `lib/signal.sh` owns runtime status, health, and problem reporting: validation,
-  contributor mutation, badge projection, redraw gating, and transient consumption.
+  collection mutation, badge projection, redraw gating, and transient consumption.
   All three signals follow the same mutation pipeline, with lifecycle policy kept
   in signal-specific callbacks. A problem is a server-global failure of airline or
   a contributor to provide an advertised capability; it is not window or pane
@@ -165,7 +167,7 @@ State falls into four kinds:
 | Kind | Written by | Examples |
 |------|------------|----------|
 | **Public options** `@airline-*` | users globally; palette files temporarily per session | configuration input, palette evaluation output, `@airline-cli` |
-| **Private options** `@airline--*` | airline at runtime | committed config, contributors, badges, selections, paths |
+| **Private options** `@airline--*` | airline at runtime | committed config, signals, badges, selections, paths |
 | **Composed output** | `render` | `status-left/right`, window formats, styles, pane borders, clock color |
 | **Constants** | source code only | glyphs, chevrons, name template, vocabularies, precedence tables |
 
@@ -199,7 +201,7 @@ the user selects that palette or layout again when they want its complete defini
 
 Private state exists at its native owner:
 
-- status and health contributors and their projected badges are window-scoped;
+- status entries, health claims, and their projected badges are window-scoped;
 - the problem ledger, origin claims, and projected problem badge are server-global;
 - palette/layout selections, guards, paths, suspension, committed configuration,
   and adapter declarations are session-scoped.
@@ -536,7 +538,7 @@ A long-lived process may become unhealthy and later repair itself without exitin
 One run invocation may additionally select a filter, a probe, or both. Each reports
 current state as `ok`, or as `warn`/`fail` with a diagnostic message, while the
 process remains active. Reports are state, not transitions: repeated observations
-are safe, and a later `ok` clears that observer's health contributor after recovery.
+are safe, and a later `ok` clears that observer's health claim after recovery.
 
 Airline owns the observation lifecycle and validates and projects each value, but it
 does not know what a Kubernetes readiness state, server log message, or recovery
@@ -597,9 +599,9 @@ that severity. Probe stdout is an uninterpreted human channel:
 airline passes it to the pane and assigns no meaning to its format. During `run` it
 bypasses the command-output tee, so a selected filter cannot observe it. During
 `watch` it is the visible polling transcript. Filter and probe use independent
-health contributors. Probe health has a different lifetime from filter health: it
+health claims. Probe health has a different lifetime from filter health: it
 asserts only the most recent bounded observation while probing is active. Airline
-clears that contributor when the run or watch lifecycle stops because it can no
+clears that claim when the run or watch lifecycle stops because it can no
 longer claim the observation is current.
 
 `runner watch` owns a probe lifecycle without launching a command:
@@ -635,8 +637,9 @@ an airline problem. Airline does not copy command diagnostics into problems.
 
 ## Collections and badge projection
 
-Status and health hold zero or more contributors per window. Problem uses a
-server-global lifecycle ledger plus a server-global set of active origin claims.
+Status holds keyed entries and health holds contributor-owned claims per window.
+Problem uses a server-global lifecycle ledger plus a server-global set of active
+origin claims.
 Each collection uses an explicit registry and a tuple per member:
 
 ```text
@@ -646,6 +649,10 @@ Each collection uses an explicit registry and a tuple per member:
 
 Collection rules:
 
+- Every operation has one scope-first form, such as
+  `coll_reduce <global|session|window> <owner> <namespace> <order>`. There are no
+  scope-specific collection functions. The collection layer passes scope through
+  mechanically and does not decide which domain belongs at which scope.
 - Membership is explicit; entries are never discovered by parsing option names.
 - `set` writes the entire tuple and registers the key. `unregister` also removes the
   tuple.
@@ -701,11 +708,11 @@ The three signal types use one orchestration path: resolve the native owner, ent
 its transaction, apply a lifecycle callback, reduce/project the collection, and
 redraw only when presentation changed. Their lifecycle policies differ:
 
-- Status is window-scoped. Keyed `clear` removes one contributor. Keyless `clear`
-  removes every transient contributor in the window, which lets the focus hook use
+- Status is window-scoped. Keyed `clear` removes one entry. Keyless `clear` removes
+  every transient entry in the window, which lets the focus hook use
   the same lifecycle operation without exposing a separate cleanup verb.
 - Health is window-scoped and persistent until reporter recovery or explicit
-  `clear`; both operations remove the contributor.
+  `clear`; both operations remove the claim.
 - Problem is server-global. `clear` has the same user meaning—hide the problem from
   normal `show`—but records `cleared` in its ledger rather than deleting history.
 
@@ -718,7 +725,7 @@ pane and session lifecycle hooks. `problem show` lists only active entries;
 Reporter recovery (`set ... ok`) removes that reporter's claim and deletes the
 ledger when the last claim resolves. `problem resolve` explicitly removes all
 claims and the ledger entry. This delete-on-resolution rule is distinct from close:
-closed history records that the contributors disappeared without demonstrating
+closed history records that the origins disappeared without demonstrating
 that the capability recovered.
 
 Problem is the common capability-failure channel. Every integration and airline
@@ -738,8 +745,9 @@ public problem API.
 
 Dynamic collection operations run in owner-scoped transactions: status and health
 serialize by `(window, namespace)`, while problems serialize by the single
-`(global, server, problem)` owner. The registry, contributor tuple, reduction, and projected badge
-therefore form one logical mutation even when background evaluations overlap.
+`(global, server, problem)` owner. The registry, member tuple, reduction, and
+projected badge therefore form one logical mutation even when background
+evaluations overlap.
 `lib/tmux.sh` owns acquisition, an atomic owner-scoped marker, cleanup, stale-owner
 detection, and recovery. Transaction callbacks run in a subshell so transaction-local
 signal traps do not alter caller traps. `airline transaction show` exposes
@@ -758,8 +766,9 @@ distinguished by position around the window name, so sharing palette roles is sa
 `lib/tmux.sh` is the sole integration point with tmux. Its interface follows these
 conventions:
 
-- Functions use fixed positional arguments. Scope is expressed in the name, such as
-  `opt_set_window`, rather than selected with flags.
+- Functions use fixed positional arguments. The generic collection bridge takes
+  scope first; `tmux.sh` translates that value to tmux flags in one place. Scalar
+  domain accessors may express their fixed owner in names such as `prv_set_window`.
 - Getters write to stdout, predicates use exit status, and mutators are silent.
 - Session- and window-scoped functions take explicit targets. Callers resolve an
   omitted target once and pass the resulting id downward.
@@ -876,7 +885,7 @@ replacement is one `render` function over the whole source of truth, reached thr
 
 ### Rendering collection storage coupled display to tuple shape
 
-Referencing a contributor tuple directly from a tmux format made the display depend
+Referencing a collection tuple directly from a tmux format made the display depend
 on the storage tuple's arity. Adding metadata such as the transient marker could
 therefore change the value seen by the renderer. Collections now reduce into a
 separate scalar badge option, and render references only that stable projection.

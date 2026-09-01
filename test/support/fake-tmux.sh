@@ -5,7 +5,7 @@
 # tmux.sh is the ONE place airline talks to tmux (Invariant A), and it bottoms out
 # in three private cores (_opt_show/_opt_write/_opt_clear) plus a few standalone
 # verbs. This file sources the REAL tmux.sh — so every composed function above the
-# leaves (opt_setif_*, the scope wrappers, and all of collections.sh /
+# leaves (opt_setif_*, the scalar accessors, and all of collections.sh /
 # render.sh) runs unmodified and under test — then replaces only those leaves with
 # bash associative arrays. No tmux process, no socket: a layer test that used to
 # spin up and tear down a server now runs in-process.

@@ -7,8 +7,9 @@
 # enforces that, so this file is the sole entry on its allowlist.
 #
 # Conventions:
-#   * No flags. Scope and behaviour are encoded in the function NAME
-#     (opt_set_window, not opt_set -w); arguments are fixed and positional.
+#   * Callers never pass tmux flags. Generic option access takes a scope value;
+#     fixed-policy scalar accessors may encode ownership in names such as
+#     opt_set_window. Arguments are fixed and positional.
 #   * Getters echo to stdout (empty when unset); predicates use exit status;
 #     mutators are silent.
 #   * A few private cores (_opt_*) make the actual tmux call; the public
@@ -32,6 +33,19 @@ _opt_show  () { tmux show-options -qv "$@"; }   # <scope…> <name>
 _opt_list  () { tmux show-options -q  "$@"; }   # same, retaining name/presence
 _opt_write () { tmux set-option   -q  "$@"; }   # <scope…> <name> <value>
 _opt_clear () { tmux set-option   -qu "$@"; }   # <scope…> <name>
+
+# ShellCheck cannot see that this nameref assignment mutates the caller's array.
+# shellcheck disable=SC2034
+_scope_option_args () {   # <array-destination> <global|session|window> <target>
+  local -n scope_arguments="$1"
+  local scope="$2" target="$3"
+  case "$scope" in
+    global)  scope_arguments=(-g) ;;
+    session) [[ -n "$target" ]] || return 2; scope_arguments=(-t "$target") ;;
+    window)  [[ -n "$target" ]] || return 2; scope_arguments=(-w -t "$target") ;;
+    *) return 2 ;;
+  esac
+}
 
 # A transaction-local option workspace. tmux serializes listed values using its
 # configuration syntax (one escaped option per line), which lets us load an entire
@@ -85,25 +99,17 @@ _opt_snapshot_line () {   # <scope> <target> <serialized-option-line>
 
 _opt_snapshot () {   # <global|session|window> <target>
   local scope="$1" target="$2" line raw table_key
-  case "$scope" in
-    global)
-      # Native global options occupy separate session and window tables. Load the
-      # window table first so an identically named user option in the ordinary
-      # global session table retains `set -g` / `show -g` precedence.
-      raw="$(_opt_list -gw)" || return
-      while IFS= read -r line; do _opt_snapshot_line global "" "$line"; done <<< "$raw"
-      raw="$(_opt_list -g)" || return
-      while IFS= read -r line; do _opt_snapshot_line global "" "$line"; done <<< "$raw"
-      ;;
-    session)
-      raw="$(_opt_list -t "$target")" || return
-      while IFS= read -r line; do _opt_snapshot_line session "$target" "$line"; done <<< "$raw"
-      ;;
-    window)
-      raw="$(_opt_list -w -t "$target")" || return
-      while IFS= read -r line; do _opt_snapshot_line window "$target" "$line"; done <<< "$raw"
-      ;;
-  esac
+  local -a scope_args
+  _scope_option_args scope_args "$scope" "$target" || return
+  if [[ "$scope" == global ]]; then
+    # Native global options occupy separate session and window tables. Load the
+    # extra window table first so an identically named user option in the ordinary
+    # global session table retains `set -g` / `show -g` precedence.
+    raw="$(_opt_list -gw)" || return
+    while IFS= read -r line; do _opt_snapshot_line global "" "$line"; done <<< "$raw"
+  fi
+  raw="$(_opt_list "${scope_args[@]}")" || return
+  while IFS= read -r line; do _opt_snapshot_line "$scope" "$target" "$line"; done <<< "$raw"
   printf -v table_key '%s\037%s' "$scope" "$target"
   _AIRLINE_OPT_LOADED["$table_key"]=1
 }
@@ -148,32 +154,28 @@ _opt_workspace_reload () {
 
 _opt_read () {   # <global|session|window> <target> <name>
   local scope="$1" target="$2" name="$3" key
+  local -a scope_args
+  _scope_option_args scope_args "$scope" "$target" || return
   if [[ -n "$_AIRLINE_OPT_WORKSPACE" ]]; then
     _opt_snapshot_if_needed "$scope" "$target" || return
     _opt_key key "$scope" "$target" "$name"
     [[ -n "${_AIRLINE_OPT_PRESENT[$key]:-}" ]] && printf '%s' "${_AIRLINE_OPT_VALUE[$key]}"
     return 0
   fi
-  case "$scope" in
-    global)  _opt_show -g "$name" ;;
-    session) _opt_show -t "$target" "$name" ;;
-    window)  _opt_show -w -t "$target" "$name" ;;
-  esac
+  _opt_show "${scope_args[@]}" "$name"
 }
 
 _opt_present () {   # <global|session|window> <target> <name>
   local scope="$1" target="$2" name="$3" key
+  local -a scope_args
+  _scope_option_args scope_args "$scope" "$target" || return
   if [[ -n "$_AIRLINE_OPT_WORKSPACE" ]]; then
     _opt_snapshot_if_needed "$scope" "$target" || return
     _opt_key key "$scope" "$target" "$name"
     [[ -n "${_AIRLINE_OPT_PRESENT[$key]:-}" ]]
     return
   fi
-  case "$scope" in
-    global)  [[ -n "$(_opt_list -g "$name")" ]] ;;
-    session) [[ -n "$(_opt_list -t "$target" "$name")" ]] ;;
-    window)  [[ -n "$(_opt_list -w -t "$target" "$name")" ]] ;;
-  esac
+  [[ -n "$(_opt_list "${scope_args[@]}" "$name")" ]]
 }
 
 _opt_mark_dirty () {   # <key>
@@ -184,12 +186,10 @@ _opt_mark_dirty () {   # <key>
 
 _opt_store () {   # <global|session|window> <target> <name> <value>
   local scope="$1" target="$2" name="$3" value="$4" key
+  local -a scope_args
+  _scope_option_args scope_args "$scope" "$target" || return
   if [[ -z "$_AIRLINE_OPT_WORKSPACE" ]]; then
-    case "$scope" in
-      global)  _opt_write -g "$name" "$value" ;;
-      session) _opt_write -t "$target" "$name" "$value" ;;
-      window)  _opt_write -w -t "$target" "$name" "$value" ;;
-    esac
+    _opt_write "${scope_args[@]}" "$name" "$value"
     return
   fi
   _opt_key key "$scope" "$target" "$name"
@@ -203,12 +203,10 @@ _opt_store () {   # <global|session|window> <target> <name> <value>
 
 _opt_remove () {   # <global|session|window> <target> <name>
   local scope="$1" target="$2" name="$3" key
+  local -a scope_args
+  _scope_option_args scope_args "$scope" "$target" || return
   if [[ -z "$_AIRLINE_OPT_WORKSPACE" ]]; then
-    case "$scope" in
-      global)  _opt_clear -g "$name" ;;
-      session) _opt_clear -t "$target" "$name" ;;
-      window)  _opt_clear -w -t "$target" "$name" ;;
-    esac
+    _opt_clear "${scope_args[@]}" "$name"
     return
   fi
   _opt_key key "$scope" "$target" "$name"
@@ -229,7 +227,7 @@ _opt_escape_sequence_arg () {   # <value> <destination-variable>
 
 _opt_workspace_flush () {
   local key scope target name value changed="" redraw="$_AIRLINE_OPT_REDRAW"
-  local -a commands=()
+  local -a commands=() scope_args=()
   [[ -n "$_AIRLINE_OPT_WORKSPACE" ]] || return 0
   for key in "${_AIRLINE_OPT_DIRTY_ORDER[@]}"; do
     if [[ -n "${_AIRLINE_OPT_PRESENT[$key]:-}" ]]; then
@@ -242,20 +240,13 @@ _opt_workspace_flush () {
     fi
     scope="${_AIRLINE_OPT_SCOPE[$key]}"; target="${_AIRLINE_OPT_TARGET[$key]}"
     name="${_AIRLINE_OPT_NAME[$key]}"
+    _scope_option_args scope_args "$scope" "$target" || return
     [[ ${#commands[@]} -eq 0 ]] || commands+=(';')
     if [[ -n "${_AIRLINE_OPT_PRESENT[$key]:-}" ]]; then
       _opt_escape_sequence_arg "${_AIRLINE_OPT_VALUE[$key]}" value
-      case "$scope" in
-        global)  commands+=(set-option -q -g "$name" "$value") ;;
-        session) commands+=(set-option -q -t "$target" "$name" "$value") ;;
-        window)  commands+=(set-option -q -w -t "$target" "$name" "$value") ;;
-      esac
+      commands+=(set-option -q "${scope_args[@]}" "$name" "$value")
     else
-      case "$scope" in
-        global)  commands+=(set-option -qu -g "$name") ;;
-        session) commands+=(set-option -qu -t "$target" "$name") ;;
-        window)  commands+=(set-option -qu -w -t "$target" "$name") ;;
-      esac
+      commands+=(set-option -qu "${scope_args[@]}" "$name")
     fi
     changed=1
   done
@@ -274,6 +265,11 @@ _opt_workspace_flush () {
     ?*)  tmux refresh-client -S 2>/dev/null || true ;;
   esac
 }
+
+# --- generic scope-first access (used by collections) ---
+opt_get          () { _opt_read   "$@"; } # <scope> <target> <name>
+opt_set          () { _opt_store  "$@"; } # <scope> <target> <name> <value>
+opt_unset        () { _opt_remove "$@"; } # <scope> <target> <name>
 
 # --- global scope ---
 opt_get_global   () { _opt_read    global "" "$1"; }
@@ -358,13 +354,11 @@ prv_name () { printf '@airline--%s' "$1"; }             # <key> → option name
 # ledger and its projected badge use it. Configuration remains public-global;
 # all other managed state retains its native session/window owner.
 prv_get_global   () { opt_get_global   "@airline--$1"; }       # <key>
-prv_set_global   () { opt_set_global   "@airline--$1" "$2"; } # <key> <value>
 prv_setif_global () { opt_setif_global "$1" "@airline--$2" "$3"; } # <dest> <key> <value>
 prv_unset_global () { opt_unset_global "@airline--$1"; }       # <key>
 
 prv_get_session   () { opt_get_session   "$1" "@airline--$2"; }       # <session> <key>
 prv_set_session   () { opt_set_session   "$1" "@airline--$2" "$3"; } # <session> <key> <value>
-prv_setif_session () { opt_setif_session "$1" "$2" "@airline--$3" "$4"; } # <dest> <session> <key> <value>
 prv_unset_session () { opt_unset_session "$1" "@airline--$2"; }       # <session> <key>
 prv_get_window   () { opt_get_window   "$1" "@airline--$2"; }       # <win> <key>
 prv_setif_window () { opt_setif_window "$1" "$2" "@airline--$3" "$4"; }  # <dest> <win> <key> <value>
@@ -502,22 +496,21 @@ _transaction_channel () {   # <global|session|window> <canonical-target> <namesp
 # so every held Airline lock remains discoverable.
 _transaction_acquire () {   # <scope> <target> <namespace> <channel> <metadata>
   local scope="$1" target="$2" namespace="$3" channel="$4" metadata="$5"
+  local -a scope_args
   local marker; marker="$(_transaction_marker_name "$namespace")"
-  case "$scope" in
-    global)  tmux wait-for -L "$channel" \; set-option -q -g "$marker" "$metadata" ;;
-    session) tmux wait-for -L "$channel" \; set-option -q    -t "$target" "$marker" "$metadata" ;;
-    window)  tmux wait-for -L "$channel" \; set-option -q -w -t "$target" "$marker" "$metadata" ;;
-  esac || { tmux wait-for -U "$channel" 2>/dev/null || true; return 1; }
+  _scope_option_args scope_args "$scope" "$target" || return
+  tmux wait-for -L "$channel" \; set-option -q "${scope_args[@]}" "$marker" "$metadata" || {
+    tmux wait-for -U "$channel" 2>/dev/null || true
+    return 1
+  }
 }
 
 _transaction_release () {   # <scope> <target> <namespace> <channel>
   local scope="$1" target="$2" namespace="$3" channel="$4"
+  local -a scope_args
   local marker; marker="$(_transaction_marker_name "$namespace")"
-  case "$scope" in
-    global)  tmux set-option -qu -g "$marker" \; wait-for -U "$channel" ;;
-    session) tmux set-option -qu    -t "$target" "$marker" \; wait-for -U "$channel" ;;
-    window)  tmux set-option -qu -w -t "$target" "$marker" \; wait-for -U "$channel" ;;
-  esac
+  _scope_option_args scope_args "$scope" "$target" || return
+  tmux set-option -qu "${scope_args[@]}" "$marker" \; wait-for -U "$channel"
 }
 
 _transaction_cleanup () {
@@ -587,11 +580,9 @@ with_global_transaction () {    # <namespace> <callback> [<arg>...]
 # tab-delimited: <scope> <owner> <namespace> <active|stale> <pid> <age-seconds>.
 _transaction_list_owner () {   # <global|session|window> <target>
   local scope="$1" target="$2" raw name metadata namespace pid started now age state
-  case "$scope" in
-    global)  raw="$(_opt_list -g)" ;;
-    session) raw="$(_opt_list -t "$target")" ;;
-    window)  raw="$(_opt_list -w -t "$target")" ;;
-  esac
+  local -a scope_args
+  _scope_option_args scope_args "$scope" "$target" || return
+  raw="$(_opt_list "${scope_args[@]}")" || return
   printf -v now '%(%s)T' -1
   while read -r name metadata; do
     case "$name" in @airline--transaction-*) ;; *) continue ;; esac
@@ -627,11 +618,7 @@ transaction_clear () {   # <global|session|window> <target> <namespace>
     *) return 2 ;;
   esac
   marker="$(_transaction_marker_name "$namespace")"
-  case "$scope" in
-    global)  metadata="$(opt_get_global "$marker")" ;;
-    session) metadata="$(opt_get_session "$target" "$marker")" ;;
-    window)  metadata="$(opt_get_window "$target" "$marker")" ;;
-  esac
+  metadata="$(opt_get "$scope" "$target" "$marker")" || return
   [[ -n "$metadata" ]] || return 3
   pid="${metadata%%:*}"
   [[ "$pid" =~ ^[0-9]+$ ]] || return 2

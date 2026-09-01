@@ -70,7 +70,7 @@ AIRLINE_KEY_DEFAULTS='defaults-done'     # first-run sentinel: seed defaults onc
 # The status ladder — semantic levels, low→high precedence, each mapped to a palette
 # color role. The order is handed to coll_reduce as the ranking (collections stays
 # domain-free) and to the selector as the level→color map: `attention` outranks
-# `result` outranks `active`; a window with no status contributor shows no badge.
+# `result` outranks `active`; a window with no status entry shows no badge.
 # (`active` reusing the active-window highlight color is intentional — a badge only
 # earns its place on inactive windows, which carry no highlight to clash with.)
 declare -ga AIRLINE_STATUS_LEVELS=(active result attention)
@@ -235,10 +235,10 @@ _window_mode_pick () {   # <in-mode> <none>
 #-----------------------------------------------------------------------------#
 # Two channels flank the window name. Each is a runtime collection reduced to ONE
 # badge and projected to a per-window scalar (render_status_project / render_health_project):
-#   status : app-status contributors (ns "status") reduced by the level ladder into
+#   status : keyed app-status entries (ns "status") reduced by the level ladder into
 #            the AIRLINE_KEY_STATUS scalar; the left badge shows one glyph in that
-#            level's color, or nothing when no contributor reports.
-#   health : health contributors (ns "health") reduced to the worst level into the
+#            level's color, or nothing when no entry exists.
+#   health : health claims (ns "health") reduced to the worst level into the
 #            AIRLINE_KEY_HEALTH scalar; the right badge shows one glyph in that
 #            level's color, or nothing when healthy.
 # The colors are baked here at compose time; WHICH color shows is a live #{?…}
@@ -305,8 +305,8 @@ _project () {   # <destination> <window|global> <owner> <ns> <ranking> <badge-ke
   local top current option_changed=""
   destination=""
   case "$scope" in
-    window) top="$(coll_reduce_window "$owner" "$ns" "$ranking")" || return ;;
-    global) top="$(coll_reduce_global "$ns" "$ranking")" || return ;;
+    window) top="$(coll_reduce window "$owner" "$ns" "$ranking")" || return ;;
+    global) top="$(coll_reduce global server "$ns" "$ranking")" || return ;;
   esac
   if [[ -n "$top" ]]; then
     case "$scope" in

@@ -9,7 +9,7 @@ load ../support/helper
 setup() { load_signal; }
 teardown() { :; }
 
-@test "status stores contributors, shows them, and clears them" {
+@test "status stores entries, shows them, and clears them" {
   signal_status_set build active
   signal_status_set review attention
   run signal_status_show
@@ -188,7 +188,7 @@ teardown() { :; }
   assert_output ""
 }
 
-@test "keyless status clear removes only transient contributors" {
+@test "keyless status clear removes only transient entries" {
   signal_status_set build active
   signal_status_set review attention --transient
   signal_health_set test api fail "connection refused"
@@ -288,9 +288,9 @@ CASES
 @test "problem ledger and claims retain severity and diagnostic framing" {
   signal_health_set test api fail "connection refused"
   signal_problem_set test api fail "connection refused"
-  assert_equal "$(coll_get_global problem test:api)" \
+  assert_equal "$(coll_get global server problem test:api)" \
     "$(printf 'fail\tactive\tfail\tconnection refused')"
-  assert_equal "$(coll_get_global problem-claim session:s1:test:api)" \
+  assert_equal "$(coll_get global server problem-claim session:s1:test:api)" \
     "$(printf 'test\tapi\tsession\ts1\tfail\tconnection refused')"
 
   run signal_health_show test api

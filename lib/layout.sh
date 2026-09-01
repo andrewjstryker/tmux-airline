@@ -119,7 +119,7 @@ _apply_adapter_unlocked () {
     file="$(catalog_resolve "$session" adapter "$name")"
     [[ -n "$file" ]] || command_die "adapter use: '$name' not found on the adapter path"
     _source_adapter "$session" "$file"
-    coll_set_session "$session" adapters "$name" use "$name"
+    coll_set session "$session" adapters "$name" use "$name"
   done
 }
 
@@ -129,20 +129,20 @@ _load_adapter_unlocked () {
   abs="$(_abspath "$path")"
   [[ -f "$abs" ]] || command_die "adapter load: no such file: $path"
   _source_adapter "$session" "$abs"
-  coll_set_session "$session" adapters "${abs##*/}" load "$abs"
+  coll_set session "$session" adapters "${abs##*/}" load "$abs"
 }
 
 _clear_adapters () {
   local session="$1" adapter
-  for adapter in $(coll_members_session "$session" adapters); do
-    coll_unregister_session "$session" adapters "$adapter"
+  for adapter in $(coll_members session "$session" adapters); do
+    coll_unregister session "$session" adapters "$adapter"
   done
 }
 
 _reapply_adapters_unlocked () {
   local session="$1" key kind handle file
-  for key in $(coll_members_session "$session" adapters); do
-    IFS=$'\t' read -r kind handle <<< "$(coll_get_session "$session" adapters "$key")"
+  for key in $(coll_members session "$session" adapters); do
+    IFS=$'\t' read -r kind handle <<< "$(coll_get session "$session" adapters "$key")"
     case "$kind" in
       use)
         file="$(catalog_resolve "$session" adapter "$handle")"
@@ -158,7 +158,7 @@ _reapply_adapters_unlocked () {
         file="$(catalog_resolve "$session" adapter "$key")"
         [[ -n "$file" ]] || continue
         _source_adapter "$session" "$file"
-        coll_set_session "$session" adapters "$key" use "$key"
+        coll_set session "$session" adapters "$key" use "$key"
         ;;
     esac
   done
@@ -309,7 +309,7 @@ _layout_commit_unlocked () {
   done
   _clear_adapters "$session"
   for (( i=0; i<${#AIRLINE_LAYOUT_CONFIG_ADAPTER_KEYS[@]}; i++ )); do
-    coll_set_session "$session" adapters \
+    coll_set session "$session" adapters \
       "${AIRLINE_LAYOUT_CONFIG_ADAPTER_KEYS[i]}" \
       "${AIRLINE_LAYOUT_CONFIG_ADAPTER_KINDS[i]}" \
       "${AIRLINE_LAYOUT_CONFIG_ADAPTER_HANDLES[i]}"
@@ -383,7 +383,7 @@ _palette_show () {
 
 _adapter_show () {
   local session="$1" adapter
-  for adapter in $(coll_members_session "$session" adapters); do printf '%s\n' "$adapter"; done
+  for adapter in $(coll_members session "$session" adapters); do printf '%s\n' "$adapter"; done
 }
 
 #-----------------------------------------------------------------------------#

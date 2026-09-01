@@ -17,6 +17,10 @@ implementation worklists used to reach them.
 - Split the former lifecycle module into focused session, signal, catalog,
   transaction, and command-boundary owners. Architecture checks now enforce actual
   dependency direction and private ownership rather than naming ceremony.
+- Renamed runner state around its contributor, health-claim, and problem-claim
+  roles; consolidated the identical status clear/show parser; replaced the
+  scope-specific collection matrix with one scope-first API; and removed private
+  option helpers with no production owner.
 
 ### Rendering and configuration
 

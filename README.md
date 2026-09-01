@@ -661,9 +661,8 @@ session origins currently asserting it. Contributors and keys must be nonempty a
 contain neither whitespace nor `:`; the colon is reserved for private storage
 framing.
 
-**Status** (left) — a window's app-status, at one of three levels. Many
-contributors can report under their own keys; airline shows the highest-ranked
-one:
+**Status** (left) — a window's app-status, at one of three levels. Many callers can
+publish entries under their own keys; airline shows the highest-ranked entry:
 
 ```tmux
 airline status set build active      # ○ watching  (amber)
@@ -674,10 +673,10 @@ airline status show                  # keys + current values
 ```
 
 Levels are `active` / `result` / `attention`; `result` outranks `active`. A
-window with no status contributor shows nothing.
+window with no status entry shows nothing.
 
-**Health** (right) — a single condition glyph reduced from any number of
-contributors; airline shows the **worst**. `ok` (or no contributor) shows
+**Health** (right) — a single condition glyph reduced from any number of claims;
+airline shows the **worst**. `ok` (or no claim) shows
 **nothing** — a clean right side means healthy:
 
 ```tmux
@@ -711,7 +710,7 @@ airline status set agent result --transient   # clears when you leave the window
 
 Transient status clears after you leave the window; sticky status and every health
 condition are untouched. The focus hook performs the same public operation as a
-caller: `status clear -t <window>` with no key removes every transient contributor
+caller: `status clear -t <window>` with no key removes every transient entry
 in that window. Supplying a key clears that one contributor regardless of whether
 it is transient.
 
