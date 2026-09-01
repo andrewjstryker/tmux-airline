@@ -455,6 +455,20 @@ _runner_status_key () {   # <pane> <claim>
   printf 'airline-runner/%s/%s' "${1#%}" "$2"
 }
 
+# tmux may observe EOF on a pane PTY before it reaps the pane process. With
+# libutempter builds, its synthetic SIGCHLD can race the real child notification,
+# leaving a retained pane dead without PANE_STATUSREADY or a native exit status.
+# Keep one copy of the PTY open until this Airline process has actually disappeared;
+# tmux must then reap and record the status before it can observe the final EOF.
+_runner_exit_guard_start () {   # <airline-pid>
+  local parent_pid="$1"
+  (
+    exec 9>&1
+    exec >/dev/null 2>&1
+    while kill -0 "$parent_pid" 2>/dev/null; do sleep 0.01; done
+  ) &
+}
+
 _runner_condition_report_valid () {   # <ok|warn|fail> <message>
   local condition="$1" message="$2"
   signal_condition_valid "$condition" || return 1
@@ -902,13 +916,15 @@ runner_show () { local s; s="$(command_current_session)"; _runner_definition_sho
 runner_list () { local s; s="$(command_current_session)"; catalog_list "$s" runner; }
 runner_register () { local s; s="$(command_current_session)"; catalog_register "$s" runner "$@"; }
 _runner_command () {   # <run|watch> [invocation...]
-  local mode="$1" spawned="${AIRLINE_RUNNER_SPAWNED:-}" s; shift
+  local mode="$1" spawned="${AIRLINE_RUNNER_SPAWNED:-}" s rc=0; shift
   # Spawn provenance is process-local context, not command grammar. Consume it so
   # the monitored child and any nested airline invocation cannot inherit it.
   unset AIRLINE_RUNNER_SPAWNED
   [[ "$spawned" != 1 ]] || runner_retain_pane "$(current_pane)"
   s="$(command_current_session)"
-  _runner_invoke "$s" "$mode" "$@"
+  _runner_invoke "$s" "$mode" "$@" || rc=$?
+  [[ "$spawned" != 1 ]] || _runner_exit_guard_start "$BASHPID"
+  return "$rc"
 }
 runner_run () { _runner_command run "$@"; }
 runner_watch () { _runner_command watch "$@"; }

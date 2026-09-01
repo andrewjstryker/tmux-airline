@@ -64,6 +64,9 @@ implementation worklists used to reach them.
 - Added focused behavior and real-tmux integration coverage for ownership,
   transactions, signal lifecycle, contributor collisions, hooks, runner re-entry,
   failure propagation, and generated completions.
+- Preserved native exit status for retained runner panes when tmux observes PTY EOF
+  before reaping the pane process, including immediate command completion under
+  repeated real-tmux load.
 - Reduced the architecture lint from 200 to 185 lines while expanding its negative
   boundary fixtures. The 3.0.0 development tree contains 196 Bats cases.
 

@@ -176,6 +176,10 @@ The classification is mechanical:
 - Public versus private is a contract boundary. Users may set `@airline-*` and may
   read the published `@airline-cli` bootstrap handle; all other airline-managed
   state, including the version, is read through the CLI.
+- Private option names, tuple shapes, and other encodings are implementation details
+  with no compatibility guarantee. Code that reads or writes `@airline--*` directly
+  bypasses the public CLI contract; Airline may replace or clear that state without
+  providing a migration path.
 - Native tmux output is derived. Users configure the public inputs, not
   `status-left`, `window-status-format`, or the other rendered snapshots.
 

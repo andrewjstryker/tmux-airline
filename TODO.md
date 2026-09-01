@@ -11,16 +11,6 @@ in `README.md` and `DESIGN.md`. This file contains only prospective work.
 
 ## Current priorities
 
-### Retained-pane lifecycle race
-
-- [ ] Reproduce the intermittent real-tmux state in which a retained pane reports
-      `pane_dead=1` before `pane_dead_status` is available during a heavily loaded
-      test run.
-- [ ] Determine whether this is only an observation race in the integration helper
-      or a production race between pane creation, retention, and process exit.
-- [ ] Fix the owning layer and retain a focused regression test. Do not mask a
-      production race by increasing retries or weakening the assertion.
-
 ### Internal clarity
 
 - [ ] Rename runner contributor state so names describe its shared health/problem
@@ -32,13 +22,6 @@ in `README.md` and `DESIGN.md`. This file contains only prospective work.
 - [ ] Review private helpers and data passed across module boundaries after the
       signal work. Remove obsolete symmetry and wrappers, but preserve helpers that
       encode an actual ownership or transaction invariant.
-
-### Private-state evolution
-
-- [ ] Decide and document the compatibility policy for private tmux option schemas
-      that survive an Airline reload. Choose an explicit server-restart boundary,
-      schema versioning, or a narrowly justified migration path before the next
-      incompatible tuple change.
 
 ## Guardrails
 

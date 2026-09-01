@@ -119,6 +119,7 @@ setup() {
   _RUNNER_EVENTS=""
   current_pane() { printf '%%7'; }
   runner_retain_pane() { _RUNNER_EVENTS+="retain:$1 "; }
+  _runner_exit_guard_start() { _RUNNER_EVENTS+=" guard:$1"; }
   command_current_session() { printf s1; }
   _runner_invoke() {
     [[ ! -v AIRLINE_RUNNER_SPAWNED ]] || return 9
@@ -127,7 +128,7 @@ setup() {
 
   AIRLINE_RUNNER_SPAWNED=1
   runner_run --here -- true
-  assert_equal "$_RUNNER_EVENTS" "retain:%7 invoke:run"
+  assert_regex "$_RUNNER_EVENTS" '^retain:%7 invoke:run guard:[0-9]+$'
   [[ ! -v AIRLINE_RUNNER_SPAWNED ]]
 
   _RUNNER_EVENTS=""

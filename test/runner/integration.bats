@@ -390,9 +390,9 @@ wait_for_pane_exit() { # <pane> <status>
   airline session init
   origin="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
 
-  # Avoid making the retained-pane assertion depend on tmux scheduling a payload
-  # that exits in the same instant its pane is created.
-  run airline runner run --pane -h -- bash -c 'printf "pane failure\\n"; sleep 1; exit 9'
+  # Exit immediately: the runner must preserve tmux's native status even when PTY
+  # EOF and child reaping occur in the same server turn.
+  run airline runner run --pane -h -- bash -c 'printf "pane failure\\n"; exit 9'
   assert_success
   spawned="$output"
   assert_regex "$spawned" '^%[0-9]+$'
