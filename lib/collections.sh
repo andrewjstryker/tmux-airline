@@ -38,52 +38,52 @@ _coll_reg () { prv_name "$1"; }           # ns       → registry option  (@airl
 _coll_key () { prv_name "$1-$2"; }        # ns key   → tuple option     (@airline--<ns>-<key>)
 
 #-----------------------------------------------------------------------------#
-# Private cores — operate on normalized (scope, target, namespace, …) tuples.
+# Private cores — pass through (scope, owner, namespace, …) tuples unchanged.
 #-----------------------------------------------------------------------------#
 
-_coll_members () {   # <scope> <target> <ns> → space-delimited keys, registry order
+_coll_members () {   # <scope> <owner> <ns> → space-delimited keys, registry order
   opt_get "$1" "$2" "$(_coll_reg "$3")"
 }
 
-_coll_has () {       # <scope> <target> <ns> <key> (exit status)
+_coll_has () {       # <scope> <owner> <ns> <key> (exit status)
   local members
   members="$(_coll_members "$1" "$2" "$3")" || return 2
   case " $members " in *" $4 "*) return 0 ;; *) return 1 ;; esac
 }
 
-_coll_register () {  # <scope> <target> <ns> <key> add to registry TAIL
-  local scope="$1" target="$2" ns="$3" key="$4" cur
-  cur="$(_coll_members "$scope" "$target" "$ns")" || return
+_coll_register () {  # <scope> <owner> <ns> <key> add to registry TAIL
+  local scope="$1" owner="$2" ns="$3" key="$4" cur
+  cur="$(_coll_members "$scope" "$owner" "$ns")" || return
   case " $cur " in *" $key "*) return 0 ;; esac
-  opt_set "$scope" "$target" "$(_coll_reg "$ns")" "${cur:+$cur }$key"
+  opt_set "$scope" "$owner" "$(_coll_reg "$ns")" "${cur:+$cur }$key"
 }
 
-_coll_prepend () {   # <scope> <target> <ns> <key> add to registry HEAD
-  local scope="$1" target="$2" ns="$3" key="$4" cur
-  cur="$(_coll_members "$scope" "$target" "$ns")" || return
+_coll_prepend () {   # <scope> <owner> <ns> <key> add to registry HEAD
+  local scope="$1" owner="$2" ns="$3" key="$4" cur
+  cur="$(_coll_members "$scope" "$owner" "$ns")" || return
   case " $cur " in *" $key "*) return 0 ;; esac
-  opt_set "$scope" "$target" "$(_coll_reg "$ns")" "$key${cur:+ $cur}"
+  opt_set "$scope" "$owner" "$(_coll_reg "$ns")" "$key${cur:+ $cur}"
 }
 
-_coll_unregister () {  # <scope> <target> <ns> <key> drop member + tuple
-  local scope="$1" target="$2" ns="$3" key="$4" cur out="" k
-  cur="$(_coll_members "$scope" "$target" "$ns")" || return
+_coll_unregister () {  # <scope> <owner> <ns> <key> drop member + tuple
+  local scope="$1" owner="$2" ns="$3" key="$4" cur out="" k
+  cur="$(_coll_members "$scope" "$owner" "$ns")" || return
   for k in $cur; do [[ "$k" == "$key" ]] || out="${out:+$out }$k"; done
-  if [[ -n "$out" ]]; then opt_set "$scope" "$target" "$(_coll_reg "$ns")" "$out" || return
-  else opt_unset "$scope" "$target" "$(_coll_reg "$ns")" || return; fi
-  opt_unset "$scope" "$target" "$(_coll_key "$ns" "$key")"
+  if [[ -n "$out" ]]; then opt_set "$scope" "$owner" "$(_coll_reg "$ns")" "$out" || return
+  else opt_unset "$scope" "$owner" "$(_coll_reg "$ns")" || return; fi
+  opt_unset "$scope" "$owner" "$(_coll_key "$ns" "$key")"
 }
 
-_coll_get () {       # <scope> <target> <ns> <key> → tuple ("" if unset)
+_coll_get () {       # <scope> <owner> <ns> <key> → tuple ("" if unset)
   opt_get "$1" "$2" "$(_coll_key "$3" "$4")"
 }
 
-_coll_set () {       # <scope> <target> <ns> <key> <field…> register + write tuple
-  local scope="$1" target="$2" ns="$3" key="$4"; shift 4
-  _coll_register "$scope" "$target" "$ns" "$key" || return
+_coll_set () {       # <scope> <owner> <ns> <key> <field…> register + write tuple
+  local scope="$1" owner="$2" ns="$3" key="$4"; shift 4
+  _coll_register "$scope" "$owner" "$ns" "$key" || return
   # Tab-join the fields in a subshell so IFS never leaks into opt_set — the
   # option layer (and the AIRLINE_TMUX shim) must run with the default IFS.
-  opt_set "$scope" "$target" "$(_coll_key "$ns" "$key")" "$(IFS=$'\t'; printf '%s' "$*")"
+  opt_set "$scope" "$owner" "$(_coll_key "$ns" "$key")" "$(IFS=$'\t'; printf '%s' "$*")"
 }
 
 # Reduce the collection to the highest-ranked first-field value among its members.
@@ -91,12 +91,12 @@ _coll_set () {       # <scope> <target> <ns> <key> <field…> register + write t
 # winner is the member whose first tuple field ranks highest. Values absent from
 # <order> are ignored; empty result when no member carries a ranked value. The
 # ranking is passed in as data — collections owns no severity vocabulary.
-_coll_reduce () {    # <scope> <target> <ns> <order>
-  local scope="$1" target="$2" ns="$3" order="$4"
+_coll_reduce () {    # <scope> <owner> <ns> <order>
+  local scope="$1" owner="$2" ns="$3" order="$4"
   local key tuple val o w rank best=-1 result="" members
-  members="$(_coll_members "$scope" "$target" "$ns")" || return
+  members="$(_coll_members "$scope" "$owner" "$ns")" || return
   for key in $members; do
-    tuple="$(_coll_get "$scope" "$target" "$ns" "$key")" || return
+    tuple="$(_coll_get "$scope" "$owner" "$ns" "$key")" || return
     val="${tuple%%$'\t'*}"                 # first field
     rank=-1; w=0
     for o in $order; do [[ "$o" == "$val" ]] && { rank=$w; break; }; ((w++)); done
@@ -106,29 +106,18 @@ _coll_reduce () {    # <scope> <target> <ns> <order>
 }
 
 #-----------------------------------------------------------------------------#
-# Exported collection interface. Scope is always the first argument and target is
-# always second. A global target is accepted for a uniform owner tuple, then
-# mechanically normalized because tmux's global option table has no target.
+# Exported collection interface. Scope is always the first argument and its
+# canonical owner is always second. This layer neither validates nor translates
+# that tuple; tmux.sh owns the mechanical boundary.
 #-----------------------------------------------------------------------------#
 
-_coll_dispatch () {   # <operation> <global|session|window> <target> [arguments...]
-  (( $# >= 3 )) || return 2
-  local operation="$1" scope="$2" target="$3"; shift 3
-  case "$scope" in
-    global) target="" ;;
-    session|window) [[ -n "$target" ]] || return 2 ;;
-    *) return 2 ;;
-  esac
-  "_coll_$operation" "$scope" "$target" "$@"
-}
-
-coll_register   () { _coll_dispatch register   "$@"; }
-coll_prepend    () { _coll_dispatch prepend    "$@"; }
-coll_unregister () { _coll_dispatch unregister "$@"; }
-coll_has        () { _coll_dispatch has        "$@"; }
-coll_members    () { _coll_dispatch members    "$@"; }
-coll_get        () { _coll_dispatch get        "$@"; }
-coll_set        () { _coll_dispatch set        "$@"; }
-coll_reduce     () { _coll_dispatch reduce     "$@"; }
+coll_register   () { _coll_register   "$@"; }
+coll_prepend    () { _coll_prepend    "$@"; }
+coll_unregister () { _coll_unregister "$@"; }
+coll_has        () { _coll_has        "$@"; }
+coll_members    () { _coll_members    "$@"; }
+coll_get        () { _coll_get        "$@"; }
+coll_set        () { _coll_set        "$@"; }
+coll_reduce     () { _coll_reduce     "$@"; }
 
 # vim: ft=bash

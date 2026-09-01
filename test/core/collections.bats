@@ -148,6 +148,8 @@ teardown() { :; }
 
   run coll_reduce invalid owner sample "ok warn fail"
   assert_failure 2
+  run coll_reduce global "" sample "ok warn fail"
+  assert_failure 2
   run coll_reduce window "" sample "ok warn fail"
   assert_failure 2
 }

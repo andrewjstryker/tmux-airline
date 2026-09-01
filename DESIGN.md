@@ -652,7 +652,9 @@ Collection rules:
 - Every operation has one scope-first form, such as
   `coll_reduce <global|session|window> <owner> <namespace> <order>`. There are no
   scope-specific collection functions. The collection layer passes scope through
-  mechanically and does not decide which domain belongs at which scope.
+  mechanically and does not decide which domain belongs at which scope. Owner
+  tuples have one canonical representation: `(global, server)`, `(session, id)`,
+  or `(window, id)`.
 - Membership is explicit; entries are never discovered by parsing option names.
 - `set` writes the entire tuple and registers the key. `unregister` also removes the
   tuple.
@@ -767,8 +769,10 @@ distinguished by position around the window name, so sharing palette roles is sa
 conventions:
 
 - Functions use fixed positional arguments. The generic collection bridge takes
-  scope first; `tmux.sh` translates that value to tmux flags in one place. Scalar
-  domain accessors may express their fixed owner in names such as `prv_set_window`.
+  scope and canonical owner first; `tmux.sh` validates that tuple and translates it
+  to tmux flags in one place. In particular, `(global, server)` maps to `-g` without
+  inventing an empty owner. Scalar domain accessors may express their fixed owner in
+  names such as `prv_set_window`.
 - Getters write to stdout, predicates use exit status, and mutators are silent.
 - Session- and window-scoped functions take explicit targets. Callers resolve an
   omitted target once and pass the resulting id downward.

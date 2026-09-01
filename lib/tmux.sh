@@ -36,13 +36,13 @@ _opt_clear () { tmux set-option   -qu "$@"; }   # <scope…> <name>
 
 # ShellCheck cannot see that this nameref assignment mutates the caller's array.
 # shellcheck disable=SC2034
-_scope_option_args () {   # <array-destination> <global|session|window> <target>
+_scope_option_args () {   # <array-destination> <global|session|window> <owner>
   local -n scope_arguments="$1"
-  local scope="$2" target="$3"
+  local scope="$2" owner="$3"
   case "$scope" in
-    global)  scope_arguments=(-g) ;;
-    session) [[ -n "$target" ]] || return 2; scope_arguments=(-t "$target") ;;
-    window)  [[ -n "$target" ]] || return 2; scope_arguments=(-w -t "$target") ;;
+    global)  [[ "$owner" == server ]] || return 2; scope_arguments=(-g) ;;
+    session) [[ -n "$owner" ]] || return 2; scope_arguments=(-t "$owner") ;;
+    window)  [[ -n "$owner" ]] || return 2; scope_arguments=(-w -t "$owner") ;;
     *) return 2 ;;
   esac
 }
@@ -54,20 +54,20 @@ _scope_option_args () {   # <array-destination> <global|session|window> <target>
 # an explicitly empty user option remains distinct from an absent one.
 _AIRLINE_OPT_WORKSPACE=""
 _AIRLINE_OPT_OWNER_SCOPE=""
-_AIRLINE_OPT_OWNER_TARGET=""
+_AIRLINE_OPT_WORKSPACE_OWNER=""
 _AIRLINE_OPT_REDRAW=""
 declare -gA _AIRLINE_OPT_VALUE=()
 declare -gA _AIRLINE_OPT_PRESENT=()
 declare -gA _AIRLINE_OPT_BASE_VALUE=()
 declare -gA _AIRLINE_OPT_BASE_PRESENT=()
 declare -gA _AIRLINE_OPT_SCOPE=()
-declare -gA _AIRLINE_OPT_TARGET=()
+declare -gA _AIRLINE_OPT_OWNER=()
 declare -gA _AIRLINE_OPT_NAME=()
 declare -gA _AIRLINE_OPT_DIRTY=()
 declare -gA _AIRLINE_OPT_LOADED=()
 declare -ga _AIRLINE_OPT_DIRTY_ORDER=()
 
-_opt_key () {   # <destination-variable> <scope> <target> <name>
+_opt_key () {   # <destination-variable> <scope> <owner> <name>
   local -n destination="$1"
   printf -v destination '%s\037%s\037%s' "$2" "$3" "$4"
 }
@@ -80,98 +80,98 @@ _opt_decode () {   # <tmux-serialized-value> <destination-variable>
   printf -v destination '%b' "$encoded"
 }
 
-_opt_snapshot_line () {   # <scope> <target> <serialized-option-line>
-  local scope="$1" target="$2" line="$3" name encoded value key
+_opt_snapshot_line () {   # <scope> <owner> <serialized-option-line>
+  local scope="$1" owner="$2" line="$3" name encoded value key
   [[ -n "$line" ]] || return 0
   name="${line%% *}"
   encoded="${line#"$name"}"
   encoded="${encoded# }"
   _opt_decode "$encoded" value
-  _opt_key key "$scope" "$target" "$name"
+  _opt_key key "$scope" "$owner" "$name"
   _AIRLINE_OPT_VALUE["$key"]="$value"
   _AIRLINE_OPT_PRESENT["$key"]=1
   _AIRLINE_OPT_BASE_VALUE["$key"]="$value"
   _AIRLINE_OPT_BASE_PRESENT["$key"]=1
   _AIRLINE_OPT_SCOPE["$key"]="$scope"
-  _AIRLINE_OPT_TARGET["$key"]="$target"
+  _AIRLINE_OPT_OWNER["$key"]="$owner"
   _AIRLINE_OPT_NAME["$key"]="$name"
 }
 
-_opt_snapshot () {   # <global|session|window> <target>
-  local scope="$1" target="$2" line raw table_key
+_opt_snapshot () {   # <global|session|window> <owner>
+  local scope="$1" owner="$2" line raw table_key
   local -a scope_args
-  _scope_option_args scope_args "$scope" "$target" || return
+  _scope_option_args scope_args "$scope" "$owner" || return
   if [[ "$scope" == global ]]; then
     # Native global options occupy separate session and window tables. Load the
     # extra window table first so an identically named user option in the ordinary
     # global session table retains `set -g` / `show -g` precedence.
     raw="$(_opt_list -gw)" || return
-    while IFS= read -r line; do _opt_snapshot_line global "" "$line"; done <<< "$raw"
+    while IFS= read -r line; do _opt_snapshot_line global server "$line"; done <<< "$raw"
   fi
   raw="$(_opt_list "${scope_args[@]}")" || return
-  while IFS= read -r line; do _opt_snapshot_line "$scope" "$target" "$line"; done <<< "$raw"
-  printf -v table_key '%s\037%s' "$scope" "$target"
+  while IFS= read -r line; do _opt_snapshot_line "$scope" "$owner" "$line"; done <<< "$raw"
+  printf -v table_key '%s\037%s' "$scope" "$owner"
   _AIRLINE_OPT_LOADED["$table_key"]=1
 }
 
-_opt_snapshot_if_needed () {   # <global|session|window> <target>
+_opt_snapshot_if_needed () {   # <global|session|window> <owner>
   local table_key
   [[ -n "$_AIRLINE_OPT_WORKSPACE" ]] || return 0
   printf -v table_key '%s\037%s' "$1" "$2"
   [[ -n "${_AIRLINE_OPT_LOADED[$table_key]:-}" ]] || _opt_snapshot "$1" "$2"
 }
 
-_opt_workspace_begin () {   # <global|session|window> <target>
-  local scope="$1" target="$2"
+_opt_workspace_begin () {   # <global|session|window> <owner>
+  local scope="$1" owner="$2"
   [[ -z "$_AIRLINE_OPT_WORKSPACE" ]] || return 2
   _AIRLINE_OPT_VALUE=(); _AIRLINE_OPT_PRESENT=()
   _AIRLINE_OPT_BASE_VALUE=(); _AIRLINE_OPT_BASE_PRESENT=()
-  _AIRLINE_OPT_SCOPE=(); _AIRLINE_OPT_TARGET=(); _AIRLINE_OPT_NAME=()
+  _AIRLINE_OPT_SCOPE=(); _AIRLINE_OPT_OWNER=(); _AIRLINE_OPT_NAME=()
   _AIRLINE_OPT_DIRTY=(); _AIRLINE_OPT_LOADED=(); _AIRLINE_OPT_DIRTY_ORDER=()
   _AIRLINE_OPT_REDRAW=""
-  _opt_snapshot global "" || return 1
-  [[ "$scope" == global ]] || _opt_snapshot "$scope" "$target" || return 1
+  _opt_snapshot global server || return 1
+  [[ "$scope" == global ]] || _opt_snapshot "$scope" "$owner" || return 1
   _AIRLINE_OPT_OWNER_SCOPE="$scope"
-  _AIRLINE_OPT_OWNER_TARGET="$target"
+  _AIRLINE_OPT_WORKSPACE_OWNER="$owner"
   _AIRLINE_OPT_WORKSPACE=1
 }
 
 _opt_workspace_end () {
   _AIRLINE_OPT_WORKSPACE=""; _AIRLINE_OPT_REDRAW=""
-  _AIRLINE_OPT_OWNER_SCOPE=""; _AIRLINE_OPT_OWNER_TARGET=""
+  _AIRLINE_OPT_OWNER_SCOPE=""; _AIRLINE_OPT_WORKSPACE_OWNER=""
   _AIRLINE_OPT_VALUE=(); _AIRLINE_OPT_PRESENT=()
   _AIRLINE_OPT_BASE_VALUE=(); _AIRLINE_OPT_BASE_PRESENT=()
-  _AIRLINE_OPT_SCOPE=(); _AIRLINE_OPT_TARGET=(); _AIRLINE_OPT_NAME=()
+  _AIRLINE_OPT_SCOPE=(); _AIRLINE_OPT_OWNER=(); _AIRLINE_OPT_NAME=()
   _AIRLINE_OPT_DIRTY=(); _AIRLINE_OPT_LOADED=(); _AIRLINE_OPT_DIRTY_ORDER=()
 }
 
 _opt_workspace_reload () {
-  local scope="$_AIRLINE_OPT_OWNER_SCOPE" target="$_AIRLINE_OPT_OWNER_TARGET"
+  local scope="$_AIRLINE_OPT_OWNER_SCOPE" owner="$_AIRLINE_OPT_WORKSPACE_OWNER"
   [[ -n "$_AIRLINE_OPT_WORKSPACE" ]] || return 0
   _opt_workspace_end
-  _opt_workspace_begin "$scope" "$target"
+  _opt_workspace_begin "$scope" "$owner"
 }
 
-_opt_read () {   # <global|session|window> <target> <name>
-  local scope="$1" target="$2" name="$3" key
+_opt_read () {   # <global|session|window> <owner> <name>
+  local scope="$1" owner="$2" name="$3" key
   local -a scope_args
-  _scope_option_args scope_args "$scope" "$target" || return
+  _scope_option_args scope_args "$scope" "$owner" || return
   if [[ -n "$_AIRLINE_OPT_WORKSPACE" ]]; then
-    _opt_snapshot_if_needed "$scope" "$target" || return
-    _opt_key key "$scope" "$target" "$name"
+    _opt_snapshot_if_needed "$scope" "$owner" || return
+    _opt_key key "$scope" "$owner" "$name"
     [[ -n "${_AIRLINE_OPT_PRESENT[$key]:-}" ]] && printf '%s' "${_AIRLINE_OPT_VALUE[$key]}"
     return 0
   fi
   _opt_show "${scope_args[@]}" "$name"
 }
 
-_opt_present () {   # <global|session|window> <target> <name>
-  local scope="$1" target="$2" name="$3" key
+_opt_present () {   # <global|session|window> <owner> <name>
+  local scope="$1" owner="$2" name="$3" key
   local -a scope_args
-  _scope_option_args scope_args "$scope" "$target" || return
+  _scope_option_args scope_args "$scope" "$owner" || return
   if [[ -n "$_AIRLINE_OPT_WORKSPACE" ]]; then
-    _opt_snapshot_if_needed "$scope" "$target" || return
-    _opt_key key "$scope" "$target" "$name"
+    _opt_snapshot_if_needed "$scope" "$owner" || return
+    _opt_key key "$scope" "$owner" "$name"
     [[ -n "${_AIRLINE_OPT_PRESENT[$key]:-}" ]]
     return
   fi
@@ -184,35 +184,35 @@ _opt_mark_dirty () {   # <key>
   _AIRLINE_OPT_DIRTY["$key"]=1
 }
 
-_opt_store () {   # <global|session|window> <target> <name> <value>
-  local scope="$1" target="$2" name="$3" value="$4" key
+_opt_store () {   # <global|session|window> <owner> <name> <value>
+  local scope="$1" owner="$2" name="$3" value="$4" key
   local -a scope_args
-  _scope_option_args scope_args "$scope" "$target" || return
+  _scope_option_args scope_args "$scope" "$owner" || return
   if [[ -z "$_AIRLINE_OPT_WORKSPACE" ]]; then
     _opt_write "${scope_args[@]}" "$name" "$value"
     return
   fi
-  _opt_key key "$scope" "$target" "$name"
+  _opt_key key "$scope" "$owner" "$name"
   _AIRLINE_OPT_VALUE["$key"]="$value"
   _AIRLINE_OPT_PRESENT["$key"]=1
   _AIRLINE_OPT_SCOPE["$key"]="$scope"
-  _AIRLINE_OPT_TARGET["$key"]="$target"
+  _AIRLINE_OPT_OWNER["$key"]="$owner"
   _AIRLINE_OPT_NAME["$key"]="$name"
   _opt_mark_dirty "$key"
 }
 
-_opt_remove () {   # <global|session|window> <target> <name>
-  local scope="$1" target="$2" name="$3" key
+_opt_remove () {   # <global|session|window> <owner> <name>
+  local scope="$1" owner="$2" name="$3" key
   local -a scope_args
-  _scope_option_args scope_args "$scope" "$target" || return
+  _scope_option_args scope_args "$scope" "$owner" || return
   if [[ -z "$_AIRLINE_OPT_WORKSPACE" ]]; then
     _opt_clear "${scope_args[@]}" "$name"
     return
   fi
-  _opt_key key "$scope" "$target" "$name"
+  _opt_key key "$scope" "$owner" "$name"
   unset '_AIRLINE_OPT_VALUE[$key]' '_AIRLINE_OPT_PRESENT[$key]'
   _AIRLINE_OPT_SCOPE["$key"]="$scope"
-  _AIRLINE_OPT_TARGET["$key"]="$target"
+  _AIRLINE_OPT_OWNER["$key"]="$owner"
   _AIRLINE_OPT_NAME["$key"]="$name"
   _opt_mark_dirty "$key"
 }
@@ -226,7 +226,7 @@ _opt_escape_sequence_arg () {   # <value> <destination-variable>
 }
 
 _opt_workspace_flush () {
-  local key scope target name value changed="" redraw="$_AIRLINE_OPT_REDRAW"
+  local key scope owner name value changed="" redraw="$_AIRLINE_OPT_REDRAW"
   local -a commands=() scope_args=()
   [[ -n "$_AIRLINE_OPT_WORKSPACE" ]] || return 0
   for key in "${_AIRLINE_OPT_DIRTY_ORDER[@]}"; do
@@ -238,9 +238,9 @@ _opt_workspace_flush () {
     elif [[ -z "${_AIRLINE_OPT_BASE_PRESENT[$key]:-}" ]]; then
       continue
     fi
-    scope="${_AIRLINE_OPT_SCOPE[$key]}"; target="${_AIRLINE_OPT_TARGET[$key]}"
+    scope="${_AIRLINE_OPT_SCOPE[$key]}"; owner="${_AIRLINE_OPT_OWNER[$key]}"
     name="${_AIRLINE_OPT_NAME[$key]}"
-    _scope_option_args scope_args "$scope" "$target" || return
+    _scope_option_args scope_args "$scope" "$owner" || return
     [[ ${#commands[@]} -eq 0 ]] || commands+=(';')
     if [[ -n "${_AIRLINE_OPT_PRESENT[$key]:-}" ]]; then
       _opt_escape_sequence_arg "${_AIRLINE_OPT_VALUE[$key]}" value
@@ -267,15 +267,15 @@ _opt_workspace_flush () {
 }
 
 # --- generic scope-first access (used by collections) ---
-opt_get          () { _opt_read   "$@"; } # <scope> <target> <name>
-opt_set          () { _opt_store  "$@"; } # <scope> <target> <name> <value>
-opt_unset        () { _opt_remove "$@"; } # <scope> <target> <name>
+opt_get          () { _opt_read   "$@"; } # <scope> <owner> <name>
+opt_set          () { _opt_store  "$@"; } # <scope> <owner> <name> <value>
+opt_unset        () { _opt_remove "$@"; } # <scope> <owner> <name>
 
 # --- global scope ---
-opt_get_global   () { _opt_read    global "" "$1"; }
-opt_set_global   () { _opt_store   global "" "$1" "$2"; }
-opt_unset_global () { _opt_remove  global "" "$1"; }
-opt_has_global   () { _opt_present global "" "$1"; }
+opt_get_global   () { _opt_read    global server "$1"; }
+opt_set_global   () { _opt_store   global server "$1" "$2"; }
+opt_unset_global () { _opt_remove  global server "$1"; }
+opt_has_global   () { _opt_present global server "$1"; }
 
 # --- session scope (explicit session id/name) ---
 opt_get_session   () { _opt_read    session "$1" "$2"; }
@@ -292,19 +292,19 @@ opt_unset_window () { _opt_remove window "$1" "$2"; }
 # Mutations use ordinary success/failure status. The caller-selected destination is
 # set to 1 when a write was needed and left empty for a successful no-op, keeping
 # redraw gating out of the public exit-status contract.
-_opt_setif () {   # <destination> <global|session|window> <target> <name> <value>
+_opt_setif () {   # <destination> <global|session|window> <owner> <name> <value>
   local -n destination="$1"
-  local scope="$2" target="$3" name="$4" value="$5" current
+  local scope="$2" owner="$3" name="$4" value="$5" current
   destination=""
   # Load a non-owner table in this shell before the getter's command substitution;
   # otherwise Bash would discard the lazy snapshot with that subshell.
-  _opt_snapshot_if_needed "$scope" "$target" || return
-  current="$(_opt_read "$scope" "$target" "$name")" || return
+  _opt_snapshot_if_needed "$scope" "$owner" || return
+  current="$(_opt_read "$scope" "$owner" "$name")" || return
   [[ "$current" != "$value" ]] || return 0
-  _opt_store "$scope" "$target" "$name" "$value" || return
+  _opt_store "$scope" "$owner" "$name" "$value" || return
   destination=1
 }
-opt_setif_global  () { _opt_setif "$1" global  "" "$2" "$3"; }
+opt_setif_global  () { _opt_setif "$1" global  server "$2" "$3"; }
 opt_setif_session () { _opt_setif "$1" session "$2" "$3" "$4"; }
 opt_setif_window  () { _opt_setif "$1" window  "$2" "$3" "$4"; }
 
@@ -480,36 +480,36 @@ hook_set_airline_window_styles () {
 # do not nest: tmux locks are not reentrant, so nesting would deadlock.
 _AIRLINE_TRANSACTION_CHANNEL=""
 _AIRLINE_TRANSACTION_SCOPE=""
-_AIRLINE_TRANSACTION_TARGET=""
+_AIRLINE_TRANSACTION_OWNER=""
 _AIRLINE_TRANSACTION_NAMESPACE=""
 
 _transaction_marker_name () { printf '@airline--transaction-%s' "$1"; }
 
-_transaction_channel () {   # <global|session|window> <canonical-target> <namespace>
-  local scope="$1" target="$2" namespace="$3"
-  target="${target//[^a-zA-Z0-9_-]/_}"
-  printf 'airline-%s-%s-%s' "$scope" "$target" "$namespace"
+_transaction_channel () {   # <global|session|window> <canonical-owner> <namespace>
+  local scope="$1" owner="$2" namespace="$3"
+  owner="${owner//[^a-zA-Z0-9_-]/_}"
+  printf 'airline-%s-%s-%s' "$scope" "$owner" "$namespace"
 }
 
 # Acquire/release update the owner marker in the SAME tmux command sequence as
 # wait-for. If the shell disappears between commands, tmux still completes both,
 # so every held Airline lock remains discoverable.
-_transaction_acquire () {   # <scope> <target> <namespace> <channel> <metadata>
-  local scope="$1" target="$2" namespace="$3" channel="$4" metadata="$5"
+_transaction_acquire () {   # <scope> <owner> <namespace> <channel> <metadata>
+  local scope="$1" owner="$2" namespace="$3" channel="$4" metadata="$5"
   local -a scope_args
   local marker; marker="$(_transaction_marker_name "$namespace")"
-  _scope_option_args scope_args "$scope" "$target" || return
+  _scope_option_args scope_args "$scope" "$owner" || return
   tmux wait-for -L "$channel" \; set-option -q "${scope_args[@]}" "$marker" "$metadata" || {
     tmux wait-for -U "$channel" 2>/dev/null || true
     return 1
   }
 }
 
-_transaction_release () {   # <scope> <target> <namespace> <channel>
-  local scope="$1" target="$2" namespace="$3" channel="$4"
+_transaction_release () {   # <scope> <owner> <namespace> <channel>
+  local scope="$1" owner="$2" namespace="$3" channel="$4"
   local -a scope_args
   local marker; marker="$(_transaction_marker_name "$namespace")"
-  _scope_option_args scope_args "$scope" "$target" || return
+  _scope_option_args scope_args "$scope" "$owner" || return
   tmux set-option -qu "${scope_args[@]}" "$marker" \; wait-for -U "$channel"
 }
 
@@ -520,7 +520,7 @@ _transaction_cleanup () {
   _opt_workspace_end
   _AIRLINE_TRANSACTION_CHANNEL=""
   _transaction_release \
-    "$_AIRLINE_TRANSACTION_SCOPE" "$_AIRLINE_TRANSACTION_TARGET" \
+    "$_AIRLINE_TRANSACTION_SCOPE" "$_AIRLINE_TRANSACTION_OWNER" \
     "$_AIRLINE_TRANSACTION_NAMESPACE" "$channel" || true
 }
 
@@ -530,34 +530,34 @@ _transaction_abort () {   # <exit-status>
   exit "$status"
 }
 
-_with_transaction () (   # <global|session|window> <target> <namespace> <callback> [<arg>...]
-  local scope="$1" target="$2" namespace="$3" callback="$4" channel started metadata
+_with_transaction () (   # <global|session|window> <owner> <namespace> <callback> [<arg>...]
+  local scope="$1" owner="$2" namespace="$3" callback="$4" channel started metadata
   local rc=0 release_rc=0; shift 4
   [[ -z "${_AIRLINE_TRANSACTION_CHANNEL:-}" ]] || {
     printf 'airline: nested state transaction (%s)\n' "$_AIRLINE_TRANSACTION_CHANNEL" >&2
     return 2
   }
   [[ "$namespace" =~ ^[a-zA-Z0-9_-]+$ ]] || return 2
-  channel="$(_transaction_channel "$scope" "$target" "$namespace")"
+  channel="$(_transaction_channel "$scope" "$owner" "$namespace")"
   printf -v started '%(%s)T' -1
   metadata="${BASHPID}:${started}"
-  _transaction_acquire "$scope" "$target" "$namespace" "$channel" "$metadata" || return 1
+  _transaction_acquire "$scope" "$owner" "$namespace" "$channel" "$metadata" || return 1
   _AIRLINE_TRANSACTION_CHANNEL="$channel"
   _AIRLINE_TRANSACTION_SCOPE="$scope"
-  _AIRLINE_TRANSACTION_TARGET="$target"
+  _AIRLINE_TRANSACTION_OWNER="$owner"
   _AIRLINE_TRANSACTION_NAMESPACE="$namespace"
   trap '_transaction_cleanup' EXIT
   trap '_transaction_abort 129' HUP
   trap '_transaction_abort 130' INT
   trap '_transaction_abort 143' TERM
-  _opt_workspace_begin "$scope" "$target" || { _transaction_cleanup; return 1; }
+  _opt_workspace_begin "$scope" "$owner" || { _transaction_cleanup; return 1; }
   "$callback" "$@" || rc=$?
   _opt_workspace_flush || { [[ $rc -ne 0 ]] || rc=1; }
   _opt_workspace_end
-  _transaction_release "$scope" "$target" "$namespace" "$channel" || release_rc=$?
+  _transaction_release "$scope" "$owner" "$namespace" "$channel" || release_rc=$?
   _AIRLINE_TRANSACTION_CHANNEL=""
   _AIRLINE_TRANSACTION_SCOPE=""
-  _AIRLINE_TRANSACTION_TARGET=""
+  _AIRLINE_TRANSACTION_OWNER=""
   _AIRLINE_TRANSACTION_NAMESPACE=""
   trap - EXIT HUP INT TERM
   [[ $rc -ne 0 || $release_rc -eq 0 ]] || rc=$release_rc
@@ -578,10 +578,10 @@ with_global_transaction () {    # <namespace> <callback> [<arg>...]
 
 # Outstanding transaction markers are the observable lock registry. Output is
 # tab-delimited: <scope> <owner> <namespace> <active|stale> <pid> <age-seconds>.
-_transaction_list_owner () {   # <global|session|window> <target>
-  local scope="$1" target="$2" raw name metadata namespace pid started now age state
+_transaction_list_owner () {   # <global|session|window> <owner>
+  local scope="$1" owner="$2" raw name metadata namespace pid started now age state
   local -a scope_args
-  _scope_option_args scope_args "$scope" "$target" || return
+  _scope_option_args scope_args "$scope" "$owner" || return
   raw="$(_opt_list "${scope_args[@]}")" || return
   printf -v now '%(%s)T' -1
   while read -r name metadata; do
@@ -591,40 +591,40 @@ _transaction_list_owner () {   # <global|session|window> <target>
     [[ "$pid" =~ ^[0-9]+$ && "$started" =~ ^[0-9]+$ ]] || continue
     if kill -0 "$pid" 2>/dev/null; then state=active; else state=stale; fi
     age=$(( now >= started ? now - started : 0 ))
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$scope" "$target" "$namespace" "$state" "$pid" "$age"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$scope" "$owner" "$namespace" "$state" "$pid" "$age"
   done <<< "$raw"
 }
 
 transaction_list () {
-  local target seen=" "
+  local owner seen=" "
   _transaction_list_owner global server
-  for target in $(list_sessions); do _transaction_list_owner session "$target"; done
-  for target in $(tmux list-windows -a -F '#{window_id}'); do
-    case "$seen" in *" $target "*) continue ;; esac
-    seen+="$target "
-    _transaction_list_owner window "$target"
+  for owner in $(list_sessions); do _transaction_list_owner session "$owner"; done
+  for owner in $(tmux list-windows -a -F '#{window_id}'); do
+    case "$seen" in *" $owner "*) continue ;; esac
+    seen+="$owner "
+    _transaction_list_owner window "$owner"
   done
 }
 
 # Clear one STALE marker and its wait-for channel. A live owner is never forcibly
 # unlocked: its later cleanup could otherwise release a successor's lock.
-transaction_clear () {   # <global|session|window> <target> <namespace>
-  local scope="$1" target="$2" namespace="$3" metadata pid channel marker
+transaction_clear () {   # <global|session|window> <owner> <namespace>
+  local scope="$1" owner="$2" namespace="$3" metadata pid channel marker
   [[ "$namespace" =~ ^[a-zA-Z0-9_-]+$ ]] || return 2
   case "$scope" in
-    global)  [[ "$target" == server ]] || return 2 ;;
-    session) target="$(resolve_session_target "$target")" || return 2 ;;
-    window)  target="$(resolve_window "$target")" || return 2 ;;
+    global)  [[ "$owner" == server ]] || return 2 ;;
+    session) owner="$(resolve_session_target "$owner")" || return 2 ;;
+    window)  owner="$(resolve_window "$owner")" || return 2 ;;
     *) return 2 ;;
   esac
   marker="$(_transaction_marker_name "$namespace")"
-  metadata="$(opt_get "$scope" "$target" "$marker")" || return
+  metadata="$(opt_get "$scope" "$owner" "$marker")" || return
   [[ -n "$metadata" ]] || return 3
   pid="${metadata%%:*}"
   [[ "$pid" =~ ^[0-9]+$ ]] || return 2
   kill -0 "$pid" 2>/dev/null && return 4
-  channel="$(_transaction_channel "$scope" "$target" "$namespace")"
-  _transaction_release "$scope" "$target" "$namespace" "$channel"
+  channel="$(_transaction_channel "$scope" "$owner" "$namespace")"
+  _transaction_release "$scope" "$owner" "$namespace" "$channel"
 }
 
 # vim: ft=bash

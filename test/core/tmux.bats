@@ -172,9 +172,9 @@ transaction_stage_then_fail () {
   return 7
 }
 transaction_global_workspace () {
-  opt_set_global @airline--workspace-global before
+  opt_set global server @airline--workspace-global before
   opt_set_global @airline--workspace-global after
-  opt_get_global @airline--workspace-global
+  opt_get global server @airline--workspace-global
 }
 
 wait_for_file () {
