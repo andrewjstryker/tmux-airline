@@ -393,10 +393,11 @@ runner's normalized result onto its existing channels:
 | Result | Status | Health |
 |--------|--------|--------|
 | `ok` | `result` | clear |
-| `warn` | `attention` | `warn` + classifier diagnostic |
-| `fail` | `attention` | `fail` + classifier diagnostic |
+| `warn` | `result` | `warn` + classifier diagnostic |
+| `fail` | `result` | `fail` + classifier diagnostic |
 
-Completion status is transient because the command output remains in its pane.
+Completion status is cleared after observation because the command output remains in
+its pane.
 Completion health is persistent and retains the classifier's opaque diagnostic;
 Airline does not manufacture or interpret that text. A selected filter may interpret
 a copied output stream to project live health with its own diagnostic. Its final
@@ -577,7 +578,8 @@ Airline maps its state onto tmux's normal scopes:
   session and are read through the CLI.
 - Session-public options written while evaluating palette/layout files are cleared;
   they are not another user configuration scope.
-- Status and health belong to a window; `-t` accepts a pane or window target.
+- Status is owned by a pane and projected at its window; health belongs to a window.
+  Their documented `-t` targets resolve the corresponding owner.
 - Problems belong to the tmux server. A pane-hosted reporter may preserve its
   runtime origin with `problem set --pane <pane-id>`.
 
@@ -623,7 +625,7 @@ option-name conventions.
 > airline="$(tmux show -gqv @airline-cli)"
 > if [ -n "$airline" ]; then
 >   version="$("$airline" version)"
->   [ -n "$version" ] && "$airline" status set agent active
+>   [ -n "$version" ] && "$airline" status set active
 > fi
 > ```
 >
@@ -648,32 +650,38 @@ The contributor contract is:
 - use a stable software identity as the contributor and mutate only its claims;
 - keep severity and diagnostic text out of the key so identity remains stable;
 - include an instance in the claim key when concurrent instances report independently;
-- use `ok` or `clear` when a retained health claim recovers, and `problem set ...
-  ok` when a capability recovers;
+- use `ok` when a retained health claim recovers; reserve `clear` for destructive
+  removal and `ack` for user acknowledgement;
+- use `problem set ... ok` when the current pane or session origin recovers, and
+  `problem resolve` only when the contributor has verified that the underlying
+  capability is restored for every origin represented by that problem;
 - report an inability to provide the contributor's advertised capability as a
   problem, while successfully observed unhealthy domain state remains health.
 
-Status is intentionally lighter. Its key only needs to be unique among active
-status entries in one window because the pane itself contains the explanation.
+Status is intentionally lighter. Each pane owns one workflow phase because the pane
+itself contains the explanation. A contributor reduces any internal subprocesses or
+tools into that pane-level state.
 Health identity is contributor plus claim key within a window. Problem identity is
 contributor plus claim key globally, while Airline separately records the pane or
 session origins currently asserting it. Contributors and keys must be nonempty and
 contain neither whitespace nor `:`; the colon is reserved for private storage
 framing.
 
-**Status** (left) — a window's app-status, at one of three levels. Many callers can
-publish entries under their own keys; airline shows the highest-ranked entry:
+**Status** (left) — one workflow phase per pane. Airline reduces every pane in the
+window to its highest-priority phase:
 
 ```tmux
-airline status set build active      # ○ watching  (amber)
-airline status set build result      # ● finished well (green) — outranks active
-airline status set build attention   # ◆ needs you (amber)
-airline status clear build
-airline status show                  # keys + current values
+airline status set active      # ○ processing (amber)
+airline status set result      # ● output ready (green) — outranks active
+airline status set attention   # ◆ waiting for input (amber)
+airline status clear
+airline status show            # pane ids + current phases + revisions
 ```
 
-Levels are `active` / `result` / `attention`; `result` outranks `active`. A
-window with no status entry shows nothing.
+Levels reduce by user-action priority: `active < result < attention`. Ongoing work
+is passive information, completed output is ready to inspect, and an input request
+blocks progress. This is presentation priority rather than severity. A window with
+no status entry shows nothing.
 
 **Health** (right) — a single condition glyph reduced from any number of claims;
 airline shows the **worst**. `ok` (or no claim) shows
@@ -683,36 +691,47 @@ airline shows the **worst**. `ok` (or no claim) shows
 airline health set example-agent context fail "connection refused"     # ▲ broken (red)
 airline health set example-build tests warn "tests are still running with failures"
 # badge now shows one glyph at the worst level (fail)
+airline health ack example-agent context     # user has seen this fail state
 airline health set example-agent context ok  # recovery clears it; drops to warn
 airline health show                         # contributor + key + condition
+airline health show --all                   # include acknowledged health
 ```
 
 Health and problem share the levels `ok < warn < fail`. `ok` means reporter
-recovery: it removes that reporter's contribution. For health this is equivalent to
-`clear <contributor> <key>`; problem has a ledger lifecycle described below. `warn` means the
-component degraded gracefully and can keep working; `fail` means it could not
-recover and is broken. `warn` uses the palette's amber `alert` role; `fail` uses its
-red `stress` role. Glyphs are fixed (a distinct shape per visible state, so badges
-stay legible without color). Every retained `warn` or `fail` condition has a
+recovery: for health it removes the claim; for problem it resolves one origin and
+records `resolved` history when the final origin recovers. `clear` reaches the same
+empty health state through explicit deletion rather than a reported observation.
+`warn` means the component degraded gracefully and can keep working; `fail` means it
+could not recover and is broken. `warn` uses the palette's amber `alert` role; `fail`
+uses its red `stress` role. Glyphs are fixed (a distinct shape per visible state, so
+badges stay legible without color). Every retained `warn` or `fail` condition has a
 diagnostic message. Health's optional `-t <target>` precedes the keyed condition
 tuple so the trailing message stays opaque. Messages are user-facing text supplied
-by the reporter: Airline validates their framing but assigns them no meaning.
-Status commands accept their target option in any documented position.
+by the reporter: Airline validates their framing but assigns them no meaning. Status
+commands accept their target option in any documented position.
 
-**Consume-on-view (`--transient`).** Status may be transient because the pane itself
-contains the result or request for input: viewing the window and moving on is a
-meaningful acknowledgement. Health is persistent because the pane need not contain
-its diagnostic; only its reporter may clear or recover the condition:
+Status values are workflow phases with distinct transition mechanisms. `active`
+remains while the producer is processing, and `attention` remains while the producer
+is waiting for input. The producer advances either phase when its work changes.
+`result` means processing has finished and the pane contains output ready to view.
+Each effective status set or clear increments a counter owned by that pane. Setting
+`result` ensures that Airline's focus hook is installed; contributors do not install
+the hook or handle revision tokens. The hook uses a private revision-guarded callback,
+so leaving a pane deletes only the exact result that was observed while leaving every
+other pane, `active`, `attention`, and any newer result untouched. Merely being
+visible in a window is not treated as proof of observation. Plain `status clear`
+explicitly deletes the targeted pane's entry. `status show` includes the current
+revision for general introspection. Producers normally advance active work and input
+requests; an Airline-aware coding agent is the motivating interactive producer for
+`attention`. Runner health separately communicates whether a completed result was
+`ok`, `warn`, or `fail`.
 
-```tmux
-airline status set agent result --transient   # clears when you leave the window
-```
-
-Transient status clears after you leave the window; sticky status and every health
-condition are untouched. The focus hook performs the same public operation as a
-caller: `status clear -t <window>` with no key removes every transient entry
-in that window. Supplying a key clears that one contributor regardless of whether
-it is transient.
+Health and problem are never consumed by viewing a window. They expose explicit
+`ack`, which retains the underlying condition but hides
+its badge and omit it from normal `show`; `show --all` includes acknowledged state.
+A message-only refresh at the same level remains acknowledged. Any `warn` / `fail`
+level change resets acknowledgement and makes the new state visible. Reporter
+recovery removes a health claim, so a later failure starts unacknowledged.
 
 Because color and badges live on different layers, a window can show a mode
 color, a health glyph, and a status glyph all at once without contention.
@@ -733,23 +752,37 @@ if ! command -v sensors >/dev/null 2>&1; then
   exit 0
 fi
 
-airline problem set tmux-cpu sensors ok
+# The contributor has verified its shared requirement, so retire every stale
+# pane/session assertion and retain resolved history.
+airline problem resolve tmux-cpu sensors
 ```
 
 By default, a claim belongs to the current session context. A pane-hosted reporter
 can preserve its origin explicitly with `problem set --pane "$TMUX_PANE" ...`.
 Several panes and sessions may assert the same contributor/key pair independently;
-one origin's recovery removes only its own claim. Airline installs tmux pane/session
-close hooks to retire claims when their origins disappear.
+`problem set ... ok` removes only the current origin's claim. Airline installs tmux
+pane/session close hooks to retire claims when their origins disappear without
+asserting recovery.
 
-`problem show` lists only active problems. `problem clear <contributor> <key>` acknowledges a
-problem and hides it without discarding history or active claims. A later report
-updates the entry but does not make a cleared problem visible again. Use `problem
-show --all [<contributor> [<key>]]` to inspect the complete `active`, `closed`, and `cleared`
-lifecycle ledger and its current origins. `problem resolve <contributor> <key>` deletes the entry
-and every claim; reporter recovery with `set ... ok` also deletes it when the final
-claim is removed. `problem close` is normally hook-driven, but is public so jobs may
-retire pane- or session-origin claims explicitly.
+`problem show` lists only active problems. `problem ack <contributor> <key>`
+acknowledges and hides the current level without discarding history or active claims.
+A same-level diagnostic refresh remains acknowledged; a level change makes the
+problem active again. Use `problem show --all [<contributor> [<key>]]` to inspect the
+complete `active`, `acknowledged`, `closed`, and `resolved` lifecycle ledger and its
+current origins.
+`problem resolve <contributor> <key>` is an authoritative contributor recovery
+operation: use it after verifying that the underlying capability is restored
+globally. It removes every origin claim, including stale assertions that have not
+run again, and retains a `resolved` ledger entry. If recovery is known only for one
+pane or session, use `problem set ... ok` from that origin instead; the ledger
+becomes `resolved` when the final claim recovers. `problem close` is normally
+hook-driven, but is public so jobs may retire pane- or session-origin claims
+explicitly without asserting recovery; its final claim produces `closed` history.
+`problem clear <contributor> <key>` is destructive: it removes the ledger and every
+active origin claim.
+
+For the complete selection rules and lifecycle state diagrams, see
+[Signal lifecycles](docs/lifecycle-signals.md).
 
 ### Transaction recovery
 
@@ -794,9 +827,9 @@ airline runner   show <runner> [<arg>...] | list | register <dir>
                  run [--here|--pane [-h|-v]|--window] [<runner>] [--classify <classifier>]
                      [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]] -- <command>...
                  watch [--here|--pane [-h|-v]|--window] [<runner>] [--probe <probe> [<arg>...]]
-airline status   set <status-key> <active|result|attention> [--transient] [-t <window>] | clear [<status-key>] [-t <window>] | show [<status-key>] [-t <window>]
-airline health   set [-t <window>] <contributor> <health-key> <ok|warn|fail> [<message>...] | clear [-t <window>] <contributor> <health-key> | show [-t <window>] [<contributor> [<health-key>]]
-airline problem  set [--pane <pane-id>] <contributor> <problem-key> <ok|warn|fail> [<message>...] | close [--pane <pane-id>|--session <session-id>] [<contributor> [<problem-key>]] | clear <contributor> <problem-key> | resolve <contributor> <problem-key> | show [--all] [<contributor> [<problem-key>]]
+airline status   set <active|result|attention> [-t <pane>] | clear [-t <pane>] | show [-t <pane|window>]
+airline health   set [-t <window>] <contributor> <health-key> <ok|warn|fail> [<message>...] | ack|clear [-t <window>] <contributor> <health-key> | show [--all] [-t <window>] [<contributor> [<health-key>]]
+airline problem  set [--pane <pane-id>] <contributor> <problem-key> <ok|warn|fail> [<message>...] | close [--pane <pane-id>|--session <session-id>] [<contributor> [<problem-key>]] | ack|clear|resolve <contributor> <problem-key> | show [--all] [<contributor> [<problem-key>]]
 airline transaction show | clear <global|session|window> <target> <namespace>
 ```
 
@@ -821,8 +854,9 @@ window names through the installed CLI.
 ## Development
 
 For the architecture, internal boundaries, design rationale, and testing strategy,
-see [DESIGN.md](DESIGN.md). Completed project work is summarized in
-[CHANGELOG.md](CHANGELOG.md); prospective consolidation work lives in
+see [DESIGN.md](DESIGN.md). Focused design documents begin with
+[Signal lifecycles](docs/lifecycle-signals.md). Completed project work is summarized
+in [CHANGELOG.md](CHANGELOG.md); prospective consolidation work lives in
 [TODO.md](TODO.md).
 
 The full suite still exercises real isolated tmux servers:

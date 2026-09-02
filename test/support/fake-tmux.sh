@@ -11,7 +11,7 @@
 # spin up and tear down a server now runs in-process.
 #
 # The fake reproduces only the leaf STORE semantics — get is empty when unset, set
-# overwrites, unset removes, global/session/window scopes are independent, values
+# overwrites, unset removes, global/session/window/pane scopes are independent, values
 # with spaces survive. Those exact semantics are pinned against the real binary in
 # tmux.bats; that suite is the contract this file must honour. Anything richer
 # (format #{?…} evaluation, redraw side effects) is deliberately NOT modelled —
@@ -35,6 +35,7 @@ source "${PROJECT_ROOT:?fake-tmux.sh: PROJECT_ROOT must be set}/lib/tmux.sh"
 declare -gA _FAKE_OPT=()
 declare -gA _FAKE_HOOK=()
 declare -g  _FAKE_WIN='@1'      # what current_window reports (override per test)
+declare -g  _FAKE_PANE='%1'     # what current_pane reports (override per test)
 declare -g  _FAKE_SESSION='s1'  # what current_session reports (override per test)
 declare -ga _FAKE_WINDOWS=('@1')
 declare -gi _FAKE_REDRAWS=0     # redraw call count (assertable if a test cares)
@@ -44,7 +45,7 @@ declare -gi _FAKE_WRITES=0      # option mutation count (assertable for no-op pa
 # re-declares the arrays empty, so this is only needed to clear mid-test.
 fake_tmux_reset () {
   _FAKE_OPT=(); _FAKE_HOOK=()
-  _FAKE_WIN='@1'; _FAKE_SESSION='s1'; _FAKE_WINDOWS=('@1'); _FAKE_REDRAWS=0; _FAKE_WRITES=0
+  _FAKE_WIN='@1'; _FAKE_PANE='%1'; _FAKE_SESSION='s1'; _FAKE_WINDOWS=('@1'); _FAKE_REDRAWS=0; _FAKE_WRITES=0
   _AIRLINE_TRANSACTION_CHANNEL=""
 }
 
@@ -52,10 +53,12 @@ fake_tmux_reset () {
 #   global:  -g <name>                 → g␟<name>
 #   session: -t <session> <name>        → s␟<session>␟<name>
 #   window:  -w -t <win> <name>        → w␟<win>␟<name>
+#   pane:    -p -t <pane> <name>       → p␟<pane>␟<name>
 # (A trailing value arg, if any, is ignored here — only scope+name make the key.)
 _fake_key () {
   if [[ "$1" == -g ]]; then printf 'g\037%s' "$2"
   elif [[ "$1" == -w ]]; then printf 'w\037%s\037%s' "$3" "$4"
+  elif [[ "$1" == -p ]]; then printf 'p\037%s\037%s' "$3" "$4"
   else                           printf 's\037%s\037%s' "$2" "$3"; fi
 }
 
@@ -89,8 +92,8 @@ _opt_clear () {
 redraw         () { (( _FAKE_REDRAWS++ )) || true; }
 redraw_all     () { (( _FAKE_REDRAWS++ )) || true; }
 current_window () { printf '%s' "$_FAKE_WIN"; }
-resolve_window () { printf '%s' "$1"; }
-current_pane () { printf '%%1'; }
+resolve_window () { [[ "$1" == %* ]] && printf '%s' "$_FAKE_WIN" || printf '%s' "$1"; }
+current_pane () { printf '%s' "$_FAKE_PANE"; }
 resolve_pane () { printf '%s' "$1"; }
 current_path () { printf '/tmp'; }
 current_session () { printf '%s' "$_FAKE_SESSION"; }

@@ -14,11 +14,14 @@ setup() {
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
   window="$($TMUX -L "$_bats_socket" display-message -p -t "$pane" '#{window_id}')"
 
-  airline status set agent active -t "$pane"
+  airline status set active -t "$pane"
   airline health set -t "$pane" example-agent context warn "agent is degraded"
 
   run wopt @airline--badge-status -t "$window"
   assert_output "active"
+  run airline status show -t "$pane"
+  assert_output --partial "$pane"
+  assert_output --partial "active  revision 1"
   run wopt @airline--badge-health -t "$window"
   assert_output "warn"
   run airline health show -t "$pane" example-agent context
@@ -60,14 +63,16 @@ setup() {
   airline problem set example-battery query ok
   run get_option @airline--badge-problem
   assert_output "warn"
-  airline problem clear example-cpu sensors
+  airline problem ack example-cpu sensors
   run get_option @airline--badge-problem
   assert_output ""
   run airline problem show --all example-cpu sensors
-  assert_output --partial "cleared"
+  assert_output --partial "acknowledged"
   airline problem resolve example-cpu sensors
   run airline problem show example-cpu sensors
   assert_output ""
+  run airline problem show --all example-cpu sensors
+  assert_output --partial "resolved"
 }
 
 @test "pane lifecycle hooks close claims and retain a closed ledger" {
@@ -107,26 +112,36 @@ setup() {
   refute_output --partial "pane:$second"
 }
 
-@test "a transient status arms the focus hook and clears through normal status clear" {
+@test "focus cleanup clears observed results but preserves newer pane state" {
   airline session init
+  pane="$($TMUX -L "$_bats_socket" display-message -p '#{pane_id}')"
   win="$($TMUX -L "$_bats_socket" display-message -p '#{window_id}')"
-  airline status set build active
-  airline status set review attention --transient
+
+  airline status set result -t "$pane"
+  revision="$(popt @airline--status-revision -t "$pane")"
+  assert_equal "$revision" 1
   run get_option focus-events
   assert_output "on"
-  airline status clear -t "$win"
+  run $TMUX -L "$_bats_socket" show-hooks -g pane-focus-out
+  assert_output --partial "status _observed-result"
+  assert_output --partial "#{@airline--status-revision}"
+  run popt @airline--status-revision -t "$pane"
+  assert_output "$revision"
+
+  airline status set active -t "$pane"
+  airline status _observed-result "$pane" "$revision"
   run wopt @airline--badge-status
   assert_output "active"
 }
 
 @test "invalid signal argv and unresolved targets fail without mutation" {
-  run airline status set build active extra
+  run airline status set active extra
   assert_failure
   run airline health set test api fail
   assert_failure
-  run airline status set build active -t missing-window
+  run airline status set active -t missing-pane
   assert_failure
-  assert_output --partial "cannot resolve window 'missing-window'"
+  assert_output --partial "cannot resolve pane 'missing-pane'"
 
   run wopt @airline--status
   assert_output ""
@@ -135,7 +150,7 @@ setup() {
 }
 
 @test "process CLI propagates transaction acquisition failure" {
-  run airline_with_tmux_failure acquire status set build active
+  run airline_with_tmux_failure acquire status set active
   assert_failure
 }
 
@@ -145,7 +160,7 @@ setup() {
 }
 
 @test "process CLI propagates transaction release failure" {
-  run airline_with_tmux_failure release status set build active
+  run airline_with_tmux_failure release status set active
   assert_failure
 }
 

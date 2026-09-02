@@ -302,7 +302,7 @@ _seed_palette() {
   load_render
   coll_set global server problem cpu warn active warn "sensors missing"
   coll_set global server problem battery fail active fail "query timed out"
-  coll_set global server problem ignored none cleared fail "acknowledged"
+  coll_set global server problem ignored none acknowledged fail "acknowledged"
   render_problem_project changed
   run opt_get_global @airline--badge-problem
   assert_output "fail"

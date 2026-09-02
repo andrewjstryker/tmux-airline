@@ -36,13 +36,14 @@ _opt_clear () { tmux set-option   -qu "$@"; }   # <scope…> <name>
 
 # ShellCheck cannot see that this nameref assignment mutates the caller's array.
 # shellcheck disable=SC2034
-_scope_option_args () {   # <array-destination> <global|session|window> <owner>
+_scope_option_args () {   # <array-destination> <global|session|window|pane> <owner>
   local -n scope_arguments="$1"
   local scope="$2" owner="$3"
   case "$scope" in
     global)  [[ "$owner" == server ]] || return 2; scope_arguments=(-g) ;;
     session) [[ -n "$owner" ]] || return 2; scope_arguments=(-t "$owner") ;;
     window)  [[ -n "$owner" ]] || return 2; scope_arguments=(-w -t "$owner") ;;
+    pane)    [[ -n "$owner" ]] || return 2; scope_arguments=(-p -t "$owner") ;;
     *) return 2 ;;
   esac
 }
@@ -288,11 +289,14 @@ opt_get_window   () { _opt_read   window "$1" "$2"; }
 opt_set_window   () { _opt_store  window "$1" "$2" "$3"; }
 opt_unset_window () { _opt_remove window "$1" "$2"; }
 
+# --- pane scope (explicit pane id; "current" is resolved by the caller) ---
+opt_get_pane   () { _opt_read   pane "$1" "$2"; }
+
 # --- composed: set-if-needed (write only when the value changes) ---
 # Mutations use ordinary success/failure status. The caller-selected destination is
 # set to 1 when a write was needed and left empty for a successful no-op, keeping
 # redraw gating out of the public exit-status contract.
-_opt_setif () {   # <destination> <global|session|window> <owner> <name> <value>
+_opt_setif () {   # <destination> <global|session|window|pane> <owner> <name> <value>
   local -n destination="$1"
   local scope="$2" owner="$3" name="$4" value="$5" current
   destination=""
@@ -307,6 +311,7 @@ _opt_setif () {   # <destination> <global|session|window> <owner> <name> <value>
 opt_setif_global  () { _opt_setif "$1" global  server "$2" "$3"; }
 opt_setif_session () { _opt_setif "$1" session "$2" "$3" "$4"; }
 opt_setif_window  () { _opt_setif "$1" window  "$2" "$3" "$4"; }
+opt_setif_pane    () { _opt_setif "$1" pane    "$2" "$3" "$4"; }
 
 #-----------------------------------------------------------------------------#
 # Airline option namespaces — POLICY (DESIGN.md §State model / §Enforcement)
@@ -352,7 +357,7 @@ prv_name () { printf '@airline--%s' "$1"; }             # <key> → option name
 # --- private accessors ---
 # Global private state is deliberately narrow: only the server-wide problem
 # ledger and its projected badge use it. Configuration remains public-global;
-# all other managed state retains its native session/window owner.
+# all other managed state retains its native session, window, or pane owner.
 prv_get_global   () { opt_get_global   "@airline--$1"; }       # <key>
 prv_setif_global () { opt_setif_global "$1" "@airline--$2" "$3"; } # <dest> <key> <value>
 prv_unset_global () { opt_unset_global "@airline--$1"; }       # <key>
@@ -363,6 +368,9 @@ prv_unset_session () { opt_unset_session "$1" "@airline--$2"; }       # <session
 prv_get_window   () { opt_get_window   "$1" "@airline--$2"; }       # <win> <key>
 prv_setif_window () { opt_setif_window "$1" "$2" "@airline--$3" "$4"; }  # <dest> <win> <key> <value>
 prv_unset_window () { opt_unset_window "$1" "@airline--$2"; }       # <win> <key>
+
+prv_get_pane   () { opt_get_pane   "$1" "@airline--$2"; }       # <pane> <key>
+prv_setif_pane () { opt_setif_pane "$1" "$2" "@airline--$3" "$4"; } # <dest> <pane> <key> <value>
 
 #-----------------------------------------------------------------------------#
 # Standalone verbs — distinct tmux subcommands (not option get/set)
@@ -461,7 +469,7 @@ runner_open_window () {   # <target-session> <cwd> <command> [<arg>...]
 # another pane in the same window keeps its ordinary lifecycle.
 runner_retain_pane () { tmux set-option -p -t "$1" remain-on-exit on; }
 
-# Hooks (the pane-focus-out consume-on-view callback). <spec> is a full hook
+# Hooks (the pane-focus-out result-acknowledgement callback). <spec> is a full hook
 # name, optionally indexed, e.g. "pane-focus-out[90]".
 hook_set   () { tmux set-hook -g  "$1" "$2"; }
 

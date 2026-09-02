@@ -451,10 +451,6 @@ _runner_claim_key () {   # <pane> <claim>
   printf '%s/%s' "${1#%}" "$2"
 }
 
-_runner_status_key () {   # <pane> <claim>
-  printf 'airline-runner/%s/%s' "${1#%}" "$2"
-}
-
 # tmux may observe EOF on a pane PTY before it reaps the pane process. With
 # libutempter builds, its synthetic SIGCHLD can race the real child notification,
 # leaving a retained pane dead without PANE_STATUSREADY or a native exit status.
@@ -515,18 +511,18 @@ _runner_probe_error () {
     "runner probe failed or emitted an invalid condition"
 }
 
-_runner_finish () {   # <condition> <message> <window> <health-contributor> <health-key> <status-key>
-  local condition="$1" message="$2" win="$3" contributor="$4" health_key="$5" status_key="$6"
+_runner_finish () {   # <condition> <message> <window> <pane> <health-contributor> <health-key>
+  local condition="$1" message="$2" win="$3" pane="$4" contributor="$5" health_key="$6"
   case "$condition" in
     ok)
       signal_health_set -t "$win" "$contributor" "$health_key" ok
-      signal_status_set "$status_key" result --transient -t "$win"
       ;;
     warn|fail)
       signal_health_set -t "$win" "$contributor" "$health_key" "$condition" "$message"
-      signal_status_set "$status_key" attention --transient -t "$win"
       ;;
   esac
+  # Status describes the workflow phase; health separately describes its outcome.
+  signal_status_set result -t "$pane"
 }
 
 # Parsed runner specification. The CLI composes at most one element of each type for
@@ -717,7 +713,7 @@ _runner_normalize_spec () {   # <run|watch>
 # stdout/stderr remain visible in the pane. A filter gets a tee'd copy of its declared
 # stream; a probe performs sequential periodic observations without overlapping.
 _runner_execute () {   # <session>; uses parsed run specification
-  local session="$1" file pane win classifier_health_key status_key
+  local session="$1" file pane win classifier_health_key
   local filter_health_key probe_health_key
   local classifier_contributor filter_contributor probe_contributor streams=""
   local child_pid filter_pid="" probe_pid="" rc=0 signal="" classification condition message
@@ -725,7 +721,6 @@ _runner_execute () {   # <session>; uses parsed run specification
   pane="$(current_pane)"
   win="$(resolve_window "$pane")"
   classifier_health_key="$(_runner_claim_key "$pane" command)"
-  status_key="$(_runner_status_key "$pane" command)"
   filter_health_key="$(_runner_claim_key "$pane" filter)"
   probe_health_key="$(_runner_claim_key "$pane" probe)"
   classifier_contributor="$(_runner_element_contributor classifier "$AIRLINE_RUNNER_CLASSIFIER")"
@@ -748,7 +743,7 @@ _runner_execute () {   # <session>; uses parsed run specification
     signal_health_set -t "$win" "$filter_contributor" "$filter_health_key" ok
   [[ -z "$AIRLINE_RUNNER_PROBE" ]] || \
     signal_health_set -t "$win" "$probe_contributor" "$probe_health_key" ok
-  signal_status_set "$status_key" active -t "$win"
+  signal_status_set active -t "$pane"
 
   if [[ -n "$AIRLINE_RUNNER_FILTER" ]]; then
     streams=stdout
@@ -811,13 +806,13 @@ _runner_execute () {   # <session>; uses parsed run specification
     if [[ "$classification" == *$'\t'* ]]; then message="${classification#*$'\t'}"
     else message=""; fi
     signal_problem_report "$session" "$classifier_contributor" classify ok ""
-    _runner_finish "$condition" "$message" "$win" \
-      "$classifier_contributor" "$classifier_health_key" "$status_key"
+    _runner_finish "$condition" "$message" "$win" "$pane" \
+      "$classifier_contributor" "$classifier_health_key"
   else
     signal_problem_report "$session" "$classifier_contributor" classify fail \
       "runner classifier '$AIRLINE_RUNNER_CLASSIFIER' failed or emitted an invalid condition"
     signal_health_set -t "$win" "$classifier_contributor" "$classifier_health_key" ok
-    signal_status_set "$status_key" attention --transient -t "$win"
+    signal_status_set result -t "$pane"
   fi
   return "$rc"
 }
@@ -858,12 +853,11 @@ _runner_invoke () {   # <session> <run|watch> [spec...]
 
 # Watch external state without manufacturing a placeholder command.
 _runner_watch_execute () {   # <session>; uses parsed watch specification
-  local session="$1" file pane win status_key probe_health_key probe_contributor
+  local session="$1" file pane win probe_health_key probe_contributor
   local interval watch_pid="$BASHPID" watch_rc=0 sleep_pid=""
 
   pane="$(current_pane)"
   win="$(resolve_window "$pane")"
-  status_key="$(_runner_status_key "$pane" watch)"
   probe_health_key="$(_runner_claim_key "$pane" watch-probe)"
   probe_contributor="$(_runner_element_contributor probe "$AIRLINE_RUNNER_PROBE")"
   file="$(_runner_element_file "$session" probe "$AIRLINE_RUNNER_PROBE")"
@@ -878,7 +872,7 @@ _runner_watch_execute () {   # <session>; uses parsed watch specification
   interval="${AIRLINE_RUNNER_PROBE_INTERVAL:-5}"
 
   signal_health_set -t "$win" "$probe_contributor" "$probe_health_key" ok
-  signal_status_set "$status_key" active -t "$win"
+  signal_status_set active -t "$pane"
 
   trap 'watch_rc=130; [[ -n "$sleep_pid" ]] && kill "$sleep_pid" 2>/dev/null || true' INT
   trap 'watch_rc=143; [[ -n "$sleep_pid" ]] && kill "$sleep_pid" 2>/dev/null || true' TERM
@@ -898,7 +892,7 @@ _runner_watch_execute () {   # <session>; uses parsed watch specification
   trap - INT TERM HUP
 
   signal_health_clear -t "$win" "$probe_contributor" "$probe_health_key"
-  signal_status_clear "$status_key" -t "$win"
+  signal_status_clear -t "$pane"
   return "$watch_rc"
 }
 # CLI delegation targets for runner and its primitives.

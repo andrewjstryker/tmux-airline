@@ -15,8 +15,8 @@ _airline_children () {
     probe) printf %s show\ list\ register ;;
     runner) printf %s show\ list\ register\ run\ watch ;;
     status) printf %s set\ clear\ show ;;
-    health) printf %s set\ clear\ show ;;
-    problem) printf %s set\ close\ clear\ resolve\ show ;;
+    health) printf %s set\ ack\ clear\ show ;;
+    problem) printf %s set\ close\ ack\ clear\ resolve\ show ;;
     transaction) printf %s show\ clear ;;
     *) return 1 ;;
   esac
@@ -60,14 +60,16 @@ _airline_usage () {
     runner\ register) printf %s \<dir\> ;;
     runner\ run) printf %s \[--here\|--pane\ \[-h\|-v\]\|--window\]\ \[\<runner\>\]\ \[--classify\ \<classifier\>\]\ \[--filter\ \<filter\>\ \[--merge-stderr\]\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\ --\ \<command\>... ;;
     runner\ watch) printf %s \[--here\|--pane\ \[-h\|-v\]\|--window\]\ \[\<runner\>\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\] ;;
-    status\ set) printf %s \<status-key\>\ \<active\|result\|attention\>\ \[--transient\]\ \[-t\ \<window\>\] ;;
-    status\ clear) printf %s \[\<status-key\>\]\ \[-t\ \<window\>\] ;;
-    status\ show) printf %s \[\<status-key\>\]\ \[-t\ \<window\>\] ;;
+    status\ set) printf %s \<active\|result\|attention\>\ \[-t\ \<pane-id\>\] ;;
+    status\ clear) printf %s \[-t\ \<pane-id\>\] ;;
+    status\ show) printf %s \[-t\ \<target\>\] ;;
     health\ set) printf %s \[-t\ \<window\>\]\ \<contributor\>\ \<health-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
+    health\ ack) printf %s \[-t\ \<window\>\]\ \<contributor\>\ \<health-key\> ;;
     health\ clear) printf %s \[-t\ \<window\>\]\ \<contributor\>\ \<health-key\> ;;
-    health\ show) printf %s \[-t\ \<window\>\]\ \[\<contributor\>\ \[\<health-key\>\]\] ;;
+    health\ show) printf %s \[--all\]\ \[-t\ \<window\>\]\ \[\<contributor\>\ \[\<health-key\>\]\] ;;
     problem\ set) printf %s \[--pane\ \<pane-id\>\]\ \<contributor\>\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
     problem\ close) printf %s \[--pane\ \<pane-id\>\|--session\ \<session-id\>\]\ \[\<contributor\>\ \[\<problem-key\>\]\] ;;
+    problem\ ack) printf %s \<contributor\>\ \<problem-key\> ;;
     problem\ clear) printf %s \<contributor\>\ \<problem-key\> ;;
     problem\ resolve) printf %s \<contributor\>\ \<problem-key\> ;;
     problem\ show) printf %s \[--all\]\ \[\<contributor\>\ \[\<problem-key\>\]\] ;;
@@ -128,16 +130,18 @@ _airline_description () {
     runner\ register) printf %s add\ a\ runner\ search\ directory ;;
     runner\ run) printf %s run\ a\ command\ with\ monitoring ;;
     runner\ watch) printf %s watch\ probe\ state\ until\ interrupted ;;
-    status\ set) printf %s set\ app\ status ;;
-    status\ clear) printf %s clear\ one\ status\ or\ consume\ transient\ statuses ;;
-    status\ show) printf %s show\ a\ window\'s\ app\ status ;;
+    status\ set) printf %s set\ a\ pane\'s\ workflow\ status ;;
+    status\ clear) printf %s delete\ a\ pane\ status ;;
+    status\ show) printf %s show\ a\ window\'s\ pane\ statuses\ and\ revisions ;;
     health\ set) printf %s set\ window\ health ;;
-    health\ clear) printf %s clear\ window\ health ;;
-    health\ show) printf %s show\ a\ window\'s\ health ;;
+    health\ ack) printf %s acknowledge\ and\ hide\ the\ current\ health\ state ;;
+    health\ clear) printf %s delete\ one\ health\ claim ;;
+    health\ show) printf %s show\ active\ or\ acknowledged\ window\ health ;;
     problem\ set) printf %s report\ or\ recover\ an\ origin\ claim ;;
     problem\ close) printf %s close\ an\ origin\'s\ claims ;;
-    problem\ clear) printf %s acknowledge\ and\ hide\ a\ global\ problem ;;
-    problem\ resolve) printf %s delete\ a\ resolved\ problem\ and\ its\ claims ;;
+    problem\ ack) printf %s acknowledge\ and\ hide\ the\ current\ problem\ state ;;
+    problem\ clear) printf %s delete\ a\ problem\,\ its\ history\,\ and\ all\ origin\ claims ;;
+    problem\ resolve) printf %s declare\ the\ capability\ restored\ globally\ and\ retain\ resolved\ history ;;
     problem\ show) printf %s show\ active\ problems\ or\ the\ complete\ lifecycle\ ledger ;;
     transaction\ show) printf %s List\ outstanding\ transactions\ and\ owner\ state ;;
     transaction\ clear) printf %s release\ one\ stale\ transaction ;;
@@ -171,7 +175,6 @@ _airline_dynamic () {   # <semantic-type>
       done
       ;;
     segment) command airline segment show 2>/dev/null | while read -r line _; do printf '%s\n' "$line"; done ;;
-    status-key) command airline status show 2>/dev/null | while read -r line _; do printf '%s\n' "$line"; done ;;
     health-contributor) command airline health show 2>/dev/null | awk '{print $1}' | sort -u ;;
     health-key) command airline health show 2>/dev/null | awk '{print $2}' | sort -u ;;
     problem-contributor) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $1}' | sort -u ;;

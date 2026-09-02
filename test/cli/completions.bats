@@ -33,6 +33,9 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 
   COMP_WORDS=(airline health set runner build ""); COMP_CWORD=5; _airline_completion
   assert_equal "${COMPREPLY[*]}" "ok warn fail"
+
+  COMP_WORDS=(airline status ""); COMP_CWORD=2; _airline_completion
+  assert_equal "${COMPREPLY[*]}" "set clear show"
 }
 
 @test "bash completion resolves typed and contextual values through the airline CLI" {

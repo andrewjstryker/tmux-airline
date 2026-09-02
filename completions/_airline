@@ -14,8 +14,8 @@ _airline_children () {
     probe) printf %s show\ list\ register ;;
     runner) printf %s show\ list\ register\ run\ watch ;;
     status) printf %s set\ clear\ show ;;
-    health) printf %s set\ clear\ show ;;
-    problem) printf %s set\ close\ clear\ resolve\ show ;;
+    health) printf %s set\ ack\ clear\ show ;;
+    problem) printf %s set\ close\ ack\ clear\ resolve\ show ;;
     transaction) printf %s show\ clear ;;
     *) return 1 ;;
   esac
@@ -59,14 +59,16 @@ _airline_usage () {
     runner\ register) printf %s \<dir\> ;;
     runner\ run) printf %s \[--here\|--pane\ \[-h\|-v\]\|--window\]\ \[\<runner\>\]\ \[--classify\ \<classifier\>\]\ \[--filter\ \<filter\>\ \[--merge-stderr\]\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\ --\ \<command\>... ;;
     runner\ watch) printf %s \[--here\|--pane\ \[-h\|-v\]\|--window\]\ \[\<runner\>\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\] ;;
-    status\ set) printf %s \<status-key\>\ \<active\|result\|attention\>\ \[--transient\]\ \[-t\ \<window\>\] ;;
-    status\ clear) printf %s \[\<status-key\>\]\ \[-t\ \<window\>\] ;;
-    status\ show) printf %s \[\<status-key\>\]\ \[-t\ \<window\>\] ;;
+    status\ set) printf %s \<active\|result\|attention\>\ \[-t\ \<pane-id\>\] ;;
+    status\ clear) printf %s \[-t\ \<pane-id\>\] ;;
+    status\ show) printf %s \[-t\ \<target\>\] ;;
     health\ set) printf %s \[-t\ \<window\>\]\ \<contributor\>\ \<health-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
+    health\ ack) printf %s \[-t\ \<window\>\]\ \<contributor\>\ \<health-key\> ;;
     health\ clear) printf %s \[-t\ \<window\>\]\ \<contributor\>\ \<health-key\> ;;
-    health\ show) printf %s \[-t\ \<window\>\]\ \[\<contributor\>\ \[\<health-key\>\]\] ;;
+    health\ show) printf %s \[--all\]\ \[-t\ \<window\>\]\ \[\<contributor\>\ \[\<health-key\>\]\] ;;
     problem\ set) printf %s \[--pane\ \<pane-id\>\]\ \<contributor\>\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
     problem\ close) printf %s \[--pane\ \<pane-id\>\|--session\ \<session-id\>\]\ \[\<contributor\>\ \[\<problem-key\>\]\] ;;
+    problem\ ack) printf %s \<contributor\>\ \<problem-key\> ;;
     problem\ clear) printf %s \<contributor\>\ \<problem-key\> ;;
     problem\ resolve) printf %s \<contributor\>\ \<problem-key\> ;;
     problem\ show) printf %s \[--all\]\ \[\<contributor\>\ \[\<problem-key\>\]\] ;;
@@ -127,16 +129,18 @@ _airline_description () {
     runner\ register) printf %s add\ a\ runner\ search\ directory ;;
     runner\ run) printf %s run\ a\ command\ with\ monitoring ;;
     runner\ watch) printf %s watch\ probe\ state\ until\ interrupted ;;
-    status\ set) printf %s set\ app\ status ;;
-    status\ clear) printf %s clear\ one\ status\ or\ consume\ transient\ statuses ;;
-    status\ show) printf %s show\ a\ window\'s\ app\ status ;;
+    status\ set) printf %s set\ a\ pane\'s\ workflow\ status ;;
+    status\ clear) printf %s delete\ a\ pane\ status ;;
+    status\ show) printf %s show\ a\ window\'s\ pane\ statuses\ and\ revisions ;;
     health\ set) printf %s set\ window\ health ;;
-    health\ clear) printf %s clear\ window\ health ;;
-    health\ show) printf %s show\ a\ window\'s\ health ;;
+    health\ ack) printf %s acknowledge\ and\ hide\ the\ current\ health\ state ;;
+    health\ clear) printf %s delete\ one\ health\ claim ;;
+    health\ show) printf %s show\ active\ or\ acknowledged\ window\ health ;;
     problem\ set) printf %s report\ or\ recover\ an\ origin\ claim ;;
     problem\ close) printf %s close\ an\ origin\'s\ claims ;;
-    problem\ clear) printf %s acknowledge\ and\ hide\ a\ global\ problem ;;
-    problem\ resolve) printf %s delete\ a\ resolved\ problem\ and\ its\ claims ;;
+    problem\ ack) printf %s acknowledge\ and\ hide\ the\ current\ problem\ state ;;
+    problem\ clear) printf %s delete\ a\ problem\,\ its\ history\,\ and\ all\ origin\ claims ;;
+    problem\ resolve) printf %s declare\ the\ capability\ restored\ globally\ and\ retain\ resolved\ history ;;
     problem\ show) printf %s show\ active\ problems\ or\ the\ complete\ lifecycle\ ledger ;;
     transaction\ show) printf %s List\ outstanding\ transactions\ and\ owner\ state ;;
     transaction\ clear) printf %s release\ one\ stale\ transaction ;;
@@ -165,12 +169,12 @@ _airline_zsh_dynamic () {
       ;;
     palette-element) command airline palette show 2>/dev/null | awk '$1 != "name" {print $1}' ;;
     segment) command airline segment show 2>/dev/null | awk '{print $1}' ;;
-    status-key) command airline status show 2>/dev/null | awk '{print $1}' ;;
     health-contributor) command airline health show 2>/dev/null | awk '{print $1}' | sort -u ;;
     health-key) command airline health show 2>/dev/null | awk '{print $2}' | sort -u ;;
     problem-contributor) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $1}' | sort -u ;;
     problem-key) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $2}' | sort -u ;;
     session) command tmux list-sessions -F '#{session_name}' 2>/dev/null ;;
+    pane-id) command tmux list-panes -a -F '#{pane_id}' 2>/dev/null ;;
     window) command tmux list-windows -a -F '#{window_id}' 2>/dev/null ;;
   esac
 }
@@ -204,7 +208,9 @@ _airline_zsh () {
     --filter) compadd ${(@f)$(_airline_zsh_dynamic filter)}; return ;;
     --probe) compadd ${(@f)$(_airline_zsh_dynamic probe)}; return ;;
     -t)
-      [[ "$path" == 'session init' ]] && semantic=session || semantic=window
+      if [[ "$path" == 'session init' ]]; then semantic=session
+      elif [[ "$path" == 'status set' || "$path" == 'status clear' ]]; then semantic=pane-id
+      else semantic=window; fi
       compadd ${(@f)$(_airline_zsh_dynamic "$semantic")}; return
       ;;
   esac
@@ -219,11 +225,13 @@ _airline_zsh () {
   fi
   case "$path" in
     'status set')
-      if (( CURRENT == 4 )); then semantic=status-key
-      elif (( CURRENT == 5 )); then compadd active result attention; return
+      if [[ "$PREFIX" == -* ]]; then compadd -- -t; return
+      elif (( CURRENT == 4 )); then compadd active result attention; return
       fi
       ;;
-    'status clear'|'status show') (( CURRENT == 4 )) && semantic=status-key ;;
+    'status clear')
+      [[ "$PREFIX" == -* ]] && { compadd -- -t; return; }
+      ;;
     'health set')
       base=4; [[ "${words[4]:-}" == -t ]] && base=6
       if (( CURRENT == base )); then

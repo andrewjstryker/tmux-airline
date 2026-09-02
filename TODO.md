@@ -7,7 +7,8 @@ systems, and general-purpose frameworks are out of scope unless a demonstrated u
 need changes that conclusion.
 
 Completed work belongs in `CHANGELOG.md`; durable behavior and architecture belong
-in `README.md` and `DESIGN.md`. This file contains only prospective work.
+in `README.md`, `DESIGN.md`, and focused documents under `docs/`. This file contains
+only prospective work.
 
 ## Guardrails
 

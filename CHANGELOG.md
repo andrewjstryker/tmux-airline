@@ -9,8 +9,9 @@ implementation worklists used to reach them.
 
 - Consolidated session initialization, apply, state, suspend, resume, and toggle
   operations under `airline session`.
-- Replaced private process-entry commands with targeted public operations for session
-  hooks, transient status cleanup, and spawned runner re-entry.
+- Replaced private process-entry commands with targeted public operations where the
+  caller owns the operation. Result observation remains an Airline-private callback
+  because its pane revision is internal state.
 - Grouped status, health, and problem as signals while retaining their distinct
   scopes and lifecycle policies.
 - Moved transaction inspection and stale-lock recovery under `airline transaction`.
@@ -18,7 +19,7 @@ implementation worklists used to reach them.
   transaction, and command-boundary owners. Architecture checks now enforce actual
   dependency direction and private ownership rather than naming ceremony.
 - Renamed runner state around its contributor, health-claim, and problem-claim
-  roles; consolidated the identical status clear/show parser; replaced the
+  roles; made each status verb enforce its own option semantics; replaced the
   scope-specific collection matrix with one scope-first API and canonical
   `(scope, owner)` tuples; and removed private option helpers with no production
   owner.
@@ -48,13 +49,26 @@ implementation worklists used to reach them.
 
 ### Signals and diagnostics
 
+- Extracted signal semantics into a focused lifecycle document with state diagrams
+  for status, health, and problem, including the distinction between per-origin
+  recovery and authoritative problem resolution.
 - Enforced exact status and health grammar, reliable process exit status, opaque
   diagnostics, and consistent validation at the public command boundary.
-- Folded transient status consumption into ordinary keyless `status clear`, used by
-  the focus hook.
+- Added explicit health and problem acknowledgement, which hides the current
+  semantic level without claiming recovery. Status instead deletes observed results
+  because it retains no acknowledged history.
+- Made status lifecycle intrinsic to its workflow values: producers advance
+  `active` processing and `attention` waiting for input, while viewing advances only
+  a completed `result`. Runner health independently records the result's outcome.
+- Made pane identity the single status owner, defined window reduction as
+  `active < result < attention` user-action priority, and added pane-local revisions
+  with exact observed-result clearing so delayed focus cleanup cannot delete another
+  pane or newer work. Airline owns the observation hook and its private callback;
+  contributors only set the semantic result, while `status show` exposes revisions
+  for introspection.
 - Added a server-global problem lifecycle ledger with independent pane/session
-  claims and explicit `active`, `closed`, and `cleared` states. Resolution deletes
-  the ledger entry.
+  claims and explicit `active`, `acknowledged`, `closed`, and `resolved` states.
+  Resolution retains recovered history; destructive `clear` deletes the lifecycle.
 - Made contributor and claim key separate identity fields for health and problem.
   Problem origin remains independent, allowing multiple runtime origins to assert
   one contributor capability without conflating different contributors.
@@ -73,7 +87,7 @@ implementation worklists used to reach them.
   before reaping the pane process, including immediate command completion under
   repeated real-tmux load.
 - Reduced the architecture lint from 200 to 185 lines while expanding its negative
-  boundary fixtures. The 3.0.0 development tree contains 196 Bats cases.
+  boundary fixtures. The 3.0.0 development tree contains 202 Bats cases.
 
 ## 2.0.0
 

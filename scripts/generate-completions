@@ -57,7 +57,7 @@ awk '
 while IFS= read -r semantic; do
   case "$semantic" in
     adapter|classifier|contributor|dir|file|filter|health-key|layout|message|namespace|palette|\
-      palette-element|pane-id|probe|problem-key|runner|segment|session|session-id|status-key|target|window|\
+      palette-element|pane-id|probe|problem-key|revision|runner|segment|session|session-id|target|window|\
       arg|argument|command|noun|verb) ;;
     *) printf "generate-completions: unknown help placeholder <%s>\n" "$semantic" >&2; exit 1 ;;
   esac
@@ -126,7 +126,6 @@ _airline_dynamic () {   # <semantic-type>
       done
       ;;
     segment) command airline segment show 2>/dev/null | while read -r line _; do printf '%s\n' "$line"; done ;;
-    status-key) command airline status show 2>/dev/null | while read -r line _; do printf '%s\n' "$line"; done ;;
     health-contributor) command airline health show 2>/dev/null | awk '{print $1}' | sort -u ;;
     health-key) command airline health show 2>/dev/null | awk '{print $2}' | sort -u ;;
     problem-contributor) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $1}' | sort -u ;;
@@ -352,12 +351,12 @@ _airline_zsh_dynamic () {
       ;;
     palette-element) command airline palette show 2>/dev/null | awk '$1 != "name" {print $1}' ;;
     segment) command airline segment show 2>/dev/null | awk '{print $1}' ;;
-    status-key) command airline status show 2>/dev/null | awk '{print $1}' ;;
     health-contributor) command airline health show 2>/dev/null | awk '{print $1}' | sort -u ;;
     health-key) command airline health show 2>/dev/null | awk '{print $2}' | sort -u ;;
     problem-contributor) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $1}' | sort -u ;;
     problem-key) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $2}' | sort -u ;;
     session) command tmux list-sessions -F '#{session_name}' 2>/dev/null ;;
+    pane-id) command tmux list-panes -a -F '#{pane_id}' 2>/dev/null ;;
     window) command tmux list-windows -a -F '#{window_id}' 2>/dev/null ;;
   esac
 }
@@ -391,7 +390,9 @@ _airline_zsh () {
     --filter) compadd ${(@f)$(_airline_zsh_dynamic filter)}; return ;;
     --probe) compadd ${(@f)$(_airline_zsh_dynamic probe)}; return ;;
     -t)
-      [[ "$path" == 'session init' ]] && semantic=session || semantic=window
+      if [[ "$path" == 'session init' ]]; then semantic=session
+      elif [[ "$path" == 'status set' || "$path" == 'status clear' ]]; then semantic=pane-id
+      else semantic=window; fi
       compadd ${(@f)$(_airline_zsh_dynamic "$semantic")}; return
       ;;
   esac
@@ -406,11 +407,13 @@ _airline_zsh () {
   fi
   case "$path" in
     'status set')
-      if (( CURRENT == 4 )); then semantic=status-key
-      elif (( CURRENT == 5 )); then compadd active result attention; return
+      if [[ "$PREFIX" == -* ]]; then compadd -- -t; return
+      elif (( CURRENT == 4 )); then compadd active result attention; return
       fi
       ;;
-    'status clear'|'status show') (( CURRENT == 4 )) && semantic=status-key ;;
+    'status clear')
+      [[ "$PREFIX" == -* ]] && { compadd -- -t; return; }
+      ;;
     'health set')
       base=4; [[ "${words[4]:-}" == -t ]] && base=6
       if (( CURRENT == base )); then

@@ -4,6 +4,11 @@ This document defines the settled architecture, state model, and public command
 grammar. Implementation details belong in the source and tests unless they protect
 a non-obvious boundary described here.
 
+Focused design documents own the detailed semantics of individual domains:
+
+- [Signal lifecycles](docs/lifecycle-signals.md) defines the meaning, identity, and
+  state transitions of status, health, and problem signals.
+
 ## Principles
 
 1. **State is split by ownership.** Public `@airline-*` options are the user-facing
@@ -42,7 +47,7 @@ a non-obvious boundary described here.
 | `lib/command.sh` | Shared CLI error, context, and output helpers | no |
 | `lib/session.sh` | Session bootstrap, configuration coordination, and state | no |
 | `lib/transaction.sh` | Transaction-marker inspection and stale recovery | no |
-| `lib/signal.sh` | Status, health, problems, projection, and transient consumption | no |
+| `lib/signal.sh` | Status, health, problems, projection, and observation cleanup | no |
 | `lib/catalog.sh` | Owns registered search paths and bare-name resolution | no |
 | `lib/layout.sh` | Palette, adapter, segment, and executable-layout behavior | no |
 | `lib/runner.sh` | Runner contracts, mechanics, and orchestration | no |
@@ -108,10 +113,12 @@ graph TD
 ```
 
 The graph describes ordinary in-process calls. A tmux hook or a newly created pane
-starts a fresh Bash process and therefore enters through the public `airline.sh`
-CLI, which owns library loading, environment setup, argument validation, and
-dispatch. It does not manufacture a second private process protocol merely to skip
-the small public parser. Once loaded, modules call one another directly: a
+starts a fresh Bash process and therefore enters through `airline.sh`, which owns
+library loading, environment setup, argument validation, and dispatch. Most such
+entry points use the public grammar. The result-observation hook instead uses one
+explicitly private verb because invoking it correctly requires Airline's private
+pane revision; it still crosses the normal CLI loading and validation boundary.
+Once loaded, modules call one another directly: a
 non-underscore function is a module service, while an underscore-prefixed function
 is private to the file that defines it. Because every library is sourced into one
 Bash function namespace, public service names must also be unique across modules;
@@ -336,14 +343,16 @@ airline session suspend | resume | toggle
 airline version
 airline help [<noun> [<verb>]]
 
-airline status   set <status-key> <active|result|attention> [--transient] [-t <window>]
-                 clear [<status-key>] [-t <window>]
-                 show [<status-key>] [-t <window>]
+airline status   set <active|result|attention> [-t <pane>]
+                 clear [-t <pane>]
+                 show [-t <pane|window>]
 airline health   set [-t <window>] <contributor> <health-key> <ok|warn|fail> [<message>...]
+                 ack [-t <window>] <contributor> <health-key>
                  clear [-t <window>] <contributor> <health-key>
-                 show [-t <window>] [<contributor> [<health-key>]]
+                 show [--all] [-t <window>] [<contributor> [<health-key>]]
 airline problem  set [--pane <pane-id>] <contributor> <problem-key> <ok|warn|fail> [<message>...]
                  close [--pane <pane-id>|--session <session-id>] [<contributor> [<problem-key>]]
+                 ack <contributor> <problem-key>
                  clear <contributor> <problem-key>
                  resolve <contributor> <problem-key>
                  show [--all] [<contributor> [<problem-key>]]
@@ -363,10 +372,13 @@ airline runner   show <runner> [<arg>...] | list | register <dir>
                  watch [--here|--pane [-h|-v]|--window] [<runner>] [--probe <probe> [<arg>...]]
 ```
 
-All listed commands are public. Tmux hooks use targeted public session and status
-operations rather than a separate callback vocabulary. Spawned runner panes and
-windows re-enter through public `runner run/watch --here` commands; process-local
-spawn context arms pane retention before validation without adding command grammar.
+All listed commands are public. Tmux hooks use those operations when the event has a
+public meaning. Result observation is the narrow exception: Airline's hook invokes
+the unlisted `status _observed-result <pane> <revision>` entry point because its
+revision is private implementation state rather than caller input. Spawned runner
+panes and windows re-enter through public `runner run/watch --here` commands;
+process-local spawn context arms pane retention before validation without adding
+public command grammar.
 
 The process exit contract is binary: zero means a valid request completed,
 including an idempotent no-op; any nonzero status means validation or operation
@@ -390,8 +402,8 @@ installs both artifacts with the PATH shim.
 
 - `apply` is whole-system because there is one render over the complete source of
   truth. There are no per-noun apply commands.
-- `set` and `clear` belong to dynamic signal nouns. Static palette elements and
-  segment slots are written with `set -g @airline-*` and removed with `set -gu`.
+- `set`, `ack`, and `clear` belong to dynamic signal nouns. Static palette elements
+  and segment slots are written with `set -g @airline-*` and removed with `set -gu`.
 - Stateful nouns use bare `show` for a labeled human summary and qualified fields
   for raw scripting reads. Catalog-only classifier, filter, probe, and runner use
   `show <name>` to describe one resolvable implementation.
@@ -406,15 +418,15 @@ installs both artifacts with the PATH shim.
   explicit placement default, while `--pane` and `--window` create tmux topology
   through the common runner core. Pane placement accepts tmux's native `-h` and
   `-v` orientation modifiers; omitting one preserves tmux's default split.
-- `-t` accepts a window target for status and health. A pane target is valid where
-  tmux can resolve its owning window. Health places `-t <window>` before its keyed
-  tuple so every trailing message word is opaque. Problems are globally visible.
+- Status mutation targets a pane, status inspection accepts a pane or window, and
+  health targets a window. Health places `-t <window>` before its keyed tuple so
+  every trailing message word is opaque. Problems are globally visible.
   Health and problem take contributor and claim as separate identity fields.
   `problem set` attributes a claim to the current session unless `--pane` supplies
   a pane origin; lifecycle hooks close claims for destroyed origins. Health and
   problem require a user-facing message for `warn` and `fail`; `ok` is message-free
   reporter recovery. For health it removes the condition; for problem it removes
-  only that reporter's claim.
+  one origin claim and records `resolved` history when the final claim recovers.
 - Session state is the active/suspended axis. Suspension derives a muted palette and
   traps the prefix; airline itself installs no key binding. `session show state`
   returns its raw scripting value.
@@ -514,9 +526,9 @@ normalized observations that core projects onto health:
 | Process state | Classifier result | Runner status | Classifier health |
 |---------------|-------------------|---------------|-------------------|
 | running | not yet observed | `active` | clear |
-| exited | `ok` | `result --transient` | clear |
-| exited | `warn` | `attention --transient` | `warn` + diagnostic |
-| exited | `fail` | `attention --transient` | `fail` + diagnostic |
+| exited | `ok` | `result` | clear |
+| exited | `warn` | `result` | `warn` + diagnostic |
+| exited | `fail` | `result` | `fail` + diagnostic |
 
 The classifier is terminal and one-shot. It does not launch processes, mutate tmux,
 or write airline signals. It supplies the user-facing diagnostic for a retained
@@ -637,7 +649,7 @@ an airline problem. Airline does not copy command diagnostics into problems.
 
 ## Collections and badge projection
 
-Status holds keyed entries and health holds contributor-owned claims per window.
+Status holds one pane-owned entry and health holds contributor-owned claims per window.
 Problem uses a server-global lifecycle ledger plus a server-global set of active
 origin claims.
 Each collection uses an explicit registry and a tuple per member:
@@ -658,9 +670,13 @@ Collection rules:
 - Membership is explicit; entries are never discovered by parsing option names.
 - `set` writes the entire tuple and registers the key. `unregister` also removes the
   tuple.
-- Public identity fields are opaque and cannot contain whitespace or `:`. Status tuples hold
-  `<level>\t<transient>` and health tuples hold `<level>\t<message>`. Problem ledger
-  tuples hold `<badge|none>\t<active|closed|cleared>\t<last-level>\t<last-message>`;
+- Public identity fields are opaque and cannot contain whitespace or `:`. Status is
+  identified by pane and its window collection tuples hold
+  `<level>\t<pane-revision>`. Its monotonic counter is a pane-scoped private scalar,
+  so it survives status deletion and follows a pane moved between windows. Health tuples hold
+  `<badge|none>\t<active|acknowledged>\t<level>\t<message>`. Problem ledger tuples
+  hold
+  `<badge|none>\t<active|acknowledged|closed|resolved>\t<last-level>\t<last-message>`;
   active claim tuples hold
   `<contributor>\t<key>\t<pane|session>\t<origin>\t<level>\t<message>`. Health and
   problem use a private composite collection member derived from contributor and key.
@@ -677,79 +693,29 @@ condition includes a diagnostic message. Messages are opaque user-facing payload
 Airline validates framing, stores and shows the text, but assigns it no meaning.
 Reporters and classifier/filter/probe implementations own the diagnostic content.
 
-### Contributor identity contract
+### Signal lifecycle boundary
 
-Airline does not register contributor names or attempt to prove which software owns
-one. Health and problem nevertheless retain contributor and claim key as separate
-identity fields, so independently developed contributors may safely choose the same
-claim key. Contributor names are stable software identities; claim keys are stable
-conditions or capabilities and may include an instance component for concurrent
-reporters. Severity and messages never participate in identity.
+Signal meaning, identity, and state transitions are defined in
+[Signal lifecycles](docs/lifecycle-signals.md). This document retains only the
+architectural consequences: status is keyed by pane within a window, health is keyed by
+contributor and claim within a window, and problem is keyed by contributor and claim
+globally while retaining pane or session origins.
 
-Airline-owned configuration reports use contributor `airline` and the stable claim
-keys `airline-layout` and `airline-palette`. Layout and palette selection APIs do not
-gain contributor identity; only their diagnostic reports use the signal contract.
-Runner classifiers, filters, and probes report using kind-and-element contributor
-identities so extensions with the same claim key cannot overwrite one another.
-
-A contributor mutates and recovers only its own claims. Airline cannot detect a
-caller impersonating another contributor, so ownership remains a behavioral contract.
-Status does not gain a separate contributor field: its key is an ownership token
-within one window and the pane contains the explanation. Health identity is
-contributor plus claim key within a window. Problem identity is contributor plus
-claim key globally; claim records separately retain pane or session origins.
-Multiple origins of one contributor capability therefore aggregate, while the same
-claim key from different contributors remains separate.
-
-Failure to provide an advertised contributor capability belongs in problem.
-Successfully observing an unhealthy domain result belongs in health, and attention
-whose details are already visible in the pane belongs in status. These semantic
-rules are contractual rather than inferred from key spelling.
-
-The three signal types use one orchestration path: resolve the native owner, enter
-its transaction, apply a lifecycle callback, reduce/project the collection, and
-redraw only when presentation changed. Their lifecycle policies differ:
-
-- Status is window-scoped. Keyed `clear` removes one entry. Keyless `clear` removes
-  every transient entry in the window, which lets the focus hook use
-  the same lifecycle operation without exposing a separate cleanup verb.
-- Health is window-scoped and persistent until reporter recovery or explicit
-  `clear`; both operations remove the claim.
-- Problem is server-global. `clear` has the same user meaning—hide the problem from
-  normal `show`—but records `cleared` in its ledger rather than deleting history.
-
-A problem ledger entry is `active` while one or more claims remain, `closed` when
-its final origin is gone, and `cleared` after user acknowledgement. `problem set`
-adds or updates one origin claim. It reopens `closed`, but never un-clears
-`cleared`. `problem close` removes matching origin claims, normally from tmux's
-pane and session lifecycle hooks. `problem show` lists only active entries;
-`problem show --all` includes closed and cleared history plus active origins.
-Reporter recovery (`set ... ok`) removes that reporter's claim and deletes the
-ledger when the last claim resolves. `problem resolve` explicitly removes all
-claims and the ledger entry. This delete-on-resolution rule is distinct from close:
-closed history records that the origins disappeared without demonstrating
-that the capability recovered.
-
-Problem is the common capability-failure channel. Every integration and airline
-internal concern that cannot work as promised reports a problem at the appropriate
-level and clears it after recovery. Problems describe the reporting component's
-capability, not the domain outcome it observes; a failed test, unhealthy server, or
-other expected result belongs to status or health instead.
-
-Configuration uses the same rule. An invalid or failed layout records the
-`airline-layout` problem, retains the last committed layout state, and clears that
-problem after a successful `layout use` or `layout load`. Palette failures are owned
-by palette selection and manual configuration application; unrelated layout or
-adapter success does not clear them. Segments have no independent problem: omission
-and an empty value are valid, while structural declaration errors belong to the
-layout that made them. Internal problem changes use the same redraw-gated path as the
-public problem API.
+All three signals use one orchestration path: resolve the native owner, enter its
+transaction, apply domain lifecycle policy, reduce/project the collection, and
+redraw only when presentation changed. The common path does not make their lifecycle
+policies interchangeable.
 
 Dynamic collection operations run in owner-scoped transactions: status and health
 serialize by `(window, namespace)`, while problems serialize by the single
 `(global, server, problem)` owner. The registry, member tuple, reduction, and
 projected badge therefore form one logical mutation even when background
 evaluations overlap.
+Status revision changes are staged in the same window transaction as the pane's
+collection tuple. Setting `result` installs Airline's observation hook; contributors
+do not handle its tokens. The hook invokes the private `_observed-result` process
+entry point with `(pane, revision)`, which deletes only an exact current result and
+prevents delayed focus cleanup from clearing newer pane state.
 `lib/tmux.sh` owns acquisition, an atomic owner-scoped marker, cleanup, stale-owner
 detection, and recovery. Transaction callbacks run in a subshell so transaction-local
 signal traps do not alter caller traps. `airline transaction show` exposes
@@ -759,9 +725,8 @@ circular dependency when the problem transaction itself is stuck. Identical prob
 sets and absent clears skip both storage writes and redraws. Widgets may report their
 current capability on every evaluation so stale semantic observations converge.
 
-Status uses `active < result < attention`: ongoing work, a result to inspect, and a
-request for input. These map to `active`, `ok`, and `alert`. Status and health are
-distinguished by position around the window name, so sharing palette roles is safe.
+Status and health are distinguished by position around the window name, so sharing
+palette roles is safe.
 
 ## Mechanical boundary
 
@@ -774,7 +739,7 @@ conventions:
   inventing an empty owner. Scalar domain accessors may express their fixed owner in
   names such as `prv_set_window`.
 - Getters write to stdout, predicates use exit status, and mutators are silent.
-- Session- and window-scoped functions take explicit targets. Callers resolve an
+- Session-, window-, and pane-scoped functions take explicit targets. Callers resolve an
   omitted target once and pass the resulting id downward.
 - `opt_*` handles native option mechanics; `pub_*` and `prv_*` add airline namespace
   policy; standalone wrappers cover redraw, session-targeted palette sourcing,
@@ -787,8 +752,8 @@ conventions:
 Owner-scoped transactions execute option work against a mutable in-memory
 workspace. After acquiring the lock, `tmux.sh` bulk-loads the global option tables
 and the transaction owner's session or window table. Additional native owners, such
-as the windows receiving one session's rendered styles, are loaded lazily on first
-access. Existing scalar accessors read and update that desired snapshot with
+as the panes holding status revisions or windows receiving one session's rendered
+styles, are loaded lazily on first access. Existing scalar accessors read and update that desired snapshot with
 read-your-writes behavior; presence is tracked separately so unset and explicitly
 empty remain distinct. At the end, the mechanical layer compares desired state with
 the baseline and submits the ordered final writes as one tmux command sequence.
@@ -850,8 +815,8 @@ The same boundary makes most tests cheap:
 | `runner/behavior.bats` | in-memory fake | runner element contracts and mechanics |
 | `runner/integration.bats` | real tmux subprocess | runner process and topology integration |
 | `layout/integration.bats` | real tmux subprocess | executable layout and primitive integration |
-| `signal/behavior.bats` | in-memory fake | status, health, problems, transients, and redraw gating |
-| `signal/integration.bats` | real tmux subprocess | signal targeting, projection, and transient hooks |
+| `signal/behavior.bats` | in-memory fake | status, health, problems, observation boundaries, and redraw gating |
+| `signal/integration.bats` | real tmux subprocess | signal targeting, projection, and observation hooks |
 | `session/behavior.bats` | in-memory fake | session initialization and active/suspended state |
 | `session/integration.bats` | real tmux subprocess | session integration requiring tmux semantics |
 | `transaction/behavior.bats` | function stubs | diagnostic validation and error translation |
@@ -890,7 +855,7 @@ replacement is one `render` function over the whole source of truth, reached thr
 ### Rendering collection storage coupled display to tuple shape
 
 Referencing a collection tuple directly from a tmux format made the display depend
-on the storage tuple's arity. Adding metadata such as the transient marker could
+on the storage tuple's arity. Adding metadata to a tuple could
 therefore change the value seen by the renderer. Collections now reduce into a
 separate scalar badge option, and render references only that stable projection.
 

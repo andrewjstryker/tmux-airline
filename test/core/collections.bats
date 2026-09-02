@@ -187,7 +187,7 @@ teardown() { :; }
 @test "reduce reads only the first tuple field" {
   load_collections
   win="$(current_window)"
-  # second field is a transient flag; ranking must ignore it
+  # Additional tuple fields are storage metadata; ranking must ignore them.
   coll_set window "$win" health cpu ok 1
   coll_set window "$win" health net warn
   run coll_reduce window "$win" health "ok warn fail"

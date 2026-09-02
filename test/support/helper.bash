@@ -86,6 +86,12 @@ _use_fake_readback() {
     [[ "${1:-}" == -t ]] && { win="$2"; shift 2; }
     opt_get_window "$win" "$name"
   }
+  popt() {
+    local name="$1"; shift
+    local pane="$_FAKE_PANE"
+    [[ "${1:-}" == -t ]] && { pane="$2"; shift 2; }
+    opt_get_pane "$pane" "$name"
+  }
   sopt() {
     local name="$1"; shift
     local session="$_FAKE_SESSION"
@@ -104,6 +110,12 @@ get_option() {
 wopt() {
   local name="$1"; shift
   $TMUX -L "$_bats_socket" show-options -wqv "$@" "$name"
+}
+
+# Read a pane option from the isolated server.
+popt() {
+  local name="$1"; shift
+  $TMUX -L "$_bats_socket" show-options -pqv "$@" "$name"
 }
 
 # Read a session option from the isolated server (current session unless a target

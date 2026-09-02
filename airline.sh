@@ -80,11 +80,13 @@ cmd_session () {
 
 cmd_status () {
   local verb="${1:-}"; shift || true
+  # Private process-boundary callback used by Airline's pane-focus hook.
+  [[ "$verb" != _observed-result ]] || { signal_status_observed_result "$@"; return; }
   # help:begin status
   case "$verb" in
-    set)   signal_status_set "$@" ;;   #| <status-key> <active|result|attention> [--transient] [-t <window>] — set app status
-    clear) signal_status_clear "$@" ;; #| [<status-key>] [-t <window>] — clear one status or consume transient statuses
-    show)  signal_status_show "$@" ;;  #| [<status-key>] [-t <window>] — show a window's app status
+    set)   signal_status_set "$@" ;;   #| <active|result|attention> [-t <pane-id>] — set a pane's workflow status
+    clear) signal_status_clear "$@" ;; #| [-t <pane-id>] — delete a pane status
+    show)  signal_status_show "$@" ;;  #| [-t <target>] — show a window's pane statuses and revisions
     *) command_die "unknown status command: $verb" ;;
   esac
   # help:end status
@@ -95,8 +97,9 @@ cmd_health () {
   # help:begin health
   case "$verb" in
     set)   signal_health_set "$@" ;;   #| [-t <window>] <contributor> <health-key> <ok|warn|fail> [<message>...] — set window health
-    clear) signal_health_clear "$@" ;; #| [-t <window>] <contributor> <health-key> — clear window health
-    show)  signal_health_show "$@" ;;  #| [-t <window>] [<contributor> [<health-key>]] — show a window's health
+    ack)   signal_health_ack "$@" ;;   #| [-t <window>] <contributor> <health-key> — acknowledge and hide the current health state
+    clear) signal_health_clear "$@" ;; #| [-t <window>] <contributor> <health-key> — delete one health claim
+    show)  signal_health_show "$@" ;;  #| [--all] [-t <window>] [<contributor> [<health-key>]] — show active or acknowledged window health
     *) command_die "unknown health command: $verb" ;;
   esac
   # help:end health
@@ -108,8 +111,9 @@ cmd_problem () {
   case "$verb" in
     set)     signal_problem_set "$@" ;;     #| [--pane <pane-id>] <contributor> <problem-key> <ok|warn|fail> [<message>...] — report or recover an origin claim
     close)   signal_problem_close "$@" ;;   #| [--pane <pane-id>|--session <session-id>] [<contributor> [<problem-key>]] — close an origin's claims
-    clear)   signal_problem_clear "$@" ;;   #| <contributor> <problem-key> — acknowledge and hide a global problem
-    resolve) signal_problem_resolve "$@" ;; #| <contributor> <problem-key> — delete a resolved problem and its claims
+    ack)     signal_problem_ack "$@" ;;     #| <contributor> <problem-key> — acknowledge and hide the current problem state
+    clear)   signal_problem_clear "$@" ;;   #| <contributor> <problem-key> — delete a problem, its history, and all origin claims
+    resolve) signal_problem_resolve "$@" ;; #| <contributor> <problem-key> — declare the capability restored globally and retain resolved history
     show)    signal_problem_show "$@" ;;    #| [--all] [<contributor> [<problem-key>]] — show active problems or the complete lifecycle ledger
     *) command_die "unknown problem command: $verb" ;;
   esac

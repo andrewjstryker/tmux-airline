@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 #
-# signal.sh — status, health, problems, and transient status consumption.
+# signal.sh — status, health, and problem lifecycle policy.
 #
-# Status is window-scoped display state: it is message-free and may be transient.
+# Status is pane-owned workflow state reduced at window scope; completed results are
+# deleted after observation.
 # Health is a persistent keyed window condition. Problems are a server-global
 # lifecycle ledger whose active claims retain their pane or session origin.
 #
 # Signal owns validation, transactional mutation, projection orchestration, redraw
-# gating, and the consume-on-view hook.
+# gating, and observation cleanup for completed status results.
 
 # shellcheck shell=bash
 
@@ -101,7 +102,7 @@ _signal_apply () {   # <window|global> <owner> <namespace> <lifecycle> [<arg>...
 _signal_health_store_unlocked () {   # <destination> <window> <contributor> <key> <level> <message>
   local -n destination="$1"
   local owner="$2" contributor="$3" key="$4" level="$5" message="$6"
-  local id tuple desired has_rc=0
+  local id tuple badge state previous_level desired has_rc=0
   destination=""
   id="$(_signal_claim_id "$contributor" "$key")"
 
@@ -113,20 +114,45 @@ _signal_health_store_unlocked () {   # <destination> <window> <contributor> <key
     if (( has_rc == 1 )) && [[ -z "$tuple" ]]; then return 0; fi
     coll_unregister window "$owner" health "$id" || return
   else
-    desired="$(printf '%s\t%s' "$level" "$message")"
+    state=active
+    if (( has_rc == 0 )); then
+      IFS=$'\t' read -r badge state previous_level _ <<< "$tuple"
+      [[ "$state" == acknowledged && "$previous_level" == "$level" ]] || state=active
+    fi
+    badge="$level"
+    [[ "$state" == acknowledged ]] && badge=none
+    desired="$(printf '%s\t%s\t%s\t%s' "$badge" "$state" "$level" "$message")"
     if (( has_rc == 0 )) && [[ "$tuple" == "$desired" ]]; then return 0; fi
-    coll_set window "$owner" health "$id" "$level" "$message" || return
+    coll_set window "$owner" health "$id" "$badge" "$state" "$level" "$message" || return
   fi
 
   destination=1
 }
 
-_signal_health_show_unlocked () {   # <window> [<contributor> [<key>]]
-  local owner="$1" contributor="${2:-}" key="${3:-}" id
-  local members member tuple level message member_contributor member_key
+_signal_health_ack_unlocked () {   # <destination> <window> <contributor> <key>
+  local -n destination="$1"
+  local owner="$2" contributor="$3" key="$4" id tuple badge state level message
+  destination=""
+  id="$(_signal_claim_id "$contributor" "$key")"
+  tuple="$(coll_get window "$owner" health "$id")" || return
+  [[ -n "$tuple" ]] || return 0
+  IFS=$'\t' read -r badge state level message <<< "$tuple"
+  [[ "$state" != acknowledged ]] || return 0
+  coll_set window "$owner" health "$id" none acknowledged "$level" "$message" || return
+  destination=1
+}
+
+_signal_health_show_unlocked () {   # <active-only|all> <window> [<contributor> [<key>]]
+  local visibility="$1" owner="$2" contributor="${3:-}" key="${4:-}" id
+  local members member tuple badge state level message member_contributor member_key
   if [[ -n "$key" ]]; then
     id="$(_signal_claim_id "$contributor" "$key")"
-    coll_get window "$owner" health "$id"
+    tuple="$(coll_get window "$owner" health "$id")" || return
+    [[ -n "$tuple" ]] || return 0
+    IFS=$'\t' read -r badge state level message <<< "$tuple"
+    [[ "$visibility" == all || "$state" == active ]] || return 0
+    if [[ "$visibility" == all ]]; then printf '%s\t%s\t%s\n' "$state" "$level" "$message"
+    else printf '%s\t%s\n' "$level" "$message"; fi
     return
   fi
   members="$(coll_members window "$owner" health)" || return
@@ -134,141 +160,190 @@ _signal_health_show_unlocked () {   # <window> [<contributor> [<key>]]
     member_contributor="${member%%:*}"; member_key="${member#*:}"
     [[ -z "$contributor" || "$member_contributor" == "$contributor" ]] || continue
     tuple="$(coll_get window "$owner" health "$member")" || return
-    IFS=$'\t' read -r level message <<< "$tuple"
-    command_show_row "$member_contributor" "$member_key  $level${message:+  $message}"
+    IFS=$'\t' read -r badge state level message <<< "$tuple"
+    [[ "$visibility" == all || "$state" == active ]] || continue
+    if [[ "$visibility" == all ]]; then
+      command_show_row "$member_contributor" "$member_key  $state  $level${message:+  $message}"
+    else
+      command_show_row "$member_contributor" "$member_key  $level${message:+  $message}"
+    fi
   done
 }
 
 #-----------------------------------------------------------------------------#
-# Status — window display state, optionally consumed after viewing
+# Status — one workflow phase per pane, reduced at window scope
 #-----------------------------------------------------------------------------#
 
-_signal_ensure_transient_hook () {
+_signal_ensure_result_hook () {
+  local revision_option
+  revision_option="$(prv_name status-revision)"
   opt_set_global focus-events on || return
   hook_set "pane-focus-out[90]" \
-    "run-shell -b \"'$AIRLINE_DIR/airline.sh' status clear -t #{window_id}\""
+    "run-shell -b \"revision='#{${revision_option}}'; if [ -n \\\"\$revision\\\" ]; then '$AIRLINE_DIR/airline.sh' status _observed-result '#{hook_pane}' \\\"\$revision\\\"; fi\""
 }
 
-_signal_status_set_unlocked () {   # <destination> <window> <key> <value> <transient>
+_signal_status_next_revision () {   # <destination> <pane>
   local -n destination="$1"
-  local win="$2" key="$3" value="$4" transient="$5" tuple desired has_rc=0
+  local pane="$2" current changed=""
+  current="$(prv_get_pane "$pane" status-revision)" || return
+  [[ -z "$current" || "$current" =~ ^[0-9]+$ ]] || command_die "status: invalid private revision"
+  destination="$(( ${current:-0} + 1 ))"
+  prv_setif_pane changed "$pane" status-revision "$destination"
+}
+
+_signal_status_set_unlocked () {   # <destination> <window> <pane> <pane-member> <value>
+  local -n destination="$1"
+  local win="$2" pane="$3" member="$4" value="$5"
+  local tuple current revision has_rc=0
   destination=""
-  tuple="$(coll_get window "$win" status "$key")" || return
-  coll_has window "$win" status "$key" || has_rc=$?
+  tuple="$(coll_get window "$win" status "$member")" || return
+  coll_has window "$win" status "$member" || has_rc=$?
   (( has_rc <= 1 )) || return "$has_rc"
-  desired="$(printf '%s\t%s' "$value" "$transient")"
-  if (( has_rc == 0 )) && [[ "$tuple" == "$desired" ]]; then return 0; fi
-  coll_set window "$win" status "$key" "$value" "$transient" || return
+  if (( has_rc == 0 )); then
+    IFS=$'\t' read -r current revision <<< "$tuple"
+    [[ "$revision" =~ ^[0-9]+$ ]] || command_die "status: invalid private revision"
+    [[ "$current" != "$value" ]] || return 0
+  fi
+  _signal_status_next_revision revision "$pane" || return
+  coll_set window "$win" status "$member" "$value" "$revision" || return
   destination=1
 }
 
-signal_status_set () {   # <key> <value> [--transient] [-t <window>]
-  local key value transient="" win="" seen_transient="" seen_target=""
+_signal_resolve_status_pane () {   # <pane-destination> <window-destination> <command> [target]
+  local -n destination_pane="$1" destination_window="$2"
+  local command="$3" target="${4:-}" resolved_pane resolved_window
+  if [[ -z "$target" ]]; then
+    resolved_pane="$(current_pane)" || command_die "$command: cannot resolve current pane"
+  else
+    resolved_pane="$(resolve_pane "$target")" || command_die "$command: cannot resolve pane '$target'"
+  fi
+  [[ -n "$resolved_pane" ]] || command_die "$command: cannot resolve pane '${target:-current}'"
+  resolved_window="$(resolve_window "$resolved_pane")" || \
+    command_die "$command: cannot resolve window for pane '$resolved_pane'"
+  [[ -n "$resolved_window" ]] || \
+    command_die "$command: cannot resolve window for pane '$resolved_pane'"
+  # shellcheck disable=SC2034 # assignment is through a caller-selected nameref
+  destination_pane="$resolved_pane"
+  # shellcheck disable=SC2034 # assignment is through a caller-selected nameref
+  destination_window="$resolved_window"
+}
+
+signal_status_set () {   # <active|result|attention> [-t <pane>]
+  local value="" target="" pane win member seen_target=""
   local -a positionals=()
   while (( $# )); do
     case "$1" in
-      --transient)
-        [[ -z "$seen_transient" ]] || command_die "status set: duplicate --transient"
-        transient=1; seen_transient=1; shift
-        ;;
       -t)
-        [[ $# -ge 2 && -n "$2" ]] || command_die "status set: -t requires <window>"
+        [[ $# -ge 2 && -n "$2" && "$2" != -t ]] || \
+          command_die "status set: -t requires <target>"
         [[ -z "$seen_target" ]] || command_die "status set: duplicate -t"
-        [[ "$2" != -t && "$2" != --transient ]] || \
-          command_die "status set: -t requires <window>"
-        win="$2"; seen_target=1; shift 2
-        ;;
+        target="$2"; seen_target=1; shift 2 ;;
       -*) command_die "status set: unknown option '$1'" ;;
       *) positionals+=("$1"); shift ;;
     esac
   done
-  (( ${#positionals[@]} == 2 )) || command_die "status set: need exactly <key> <value>"
-  key="${positionals[0]}"; value="${positionals[1]}"
-  _signal_validate_key "status set" "$key"
+  (( ${#positionals[@]} == 1 )) || command_die "status set: need exactly <value>"
+  value="${positionals[0]}"
   _signal_status_valid "$value" || command_die "status set: invalid value '$value'"
-  _signal_resolve_window win "status set" "$win"
+  _signal_resolve_status_pane pane win "status set" "$target"
+  member="${pane#%}"
   _signal_apply window "$win" status _signal_status_set_unlocked \
-    "$win" "$key" "$value" "$transient" || return
-  [[ -z "$transient" ]] || _signal_ensure_transient_hook
+    "$win" "$pane" "$member" "$value" || return
+  [[ "$value" != result ]] || _signal_ensure_result_hook
 }
 
-_signal_status_clear_unlocked () {   # <destination> <window> [<key>]
+_signal_status_clear_unlocked () {   # <destination> <window> <pane> <pane-member>
   local -n destination="$1"
-  local win="$2" key="${3:-}" tuple transient members has_rc=0
+  local win="$2" pane="$3" member="$4" tuple revision has_rc=0
   destination=""
-  if [[ -n "$key" ]]; then
-    tuple="$(coll_get window "$win" status "$key")" || return
-    coll_has window "$win" status "$key" || has_rc=$?
-    (( has_rc <= 1 )) || return "$has_rc"
-    if (( has_rc == 1 )) && [[ -z "$tuple" ]]; then return 0; fi
-    coll_unregister window "$win" status "$key" || return
-    destination=1
-    return 0
-  fi
-
-  # A keyless clear is the lifecycle operation used by the focus hook: remove
-  # every transient status entry, but preserve sticky entries.
-  members="$(coll_members window "$win" status)" || return
-  for key in $members; do
-    tuple="$(coll_get window "$win" status "$key")" || return
-    transient="${tuple#*$'\t'}"
-    [[ "$transient" == 1 ]] || continue
-    coll_unregister window "$win" status "$key" || return
-    destination=1
-  done
+  tuple="$(coll_get window "$win" status "$member")" || return
+  coll_has window "$win" status "$member" || has_rc=$?
+  (( has_rc <= 1 )) || return "$has_rc"
+  if (( has_rc == 1 )) && [[ -z "$tuple" ]]; then return 0; fi
+  _signal_status_next_revision revision "$pane" || return
+  coll_unregister window "$win" status "$member" || return
+  destination=1
 }
 
-_signal_parse_status_key_target () {   # <key-destination> <target-destination> <command> [argv...]
-  local -n destination_key="$1" destination_target="$2"
-  local command="$3" seen_target=""; shift 3
+_signal_status_clear_observed_unlocked () {   # <destination> <window> <pane> <pane-member> <revision>
+  local -n destination="$1"
+  local win="$2" pane="$3" member="$4" observed_revision="$5"
+  # shellcheck disable=SC2034 # receives the increment through a nameref; clear needs only the side effect
+  local tuple value revision next_revision has_rc=0
+  destination=""
+  tuple="$(coll_get window "$win" status "$member")" || return
+  coll_has window "$win" status "$member" || has_rc=$?
+  (( has_rc <= 1 )) || return "$has_rc"
+  (( has_rc == 0 )) || return 0
+  IFS=$'\t' read -r value revision <<< "$tuple"
+  [[ "$value" == result && "$revision" =~ ^[0-9]+$ ]] || return 0
+  [[ "$revision" == "$observed_revision" ]] || return 0
+  _signal_status_next_revision next_revision "$pane" || return
+  coll_unregister window "$win" status "$member" || return
+  destination=1
+}
+
+signal_status_clear () {   # [-t <pane>]
+  local target="" pane win member seen_target=""
   local -a positionals=()
-  destination_key=""; destination_target=""
   while (( $# )); do
     case "$1" in
       -t)
-        [[ $# -ge 2 && -n "$2" ]] || command_die "$command: -t requires <window>"
-        [[ -z "$seen_target" ]] || command_die "$command: duplicate -t"
-        [[ "$2" != -t && "$2" != --transient ]] || \
-          command_die "$command: -t requires <window>"
-        # shellcheck disable=SC2034 # assignment is through the caller-selected nameref
-        destination_target="$2"; seen_target=1; shift 2
-        ;;
-      -*) command_die "$command: unknown option '$1'" ;;
+        [[ $# -ge 2 && -n "$2" && "$2" != -t ]] || \
+          command_die "status clear: -t requires <target>"
+        [[ -z "$seen_target" ]] || command_die "status clear: duplicate -t"
+        target="$2"; seen_target=1; shift 2 ;;
+      -*) command_die "status clear: unknown option '$1'" ;;
       *) positionals+=("$1"); shift ;;
     esac
   done
-  (( ${#positionals[@]} <= 1 )) || command_die "$command: too many arguments"
-  destination_key="${positionals[0]:-}"
-  (( ${#positionals[@]} == 0 )) || _signal_validate_key "$command" "$destination_key"
+  (( ${#positionals[@]} == 0 )) || command_die "status clear: takes no arguments"
+  _signal_resolve_status_pane pane win "status clear" "$target"
+  member="${pane#%}"
+  _signal_apply window "$win" status _signal_status_clear_unlocked "$win" "$pane" "$member"
 }
 
-signal_status_clear () {   # [<key>] [-t <window>]
-  local key="" win=""
-  _signal_parse_status_key_target key win "status clear" "$@"
-  _signal_resolve_window win "status clear" "$win"
-  _signal_apply window "$win" status _signal_status_clear_unlocked "$win" "$key"
+# Private hook callback. Its pane/revision tuple is Airline-owned state rather than
+# contributor API, so both required components are positional and the command is
+# intentionally omitted from public help and completions.
+signal_status_observed_result () {   # <pane> <revision>
+  (( $# == 2 )) || command_die "status _observed-result: need <pane> <revision>"
+  local pane win member revision="$2"
+  [[ "$revision" =~ ^[0-9]+$ ]] || \
+    command_die "status _observed-result: invalid revision '$revision'"
+  _signal_resolve_status_pane pane win "status _observed-result" "$1"
+  member="${pane#%}"
+  _signal_apply window "$win" status _signal_status_clear_observed_unlocked \
+    "$win" "$pane" "$member" "$revision"
 }
 
-_signal_status_show_unlocked () {   # <window> [<key>]
-  local win="$1" key="${2:-}" tuple level transient member members
-  if [[ -n "$key" ]]; then
-    tuple="$(coll_get window "$win" status "$key")" || return
-    printf '%s\n' "${tuple%%$'\t'*}"
-    return 0
-  fi
+_signal_status_show_unlocked () {   # <window>
+  local win="$1" tuple value revision member members
   members="$(coll_members window "$win" status)" || return
   for member in $members; do
     tuple="$(coll_get window "$win" status "$member")" || return
-    IFS=$'\t' read -r level transient <<< "$tuple"
-    command_show_row "$member" "$level${transient:+  (transient)}"
+    IFS=$'\t' read -r value revision <<< "$tuple"
+    command_show_row "%$member" "$value  revision $revision"
   done
 }
 
-signal_status_show () {   # [<key>] [-t <window>]
-  local key="" win=""
-  _signal_parse_status_key_target key win "status show" "$@"
-  _signal_resolve_window win "status show" "$win"
-  _signal_with_transaction window "$win" status _signal_status_show_unlocked "$win" "$key"
+signal_status_show () {   # [-t <pane|window>]
+  local target="" win seen_target=""
+  local -a positionals=()
+  while (( $# )); do
+    case "$1" in
+      -t)
+        [[ $# -ge 2 && -n "$2" && "$2" != -t ]] || \
+          command_die "status show: -t requires <target>"
+        [[ -z "$seen_target" ]] || command_die "status show: duplicate -t"
+        target="$2"; seen_target=1; shift 2 ;;
+      -*) command_die "status show: unknown option '$1'" ;;
+      *) positionals+=("$1"); shift ;;
+    esac
+  done
+  (( ${#positionals[@]} == 0 )) || command_die "status show: takes no arguments"
+  _signal_resolve_window win "status show" "$target"
+  _signal_with_transaction window "$win" status _signal_status_show_unlocked "$win"
 }
 
 #-----------------------------------------------------------------------------#
@@ -311,36 +386,61 @@ signal_health_clear () {   # [-t <window>] <contributor> <key>
     "$win" "$contributor" "$key" ok ""
 }
 
-signal_health_show () {   # [-t <window>] [<contributor> [<key>]]
-  local win="" contributor="" key=""
+signal_health_ack () {   # [-t <window>] <contributor> <key>
+  local win="" contributor key
   if [[ "${1:-}" == -t ]]; then
-    if (( $# < 2 )) || [[ -z "$2" ]]; then command_die "health show: -t requires <window>"; fi
+    if (( $# < 4 )) || [[ -z "$2" ]]; then command_die "health ack: -t requires <window>"; fi
     win="$2"; shift 2
   elif [[ "${1:-}" == -* ]]; then
-    command_die "health show: unknown option '$1'"
+    command_die "health ack: unknown option '$1'"
   fi
-  (( $# <= 2 )) || command_die "health show: too many arguments"
-  contributor="${1:-}"; key="${2:-}"
-  if (( $# > 0 )); then _signal_validate_contributor "health show" "$contributor"; fi
-  if (( $# > 1 )); then _signal_validate_key "health show" "$key"; fi
+  (( $# == 2 )) || command_die "health ack: need exactly <contributor> <key>"
+  contributor="$1"; key="$2"
+  _signal_validate_contributor "health ack" "$contributor"
+  _signal_validate_key "health ack" "$key"
+  _signal_resolve_window win "health ack" "$win"
+  _signal_apply window "$win" health _signal_health_ack_unlocked \
+    "$win" "$contributor" "$key"
+}
+
+signal_health_show () {   # [--all] [-t <window>] [<contributor> [<key>]]
+  local visibility=active-only win="" contributor="" key="" seen_all="" seen_target=""
+  local -a positionals=()
+  while (( $# )); do
+    case "$1" in
+      --all)
+        [[ -z "$seen_all" ]] || command_die "health show: duplicate --all"
+        visibility=all; seen_all=1; shift ;;
+      -t)
+        [[ $# -ge 2 && -n "$2" ]] || command_die "health show: -t requires <window>"
+        [[ -z "$seen_target" ]] || command_die "health show: duplicate -t"
+        win="$2"; seen_target=1; shift 2 ;;
+      -*) command_die "health show: unknown option '$1'" ;;
+      *) positionals+=("$1"); shift ;;
+    esac
+  done
+  (( ${#positionals[@]} <= 2 )) || command_die "health show: too many arguments"
+  contributor="${positionals[0]:-}"; key="${positionals[1]:-}"
+  (( ${#positionals[@]} == 0 )) || _signal_validate_contributor "health show" "$contributor"
+  (( ${#positionals[@]} < 2 )) || _signal_validate_key "health show" "$key"
   _signal_resolve_window win "health show" "$win"
   _signal_with_transaction window "$win" health _signal_health_show_unlocked \
-    "$win" "$contributor" "$key"
+    "$visibility" "$win" "$contributor" "$key"
 }
 
 #-----------------------------------------------------------------------------#
 # Global problem lifecycle ledger
 #-----------------------------------------------------------------------------#
 # `problem` members are logical ledger entries:
-#   <badge-level|none>\t<active|closed|cleared>\t<last-level>\t<last-message>
+#   <badge-level|none>\t<active|acknowledged|closed|resolved>\t<last-level>\t<last-message>
 # `problem-claim` members are active assertions:
 #   <contributor>\t<problem-key>\t<pane|session>\t<origin-id>\t<level>\t<message>
 # Closed claims are removed; a closed ledger entry retains the last diagnostic.
-# Resolution removes both the claims and ledger entry.
+# Resolution removes active claims and retains the recovered ledger entry.
 
 _signal_problem_claim_id () { printf '%s:%s:%s:%s' "$1" "$2" "$3" "$4"; }
 
-_signal_problem_ledger_set () {   # <destination> <key> <active|closed|cleared> <level> <message>
+_signal_problem_ledger_set () {   # <destination> <key> <active|acknowledged|closed|resolved> <level> <message>
   local -n destination="$1"
   local key="$2" state="$3" level="$4" message="$5" badge=none desired current
   destination=""
@@ -374,19 +474,18 @@ _signal_problem_recompute () {   # <destination> <contributor> <key> <close|reso
     state=active
     if [[ -n "$ledger" ]]; then
       IFS=$'\t' read -r badge state last_level last_message <<< "$ledger"
-      [[ "$state" == cleared ]] || state=active
+      [[ "$state" == acknowledged && "$last_level" == "$max" ]] || state=active
     fi
     _signal_problem_ledger_set ledger_changed "$id" "$state" "$max" "$max_message" || return
     destination="$ledger_changed"
   elif [[ "$empty" == resolve-when-empty ]]; then
-    if coll_has global server problem "$id"; then
-      coll_unregister global server problem "$id" || return
-      destination=1
-    fi
+    [[ -n "$ledger" ]] || return 0
+    IFS=$'\t' read -r badge state last_level last_message <<< "$ledger"
+    _signal_problem_ledger_set ledger_changed "$id" resolved "$last_level" "$last_message" || return
+    destination="$ledger_changed"
   elif [[ -n "$ledger" ]]; then
     IFS=$'\t' read -r badge state last_level last_message <<< "$ledger"
-    [[ "$state" == cleared ]] || state=closed
-    _signal_problem_ledger_set ledger_changed "$id" "$state" "$last_level" "$last_message" || return
+    _signal_problem_ledger_set ledger_changed "$id" closed "$last_level" "$last_message" || return
     destination="$ledger_changed"
   fi
 }
@@ -441,7 +540,7 @@ _signal_problem_close_unlocked () {   # <destination> <pane|session> <origin> [<
   destination=1
 }
 
-_signal_problem_clear_unlocked () {   # <destination> <contributor> <key>
+_signal_problem_ack_unlocked () {   # <destination> <contributor> <key>
   local -n destination="$1"
   local contributor="$2" key="$3" id tuple badge state level message ledger_changed=""
   destination=""
@@ -449,15 +548,15 @@ _signal_problem_clear_unlocked () {   # <destination> <contributor> <key>
   tuple="$(coll_get global server problem "$id")" || return
   [[ -n "$tuple" ]] || return 0
   IFS=$'\t' read -r badge state level message <<< "$tuple"
-  [[ "$state" != cleared ]] || return 0
-  _signal_problem_ledger_set ledger_changed "$id" cleared "$level" "$message" || return
+  [[ "$state" == active ]] || return 0
+  _signal_problem_ledger_set ledger_changed "$id" acknowledged "$level" "$message" || return
   destination="$ledger_changed"
 }
 
 _signal_problem_resolve_unlocked () {   # <destination> <contributor> <key>
   local -n destination="$1"
   local contributor="$2" key="$3" id members member tuple claim_contributor claim_key
-  local kind origin level message changed=""
+  local kind origin badge state level message changed="" ledger_changed=""
   destination=""
   id="$(_signal_claim_id "$contributor" "$key")"
   members="$(coll_members global server problem-claim)" || return
@@ -468,12 +567,31 @@ _signal_problem_resolve_unlocked () {   # <destination> <contributor> <key>
     coll_unregister global server problem-claim "$member" || return
     changed=1
   done
+  tuple="$(coll_get global server problem "$id")" || return
+  [[ -n "$tuple" ]] || { [[ -z "$changed" ]] || destination=1; return 0; }
+  IFS=$'\t' read -r badge state level message <<< "$tuple"
+  _signal_problem_ledger_set ledger_changed "$id" resolved "$level" "$message" || return
+  [[ -z "$changed$ledger_changed" ]] || destination=1
+}
+
+_signal_problem_clear_unlocked () {   # <destination> <contributor> <key>
+  local -n destination="$1"
+  local contributor="$2" key="$3" id members member tuple claim_contributor claim_key changed=""
+  destination=""
+  id="$(_signal_claim_id "$contributor" "$key")"
+  members="$(coll_members global server problem-claim)" || return
+  for member in $members; do
+    tuple="$(coll_get global server problem-claim "$member")" || return
+    IFS=$'\t' read -r claim_contributor claim_key _ <<< "$tuple"
+    [[ "$claim_contributor" == "$contributor" && "$claim_key" == "$key" ]] || continue
+    coll_unregister global server problem-claim "$member" || return
+    changed=1
+  done
   if coll_has global server problem "$id"; then
     coll_unregister global server problem "$id" || return
     changed=1
   fi
-  [[ -n "$changed" ]] || return 0
-  destination=1
+  [[ -z "$changed" ]] || destination=1
 }
 
 _signal_problem_show_unlocked () {   # <active-only|all> [<contributor> [<key>]]
@@ -557,6 +675,13 @@ signal_problem_clear () {   # <contributor> <key>
   _signal_validate_contributor "problem clear" "$1"
   _signal_validate_key "problem clear" "$2"
   _signal_apply global server problem _signal_problem_clear_unlocked "$1" "$2"
+}
+
+signal_problem_ack () {   # <contributor> <key>
+  (( $# == 2 )) || command_die "problem ack: need exactly <contributor> <key>"
+  _signal_validate_contributor "problem ack" "$1"
+  _signal_validate_key "problem ack" "$2"
+  _signal_apply global server problem _signal_problem_ack_unlocked "$1" "$2"
 }
 
 signal_problem_resolve () {   # <contributor> <key>

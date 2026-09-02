@@ -106,6 +106,37 @@ load ../support/helper
   assert_equal "$changed" ""
 }
 
+# --- scalar options: pane ---------------------------------------------------
+
+@test "opt_setif_pane / opt_get_pane round-trip at pane scope" {
+  load_tmux
+  pane="$(current_pane)"
+  changed=""; opt_setif_pane changed "$pane" @airline-status-revision 7
+  assert_equal "$changed" 1
+  run opt_get_pane "$pane" @airline-status-revision
+  assert_output 7
+}
+
+@test "pane and window scopes are independent" {
+  load_tmux
+  pane="$(current_pane)"; win="$(current_window)"
+  opt_set_window "$win" @airline-status-revision 3
+  changed=""; opt_setif_pane changed "$pane" @airline-status-revision 7
+  run opt_get_window "$win" @airline-status-revision
+  assert_output 3
+  run opt_get_pane "$pane" @airline-status-revision
+  assert_output 7
+}
+
+@test "opt_setif_pane gates on change" {
+  load_tmux
+  pane="$(current_pane)"
+  changed=""; opt_setif_pane changed "$pane" @airline-status-revision 7
+  assert_equal "$changed" 1
+  changed=stale; opt_setif_pane changed "$pane" @airline-status-revision 7
+  assert_equal "$changed" ""
+}
+
 # --- standalone verbs -------------------------------------------------------
 
 @test "current_window returns a window id" {

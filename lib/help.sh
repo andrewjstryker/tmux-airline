@@ -88,7 +88,7 @@ _help_usage () {
     done
   done
   printf '\n  use loads a bare name from a registered dir; register blesses a location.\n'
-  printf '  --transient clears status when you focus away from its window.\n'
+  printf '  Observed status results clear when you focus away from their pane.\n'
   printf '  Health/problem reporters supply separate contributor and claim identifiers.\n'
 }
 

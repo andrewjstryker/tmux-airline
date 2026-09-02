@@ -19,9 +19,9 @@ setup() {
   for fn in \
     session_init session_apply session_show \
     session_suspend session_resume session_toggle \
-    signal_status_set signal_status_clear signal_status_show \
-    signal_health_set signal_health_clear signal_health_show \
-    signal_problem_set signal_problem_close signal_problem_clear signal_problem_resolve signal_problem_show \
+    signal_status_set signal_status_clear signal_status_show signal_status_observed_result \
+    signal_health_set signal_health_ack signal_health_clear signal_health_show \
+    signal_problem_set signal_problem_close signal_problem_ack signal_problem_clear signal_problem_resolve signal_problem_show \
     transaction_show transaction_clear_stale \
     layout_palette_show layout_palette_list layout_palette_use layout_palette_register \
     layout_segment_show \
@@ -51,11 +51,14 @@ session show state|session_show <state>
 session suspend|session_suspend
 session resume|session_resume
 session toggle|session_toggle
-status set build active --transient|signal_status_set <build> <active> <--transient>
-status clear -t @3|signal_status_clear <-t> <@3>
+status set result -t %3|signal_status_set <result> <-t> <%3>
+status clear -t %3|signal_status_clear <-t> <%3>
+status _observed-result %3 7|signal_status_observed_result <%3> <7>
+health ack -t @2 sensors cpu|signal_health_ack <-t> <@2> <sensors> <cpu>
 health clear -t @2 sensors cpu|signal_health_clear <-t> <@2> <sensors> <cpu>
 problem set --pane %2 sensors cpu warn sensors-missing|signal_problem_set <--pane> <%2> <sensors> <cpu> <warn> <sensors-missing>
 problem close --pane %2 sensors cpu|signal_problem_close <--pane> <%2> <sensors> <cpu>
+problem ack sensors cpu|signal_problem_ack <sensors> <cpu>
 problem clear sensors cpu|signal_problem_clear <sensors> <cpu>
 problem resolve sensors cpu|signal_problem_resolve <sensors> <cpu>
 transaction clear global server problem|transaction_clear_stale <global> <server> <problem>
@@ -81,34 +84,14 @@ CASES
   assert_output --partial "version: takes no arguments"
 }
 
-@test "removed state and callback command vocabularies are rejected" {
-  run main state show
+@test "unknown commands and verbs are rejected" {
+  run main unknown
   assert_failure
-  assert_output --partial "unknown command: state"
+  assert_output --partial "unknown command: unknown"
 
-  run main _init-session '$2'
+  run main status unknown
   assert_failure
-  assert_output --partial "unknown command: _init-session"
-
-  run main _unfocus @3
-  assert_failure
-  assert_output --partial "unknown command: _unfocus"
-
-  run main _run -- true
-  assert_failure
-  assert_output --partial "unknown command: _run"
-
-  run main _watch --probe http example.test
-  assert_failure
-  assert_output --partial "unknown command: _watch"
-
-  run main lock show
-  assert_failure
-  assert_output --partial "unknown command: lock"
-
-  run main signal clear-transient -t @3
-  assert_failure
-  assert_output --partial "unknown command: signal"
+  assert_output --partial "unknown status command: unknown"
 }
 
 @test "help is generated from the grammar without tmux" {
@@ -118,7 +101,10 @@ CASES
   assert_output --partial "runner"
   assert_output --partial "version"
   assert_output --partial "list"
-  assert_output --partial "--transient"
+  assert_output --partial "Observed status results clear"
+  refute_output --partial "_observed-result"
+  refute_output --partial "--print-revision"
+  refute_output --partial "--observed-result"
   refute_output --partial "list        — list"
 
   local session_line layout_line runner_line signals_line diagnostics_line
