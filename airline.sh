@@ -67,12 +67,12 @@ cmd_session () {
   local verb="${1:-}"; shift || true
   # help:begin session
   case "$verb" in
-    init)  session_init  "$@" ;; #| [-t <session>] — seed defaults, register paths, publish the CLI handle, and render
+    init)  session_init  "$@" ;; #| [-t <session-target>] — seed defaults, register paths, publish the CLI handle, and render
     apply) session_apply "$@" ;; #| — commit global option edits and render the session
     show)  session_show  "$@" ;; #| [state] — print the active configuration or raw session state
-    suspend) session_suspend ;; #| — mute the palette + trap the prefix (session dormant)
-    resume)  session_resume ;;  #| — restore vibrant colours + release the prefix
-    toggle)  session_toggle ;;  #| — flip active/suspended
+    suspend) session_suspend "$@" ;; #| — mute the palette + trap the prefix (session dormant)
+    resume)  session_resume "$@" ;;  #| — restore vibrant colours + release the prefix
+    toggle)  session_toggle "$@" ;;  #| — flip active/suspended
     *) command_die "unknown session command: $verb" ;;
   esac
   # help:end session
@@ -84,9 +84,9 @@ cmd_status () {
   [[ "$verb" != _observed-result ]] || { signal_status_observed_result "$@"; return; }
   # help:begin status
   case "$verb" in
-    set)   signal_status_set "$@" ;;   #| <active|result|attention> [-t <pane-id>] — set a pane's workflow status
-    clear) signal_status_clear "$@" ;; #| [-t <pane-id>] — delete a pane status
-    show)  signal_status_show "$@" ;;  #| [-t <target>] — show a window's pane statuses and revisions
+    set)   signal_status_set "$@" ;;   #| [-t <pane-target>] <active|result|attention> — set a pane's workflow status
+    clear) signal_status_clear "$@" ;; #| [-t <pane-target>] — delete a pane status
+    show)  signal_status_show "$@" ;;  #| [-t <window-target>] — show a window's pane statuses and revisions
     *) command_die "unknown status command: $verb" ;;
   esac
   # help:end status
@@ -96,10 +96,10 @@ cmd_health () {
   local verb="${1:-}"; shift || true
   # help:begin health
   case "$verb" in
-    set)   signal_health_set "$@" ;;   #| [-t <window>] <contributor> <health-key> <ok|warn|fail> [<message>...] — set window health
-    ack)   signal_health_ack "$@" ;;   #| [-t <window>] <contributor> <health-key> — acknowledge and hide the current health state
-    clear) signal_health_clear "$@" ;; #| [-t <window>] <contributor> <health-key> — delete one health claim
-    show)  signal_health_show "$@" ;;  #| [--all] [-t <window>] [<contributor> [<health-key>]] — show active or acknowledged window health
+    set)   signal_health_set "$@" ;;   #| [-t <window-target>] <contributor> <health-key> <ok|warn|fail> [<message>...] — set window health
+    ack)   signal_health_ack "$@" ;;   #| [-t <window-target>] <contributor> <health-key> — acknowledge and hide the current health state
+    clear) signal_health_clear "$@" ;; #| [-t <window-target>] <contributor> <health-key> — delete one health claim
+    show)  signal_health_show "$@" ;;  #| [--all] [-t <window-target>] [<contributor> [<health-key>]] — show active or acknowledged window health
     *) command_die "unknown health command: $verb" ;;
   esac
   # help:end health
@@ -109,8 +109,8 @@ cmd_problem () {
   local verb="${1:-}"; shift || true
   # help:begin problem
   case "$verb" in
-    set)     signal_problem_set "$@" ;;     #| [--pane <pane-id>] <contributor> <problem-key> <ok|warn|fail> [<message>...] — report or recover an origin claim
-    close)   signal_problem_close "$@" ;;   #| [--pane <pane-id>|--session <session-id>] [<contributor> [<problem-key>]] — close an origin's claims
+    set)     signal_problem_set "$@" ;;     #| [--pane <pane-target>] <contributor> <problem-key> <ok|warn|fail> [<message>...] — report or recover an origin claim
+    close)   signal_problem_close "$@" ;;   #| [--pane <pane-target>|--session <session-target>] [<contributor> [<problem-key>]] — close an origin's claims
     ack)     signal_problem_ack "$@" ;;     #| <contributor> <problem-key> — acknowledge and hide the current problem state
     clear)   signal_problem_clear "$@" ;;   #| <contributor> <problem-key> — delete a problem, its history, and all origin claims
     resolve) signal_problem_resolve "$@" ;; #| <contributor> <problem-key> — declare the capability restored globally and retain resolved history
@@ -141,7 +141,7 @@ cmd_palette () {
   case "$verb" in
     show)      layout_palette_show "$@" ;;      #| [name|<palette-element>] — show the palette summary or one raw field
     use)       layout_palette_use "$@" ;;       #| <palette> — load a complete palette and repaint adapters
-    list)      layout_palette_list ;;           #| — list palettes on the search path
+    list)      layout_palette_list "$@" ;;      #| — list palettes on the search path
     register)  layout_palette_register "$@" ;; #| <dir> — add a palette search directory
     *) command_die "unknown palette command: $verb" ;;
   esac
@@ -166,8 +166,8 @@ cmd_adapter () {
   case "$verb" in
     use)       layout_adapter_use "$@" ;;       #| <adapter>... — apply palette roles to one or more plugins
     load)      layout_adapter_load "$@" ;;      #| <file> — apply a one-off adapter script
-    show)      layout_adapter_show ;;           #| — list applied adapters
-    list)      layout_adapter_list ;;           #| — list adapters on the search path
+    show)      layout_adapter_show "$@" ;;      #| — list applied adapters
+    list)      layout_adapter_list "$@" ;;      #| — list adapters on the search path
     register)  layout_adapter_register "$@" ;; #| <dir> — add an adapter search directory
     *) command_die "unknown adapter command: $verb" ;;
   esac
@@ -181,7 +181,7 @@ cmd_layout () {
     use)       layout_use "$@" ;;       #| <layout> — apply a named layout definition
     load)      layout_load "$@" ;;      #| <file> — apply and record a one-off layout definition
     show)      layout_show "$@" ;;      #| [name|path] — show active layout provenance
-    list)      layout_list ;;           #| — list layouts on the search path
+    list)      layout_list "$@" ;;      #| — list layouts on the search path
     register)  layout_register "$@" ;; #| <dir> — add a layout search directory
     *) command_die "unknown layout command: $verb" ;;
   esac
@@ -193,7 +193,7 @@ cmd_classifier () {
   # help:begin classifier
   case "$verb" in
     show)      runner_classifier_show "$@" ;;      #| <classifier> — show summary, contract, and resolved path
-    list)      runner_classifier_list ;;           #| — list classifiers available to runners
+    list)      runner_classifier_list "$@" ;;      #| — list classifiers available to runners
     register)  runner_classifier_register "$@" ;; #| <dir> — add a classifier search directory
     *) command_die "unknown classifier command: $verb" ;;
   esac
@@ -205,7 +205,7 @@ cmd_filter () {
   # help:begin filter
   case "$verb" in
     show)      runner_filter_show "$@" ;;      #| <filter> — show summary, contract, and resolved path
-    list)      runner_filter_list ;;           #| — list filters available to runners
+    list)      runner_filter_list "$@" ;;      #| — list filters available to runners
     register)  runner_filter_register "$@" ;; #| <dir> — add a filter search directory
     *) command_die "unknown filter command: $verb" ;;
   esac
@@ -217,7 +217,7 @@ cmd_probe () {
   # help:begin probe
   case "$verb" in
     show)      runner_probe_show "$@" ;;      #| <probe> — show summary, arguments, interval, and resolved path
-    list)      runner_probe_list ;;           #| — list probes available to runners
+    list)      runner_probe_list "$@" ;;      #| — list probes available to runners
     register)  runner_probe_register "$@" ;; #| <dir> — add a probe search directory
     *) command_die "unknown probe command: $verb" ;;
   esac
@@ -229,10 +229,10 @@ cmd_runner () {
   # help:begin runner
   case "$verb" in
     show)      runner_show "$@" ;;       #| <runner> [<arg>...] — show one named composition with resolved defaults
-    list)      runner_list ;;            #| — list named runner compositions
+    list)      runner_list "$@" ;;       #| — list named runner compositions
     register)  runner_register "$@" ;;  #| <dir> — add a runner search directory
-    run)       runner_run "$@" ;;        #| [--here|--pane [-h|-v]|--window] [<runner>] [--classify <classifier>] [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]] -- <command>... — run a command with monitoring
-    watch)     runner_watch "$@" ;;      #| [--here|--pane [-h|-v]|--window] [<runner>] [--probe <probe> [<arg>...]] — watch probe state until interrupted
+    run)       runner_run "$@" ;;        #| [--pane [-h|-v]|--window] {<runner> [<arg>...] | [--classify <classifier>] [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]]} -- <command>... — run a command with monitoring
+    watch)     runner_watch "$@" ;;      #| [--pane [-h|-v]|--window] {<runner> [<arg>...] | --probe <probe> [<arg>...]} — watch probe state until interrupted
     *) command_die "unknown runner command: $verb" ;;
   esac
   # help:end runner

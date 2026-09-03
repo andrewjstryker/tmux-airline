@@ -332,26 +332,28 @@ slot to replace the background would break that seam.
 exactly one implementation call; context resolution, sequencing, state access, and
 rendering stay behind that boundary. The `airline` executable is only the installable
 discovery shim that resolves the active `airline.sh` through `@airline-cli`.
+Argument roles and canonical ordering are defined in
+[CLI conventions](docs/cli.md).
 
 ### Grammar
 
 ```text
-airline session init [-t <session>]
+airline session init [-t <session-target>]
 airline session apply
 airline session show [state]
 airline session suspend | resume | toggle
 airline version
 airline help [<noun> [<verb>]]
 
-airline status   set <active|result|attention> [-t <pane>]
-                 clear [-t <pane>]
-                 show [-t <pane|window>]
-airline health   set [-t <window>] <contributor> <health-key> <ok|warn|fail> [<message>...]
-                 ack [-t <window>] <contributor> <health-key>
-                 clear [-t <window>] <contributor> <health-key>
-                 show [--all] [-t <window>] [<contributor> [<health-key>]]
-airline problem  set [--pane <pane-id>] <contributor> <problem-key> <ok|warn|fail> [<message>...]
-                 close [--pane <pane-id>|--session <session-id>] [<contributor> [<problem-key>]]
+airline status   set [-t <pane-target>] <active|result|attention>
+                 clear [-t <pane-target>]
+                 show [-t <window-target>]
+airline health   set [-t <window-target>] <contributor> <health-key> <ok|warn|fail> [<message>...]
+                 ack [-t <window-target>] <contributor> <health-key>
+                 clear [-t <window-target>] <contributor> <health-key>
+                 show [--all] [-t <window-target>] [<contributor> [<health-key>]]
+airline problem  set [--pane <pane-target>] <contributor> <problem-key> <ok|warn|fail> [<message>...]
+                 close [--pane <pane-target>|--session <session-target>] [<contributor> [<problem-key>]]
                  ack <contributor> <problem-key>
                  clear <contributor> <problem-key>
                  resolve <contributor> <problem-key>
@@ -367,17 +369,20 @@ airline classifier show <classifier> | list | register <dir>
 airline filter     show <filter> | list | register <dir>
 airline probe      show <probe> | list | register <dir>
 airline runner   show <runner> [<arg>...] | list | register <dir>
-                 run [--here|--pane [-h|-v]|--window] [<runner>] [--classify <classifier>]
+                 run [--pane [-h|-v]|--window] <runner> [<arg>...] -- <command>...
+                 run [--pane [-h|-v]|--window] [--classify <classifier>]
                      [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]] -- <command>...
-                 watch [--here|--pane [-h|-v]|--window] [<runner>] [--probe <probe> [<arg>...]]
+                 watch [--pane [-h|-v]|--window] <runner> [<arg>...]
+                 watch [--pane [-h|-v]|--window] --probe <probe> [<arg>...]
 ```
 
 All listed commands are public. Tmux hooks use those operations when the event has a
 public meaning. Result observation is the narrow exception: Airline's hook invokes
 the unlisted `status _observed-result <pane> <revision>` entry point because its
 revision is private implementation state rather than caller input. Spawned runner
-panes and windows re-enter through public `runner run/watch --here` commands;
-process-local spawn context arms pane retention before validation without adding
+panes and windows re-enter through the same public `runner run/watch` commands,
+whose omitted placement means the current pane; process-local spawn context arms
+pane retention before validation without adding
 public command grammar.
 
 The process exit contract is binary: zero means a valid request completed,
@@ -414,12 +419,12 @@ installs both artifacts with the PATH shim.
 - Runner elements compose only for one invocation. A leading bare runner name
   expands a catalogued composition; an option-leading invocation remains ad hoc.
   Named compositions contain monitoring configuration but never the command.
-  `run` defaults to classifier `basic`; `watch` requires a probe. `--here` is the
-  explicit placement default, while `--pane` and `--window` create tmux topology
+  `run` defaults to classifier `basic`; `watch` requires a probe. Omitting placement
+  uses the current pane, while `--pane` and `--window` create tmux topology
   through the common runner core. Pane placement accepts tmux's native `-h` and
   `-v` orientation modifiers; omitting one preserves tmux's default split.
-- Status mutation targets a pane, status inspection accepts a pane or window, and
-  health targets a window. Health places `-t <window>` before its keyed tuple so
+- Status mutation resolves a pane target, while status inspection and health resolve
+  window targets. Health places `-t <window-target>` before its keyed tuple so
   every trailing message word is opaque. Problems are globally visible.
   Health and problem take contributor and claim as separate identity fields.
   `problem set` attributes a claim to the current session unless `--pane` supplies
@@ -627,7 +632,7 @@ Its status remains `active` until interruption, then clears; there is no fabrica
 terminal result to classify. The probe's first argument is the local airline watcher
 PID, useful only as lifecycle identity—it is not the remote service PID. Probe
 arguments continue to end-of-argv for `watch`; only `run` needs `--` to separate its
-command. `--here` explicitly spells the default placement. A plugin
+command. Omitted placement means the current pane. A plugin
 that already owns richer scheduling or callbacks may still drive the public health
 API directly; that is an alternative integration shape, not a remote/local boundary.
 

@@ -84,6 +84,18 @@ setup() {
   _runner_parse run --pane -- true
   assert_equal "$AIRLINE_RUNNER_PLACEMENT" pane
   assert_equal "$AIRLINE_RUNNER_PANE_ORIENTATION" ""
+
+  run _runner_parse run --pane --window -- true
+  assert_failure
+  assert_output --partial "placement already specified"
+
+  run _runner_parse watch --window --pane --probe visible
+  assert_failure
+  assert_output --partial "placement already specified"
+
+  run _runner_parse run --probe visible endpoint --filter tap -- true
+  assert_failure
+  assert_output --partial "must follow other options"
 }
 
 @test "spawned placements re-enter public runner commands with normalized argv" {
@@ -109,7 +121,7 @@ setup() {
     _runner_invoke s1 "$mode" --pane >/dev/null
     run cat "$evidence"
     assert_output --partial '<env><AIRLINE_RUNNER_SPAWNED=1>'
-    assert_output --partial "<${PROJECT_ROOT}/airline.sh><runner><$mode><--here>"
+    assert_output --partial "<${PROJECT_ROOT}/airline.sh><runner><$mode><--probe>"
     assert_output --partial '<--probe><visible><endpoint>'
     assert_output --partial '<retain:%2>'
   done
@@ -127,12 +139,12 @@ setup() {
   }
 
   AIRLINE_RUNNER_SPAWNED=1
-  runner_run --here -- true
+  runner_run -- true
   assert_regex "$_RUNNER_EVENTS" '^retain:%7 invoke:run guard:[0-9]+$'
   [[ ! -v AIRLINE_RUNNER_SPAWNED ]]
 
   _RUNNER_EVENTS=""
-  runner_watch --here --probe visible
+  runner_watch --probe visible
   assert_equal "$_RUNNER_EVENTS" "invoke:watch"
 }
 

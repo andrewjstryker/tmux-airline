@@ -51,7 +51,7 @@ session show state|session_show <state>
 session suspend|session_suspend
 session resume|session_resume
 session toggle|session_toggle
-status set result -t %3|signal_status_set <result> <-t> <%3>
+status set -t %3 result|signal_status_set <-t> <%3> <result>
 status clear -t %3|signal_status_clear <-t> <%3>
 status _observed-result %3 7|signal_status_observed_result <%3> <7>
 health ack -t @2 sensors cpu|signal_health_ack <-t> <@2> <sensors> <cpu>
@@ -103,8 +103,6 @@ CASES
   assert_output --partial "list"
   assert_output --partial "Observed status results clear"
   refute_output --partial "_observed-result"
-  refute_output --partial "--print-revision"
-  refute_output --partial "--observed-result"
   refute_output --partial "list        — list"
 
   local session_line layout_line runner_line signals_line diagnostics_line

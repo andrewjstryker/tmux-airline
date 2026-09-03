@@ -179,7 +179,7 @@ _signal_ensure_result_hook () {
   revision_option="$(prv_name status-revision)"
   opt_set_global focus-events on || return
   hook_set "pane-focus-out[90]" \
-    "run-shell -b \"revision='#{${revision_option}}'; if [ -n \\\"\$revision\\\" ]; then '$AIRLINE_DIR/airline.sh' status _observed-result '#{hook_pane}' \\\"\$revision\\\"; fi\""
+    "run-shell -b \"if [ -n '#{${revision_option}}' ]; then '$AIRLINE_DIR/airline.sh' status _observed-result '#{pane_id}' '#{${revision_option}}'; fi\""
 }
 
 _signal_status_next_revision () {   # <destination> <pane>
@@ -228,22 +228,23 @@ _signal_resolve_status_pane () {   # <pane-destination> <window-destination> <co
   destination_window="$resolved_window"
 }
 
-signal_status_set () {   # <active|result|attention> [-t <pane>]
-  local value="" target="" pane win member seen_target=""
-  local -a positionals=()
-  while (( $# )); do
-    case "$1" in
-      -t)
-        [[ $# -ge 2 && -n "$2" && "$2" != -t ]] || \
-          command_die "status set: -t requires <target>"
-        [[ -z "$seen_target" ]] || command_die "status set: duplicate -t"
-        target="$2"; seen_target=1; shift 2 ;;
-      -*) command_die "status set: unknown option '$1'" ;;
-      *) positionals+=("$1"); shift ;;
-    esac
-  done
-  (( ${#positionals[@]} == 1 )) || command_die "status set: need exactly <value>"
-  value="${positionals[0]}"
+signal_status_set () {   # [-t <pane-target>] <active|result|attention>
+  local value="" target="" pane win member
+  if [[ "${1:-}" == -t ]]; then
+    [[ $# -ge 2 && -n "$2" && "$2" != -t ]] || \
+      command_die "status set: -t requires <pane-target>"
+    target="$2"; shift 2
+  elif [[ "${1:-}" == -* ]]; then
+    command_die "status set: unknown option '$1'"
+  fi
+  if (( $# > 1 )); then
+    local trailing
+    for trailing in "${@:2}"; do
+      [[ "$trailing" != -* ]] || command_die "status set: options must precede arguments"
+    done
+  fi
+  (( $# == 1 )) || command_die "status set: need exactly <value>"
+  value="$1"
   _signal_status_valid "$value" || command_die "status set: invalid value '$value'"
   _signal_resolve_status_pane pane win "status set" "$target"
   member="${pane#%}"
@@ -283,21 +284,16 @@ _signal_status_clear_observed_unlocked () {   # <destination> <window> <pane> <p
   destination=1
 }
 
-signal_status_clear () {   # [-t <pane>]
-  local target="" pane win member seen_target=""
-  local -a positionals=()
-  while (( $# )); do
-    case "$1" in
-      -t)
-        [[ $# -ge 2 && -n "$2" && "$2" != -t ]] || \
-          command_die "status clear: -t requires <target>"
-        [[ -z "$seen_target" ]] || command_die "status clear: duplicate -t"
-        target="$2"; seen_target=1; shift 2 ;;
-      -*) command_die "status clear: unknown option '$1'" ;;
-      *) positionals+=("$1"); shift ;;
-    esac
-  done
-  (( ${#positionals[@]} == 0 )) || command_die "status clear: takes no arguments"
+signal_status_clear () {   # [-t <pane-target>]
+  local target="" pane win member
+  if [[ "${1:-}" == -t ]]; then
+    [[ $# -ge 2 && -n "$2" && "$2" != -t ]] || \
+      command_die "status clear: -t requires <pane-target>"
+    target="$2"; shift 2
+  elif [[ "${1:-}" == -* ]]; then
+    command_die "status clear: unknown option '$1'"
+  fi
+  (( $# == 0 )) || command_die "status clear: takes no arguments"
   _signal_resolve_status_pane pane win "status clear" "$target"
   member="${pane#%}"
   _signal_apply window "$win" status _signal_status_clear_unlocked "$win" "$pane" "$member"
@@ -327,21 +323,16 @@ _signal_status_show_unlocked () {   # <window>
   done
 }
 
-signal_status_show () {   # [-t <pane|window>]
-  local target="" win seen_target=""
-  local -a positionals=()
-  while (( $# )); do
-    case "$1" in
-      -t)
-        [[ $# -ge 2 && -n "$2" && "$2" != -t ]] || \
-          command_die "status show: -t requires <target>"
-        [[ -z "$seen_target" ]] || command_die "status show: duplicate -t"
-        target="$2"; seen_target=1; shift 2 ;;
-      -*) command_die "status show: unknown option '$1'" ;;
-      *) positionals+=("$1"); shift ;;
-    esac
-  done
-  (( ${#positionals[@]} == 0 )) || command_die "status show: takes no arguments"
+signal_status_show () {   # [-t <window-target>]
+  local target="" win
+  if [[ "${1:-}" == -t ]]; then
+    [[ $# -ge 2 && -n "$2" && "$2" != -t ]] || \
+      command_die "status show: -t requires <window-target>"
+    target="$2"; shift 2
+  elif [[ "${1:-}" == -* ]]; then
+    command_die "status show: unknown option '$1'"
+  fi
+  (( $# == 0 )) || command_die "status show: takes no arguments"
   _signal_resolve_window win "status show" "$target"
   _signal_with_transaction window "$win" status _signal_status_show_unlocked "$win"
 }
@@ -350,10 +341,10 @@ signal_status_show () {   # [-t <pane|window>]
 # Health public boundary
 #-----------------------------------------------------------------------------#
 
-signal_health_set () {   # [-t <window>] <contributor> <key> <ok|warn|fail> [<message>...]
+signal_health_set () {   # [-t <window-target>] <contributor> <key> <ok|warn|fail> [<message>...]
   local win="" contributor key level message
   if [[ "${1:-}" == -t ]]; then
-    if (( $# < 4 )) || [[ -z "$2" ]]; then command_die "health set: -t requires <window>"; fi
+    if (( $# < 4 )) || [[ -z "$2" ]]; then command_die "health set: -t requires <window-target>"; fi
     win="$2"; shift 2
   elif [[ "${1:-}" == -* ]]; then
     command_die "health set: unknown option '$1'"
@@ -369,10 +360,10 @@ signal_health_set () {   # [-t <window>] <contributor> <key> <ok|warn|fail> [<me
     "$win" "$contributor" "$key" "$level" "$message"
 }
 
-signal_health_clear () {   # [-t <window>] <contributor> <key>
+signal_health_clear () {   # [-t <window-target>] <contributor> <key>
   local win="" contributor key
   if [[ "${1:-}" == -t ]]; then
-    if (( $# < 4 )) || [[ -z "$2" ]]; then command_die "health clear: -t requires <window>"; fi
+    if (( $# < 4 )) || [[ -z "$2" ]]; then command_die "health clear: -t requires <window-target>"; fi
     win="$2"; shift 2
   elif [[ "${1:-}" == -* ]]; then
     command_die "health clear: unknown option '$1'"
@@ -386,10 +377,10 @@ signal_health_clear () {   # [-t <window>] <contributor> <key>
     "$win" "$contributor" "$key" ok ""
 }
 
-signal_health_ack () {   # [-t <window>] <contributor> <key>
+signal_health_ack () {   # [-t <window-target>] <contributor> <key>
   local win="" contributor key
   if [[ "${1:-}" == -t ]]; then
-    if (( $# < 4 )) || [[ -z "$2" ]]; then command_die "health ack: -t requires <window>"; fi
+    if (( $# < 4 )) || [[ -z "$2" ]]; then command_die "health ack: -t requires <window-target>"; fi
     win="$2"; shift 2
   elif [[ "${1:-}" == -* ]]; then
     command_die "health ack: unknown option '$1'"
@@ -403,26 +394,27 @@ signal_health_ack () {   # [-t <window>] <contributor> <key>
     "$win" "$contributor" "$key"
 }
 
-signal_health_show () {   # [--all] [-t <window>] [<contributor> [<key>]]
+signal_health_show () {   # [--all] [-t <window-target>] [<contributor> [<key>]]
   local visibility=active-only win="" contributor="" key="" seen_all="" seen_target=""
-  local -a positionals=()
-  while (( $# )); do
+  while (( $# )) && [[ "$1" == -* ]]; do
     case "$1" in
       --all)
         [[ -z "$seen_all" ]] || command_die "health show: duplicate --all"
         visibility=all; seen_all=1; shift ;;
       -t)
-        [[ $# -ge 2 && -n "$2" ]] || command_die "health show: -t requires <window>"
+        [[ $# -ge 2 && -n "$2" ]] || command_die "health show: -t requires <window-target>"
         [[ -z "$seen_target" ]] || command_die "health show: duplicate -t"
         win="$2"; seen_target=1; shift 2 ;;
       -*) command_die "health show: unknown option '$1'" ;;
-      *) positionals+=("$1"); shift ;;
+      *) command_die "health show: unknown option '$1'" ;;
     esac
   done
-  (( ${#positionals[@]} <= 2 )) || command_die "health show: too many arguments"
-  contributor="${positionals[0]:-}"; key="${positionals[1]:-}"
-  (( ${#positionals[@]} == 0 )) || _signal_validate_contributor "health show" "$contributor"
-  (( ${#positionals[@]} < 2 )) || _signal_validate_key "health show" "$key"
+  [[ "${1:-}" != -t && "${1:-}" != --all && "${2:-}" != -t && "${2:-}" != --all ]] || \
+    command_die "health show: options must precede arguments"
+  (( $# <= 2 )) || command_die "health show: too many arguments"
+  contributor="${1:-}"; key="${2:-}"
+  (( $# == 0 )) || _signal_validate_contributor "health show" "$contributor"
+  (( $# < 2 )) || _signal_validate_key "health show" "$key"
   _signal_resolve_window win "health show" "$win"
   _signal_with_transaction window "$win" health _signal_health_show_unlocked \
     "$visibility" "$win" "$contributor" "$key"
@@ -617,20 +609,26 @@ _signal_problem_show_unlocked () {   # <active-only|all> [<contributor> [<key>]]
   done
 }
 
-_signal_problem_resolve_pane () {   # <destination> <command> <target>
+_signal_problem_resolve_pane () {   # <destination> <command> <target> [allow-missing-canonical]
   local -n destination="$1"
-  local command="$2" target="$3" resolved
-  [[ -n "$target" ]] || command_die "$command: --pane requires <pane-id>"
-  resolved="$(resolve_pane "$target")" || command_die "$command: cannot resolve pane '$target'"
-  [[ -n "$resolved" ]] || command_die "$command: cannot resolve pane '$target'"
+  local command="$2" target="$3" allow_missing="${4:-}" resolved
+  [[ -n "$target" ]] || command_die "$command: --pane requires <pane-target>"
+  if resolved="$(resolve_pane "$target" 2>/dev/null)" && [[ -n "$resolved" ]]; then
+    :
+  elif [[ -n "$allow_missing" && "$target" =~ ^%[0-9]+$ ]]; then
+    # pane-exited/pane-died supplies canonical identity after the pane is gone.
+    resolved="$target"
+  else
+    command_die "$command: cannot resolve pane '$target'"
+  fi
   # shellcheck disable=SC2034 # assignment is through the caller-selected nameref
   destination="$resolved"
 }
 
-signal_problem_set () {   # [--pane <pane-id>] <contributor> <key> <ok|warn|fail> [<message>...]
+signal_problem_set () {   # [--pane <pane-target>] <contributor> <key> <ok|warn|fail> [<message>...]
   local kind=session origin="" contributor key level message
   if [[ "${1:-}" == --pane ]]; then
-    (( $# >= 2 )) || command_die "problem set: --pane requires <pane-id>"
+    (( $# >= 2 )) || command_die "problem set: --pane requires <pane-target>"
     kind=pane; origin="$2"; shift 2
   elif [[ "${1:-}" == -* ]]; then
     command_die "problem set: unknown option '$1'"
@@ -646,25 +644,35 @@ signal_problem_set () {   # [--pane <pane-id>] <contributor> <key> <ok|warn|fail
     "$kind" "$origin" "$contributor" "$key" "$level" "$message"
 }
 
-signal_problem_close () {   # [--pane <pane-id>|--session <session-id>] [<contributor> [<key>]]
-  local kind=session origin="" contributor="" key=""
+signal_problem_close () {   # [--pane <pane-target>|--session <session-target>] [<contributor> [<key>]]
+  local kind=session origin="" contributor="" key="" target=""
   case "${1:-}" in
     --pane)
-      (( $# >= 2 )) || command_die "problem close: --pane requires <pane-id>"
-      kind=pane; origin="$2"; shift 2 ;;
+      (( $# >= 2 )) || command_die "problem close: --pane requires <pane-target>"
+      kind=pane; target="$2"; shift 2 ;;
     --session)
-      (( $# >= 2 )) || command_die "problem close: --session requires <session-id>"
-      origin="$2"; shift 2 ;;
+      (( $# >= 2 )) || command_die "problem close: --session requires <session-target>"
+      target="$2"; shift 2 ;;
     -*) command_die "problem close: unknown option '$1'" ;;
   esac
   (( $# <= 2 )) || command_die "problem close: too many arguments"
+  [[ "${1:-}" != --pane && "${1:-}" != --session && \
+     "${2:-}" != --pane && "${2:-}" != --session ]] || \
+    command_die "problem close: options must precede arguments"
   contributor="${1:-}"; key="${2:-}"
   [[ -z "$contributor" ]] || _signal_validate_contributor "problem close" "$contributor"
   [[ -z "$key" ]] || _signal_validate_key "problem close" "$key"
   if [[ "$kind" == pane ]]; then
-    [[ "$origin" =~ ^%[0-9]+$ ]] || command_die "problem close: invalid pane id '$origin'"
-  elif [[ -n "$origin" ]]; then
-    [[ "$origin" =~ ^\$[0-9]+$ ]] || command_die "problem close: invalid session id '$origin'"
+    _signal_problem_resolve_pane origin "problem close" "$target" allow-missing-canonical
+  elif [[ -n "$target" ]]; then
+    if origin="$(resolve_session_target "$target" 2>/dev/null)" && [[ -n "$origin" ]]; then
+      :
+    elif [[ "$target" =~ ^\$[0-9]+$ ]]; then
+      # session-closed supplies canonical identity after the session is gone.
+      origin="$target"
+    else
+      command_die "problem close: cannot resolve session '$target'"
+    fi
   else origin="$(command_current_session)"; fi
   _signal_apply global server problem _signal_problem_close_unlocked \
     "$kind" "$origin" "$contributor" "$key"
@@ -692,20 +700,22 @@ signal_problem_resolve () {   # <contributor> <key>
 }
 
 signal_problem_show () {   # [--all] [<contributor> [<key>]]
-  local visibility=active-only contributor="" key="" seen_all=""; local -a positionals=()
-  while (( $# )); do
+  local visibility=active-only contributor="" key="" seen_all=""
+  while (( $# )) && [[ "$1" == -* ]]; do
     case "$1" in
       --all)
         [[ -z "$seen_all" ]] || command_die "problem show: duplicate --all"
         visibility=all; seen_all=1; shift ;;
       -*) command_die "problem show: unknown option '$1'" ;;
-      *) positionals+=("$1"); shift ;;
+      *) command_die "problem show: unknown option '$1'" ;;
     esac
   done
-  (( ${#positionals[@]} <= 2 )) || command_die "problem show: too many arguments"
-  contributor="${positionals[0]:-}"; key="${positionals[1]:-}"
-  (( ${#positionals[@]} == 0 )) || _signal_validate_contributor "problem show" "$contributor"
-  (( ${#positionals[@]} < 2 )) || _signal_validate_key "problem show" "$key"
+  [[ "${1:-}" != --all && "${2:-}" != --all ]] || \
+    command_die "problem show: options must precede arguments"
+  (( $# <= 2 )) || command_die "problem show: too many arguments"
+  contributor="${1:-}"; key="${2:-}"
+  (( $# == 0 )) || _signal_validate_contributor "problem show" "$contributor"
+  (( $# < 2 )) || _signal_validate_key "problem show" "$key"
   _signal_with_transaction global server problem _signal_problem_show_unlocked \
     "$visibility" "$contributor" "$key"
 }

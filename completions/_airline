@@ -24,7 +24,7 @@ _airline_usage () {
   case "$1" in
     version) printf %s '' ;;
     help) printf %s \[\<noun\>\ \[\<verb\>\]\] ;;
-    session\ init) printf %s \[-t\ \<session\>\] ;;
+    session\ init) printf %s \[-t\ \<session-target\>\] ;;
     session\ apply) printf %s '' ;;
     session\ show) printf %s \[state\] ;;
     session\ suspend) printf %s '' ;;
@@ -57,17 +57,17 @@ _airline_usage () {
     runner\ show) printf %s \<runner\>\ \[\<arg\>...\] ;;
     runner\ list) printf %s '' ;;
     runner\ register) printf %s \<dir\> ;;
-    runner\ run) printf %s \[--here\|--pane\ \[-h\|-v\]\|--window\]\ \[\<runner\>\]\ \[--classify\ \<classifier\>\]\ \[--filter\ \<filter\>\ \[--merge-stderr\]\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\ --\ \<command\>... ;;
-    runner\ watch) printf %s \[--here\|--pane\ \[-h\|-v\]\|--window\]\ \[\<runner\>\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\] ;;
-    status\ set) printf %s \<active\|result\|attention\>\ \[-t\ \<pane-id\>\] ;;
-    status\ clear) printf %s \[-t\ \<pane-id\>\] ;;
-    status\ show) printf %s \[-t\ \<target\>\] ;;
-    health\ set) printf %s \[-t\ \<window\>\]\ \<contributor\>\ \<health-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
-    health\ ack) printf %s \[-t\ \<window\>\]\ \<contributor\>\ \<health-key\> ;;
-    health\ clear) printf %s \[-t\ \<window\>\]\ \<contributor\>\ \<health-key\> ;;
-    health\ show) printf %s \[--all\]\ \[-t\ \<window\>\]\ \[\<contributor\>\ \[\<health-key\>\]\] ;;
-    problem\ set) printf %s \[--pane\ \<pane-id\>\]\ \<contributor\>\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
-    problem\ close) printf %s \[--pane\ \<pane-id\>\|--session\ \<session-id\>\]\ \[\<contributor\>\ \[\<problem-key\>\]\] ;;
+    runner\ run) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ \[--classify\ \<classifier\>\]\ \[--filter\ \<filter\>\ \[--merge-stderr\]\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\}\ --\ \<command\>... ;;
+    runner\ watch) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ --probe\ \<probe\>\ \[\<arg\>...\]\} ;;
+    status\ set) printf %s \[-t\ \<pane-target\>\]\ \<active\|result\|attention\> ;;
+    status\ clear) printf %s \[-t\ \<pane-target\>\] ;;
+    status\ show) printf %s \[-t\ \<window-target\>\] ;;
+    health\ set) printf %s \[-t\ \<window-target\>\]\ \<contributor\>\ \<health-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
+    health\ ack) printf %s \[-t\ \<window-target\>\]\ \<contributor\>\ \<health-key\> ;;
+    health\ clear) printf %s \[-t\ \<window-target\>\]\ \<contributor\>\ \<health-key\> ;;
+    health\ show) printf %s \[--all\]\ \[-t\ \<window-target\>\]\ \[\<contributor\>\ \[\<health-key\>\]\] ;;
+    problem\ set) printf %s \[--pane\ \<pane-target\>\]\ \<contributor\>\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
+    problem\ close) printf %s \[--pane\ \<pane-target\>\|--session\ \<session-target\>\]\ \[\<contributor\>\ \[\<problem-key\>\]\] ;;
     problem\ ack) printf %s \<contributor\>\ \<problem-key\> ;;
     problem\ clear) printf %s \<contributor\>\ \<problem-key\> ;;
     problem\ resolve) printf %s \<contributor\>\ \<problem-key\> ;;
@@ -173,9 +173,9 @@ _airline_zsh_dynamic () {
     health-key) command airline health show 2>/dev/null | awk '{print $2}' | sort -u ;;
     problem-contributor) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $1}' | sort -u ;;
     problem-key) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $2}' | sort -u ;;
-    session) command tmux list-sessions -F '#{session_name}' 2>/dev/null ;;
-    pane-id) command tmux list-panes -a -F '#{pane_id}' 2>/dev/null ;;
-    window) command tmux list-windows -a -F '#{window_id}' 2>/dev/null ;;
+    session-target) command tmux list-sessions -F '#{session_name}' 2>/dev/null ;;
+    pane-target) command tmux list-panes -a -F '#{pane_id}' 2>/dev/null ;;
+    window-target) command tmux list-windows -a -F '#{window_id}' 2>/dev/null ;;
   esac
 }
 
@@ -208,16 +208,21 @@ _airline_zsh () {
     --filter) compadd ${(@f)$(_airline_zsh_dynamic filter)}; return ;;
     --probe) compadd ${(@f)$(_airline_zsh_dynamic probe)}; return ;;
     -t)
-      if [[ "$path" == 'session init' ]]; then semantic=session
-      elif [[ "$path" == 'status set' || "$path" == 'status clear' ]]; then semantic=pane-id
-      else semantic=window; fi
+      if [[ "$path" == 'session init' ]]; then semantic=session-target
+      elif [[ "$path" == 'status set' || "$path" == 'status clear' ]]; then semantic=pane-target
+      else semantic=window-target; fi
       compadd ${(@f)$(_airline_zsh_dynamic "$semantic")}; return
       ;;
   esac
   if [[ "$path" == 'runner run' || "$path" == 'runner watch' ]]; then
     if (( ${words[(I)--]} )); then [[ "$path" == 'runner run' ]] && _normal; return; fi
-    local -a runner_options=(--here --pane --window -h -v --probe)
+    local -a runner_options=(--pane --window --probe)
     [[ "$path" == 'runner run' ]] && runner_options+=(--classify --filter --merge-stderr --)
+    if (( ${words[(I)--pane]} || ${words[(I)--window]} )); then
+      runner_options=(${runner_options:#--pane})
+      runner_options=(${runner_options:#--window})
+    fi
+    [[ "$previous" != --pane ]] || runner_options=(-h -v $runner_options)
     if [[ "$PREFIX" == -* ]]; then compadd -- $runner_options
     elif (( CURRENT == 4 )); then compadd ${(@f)$(_airline_zsh_dynamic runner)} $runner_options
     fi
@@ -251,7 +256,7 @@ _airline_zsh () {
       ;;
     'problem set')
       if [[ "${words[4]:-}" == --pane ]]; then
-        if (( CURRENT == 5 )); then semantic=pane-id
+        if (( CURRENT == 5 )); then semantic=pane-target
         elif (( CURRENT == 6 )); then semantic=problem-contributor
         elif (( CURRENT == 7 )); then semantic=problem-key
         elif (( CURRENT == 8 )); then compadd ok warn fail; return
@@ -263,12 +268,12 @@ _airline_zsh () {
       ;;
     'problem close')
       if [[ "${words[4]:-}" == --pane ]]; then
-        if (( CURRENT == 5 )); then semantic=pane-id
+        if (( CURRENT == 5 )); then semantic=pane-target
         elif (( CURRENT == 6 )); then semantic=problem-contributor
         elif (( CURRENT == 7 )); then semantic=problem-key
         fi
       elif [[ "${words[4]:-}" == --session ]]; then
-        if (( CURRENT == 5 )); then semantic=session-id
+        if (( CURRENT == 5 )); then semantic=session-target
         elif (( CURRENT == 6 )); then semantic=problem-contributor
         elif (( CURRENT == 7 )); then semantic=problem-key
         fi

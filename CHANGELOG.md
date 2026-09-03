@@ -23,6 +23,12 @@ implementation worklists used to reach them.
   scope-specific collection matrix with one scope-first API and canonical
   `(scope, owner)` tuples; and removed private option helpers with no production
   owner.
+- Defined one CLI argument convention: options precede required operands, target
+  options accept tmux expressions and canonicalize immediately, and private
+  process entry does not change positional-argument rules. Removed the redundant
+  runner `--here` spelling, separated named and ad hoc runner grammar, and rejected
+  conflicting placement selections. Fixed-arity commands reject trailing operands
+  instead of silently discarding them.
 
 ### Rendering and configuration
 
@@ -52,7 +58,7 @@ implementation worklists used to reach them.
 - Extracted signal semantics into a focused lifecycle document with state diagrams
   for status, health, and problem, including the distinction between per-origin
   recovery and authoritative problem resolution.
-- Enforced exact status and health grammar, reliable process exit status, opaque
+- Enforced exact command grammar, reliable process exit status, opaque
   diagnostics, and consistent validation at the public command boundary.
 - Added explicit health and problem acknowledgement, which hides the current
   semantic level without claiming recovery. Status instead deletes observed results
@@ -87,7 +93,7 @@ implementation worklists used to reach them.
   before reaping the pane process, including immediate command completion under
   repeated real-tmux load.
 - Reduced the architecture lint from 200 to 185 lines while expanding its negative
-  boundary fixtures. The 3.0.0 development tree contains 202 Bats cases.
+  boundary fixtures. The 3.0.0 development tree contains 201 Bats cases.
 
 ## 2.0.0
 

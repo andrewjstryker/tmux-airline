@@ -93,7 +93,7 @@ wait_for_pane_exit() { # <pane> <status>
   assert_output --partial "classifier 'broken' is invalid"
 }
 
-@test "runner here streams output, returns the child status, and projects success" {
+@test "runner in the current pane streams output, returns child status, and projects success" {
   airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
 
@@ -107,7 +107,7 @@ wait_for_pane_exit() { # <pane> <status>
   assert_output ""
 }
 
-@test "runner here preserves a failed exit and projects result plus fail" {
+@test "runner in the current pane preserves a failed exit and projects result plus fail" {
   airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
 
@@ -235,7 +235,7 @@ wait_for_pane_exit() { # <pane> <status>
   airline runner register "$BATS_TEST_TMPDIR/runners"
 
   TMUX_PANE="$pane" AIRLINE_DIR="$PROJECT_ROOT" AIRLINE_TMUX="$TMUX -L $_bats_socket" \
-    "$PROJECT_ROOT/airline.sh" runner watch --here remote-watch "$endpoint" \
+    "$PROJECT_ROOT/airline.sh" runner watch remote-watch "$endpoint" \
     > "$watch_output" & watch_pid=$!
 
   observed=""

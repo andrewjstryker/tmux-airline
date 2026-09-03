@@ -463,7 +463,11 @@ _layout_problem_message () {
   else printf "layout '%s' could not be applied" "$handle"; fi
 }
 
-layout_palette_show () { local s; s="$(command_current_session)"; _palette_show "$s" "$@"; }
+layout_palette_show () {
+  local s
+  (( $# <= 1 )) || command_die "palette show: too many arguments"
+  s="$(command_current_session)"; _palette_show "$s" "$@"
+}
 layout_palette_use () {
   local s name rc=0
   [[ $# -eq 1 && -n "$1" ]] || command_die "palette use: need exactly one <name>"
@@ -476,11 +480,17 @@ layout_palette_use () {
   else signal_problem_report "$s" airline "$AIRLINE_PROBLEM_PALETTE" ok ""; fi
   (( rc == 0 )) || return "$rc"
 }
-layout_palette_list () { local s; s="$(command_current_session)"; catalog_list "$s" palette; }
+layout_palette_list () {
+  local s
+  (( $# == 0 )) || command_die "palette list: takes no arguments"
+  s="$(command_current_session)"; catalog_list "$s" palette
+}
 layout_palette_register () { local s; s="$(command_current_session)"; catalog_register "$s" palette "$@"; }
 
 layout_segment_show () {
-  local s; s="$(command_current_session)"
+  local s
+  (( $# <= 1 )) || command_die "segment show: too many arguments"
+  s="$(command_current_session)"
   _static_show "$s" "segment-" render_segment_slot_valid AIRLINE_SEGMENT_SLOTS "$@"
 }
 
@@ -493,15 +503,24 @@ layout_adapter_use () {
   return "$rc"
 }
 layout_adapter_load () {
-  local s rc=0; s="$(command_current_session)"
+  local s rc=0
+  (( $# == 1 )) || command_die "adapter load: need exactly one <file>"
+  s="$(command_current_session)"
   with_session_transaction "$s" config _adapter_load_render_unlocked "$s" "$@" || rc=$?
   if (( rc == AIRLINE_CONFIG_PALETTE_FAILURE )); then
     signal_problem_report "$s" airline "$AIRLINE_PROBLEM_PALETTE" fail "adapter load could not resolve a complete palette"
   fi
   return "$rc"
 }
-layout_adapter_show () { _adapter_show "$(command_current_session)"; }
-layout_adapter_list () { local s; s="$(command_current_session)"; catalog_list "$s" adapter; }
+layout_adapter_show () {
+  (( $# == 0 )) || command_die "adapter show: takes no arguments"
+  _adapter_show "$(command_current_session)"
+}
+layout_adapter_list () {
+  local s
+  (( $# == 0 )) || command_die "adapter list: takes no arguments"
+  s="$(command_current_session)"; catalog_list "$s" adapter
+}
 layout_adapter_register () { local s; s="$(command_current_session)"; catalog_register "$s" adapter "$@"; }
 
 layout_use () {
@@ -533,8 +552,16 @@ layout_load () {
   esac
   (( rc == 0 )) || return "$rc"
 }
-layout_show () { local s; s="$(command_current_session)"; _layout_show "$s" "$@"; }
-layout_list () { local s; s="$(command_current_session)"; catalog_list "$s" layout; }
+layout_show () {
+  local s
+  (( $# <= 1 )) || command_die "layout show: too many arguments"
+  s="$(command_current_session)"; _layout_show "$s" "$@"
+}
+layout_list () {
+  local s
+  (( $# == 0 )) || command_die "layout list: takes no arguments"
+  s="$(command_current_session)"; catalog_list "$s" layout
+}
 layout_register () { local s; s="$(command_current_session)"; catalog_register "$s" layout "$@"; }
 
 _palette_use_apply_unlocked () {

@@ -25,7 +25,7 @@ _airline_usage () {
   case "$1" in
     version) printf %s '' ;;
     help) printf %s \[\<noun\>\ \[\<verb\>\]\] ;;
-    session\ init) printf %s \[-t\ \<session\>\] ;;
+    session\ init) printf %s \[-t\ \<session-target\>\] ;;
     session\ apply) printf %s '' ;;
     session\ show) printf %s \[state\] ;;
     session\ suspend) printf %s '' ;;
@@ -58,17 +58,17 @@ _airline_usage () {
     runner\ show) printf %s \<runner\>\ \[\<arg\>...\] ;;
     runner\ list) printf %s '' ;;
     runner\ register) printf %s \<dir\> ;;
-    runner\ run) printf %s \[--here\|--pane\ \[-h\|-v\]\|--window\]\ \[\<runner\>\]\ \[--classify\ \<classifier\>\]\ \[--filter\ \<filter\>\ \[--merge-stderr\]\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\ --\ \<command\>... ;;
-    runner\ watch) printf %s \[--here\|--pane\ \[-h\|-v\]\|--window\]\ \[\<runner\>\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\] ;;
-    status\ set) printf %s \<active\|result\|attention\>\ \[-t\ \<pane-id\>\] ;;
-    status\ clear) printf %s \[-t\ \<pane-id\>\] ;;
-    status\ show) printf %s \[-t\ \<target\>\] ;;
-    health\ set) printf %s \[-t\ \<window\>\]\ \<contributor\>\ \<health-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
-    health\ ack) printf %s \[-t\ \<window\>\]\ \<contributor\>\ \<health-key\> ;;
-    health\ clear) printf %s \[-t\ \<window\>\]\ \<contributor\>\ \<health-key\> ;;
-    health\ show) printf %s \[--all\]\ \[-t\ \<window\>\]\ \[\<contributor\>\ \[\<health-key\>\]\] ;;
-    problem\ set) printf %s \[--pane\ \<pane-id\>\]\ \<contributor\>\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
-    problem\ close) printf %s \[--pane\ \<pane-id\>\|--session\ \<session-id\>\]\ \[\<contributor\>\ \[\<problem-key\>\]\] ;;
+    runner\ run) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ \[--classify\ \<classifier\>\]\ \[--filter\ \<filter\>\ \[--merge-stderr\]\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\}\ --\ \<command\>... ;;
+    runner\ watch) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ --probe\ \<probe\>\ \[\<arg\>...\]\} ;;
+    status\ set) printf %s \[-t\ \<pane-target\>\]\ \<active\|result\|attention\> ;;
+    status\ clear) printf %s \[-t\ \<pane-target\>\] ;;
+    status\ show) printf %s \[-t\ \<window-target\>\] ;;
+    health\ set) printf %s \[-t\ \<window-target\>\]\ \<contributor\>\ \<health-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
+    health\ ack) printf %s \[-t\ \<window-target\>\]\ \<contributor\>\ \<health-key\> ;;
+    health\ clear) printf %s \[-t\ \<window-target\>\]\ \<contributor\>\ \<health-key\> ;;
+    health\ show) printf %s \[--all\]\ \[-t\ \<window-target\>\]\ \[\<contributor\>\ \[\<health-key\>\]\] ;;
+    problem\ set) printf %s \[--pane\ \<pane-target\>\]\ \<contributor\>\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
+    problem\ close) printf %s \[--pane\ \<pane-target\>\|--session\ \<session-target\>\]\ \[\<contributor\>\ \[\<problem-key\>\]\] ;;
     problem\ ack) printf %s \<contributor\>\ \<problem-key\> ;;
     problem\ clear) printf %s \<contributor\>\ \<problem-key\> ;;
     problem\ resolve) printf %s \<contributor\>\ \<problem-key\> ;;
@@ -179,10 +179,9 @@ _airline_dynamic () {   # <semantic-type>
     health-key) command airline health show 2>/dev/null | awk '{print $2}' | sort -u ;;
     problem-contributor) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $1}' | sort -u ;;
     problem-key) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $2}' | sort -u ;;
-    session) command tmux list-sessions -F '#{session_name}' 2>/dev/null || true ;;
-    session-id) command tmux list-sessions -F '#{session_id}' 2>/dev/null || true ;;
-    pane-id) command tmux list-panes -a -F '#{pane_id}' 2>/dev/null || true ;;
-    window) command tmux list-windows -a -F '#{window_id}' 2>/dev/null || true ;;
+    session-target) command tmux list-sessions -F '#{session_name}' 2>/dev/null || true ;;
+    pane-target) command tmux list-panes -a -F '#{pane_id}' 2>/dev/null || true ;;
+    window-target) command tmux list-windows -a -F '#{window_id}' 2>/dev/null || true ;;
   esac
 }
 
@@ -238,7 +237,7 @@ _airline_argument_position () {   # already-entered leaf arguments
     if [[ -n "$skip" ]]; then skip=""; continue; fi
     case "$arg" in
       -t|--pane|--session|--classify|--filter|--probe) skip=1 ;;
-      --here|--window|-h|-v|--merge-stderr) ;;
+      --window|-h|-v|--merge-stderr) ;;
       --) ;;
       *) ((count++)) || true ;;
     esac
@@ -259,21 +258,28 @@ _airline_option_values () {   # <usage>
 }
 
 _airline_runner_complete () {   # <run|watch> <current> <prior-args...>
-  local mode="$1" current="$2" previous="" arg; shift 2
+  local mode="$1" current="$2" previous="" arg placement_seen="" probe_seen=""; shift 2
   (( $# == 0 )) || previous="${!#}"
   for arg in "$@"; do
     if [[ "$arg" == -- ]]; then
       [[ "$mode" == run ]] && compopt -o default
       return
     fi
+    [[ "$arg" != --pane && "$arg" != --window ]] || placement_seen=1
+    [[ "$arg" != --probe ]] || probe_seen=1
   done
   case "$previous" in
     --classify) COMPREPLY=( $(compgen -W "$(_airline_dynamic classifier)" -- "$current") ); return ;;
     --filter)   COMPREPLY=( $(compgen -W "$(_airline_dynamic filter)" -- "$current") ); return ;;
     --probe)    COMPREPLY=( $(compgen -W "$(_airline_dynamic probe)" -- "$current") ); return ;;
   esac
-  local options='--here --pane --window -h -v --probe'
+  local options='--probe'
+  [[ -n "$placement_seen" ]] || options="--pane --window $options"
+  [[ "$previous" != --pane ]] || options="-h -v $options"
   [[ "$mode" == run ]] && options+=' --classify --filter --merge-stderr --'
+  if [[ -n "$probe_seen" ]]; then
+    if [[ "$mode" == run ]]; then options=--; else options=""; fi
+  fi
   if [[ "$current" == -* ]]; then
     COMPREPLY=( $(compgen -W "$options" -- "$current") )
   elif (( $# == 0 )); then
@@ -314,16 +320,18 @@ _airline_completion () {
   previous=""; (( ${#prior[@]} == 0 )) || previous="${prior[-1]}"
   case "$previous" in
     -t)
-      [[ "$path" == 'session init' ]] && token=session || token=window
-      COMPREPLY=( $(compgen -W "$(_airline_dynamic "$token")" -- "$current") )
+      if [[ "$path" == 'session init' ]]; then token=session-target
+      elif [[ "$path" == 'status set' || "$path" == 'status clear' ]]; then token=pane-target
+      else token=window-target; fi
+      _airline_complete_dynamic "$token" "$current"
       return
       ;;
     --pane)
-      _airline_complete_dynamic pane-id "$current"
+      _airline_complete_dynamic pane-target "$current"
       return
       ;;
     --session)
-      _airline_complete_dynamic session-id "$current"
+      _airline_complete_dynamic session-target "$current"
       return
       ;;
   esac

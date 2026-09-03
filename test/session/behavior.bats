@@ -56,5 +56,5 @@ teardown() { :; }
 @test "session init target options validate at the boundary" {
   run session_init -t
   assert_failure
-  assert_output --partial "-t requires <session>"
+  assert_output --partial "-t requires <session-target>"
 }

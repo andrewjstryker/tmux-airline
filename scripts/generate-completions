@@ -57,7 +57,7 @@ awk '
 while IFS= read -r semantic; do
   case "$semantic" in
     adapter|classifier|contributor|dir|file|filter|health-key|layout|message|namespace|palette|\
-      palette-element|pane-id|probe|problem-key|revision|runner|segment|session|session-id|target|window|\
+      palette-element|pane-target|probe|problem-key|runner|segment|session-target|target|window-target|\
       arg|argument|command|noun|verb) ;;
     *) printf "generate-completions: unknown help placeholder <%s>\n" "$semantic" >&2; exit 1 ;;
   esac
@@ -130,10 +130,9 @@ _airline_dynamic () {   # <semantic-type>
     health-key) command airline health show 2>/dev/null | awk '{print $2}' | sort -u ;;
     problem-contributor) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $1}' | sort -u ;;
     problem-key) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $2}' | sort -u ;;
-    session) command tmux list-sessions -F '#{session_name}' 2>/dev/null || true ;;
-    session-id) command tmux list-sessions -F '#{session_id}' 2>/dev/null || true ;;
-    pane-id) command tmux list-panes -a -F '#{pane_id}' 2>/dev/null || true ;;
-    window) command tmux list-windows -a -F '#{window_id}' 2>/dev/null || true ;;
+    session-target) command tmux list-sessions -F '#{session_name}' 2>/dev/null || true ;;
+    pane-target) command tmux list-panes -a -F '#{pane_id}' 2>/dev/null || true ;;
+    window-target) command tmux list-windows -a -F '#{window_id}' 2>/dev/null || true ;;
   esac
 }
 
@@ -189,7 +188,7 @@ _airline_argument_position () {   # already-entered leaf arguments
     if [[ -n "$skip" ]]; then skip=""; continue; fi
     case "$arg" in
       -t|--pane|--session|--classify|--filter|--probe) skip=1 ;;
-      --here|--window|-h|-v|--merge-stderr) ;;
+      --window|-h|-v|--merge-stderr) ;;
       --) ;;
       *) ((count++)) || true ;;
     esac
@@ -210,21 +209,28 @@ _airline_option_values () {   # <usage>
 }
 
 _airline_runner_complete () {   # <run|watch> <current> <prior-args...>
-  local mode="$1" current="$2" previous="" arg; shift 2
+  local mode="$1" current="$2" previous="" arg placement_seen="" probe_seen=""; shift 2
   (( $# == 0 )) || previous="${!#}"
   for arg in "$@"; do
     if [[ "$arg" == -- ]]; then
       [[ "$mode" == run ]] && compopt -o default
       return
     fi
+    [[ "$arg" != --pane && "$arg" != --window ]] || placement_seen=1
+    [[ "$arg" != --probe ]] || probe_seen=1
   done
   case "$previous" in
     --classify) COMPREPLY=( $(compgen -W "$(_airline_dynamic classifier)" -- "$current") ); return ;;
     --filter)   COMPREPLY=( $(compgen -W "$(_airline_dynamic filter)" -- "$current") ); return ;;
     --probe)    COMPREPLY=( $(compgen -W "$(_airline_dynamic probe)" -- "$current") ); return ;;
   esac
-  local options='--here --pane --window -h -v --probe'
+  local options='--probe'
+  [[ -n "$placement_seen" ]] || options="--pane --window $options"
+  [[ "$previous" != --pane ]] || options="-h -v $options"
   [[ "$mode" == run ]] && options+=' --classify --filter --merge-stderr --'
+  if [[ -n "$probe_seen" ]]; then
+    if [[ "$mode" == run ]]; then options=--; else options=""; fi
+  fi
   if [[ "$current" == -* ]]; then
     COMPREPLY=( $(compgen -W "$options" -- "$current") )
   elif (( $# == 0 )); then
@@ -265,16 +271,18 @@ _airline_completion () {
   previous=""; (( ${#prior[@]} == 0 )) || previous="${prior[-1]}"
   case "$previous" in
     -t)
-      [[ "$path" == 'session init' ]] && token=session || token=window
-      COMPREPLY=( $(compgen -W "$(_airline_dynamic "$token")" -- "$current") )
+      if [[ "$path" == 'session init' ]]; then token=session-target
+      elif [[ "$path" == 'status set' || "$path" == 'status clear' ]]; then token=pane-target
+      else token=window-target; fi
+      _airline_complete_dynamic "$token" "$current"
       return
       ;;
     --pane)
-      _airline_complete_dynamic pane-id "$current"
+      _airline_complete_dynamic pane-target "$current"
       return
       ;;
     --session)
-      _airline_complete_dynamic session-id "$current"
+      _airline_complete_dynamic session-target "$current"
       return
       ;;
   esac
@@ -355,9 +363,9 @@ _airline_zsh_dynamic () {
     health-key) command airline health show 2>/dev/null | awk '{print $2}' | sort -u ;;
     problem-contributor) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $1}' | sort -u ;;
     problem-key) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $2}' | sort -u ;;
-    session) command tmux list-sessions -F '#{session_name}' 2>/dev/null ;;
-    pane-id) command tmux list-panes -a -F '#{pane_id}' 2>/dev/null ;;
-    window) command tmux list-windows -a -F '#{window_id}' 2>/dev/null ;;
+    session-target) command tmux list-sessions -F '#{session_name}' 2>/dev/null ;;
+    pane-target) command tmux list-panes -a -F '#{pane_id}' 2>/dev/null ;;
+    window-target) command tmux list-windows -a -F '#{window_id}' 2>/dev/null ;;
   esac
 }
 
@@ -390,16 +398,21 @@ _airline_zsh () {
     --filter) compadd ${(@f)$(_airline_zsh_dynamic filter)}; return ;;
     --probe) compadd ${(@f)$(_airline_zsh_dynamic probe)}; return ;;
     -t)
-      if [[ "$path" == 'session init' ]]; then semantic=session
-      elif [[ "$path" == 'status set' || "$path" == 'status clear' ]]; then semantic=pane-id
-      else semantic=window; fi
+      if [[ "$path" == 'session init' ]]; then semantic=session-target
+      elif [[ "$path" == 'status set' || "$path" == 'status clear' ]]; then semantic=pane-target
+      else semantic=window-target; fi
       compadd ${(@f)$(_airline_zsh_dynamic "$semantic")}; return
       ;;
   esac
   if [[ "$path" == 'runner run' || "$path" == 'runner watch' ]]; then
     if (( ${words[(I)--]} )); then [[ "$path" == 'runner run' ]] && _normal; return; fi
-    local -a runner_options=(--here --pane --window -h -v --probe)
+    local -a runner_options=(--pane --window --probe)
     [[ "$path" == 'runner run' ]] && runner_options+=(--classify --filter --merge-stderr --)
+    if (( ${words[(I)--pane]} || ${words[(I)--window]} )); then
+      runner_options=(${runner_options:#--pane})
+      runner_options=(${runner_options:#--window})
+    fi
+    [[ "$previous" != --pane ]] || runner_options=(-h -v $runner_options)
     if [[ "$PREFIX" == -* ]]; then compadd -- $runner_options
     elif (( CURRENT == 4 )); then compadd ${(@f)$(_airline_zsh_dynamic runner)} $runner_options
     fi
@@ -433,7 +446,7 @@ _airline_zsh () {
       ;;
     'problem set')
       if [[ "${words[4]:-}" == --pane ]]; then
-        if (( CURRENT == 5 )); then semantic=pane-id
+        if (( CURRENT == 5 )); then semantic=pane-target
         elif (( CURRENT == 6 )); then semantic=problem-contributor
         elif (( CURRENT == 7 )); then semantic=problem-key
         elif (( CURRENT == 8 )); then compadd ok warn fail; return
@@ -445,12 +458,12 @@ _airline_zsh () {
       ;;
     'problem close')
       if [[ "${words[4]:-}" == --pane ]]; then
-        if (( CURRENT == 5 )); then semantic=pane-id
+        if (( CURRENT == 5 )); then semantic=pane-target
         elif (( CURRENT == 6 )); then semantic=problem-contributor
         elif (( CURRENT == 7 )); then semantic=problem-key
         fi
       elif [[ "${words[4]:-}" == --session ]]; then
-        if (( CURRENT == 5 )); then semantic=session-id
+        if (( CURRENT == 5 )); then semantic=session-target
         elif (( CURRENT == 6 )); then semantic=problem-contributor
         elif (( CURRENT == 7 )); then semantic=problem-key
         fi

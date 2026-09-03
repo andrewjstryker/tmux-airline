@@ -522,7 +522,7 @@ _runner_finish () {   # <condition> <message> <window> <pane> <health-contributo
       ;;
   esac
   # Status describes the workflow phase; health separately describes its outcome.
-  signal_status_set result -t "$pane"
+  signal_status_set -t "$pane" result
 }
 
 # Parsed runner specification. The CLI composes at most one element of each type for
@@ -543,19 +543,24 @@ AIRLINE_RUNNER_INVOCATION_ARGV=()
 # Leading placement options are invocation concerns and never enter the definition.
 # An otherwise option-leading invocation is the existing ad-hoc form.
 _runner_expand_named () {   # <session> <run|watch> [invocation...]
-  local session="$1" mode="$2" name file boundary=""; shift 2
+  local session="$1" mode="$2" name file boundary="" placement_seen=""; shift 2
   local -a placement=() extra=() command=()
   AIRLINE_RUNNER_INVOCATION_ARGV=()
 
   while (( $# )); do
     case "$1" in
       --pane)
+        [[ -z "$placement_seen" ]] || command_die "runner $mode: placement already specified"
+        placement_seen=pane
         placement+=("$1"); shift
         if [[ "${1:-}" == -h || "${1:-}" == -v ]]; then
           placement+=("$1"); shift
         fi
         ;;
-      --here|--window) placement+=("$1"); shift ;;
+      --window)
+        [[ -z "$placement_seen" ]] || command_die "runner $mode: placement already specified"
+        placement_seen=window
+        placement+=("$1"); shift ;;
       *) break ;;
     esac
   done
@@ -601,13 +606,13 @@ _runner_expand_named () {   # <session> <run|watch> [invocation...]
 
 _runner_spec_token () {
   case "${1:-}" in
-    --here|--pane|--window|--classify|--filter|--probe|--) return 0 ;;
+    --pane|--window|--classify|--filter|--probe|--) return 0 ;;
     *) return 1 ;;
   esac
 }
 
 _runner_parse () {   # <run|watch> [spec...]
-  local mode="$1"; shift
+  local mode="$1" placement_seen=""; shift
   AIRLINE_RUNNER_PLACEMENT=here
   AIRLINE_RUNNER_PANE_ORIENTATION=""
   AIRLINE_RUNNER_CLASSIFIER=""
@@ -619,12 +624,9 @@ _runner_parse () {   # <run|watch> [spec...]
 
   while (( $# )); do
     case "$1" in
-      --here)
-        AIRLINE_RUNNER_PLACEMENT=here
-        AIRLINE_RUNNER_PANE_ORIENTATION=""
-        shift
-        ;;
       --pane)
+        [[ -z "$placement_seen" ]] || command_die "runner $mode: placement already specified"
+        placement_seen=pane
         AIRLINE_RUNNER_PLACEMENT=pane
         AIRLINE_RUNNER_PANE_ORIENTATION=""
         shift
@@ -634,6 +636,8 @@ _runner_parse () {   # <run|watch> [spec...]
         fi
         ;;
       --window)
+        [[ -z "$placement_seen" ]] || command_die "runner $mode: placement already specified"
+        placement_seen=window
         AIRLINE_RUNNER_PLACEMENT=window
         AIRLINE_RUNNER_PANE_ORIENTATION=""
         shift
@@ -657,6 +661,8 @@ _runner_parse () {   # <run|watch> [spec...]
         while (( $# )) && ! _runner_spec_token "$1"; do
           AIRLINE_RUNNER_PROBE_ARGS+=("$1"); shift
         done
+        [[ $# == 0 || "$1" == -- ]] || \
+          command_die "runner $mode: --probe and its arguments must follow other options"
         ;;
       --)
         [[ "$mode" == run ]] || command_die "runner watch: unexpected -- (watch ends at end of arguments)"
@@ -743,7 +749,7 @@ _runner_execute () {   # <session>; uses parsed run specification
     signal_health_set -t "$win" "$filter_contributor" "$filter_health_key" ok
   [[ -z "$AIRLINE_RUNNER_PROBE" ]] || \
     signal_health_set -t "$win" "$probe_contributor" "$probe_health_key" ok
-  signal_status_set active -t "$pane"
+  signal_status_set -t "$pane" active
 
   if [[ -n "$AIRLINE_RUNNER_FILTER" ]]; then
     streams=stdout
@@ -812,7 +818,7 @@ _runner_execute () {   # <session>; uses parsed run specification
     signal_problem_report "$session" "$classifier_contributor" classify fail \
       "runner classifier '$AIRLINE_RUNNER_CLASSIFIER' failed or emitted an invalid condition"
     signal_health_set -t "$win" "$classifier_contributor" "$classifier_health_key" ok
-    signal_status_set result -t "$pane"
+    signal_status_set -t "$pane" result
   fi
   return "$rc"
 }
@@ -835,12 +841,12 @@ _runner_invoke () {   # <session> <run|watch> [spec...]
         spawned="$(runner_open_pane "$pane" "$cwd" "$AIRLINE_RUNNER_PANE_ORIENTATION" env \
           "AIRLINE_RUNNER_SPAWNED=1" "AIRLINE_DIR=$AIRLINE_DIR" \
           "AIRLINE_TMUX=${AIRLINE_TMUX:-tmux}" "$AIRLINE_DIR/airline.sh" \
-          runner "$mode" --here "${AIRLINE_RUNNER_SPEC_ARGV[@]}")"
+          runner "$mode" "${AIRLINE_RUNNER_SPEC_ARGV[@]}")"
       else
         spawned="$(runner_open_window "$session" "$cwd" env \
           "AIRLINE_RUNNER_SPAWNED=1" "AIRLINE_DIR=$AIRLINE_DIR" \
           "AIRLINE_TMUX=${AIRLINE_TMUX:-tmux}" "$AIRLINE_DIR/airline.sh" \
-          runner "$mode" --here "${AIRLINE_RUNNER_SPEC_ARGV[@]}")"
+          runner "$mode" "${AIRLINE_RUNNER_SPEC_ARGV[@]}")"
       fi
       # The public child command consumes AIRLINE_RUNNER_SPAWNED and arms retention
       # before validation. The parent closes the scheduler race before a very
@@ -872,7 +878,7 @@ _runner_watch_execute () {   # <session>; uses parsed watch specification
   interval="${AIRLINE_RUNNER_PROBE_INTERVAL:-5}"
 
   signal_health_set -t "$win" "$probe_contributor" "$probe_health_key" ok
-  signal_status_set active -t "$pane"
+  signal_status_set -t "$pane" active
 
   trap 'watch_rc=130; [[ -n "$sleep_pid" ]] && kill "$sleep_pid" 2>/dev/null || true' INT
   trap 'watch_rc=143; [[ -n "$sleep_pid" ]] && kill "$sleep_pid" 2>/dev/null || true' TERM
@@ -896,18 +902,46 @@ _runner_watch_execute () {   # <session>; uses parsed watch specification
   return "$watch_rc"
 }
 # CLI delegation targets for runner and its primitives.
-runner_classifier_show () { local s; s="$(command_current_session)"; _runner_element_show "$s" classifier "$@"; }
-runner_classifier_list () { local s; s="$(command_current_session)"; catalog_list "$s" classifier; }
+runner_classifier_show () {
+  local s
+  (( $# == 1 )) || command_die "classifier show: need exactly one <classifier>"
+  s="$(command_current_session)"; _runner_element_show "$s" classifier "$@"
+}
+runner_classifier_list () {
+  local s
+  (( $# == 0 )) || command_die "classifier list: takes no arguments"
+  s="$(command_current_session)"; catalog_list "$s" classifier
+}
 runner_classifier_register () { local s; s="$(command_current_session)"; catalog_register "$s" classifier "$@"; }
-runner_filter_show () { local s; s="$(command_current_session)"; _runner_element_show "$s" filter "$@"; }
-runner_filter_list () { local s; s="$(command_current_session)"; catalog_list "$s" filter; }
+runner_filter_show () {
+  local s
+  (( $# == 1 )) || command_die "filter show: need exactly one <filter>"
+  s="$(command_current_session)"; _runner_element_show "$s" filter "$@"
+}
+runner_filter_list () {
+  local s
+  (( $# == 0 )) || command_die "filter list: takes no arguments"
+  s="$(command_current_session)"; catalog_list "$s" filter
+}
 runner_filter_register () { local s; s="$(command_current_session)"; catalog_register "$s" filter "$@"; }
-runner_probe_show () { local s; s="$(command_current_session)"; _runner_element_show "$s" probe "$@"; }
-runner_probe_list () { local s; s="$(command_current_session)"; catalog_list "$s" probe; }
+runner_probe_show () {
+  local s
+  (( $# == 1 )) || command_die "probe show: need exactly one <probe>"
+  s="$(command_current_session)"; _runner_element_show "$s" probe "$@"
+}
+runner_probe_list () {
+  local s
+  (( $# == 0 )) || command_die "probe list: takes no arguments"
+  s="$(command_current_session)"; catalog_list "$s" probe
+}
 runner_probe_register () { local s; s="$(command_current_session)"; catalog_register "$s" probe "$@"; }
 
 runner_show () { local s; s="$(command_current_session)"; _runner_definition_show "$s" "$@"; }
-runner_list () { local s; s="$(command_current_session)"; catalog_list "$s" runner; }
+runner_list () {
+  local s
+  (( $# == 0 )) || command_die "runner list: takes no arguments"
+  s="$(command_current_session)"; catalog_list "$s" runner
+}
 runner_register () { local s; s="$(command_current_session)"; catalog_register "$s" runner "$@"; }
 _runner_command () {   # <run|watch> [invocation...]
   local mode="$1" spawned="${AIRLINE_RUNNER_SPAWNED:-}" s rc=0; shift

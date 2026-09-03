@@ -14,7 +14,7 @@ setup() {
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
   window="$($TMUX -L "$_bats_socket" display-message -p -t "$pane" '#{window_id}')"
 
-  airline status set active -t "$pane"
+  airline status set -t "$pane" active
   airline health set -t "$pane" example-agent context warn "agent is degraded"
 
   run wopt @airline--badge-status -t "$window"
@@ -51,6 +51,10 @@ setup() {
   $TMUX -L "$_bats_socket" new-session -d -s other
   other="$($TMUX -L "$_bats_socket" display-message -p -t other '#{session_id}')"
   airline_session other session init
+  airline_session other problem set example-other capability warn "other session degraded"
+  airline problem close --session other example-other capability
+  run airline problem show --all example-other capability
+  assert_output --partial "closed"
   run $TMUX -L "$_bats_socket" display-message -p -t "$other" '#{E:status-right}'
   assert_output --partial "▲"
 
@@ -102,9 +106,11 @@ setup() {
   airline session init
   first="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
   second="$($TMUX -L "$_bats_socket" split-window -dP -F '#{pane_id}' -t bats)"
+  second_target="$($TMUX -L "$_bats_socket" display-message -p -t "$second" \
+    '#{session_name}:#{window_index}.#{pane_index}')"
   airline problem set --pane "$first" example-cpu sensors warn "first degraded"
   airline problem set --pane "$second" example-cpu sensors fail "second failed"
-  airline problem close --pane "$second" example-cpu sensors
+  airline problem close --pane "$second_target" example-cpu sensors
 
   run airline problem show example-cpu sensors
   assert_output --partial "active  warn"
@@ -112,26 +118,26 @@ setup() {
   refute_output --partial "pane:$second"
 }
 
-@test "focus cleanup clears observed results but preserves newer pane state" {
+@test "tmux's pane-focus-out hook clears an observed result" {
   airline session init
-  pane="$($TMUX -L "$_bats_socket" display-message -p '#{pane_id}')"
+  pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
   win="$($TMUX -L "$_bats_socket" display-message -p '#{window_id}')"
 
-  airline status set result -t "$pane"
-  revision="$(popt @airline--status-revision -t "$pane")"
-  assert_equal "$revision" 1
+  airline status set -t "$pane" result
   run get_option focus-events
   assert_output "on"
-  run $TMUX -L "$_bats_socket" show-hooks -g pane-focus-out
-  assert_output --partial "status _observed-result"
-  assert_output --partial "#{@airline--status-revision}"
-  run popt @airline--status-revision -t "$pane"
-  assert_output "$revision"
 
-  airline status set active -t "$pane"
-  airline status _observed-result "$pane" "$revision"
-  run wopt @airline--badge-status
-  assert_output "active"
+  # A detached test server has no terminal focus to move. Ask tmux itself to run
+  # the registered hook in the pane's context, preserving format expansion and
+  # the asynchronous process boundary used by a real focus-out event.
+  $TMUX -L "$_bats_socket" set-hook -R -t "$pane" pane-focus-out
+  output="$pane"
+  for _ in {1..100}; do
+    output="$(airline status show -t "$win")"
+    [[ "$output" != *"$pane"* ]] && break
+    sleep 0.01
+  done
+  [[ "$output" != *"$pane"* ]]
 }
 
 @test "invalid signal argv and unresolved targets fail without mutation" {
@@ -139,7 +145,7 @@ setup() {
   assert_failure
   run airline health set test api fail
   assert_failure
-  run airline status set active -t missing-pane
+  run airline status set -t missing-pane active
   assert_failure
   assert_output --partial "cannot resolve pane 'missing-pane'"
 

@@ -12,7 +12,7 @@ SHELLCHECK_SOURCES := airline airline.sh airline.tmux scripts/check-version scri
 	layouts/definitions/* layouts/helpers/* runners/classifiers/* runners/filters/* \
 	runners/probes/* runners/definitions/*)
 
-FAST_TESTS := test/architecture.bats test/cli/grammar.bats test/cli/completions.bats \
+FAST_TESTS := test/architecture.bats test/cli/grammar.bats test/cli/behavior.bats test/cli/completions.bats \
 	test/core/collections.bats test/core/catalog.bats test/core/render.bats test/runner/behavior.bats \
 	test/signal/behavior.bats test/session/behavior.bats test/transaction/behavior.bats
 INTEGRATION_TESTS := test/session/integration.bats test/layout/integration.bats \

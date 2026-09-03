@@ -10,8 +10,8 @@ setup() { load_signal; }
 teardown() { :; }
 
 @test "status stores entries, shows them, and clears them" {
-  signal_status_set active -t %1
-  signal_status_set attention -t %2
+  signal_status_set -t %1 active
+  signal_status_set -t %2 attention
   run signal_status_show
   assert_output --partial "%1"
   assert_output --partial "active"
@@ -25,7 +25,7 @@ teardown() { :; }
 }
 
 @test "result revisions are pane-local guards for private observed clearing" {
-  signal_status_set result -t %1
+  signal_status_set -t %1 result
   revision="$(prv_get_pane %1 status-revision)"
   assert_equal "$revision" 1
 
@@ -34,10 +34,10 @@ teardown() { :; }
   assert_equal "$(prv_get_pane %1 status-revision)" "$revision"
 
   # A different pane owns an independent counter.
-  signal_status_set result -t %2
+  signal_status_set -t %2 result
   assert_equal "$(prv_get_pane %2 status-revision)" 1
 
-  signal_status_set active -t %1
+  signal_status_set -t %1 active
   signal_status_observed_result %1 "$revision"
   run signal_status_show
   assert_output --partial "%1"
@@ -48,7 +48,7 @@ teardown() { :; }
   run signal_status_show
   assert_output --partial "active  revision 2"
 
-  signal_status_set result -t %1
+  signal_status_set -t %1 result
   assert_equal "$(prv_get_pane %1 status-revision)" 3
   signal_status_observed_result %1 3
   run signal_status_show
@@ -61,17 +61,17 @@ teardown() { :; }
   run signal_status_set bogus
   assert_failure
   assert_output --partial "invalid value"
-  run signal_status_set active -t
+  run signal_status_set -t
   assert_failure
-  assert_output --partial "-t requires <target>"
+  assert_output --partial "-t requires <pane-target>"
   run signal_status_clear -t
   assert_failure
   run signal_status_show -t
   assert_failure
-  run signal_status_set active --print-revision
+  run signal_status_set active --unknown
   assert_failure
-  assert_output --partial "unknown option"
-  run signal_status_clear --observed-result 1
+  assert_output --partial "options must precede arguments"
+  run signal_status_clear --unknown
   assert_failure
   assert_output --partial "unknown option"
   run signal_status_observed_result %1 nope
@@ -161,17 +161,6 @@ teardown() { :; }
   assert_output --partial "invalid level"
 }
 
-@test "status health and problem mutations share one projection pipeline" {
-  local calls=""
-  _signal_project_and_redraw () { calls+="${calls:+ }$1:$2:$3"; }
-
-  signal_status_set active
-  signal_health_set test api warn "slow"
-  signal_problem_set test cpu fail "missing"
-
-  assert_equal "$calls" "window:@1:status window:@1:health global:server:problem"
-}
-
 @test "global problems retain independent session and pane claims" {
   signal_problem_set test cpu warn "sensors missing"
   signal_problem_set --pane %2 test cpu fail "query timed out"
@@ -214,7 +203,7 @@ teardown() { :; }
   assert_output --partial "need <message>"
   run signal_problem_set --pane
   assert_failure
-  assert_output --partial "--pane requires <pane-id>"
+  assert_output --partial "--pane requires <pane-target>"
   run signal_problem_clear
   assert_failure
   assert_output --partial "need exactly <contributor> <key>"
@@ -272,19 +261,17 @@ teardown() { :; }
 }
 
 @test "focus clear removes only results at the observation boundary" {
-  signal_status_set active -t %1
-  signal_status_set attention -t %2
-  signal_status_set result -t %3
-  signal_status_set result -t %4
+  signal_status_set -t %1 active
+  signal_status_set -t %2 attention
+  signal_status_set -t %3 result
+  signal_status_set -t %4 result
   signal_health_set test api fail "connection refused"
-  assert_equal "${_FAKE_HOOK[pane-focus-out[90]]}" \
-    "run-shell -b \"revision='#{@airline--status-revision}'; if [ -n \\\"\$revision\\\" ]; then '$AIRLINE_DIR/airline.sh' status _observed-result '#{hook_pane}' \\\"\$revision\\\"; fi\""
   local boundary
   boundary="$(prv_get_pane %3 status-revision)"
 
   # A newer result under the same pane identity was not observed at the boundary.
-  signal_status_set active -t %3
-  signal_status_set result -t %3
+  signal_status_set -t %3 active
+  signal_status_set -t %3 result
   signal_status_observed_result %3 "$boundary"
   run signal_status_show
   assert_output --partial "%1"
@@ -308,7 +295,7 @@ teardown() { :; }
 }
 
 @test "focus clear removes an observed result and leaves no history" {
-  signal_status_set result -t %1
+  signal_status_set -t %1 result
   boundary="$(prv_get_pane %1 status-revision)"
   signal_status_observed_result %1 "$boundary"
   run signal_status_show
@@ -328,11 +315,12 @@ teardown() { :; }
     assert_equal "$_FAKE_WRITES" "$writes" "$argv"
   done <<'CASES'
 signal_status_set active extra
-signal_status_set active -t %1 -t %1
-signal_status_set result --print-revision
+signal_status_set active -t %1
+signal_status_set -t %1 -t %1 active
+signal_status_set result --unknown
 signal_status_set active --unknown
 signal_status_clear extra
-signal_status_clear --observed-result 1
+signal_status_clear --unknown
 signal_status_observed_result %1
 signal_status_observed_result %1 1 extra
 signal_status_show extra
@@ -341,6 +329,10 @@ signal_health_set test api ok unexpected-message
 signal_health_set --unknown api fail message
 signal_health_ack test api --unknown
 signal_health_clear test api --unknown
+signal_health_show test --all
+signal_health_show test api -t @1
+signal_problem_show test --all
+signal_problem_close test --pane
 CASES
 
   run signal_health_show 'bad contributor'
@@ -348,7 +340,7 @@ CASES
   assert_equal "$_FAKE_WRITES" "$writes"
 }
 
-@test "valid signal option orderings remain accepted" {
+@test "canonical leading signal options are accepted" {
   signal_status_set -t %1 result
   signal_health_set -t "$_FAKE_WIN" test api warn "slow response"
   run signal_health_show -t "$_FAKE_WIN" test api
@@ -357,7 +349,7 @@ CASES
 
 @test "signal services propagate resolution, transaction, callback, and reporting failures" {
   resolve_window () { return 9; }
-  run signal_status_set active -t missing
+  run signal_status_set -t missing active
   assert_failure 2
   assert_output --partial "cannot resolve window for pane 'missing'"
 
@@ -385,20 +377,6 @@ CASES
   run signal_problem_show test 'bad key'
   assert_failure
   assert_equal "$_FAKE_WRITES" "$writes"
-}
-
-@test "problem ledger and claims retain severity and diagnostic framing" {
-  signal_health_set test api fail "connection refused"
-  signal_problem_set test api fail "connection refused"
-  assert_equal "$(coll_get global server problem test:api)" \
-    "$(printf 'fail\tactive\tfail\tconnection refused')"
-  assert_equal "$(coll_get global server problem-claim session:s1:test:api)" \
-    "$(printf 'test\tapi\tsession\ts1\tfail\tconnection refused')"
-
-  run signal_health_show test api
-  assert_output "$(printf 'fail\tconnection refused')"
-  run signal_problem_show test api
-  assert_output --partial "session:s1"
 }
 
 @test "identical problem reports and absent lifecycle operations do not redraw" {

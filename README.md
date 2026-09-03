@@ -343,10 +343,11 @@ airline runner run --pane -h -- npm test
 airline runner run --window -- cargo test
 ```
 
-The default `--here` runs synchronously in the current pane, streams terminal I/O,
-and returns the command's original exit status. `--pane` and `--window` launch in
-new tmux topology and print the new pane id. After `--pane`, the native tmux `-h`
-and `-v` modifiers select the split orientation; bare `--pane` keeps tmux's default.
+With no placement option, a runner executes synchronously in the current pane,
+streams terminal I/O, and returns the command's original exit status. `--pane` and
+`--window` launch in new tmux topology and print the new pane id. After `--pane`, the
+native tmux `-h` and `-v` modifiers select the split orientation; bare `--pane` keeps
+tmux's default.
 Spawned panes are retained after exit so their output and native tmux exit status
 remain available until dismissed.
 
@@ -376,8 +377,8 @@ endpoints replace those defaults.
 While watching, status is `active` and probe reports drive health. Stopping the
 watch clears both; there is no artificial command exit to classify.
 
-`--here` is the explicit spelling of the default placement; `--pane [-h|-v]` and
-`--window` are alternatives. Probe arguments continue to end-of-argv for `watch`.
+`--pane [-h|-v]` and `--window` override the current-pane placement and are mutually
+exclusive. Probe arguments continue to end-of-argv for `watch`.
 For `run`, the bare `--` separates the airline specification from the command.
 
 This lifecycle monitoring is independent of tmux's standard terminal monitoring.
@@ -581,7 +582,7 @@ Airline maps its state onto tmux's normal scopes:
 - Status is owned by a pane and projected at its window; health belongs to a window.
   Their documented `-t` targets resolve the corresponding owner.
 - Problems belong to the tmux server. A pane-hosted reporter may preserve its
-  runtime origin with `problem set --pane <pane-id>`.
+  runtime origin with `problem set --pane <pane-target>`.
 
 A window entry has three layers, owned by two parties. **airline** owns the
 entry's *color* (the name itself); **plugins** speak through two *badges* that
@@ -705,10 +706,10 @@ empty health state through explicit deletion rather than a reported observation.
 could not recover and is broken. `warn` uses the palette's amber `alert` role; `fail`
 uses its red `stress` role. Glyphs are fixed (a distinct shape per visible state, so
 badges stay legible without color). Every retained `warn` or `fail` condition has a
-diagnostic message. Health's optional `-t <target>` precedes the keyed condition
+diagnostic message. Health's optional `-t <window-target>` precedes the keyed condition
 tuple so the trailing message stays opaque. Messages are user-facing text supplied
-by the reporter: Airline validates their framing but assigns them no meaning. Status
-commands accept their target option in any documented position.
+by the reporter: Airline validates their framing but assigns them no meaning. Signal
+commands place every option before their contributor, key, or value operands.
 
 Status values are workflow phases with distinct transition mechanisms. `active`
 remains while the producer is processing, and `attention` remains while the producer
@@ -805,12 +806,14 @@ diagnosing a stuck problem transaction never depends on acquiring that same lock
 ## The `airline` CLI
 
 One entry point drives everything. Domain commands use a noun followed by a verb;
-the read-only `version` command and help are root leaves. `-t` targets a window for
-status/health and a session for targeted initialization.
-Problems are server-global; an optional pane id identifies a pane-hosted origin.
+the read-only `version` command and help are root leaves. `-t` overrides the current
+pane for status mutation, the current window for status/health inspection, or the
+current session for targeted initialization. Target expressions are immediately
+resolved to the corresponding canonical owner. Problems are server-global; an
+optional pane target identifies a pane-hosted origin.
 
 ```
-airline session init [-t <session>]  # initialize the current or selected session
+airline session init [-t <session-target>]  # initialize the current or selected session
 airline session apply                # commit global edits and render
 airline session show [state]         # print the configuration or raw session state
 airline session suspend | resume | toggle
@@ -824,12 +827,13 @@ airline classifier show <classifier> | list | register <dir>
 airline filter     show <filter> | list | register <dir>
 airline probe      show <probe> | list | register <dir>
 airline runner   show <runner> [<arg>...] | list | register <dir>
-                 run [--here|--pane [-h|-v]|--window] [<runner>] [--classify <classifier>]
-                     [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]] -- <command>...
-                 watch [--here|--pane [-h|-v]|--window] [<runner>] [--probe <probe> [<arg>...]]
-airline status   set <active|result|attention> [-t <pane>] | clear [-t <pane>] | show [-t <pane|window>]
-airline health   set [-t <window>] <contributor> <health-key> <ok|warn|fail> [<message>...] | ack|clear [-t <window>] <contributor> <health-key> | show [--all] [-t <window>] [<contributor> [<health-key>]]
-airline problem  set [--pane <pane-id>] <contributor> <problem-key> <ok|warn|fail> [<message>...] | close [--pane <pane-id>|--session <session-id>] [<contributor> [<problem-key>]] | ack|clear|resolve <contributor> <problem-key> | show [--all] [<contributor> [<problem-key>]]
+                 run [--pane [-h|-v]|--window] <runner> [<arg>...] -- <command>...
+                 run [--pane [-h|-v]|--window] [--classify <classifier>] [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]] -- <command>...
+                 watch [--pane [-h|-v]|--window] <runner> [<arg>...]
+                 watch [--pane [-h|-v]|--window] --probe <probe> [<arg>...]
+airline status   set [-t <pane-target>] <active|result|attention> | clear [-t <pane-target>] | show [-t <window-target>]
+airline health   set [-t <window-target>] <contributor> <health-key> <ok|warn|fail> [<message>...] | ack|clear [-t <window-target>] <contributor> <health-key> | show [--all] [-t <window-target>] [<contributor> [<health-key>]]
+airline problem  set [--pane <pane-target>] <contributor> <problem-key> <ok|warn|fail> [<message>...] | close [--pane <pane-target>|--session <session-target>] [<contributor> [<problem-key>]] | ack|clear|resolve <contributor> <problem-key> | show [--all] [<contributor> [<problem-key>]]
 airline transaction show | clear <global|session|window> <target> <namespace>
 ```
 

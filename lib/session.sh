@@ -59,12 +59,12 @@ _session_configuration_show_unlocked () {   # <session>
   layout_configuration_show "$session"
 }
 
-session_init () {   # [-t <session>]
+session_init () {   # [-t <session-target>]
   local target="" session
   while (( $# )); do
     case "$1" in
       -t)
-        [[ $# -ge 2 && -n "$2" ]] || command_die "session init: -t requires <session>"
+        [[ $# -ge 2 && -n "$2" ]] || command_die "session init: -t requires <session-target>"
         [[ -z "$target" ]] || command_die "session init: duplicate -t"
         target="$2"
         shift 2
@@ -81,7 +81,10 @@ session_init () {   # [-t <session>]
   _session_bootstrap "$session"
 }
 
-session_apply () { layout_apply "$(command_current_session)"; }
+session_apply () {
+  (( $# == 0 )) || command_die "session apply: takes no arguments"
+  layout_apply "$(command_current_session)"
+}
 
 session_show () {   # [state]
   local field="${1:-}" session
@@ -95,10 +98,17 @@ session_show () {   # [state]
   with_session_transaction "$session" config _session_configuration_show_unlocked "$session"
 }
 
-session_suspend () { _session_state_set "$(command_current_session)" 1; }
-session_resume () { _session_state_set "$(command_current_session)" 0; }
+session_suspend () {
+  (( $# == 0 )) || command_die "session suspend: takes no arguments"
+  _session_state_set "$(command_current_session)" 1
+}
+session_resume () {
+  (( $# == 0 )) || command_die "session resume: takes no arguments"
+  _session_state_set "$(command_current_session)" 0
+}
 session_toggle () {
   local session
+  (( $# == 0 )) || command_die "session toggle: takes no arguments"
   session="$(command_current_session)"
   if [[ "$(_session_state_word "$session")" == suspended ]]; then
     _session_state_set "$session" 0
