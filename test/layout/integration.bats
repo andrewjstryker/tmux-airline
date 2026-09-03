@@ -339,6 +339,7 @@ write_layout() {   # <path> <configure-body>
   assert_output "%Y-%m-%d %H:%M"
 
   airline_session "$one" adapter use cpu
+  airline_session "$other" adapter use cpu
   run sopt @cpu_low_fg_color -t "$one"
   assert_output "colour245"
   run sopt @cpu_low_fg_color -t "$other"
