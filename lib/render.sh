@@ -53,7 +53,8 @@ declare -gA AIRLINE_CONDITION_COLOR=([ok]=ok [warn]=alert [fail]=stress)
 
 # PRIVATE state — BARE keys into the private (@airline--) namespace; the prefix is
 # tmux.sh's (prv_name / prv_*), so render never spells it. Status and health are
-# window-scoped projections; problem is a server-global projection rendered at
+# window-scoped projections of pane-identified and pane-owned state respectively;
+# problem is a server-global projection rendered at
 # the extreme right. Each is reduced from its contributor collection at
 # set/clear time and read live through a token→color selector.
 AIRLINE_KEY_STATUS='badge-status'        # left badge:  reduced app-status level
@@ -334,9 +335,29 @@ render_status_project () {   # <destination> <win>
   _project "$1" window "$2" status "${AIRLINE_STATUS_LEVELS[*]}" "$AIRLINE_KEY_STATUS"
 }
 
-# Health recovery removes its condition, so absence naturally projects blank.
+# Health recovery removes its pane-owned condition. Reduce each pane first, then
+# reduce those results across the window before updating the derived window badge.
 render_health_project () {   # <destination> <win>
-  _project "$1" window "$2" health "warn fail" "$AIRLINE_KEY_HEALTH"
+  local -n destination="$1"
+  local win="$2" pane level top="" current option_changed=""
+  destination=""
+  for pane in $(list_panes "$win"); do
+    level="$(coll_reduce pane "$pane" health "warn fail")" || return
+    case "$top:$level" in
+      *:fail) top=fail ;;
+      :warn)  top=warn ;;
+    esac
+  done
+  if [[ -n "$top" ]]; then
+    prv_setif_window option_changed "$win" "$AIRLINE_KEY_HEALTH" "$top" || return
+    destination="$option_changed"
+  else
+    current="$(prv_get_window "$win" "$AIRLINE_KEY_HEALTH")" || return
+    [[ -n "$current" ]] || return 0
+    prv_unset_window "$win" "$AIRLINE_KEY_HEALTH" || return
+    # shellcheck disable=SC2034 # assignment is through the caller-selected nameref
+    destination=1
+  fi
 }
 
 # Problem ledger tuples place their display severity first. Active/open entries

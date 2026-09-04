@@ -78,6 +78,9 @@ implementation worklists used to reach them.
 - Made contributor and claim key separate identity fields for health and problem.
   Problem origin remains independent, allowing multiple runtime origins to assert
   one contributor capability without conflating different contributors.
+- Made health pane-owned and reduced its claims across the containing window.
+  Runner claims no longer encode pane IDs in semantic keys; pane movement and
+  destruction reproject the affected window badges.
 - Kept status key-only and left layout and palette APIs free of contributor
   qualification. Airline-owned configuration diagnostics report as contributor
   `airline` with stable `airline-layout` and `airline-palette` claim keys.
@@ -93,7 +96,7 @@ implementation worklists used to reach them.
   before reaping the pane process, including immediate command completion under
   repeated real-tmux load.
 - Reduced the architecture lint from 200 to 185 lines while expanding its negative
-  boundary fixtures. The 3.0.0 development tree contains 201 Bats cases.
+  boundary fixtures. The 3.0.0 development tree contains 204 Bats cases.
 
 ## 2.0.0
 

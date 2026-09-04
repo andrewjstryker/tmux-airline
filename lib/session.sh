@@ -10,6 +10,7 @@ _session_bootstrap () {   # <session>
   hook_set "after-new-session[90]" \
     "run-shell -b \"'$AIRLINE_DIR/airline.sh' session init -t '#{session_id}'\""
   hook_set_airline_window_styles
+  signal_health_install_hooks
   signal_problem_install_hooks
   # Remove the pre-ledger session projection so it cannot shadow the global
   # badge after upgrading an already initialized tmux server.

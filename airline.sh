@@ -94,12 +94,13 @@ cmd_status () {
 
 cmd_health () {
   local verb="${1:-}"; shift || true
+  [[ "$verb" != project-all ]] || { signal_health_project_all "$@"; return; }
   # help:begin health
   case "$verb" in
-    set)   signal_health_set "$@" ;;   #| [-t <window-target>] <contributor> <health-key> <ok|warn|fail> [<message>...] — set window health
-    ack)   signal_health_ack "$@" ;;   #| [-t <window-target>] <contributor> <health-key> — acknowledge and hide the current health state
-    clear) signal_health_clear "$@" ;; #| [-t <window-target>] <contributor> <health-key> — delete one health claim
-    show)  signal_health_show "$@" ;;  #| [--all] [-t <window-target>] [<contributor> [<health-key>]] — show active or acknowledged window health
+    set)   signal_health_set "$@" ;;   #| [-t <pane-target>] <contributor> <health-key> <ok|warn|fail> [<message>...] — set a pane's health
+    ack)   signal_health_ack "$@" ;;   #| [-t <pane-target>] <contributor> <health-key> — acknowledge and hide one pane health claim
+    clear) signal_health_clear "$@" ;; #| [-t <pane-target>] <contributor> <health-key> — delete one pane health claim
+    show)  signal_health_show "$@" ;;  #| [--all] [-t <pane-target>] [<contributor> [<health-key>]] — show active or acknowledged pane health
     *) command_die "unknown health command: $verb" ;;
   esac
   # help:end health

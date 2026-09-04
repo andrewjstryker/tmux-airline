@@ -244,9 +244,9 @@ _seed_palette() {
 @test "render_health_project reduces claims to the worst level scalar" {
   load_render
   win="$(current_window)"
-  coll_set window "$win" health cpu ok
-  coll_set window "$win" health disk warn
-  coll_set window "$win" health net fail
+  coll_set pane %1 health cpu ok
+  coll_set pane %1 health disk warn
+  coll_set pane %1 health net fail
   render_health_project changed "$win"
   run opt_get_window "$win" @airline--badge-health
   assert_output "fail"
@@ -255,7 +255,7 @@ _seed_palette() {
 @test "render_health_project leaves a blank badge when only ok reports" {
   load_render
   win="$(current_window)"
-  coll_set window "$win" health cpu ok
+  coll_set pane %1 health cpu ok
   render_health_project changed "$win"
   assert_equal "$changed" ""
   run opt_get_window "$win" @airline--badge-health
@@ -265,7 +265,7 @@ _seed_palette() {
 @test "render_health_project reports change separately from success" {
   load_render
   win="$(current_window)"
-  coll_set window "$win" health net fail
+  coll_set pane %1 health net fail
   changed=""; render_health_project changed "$win"
   assert_equal "$changed" 1
   changed=stale; render_health_project changed "$win"
@@ -275,9 +275,9 @@ _seed_palette() {
 @test "render_health_project clears the badge when the worst claim is removed" {
   load_render
   win="$(current_window)"
-  coll_set window "$win" health net fail
+  coll_set pane %1 health net fail
   render_health_project changed "$win"
-  coll_unregister window "$win" health net
+  coll_unregister pane %1 health net
   render_health_project changed "$win"
   run opt_get_window "$win" @airline--badge-health
   assert_output ""

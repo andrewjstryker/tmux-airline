@@ -103,7 +103,7 @@ wait_for_pane_exit() { # <pane> <status>
   run airline status show -t "$pane"
   assert_output --partial "$pane"
   assert_output --partial result
-  run airline health show airline-runner-classifier-basic "${pane#%}/command"
+  run airline health show airline-runner-classifier-basic command
   assert_output ""
 }
 
@@ -117,7 +117,7 @@ wait_for_pane_exit() { # <pane> <status>
   run airline status show -t "$pane"
   assert_output --partial "$pane"
   assert_output --partial result
-  run airline health show airline-runner-classifier-basic "${pane#%}/command"
+  run airline health show airline-runner-classifier-basic command
   assert_output "$(printf 'fail\tcommand exited with status 7')"
 }
 
@@ -135,7 +135,7 @@ wait_for_pane_exit() { # <pane> <status>
   run airline status show -t "$pane"
   assert_output --partial "$pane"
   assert_output --partial result
-  run airline health show airline-runner-classifier-pytest "${pane#%}/command"
+  run airline health show airline-runner-classifier-pytest command
   assert_output "$(printf 'warn\tno tests collected')"
 }
 
@@ -156,7 +156,7 @@ wait_for_pane_exit() { # <pane> <status>
   airline session init
   session="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{session_id}')"
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
-  probe_key="${pane#%}/probe"
+  probe_key=probe
   mkdir -p "$BATS_TEST_TMPDIR/probes"
   health_file="$BATS_TEST_TMPDIR/healthy"
   export health_file
@@ -201,7 +201,7 @@ wait_for_pane_exit() { # <pane> <status>
   airline session init
   session="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{session_id}')"
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
-  probe_key="${pane#%}/watch-probe"
+  probe_key=watch-probe
   mkdir -p "$BATS_TEST_TMPDIR/probes" "$BATS_TEST_TMPDIR/runners"
   health_file="$BATS_TEST_TMPDIR/healthy"
   observed_pid_file="$BATS_TEST_TMPDIR/watcher-pid"
@@ -285,7 +285,7 @@ wait_for_pane_exit() { # <pane> <status>
 @test "tap runner preserves output and filters progressive test health" {
   airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
-  filter_key="${pane#%}/filter"
+  filter_key=filter
   output_file="$BATS_TEST_TMPDIR/tap-stream"
 
   airline runner run --filter tap -- bash -c \
@@ -315,14 +315,14 @@ wait_for_pane_exit() { # <pane> <status>
   assert_output --partial "not ok 2 - second"
   run airline health show airline-runner-filter-tap "$filter_key"
   assert_output "$(printf 'fail\tTAP stream completed with unsuccessful assertions')"
-  run airline health show airline-runner-classifier-basic "${pane#%}/command"
+  run airline health show airline-runner-classifier-basic command
   assert_output "$(printf 'fail\tcommand exited with status 1')"
 }
 
 @test "filter health remains independent of successful exit classification" {
   airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
-  filter_key="${pane#%}/filter"
+  filter_key=filter
 
   run airline runner run --filter tap -- bash -c \
     'printf "1..1\nnot ok 1 - semantic failure\n"'
@@ -330,7 +330,7 @@ wait_for_pane_exit() { # <pane> <status>
   run airline status show -t "$pane"
   assert_output --partial "$pane"
   assert_output --partial result
-  run airline health show airline-runner-classifier-basic "${pane#%}/command"
+  run airline health show airline-runner-classifier-basic command
   assert_output ""
   run airline health show airline-runner-filter-tap "$filter_key"
   assert_output "$(printf 'fail\tTAP stream completed with unsuccessful assertions')"
@@ -414,7 +414,7 @@ wait_for_pane_exit() { # <pane> <status>
   run airline status show -t "$spawned"
   assert_output --partial "$spawned"
   assert_output --partial result
-  run airline health show -t "$window" airline-runner-classifier-basic "${spawned#%}/command"
+  run airline health show -t "$spawned" airline-runner-classifier-basic command
   assert_output "$(printf 'fail\tcommand exited with status 9')"
   run $TMUX -L "$_bats_socket" capture-pane -p -t "$spawned" -S -
   assert_output --partial "pane failure"

@@ -271,6 +271,9 @@ _opt_workspace_flush () {
 opt_get          () { _opt_read   "$@"; } # <scope> <owner> <name>
 opt_set          () { _opt_store  "$@"; } # <scope> <owner> <name> <value>
 opt_unset        () { _opt_remove "$@"; } # <scope> <owner> <name>
+# Preload a non-owner scope into the current transaction workspace so subsequent
+# command substitutions retain read-your-writes for that scope.
+opt_workspace_load () { _opt_snapshot_if_needed "$@"; } # <scope> <owner>
 
 # --- global scope ---
 opt_get_global   () { _opt_read    global server "$1"; }
@@ -439,6 +442,8 @@ resolve_session_target () { tmux display-message -p -t "$1:" '#{session_id}'; }
 list_sessions () { tmux list-sessions -F '#{session_id}'; }
 
 list_windows () { tmux list-windows -t "$1:" -F '#{window_id}'; }
+list_panes () { tmux list-panes -t "$1" -F '#{pane_id}'; }
+list_all_windows () { tmux list-windows -a -F '#{window_id}'; }
 
 # The id ($n) of the session the caller is acting in. A process launched from a
 # pane receives TMUX_PANE from tmux, so give that native target back to tmux for an

@@ -19,6 +19,8 @@ teardown() { :; }
   assert_equal "${_FAKE_HOOK[after-new-window[90]]}" airline-window-styles
   assert_equal "${_FAKE_HOOK[pane-exited[90]]}" \
     "run-shell -b \"'$AIRLINE_DIR/airline.sh' problem close --pane '#{hook_pane}'\""
+  assert_equal "${_FAKE_HOOK[window-layout-changed[90]]}" \
+    "run-shell -b \"'$AIRLINE_DIR/airline.sh' health project-all\""
   assert_equal "${_FAKE_HOOK[pane-died[90]]}" \
     "run-shell -b \"'$AIRLINE_DIR/airline.sh' problem close --pane '#{hook_pane}'\""
   assert_equal "${_FAKE_HOOK[session-closed[90]]}" \

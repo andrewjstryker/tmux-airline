@@ -579,8 +579,9 @@ Airline maps its state onto tmux's normal scopes:
   session and are read through the CLI.
 - Session-public options written while evaluating palette/layout files are cleared;
   they are not another user configuration scope.
-- Status is owned by a pane and projected at its window; health belongs to a window.
-  Their documented `-t` targets resolve the corresponding owner.
+- Status and health originate in panes and are projected at their containing window.
+  Health claims are stored on their pane, while status uses pane identity in its
+  window collection. Their documented `-t` targets resolve the corresponding owner.
 - Problems belong to the tmux server. A pane-hosted reporter may preserve its
   runtime origin with `problem set --pane <pane-target>`.
 
@@ -807,7 +808,7 @@ diagnosing a stuck problem transaction never depends on acquiring that same lock
 
 One entry point drives everything. Domain commands use a noun followed by a verb;
 the read-only `version` command and help are root leaves. `-t` overrides the current
-pane for status mutation, the current window for status/health inspection, or the
+pane for status mutation and every health operation, the current window for status inspection, or the
 current session for targeted initialization. Target expressions are immediately
 resolved to the corresponding canonical owner. Problems are server-global; an
 optional pane target identifies a pane-hosted origin.
@@ -832,7 +833,7 @@ airline runner   show <runner> [<arg>...] | list | register <dir>
                  watch [--pane [-h|-v]|--window] <runner> [<arg>...]
                  watch [--pane [-h|-v]|--window] --probe <probe> [<arg>...]
 airline status   set [-t <pane-target>] <active|result|attention> | clear [-t <pane-target>] | show [-t <window-target>]
-airline health   set [-t <window-target>] <contributor> <health-key> <ok|warn|fail> [<message>...] | ack|clear [-t <window-target>] <contributor> <health-key> | show [--all] [-t <window-target>] [<contributor> [<health-key>]]
+airline health   set [-t <pane-target>] <contributor> <health-key> <ok|warn|fail> [<message>...] | ack|clear [-t <pane-target>] <contributor> <health-key> | show [--all] [-t <pane-target>] [<contributor> [<health-key>]]
 airline problem  set [--pane <pane-target>] <contributor> <problem-key> <ok|warn|fail> [<message>...] | close [--pane <pane-target>|--session <session-target>] [<contributor> [<problem-key>]] | ack|clear|resolve <contributor> <problem-key> | show [--all] [<contributor> [<problem-key>]]
 airline transaction show | clear <global|session|window> <target> <namespace>
 ```

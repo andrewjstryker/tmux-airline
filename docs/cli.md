@@ -27,7 +27,7 @@ Options appear before positional arguments in the canonical grammar:
 
 ```text
 airline status set [-t <pane-target>] <active|result|attention>
-airline health set [-t <window-target>] <contributor> <key> <level> [<message>...]
+airline health set [-t <pane-target>] <contributor> <key> <level> [<message>...]
 ```
 
 Options may be reordered within that leading option block when they are independent.
@@ -36,7 +36,8 @@ options; commands with fixed operands reject a recognized option placed there.
 Variadic opaque arguments, such as diagnostic messages and named-runner arguments,
 instead retain their contents.
 
-With no `-t`, these commands use the current pane or window. Behavioral modifiers
+With no `-t`, status and health mutations use the current pane, while window-level
+inspection uses the current window. Behavioral modifiers
 such as `--all` and `--merge-stderr` are also options. A trailing positional may be
 optional when it naturally narrows or selects command output, as in `segment show
 [<segment>]`. `--` is a delimiter before an opaque command, not a behavioral option.

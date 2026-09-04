@@ -38,6 +38,7 @@ declare -g  _FAKE_WIN='@1'      # what current_window reports (override per test
 declare -g  _FAKE_PANE='%1'     # what current_pane reports (override per test)
 declare -g  _FAKE_SESSION='s1'  # what current_session reports (override per test)
 declare -ga _FAKE_WINDOWS=('@1')
+declare -ga _FAKE_PANES=('%1')
 declare -gi _FAKE_REDRAWS=0     # redraw call count (assertable if a test cares)
 declare -gi _FAKE_WRITES=0      # option mutation count (assertable for no-op paths)
 
@@ -45,7 +46,7 @@ declare -gi _FAKE_WRITES=0      # option mutation count (assertable for no-op pa
 # re-declares the arrays empty, so this is only needed to clear mid-test.
 fake_tmux_reset () {
   _FAKE_OPT=(); _FAKE_HOOK=()
-  _FAKE_WIN='@1'; _FAKE_PANE='%1'; _FAKE_SESSION='s1'; _FAKE_WINDOWS=('@1'); _FAKE_REDRAWS=0; _FAKE_WRITES=0
+  _FAKE_WIN='@1'; _FAKE_PANE='%1'; _FAKE_SESSION='s1'; _FAKE_WINDOWS=('@1'); _FAKE_PANES=('%1'); _FAKE_REDRAWS=0; _FAKE_WRITES=0
   _AIRLINE_TRANSACTION_CHANNEL=""
 }
 
@@ -101,6 +102,8 @@ resolve_session () { printf '%s' "$1"; }
 resolve_session_target () { printf '%s' "$1"; }
 list_sessions () { printf '%s\n' "$_FAKE_SESSION"; }
 list_windows  () { printf '%s\n' "${_FAKE_WINDOWS[@]}"; }
+list_panes    () { printf '%s\n' "${_FAKE_PANES[@]}"; }
+list_all_windows () { printf '%s\n' "${_FAKE_WINDOWS[@]}"; }
 hook_set       () { _FAKE_HOOK["$1"]="$2"; }
 hook_set_airline_window_styles () { _FAKE_HOOK[after-new-window[90]]=airline-window-styles; }
 runner_open_pane () { printf '%%2'; }

@@ -33,7 +33,7 @@ example, because a required executable is unavailable.
 | Signal | Meaning | Identity and scope | Values | Retention | Commands |
 |--------|---------|--------------------|--------|-----------|----------|
 | Status | The workflow phase of work whose details are visible in the pane | pane within one window | `active`, `result`, `attention` | Active work and input requests persist until the producer updates them; observed results are deleted | `set`, `clear`, `show` |
-| Health | A currently observed domain condition | contributor and claim key within one window | `ok`, `warn`, `fail` | Active or acknowledged until recovery or clear | `set`, `ack`, `clear`, `show` |
+| Health | A currently observed domain condition | contributor and claim key owned by one pane | `ok`, `warn`, `fail` | Active or acknowledged until recovery, clear, or pane destruction | `set`, `ack`, `clear`, `show` |
 | Problem | Failure to provide an advertised capability | contributor and problem key globally, with pane or session origins | `ok`, `warn`, `fail` plus lifecycle state | Claims until recovery, close, resolve, or clear; terminal state until a new report or clear | `set`, `close`, `ack`, `resolve`, `clear`, `show` |
 
 Status uses `active < result < attention`: ongoing work, a result to inspect, and a
@@ -53,13 +53,14 @@ current value. Airline derives the identity from tmux, projects it to the contai
 window, and owns automatic observation of `result`. The producer remains responsible
 for advancing `active` processing and `attention` after input.
 
-Health and problem identity is semantic and contributor-defined. A contributor
+Health and problem claim identity is semantic and contributor-defined. A contributor
 chooses a stable key for each independent condition or capability it owns; this is a
 domain identifier, not an Airline-issued token. The explicit contributor identity
 allows multiple reporters to use the same key without collision, while stable keys
 also allow one contributor to maintain several simultaneous claims. Airline owns
 their storage, reduction, acknowledgement, and presentation, but does not assign
-meaning to those keys.
+meaning to those keys. A health claim additionally has a structural pane owner,
+which supplies its runtime and user-visible origin.
 
 Viewing a pane cannot demonstrate that a health condition recovered or that a
 missing capability became available. Health and problem therefore require an
@@ -71,7 +72,7 @@ claiming recovery.
 | Signal | Identity owner | Identity | Normal transition authority |
 |--------|----------------|----------|-----------------------------|
 | Status | Airline, from tmux structure | pane | producer for `active` and `attention`; Airline for an observed `result` |
-| Health | contributor | contributor + health key within a window | contributor reports condition and recovery; user may acknowledge |
+| Health | contributor within a pane origin | pane + contributor + health key | contributor reports condition and recovery; user may acknowledge |
 | Problem | contributor | contributor + problem key globally, with pane or session origins | contributor reports condition and recovery or authoritatively resolves; hooks close origins; user may acknowledge |
 
 ## Status
@@ -156,8 +157,9 @@ contributor is working well enough to report what it observed; the observed syst
 may be degraded or failed. Examples include a failed test, an unreachable endpoint,
 or a service returning an unhealthy readiness state.
 
-Each contributor and claim key identifies one condition in one window. `set warn`
-or `set fail` makes the condition active and visible. `ack` hides the current level
+Each pane owns an independent collection in which contributor and claim key identify
+one condition. `set warn` or `set fail` makes the condition active and visible.
+`ack` hides the current level
 without asserting recovery. Repeated observations at that same level refresh its
 diagnostic but remain acknowledged; a change between `warn` and `fail` is a new
 semantic state and becomes active again. `show` lists active health, while `show
@@ -168,9 +170,12 @@ deletes it directly and has the same final state, but does not itself communicat
 new observation. Health retains acknowledged current state but no terminal history:
 after recovery or clear, there is no claim.
 
-Health is never consumed merely by leaving a window. Unlike status, the pane need
-not contain its diagnostic, and attention says nothing about whether the observed
-condition changed.
+Health is never consumed merely by leaving a pane: attention says nothing about
+whether the observed condition changed. The pane is the report's operational
+origin—even for a remote-service probe—and provides the output or context a user can
+inspect. Pane destruction removes its claims. Airline reduces every pane's visible
+claims into the containing window badge and reprojects affected windows when a pane
+moves or disappears.
 
 ## Problem
 

@@ -9,7 +9,7 @@ setup() {
   $TMUX -L "$_bats_socket" -f /dev/null new-session -d -s bats
 }
 
-@test "status and health accept a pane target and store on its containing window" {
+@test "status and health target a pane and project onto its containing window" {
   airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
   window="$($TMUX -L "$_bats_socket" display-message -p -t "$pane" '#{window_id}')"
@@ -24,8 +24,65 @@ setup() {
   assert_output --partial "active  revision 1"
   run wopt @airline--badge-health -t "$window"
   assert_output "warn"
+  run popt @airline--health -t "$pane"
+  assert_output "example-agent:context"
   run airline health show -t "$pane" example-agent context
   assert_output "$(printf 'warn\tagent is degraded')"
+}
+
+@test "health claims are isolated by pane and reduced onto their window" {
+  airline session init
+  first="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
+  second="$($TMUX -L "$_bats_socket" split-window -dP -F '#{pane_id}' -t bats)"
+  window="$($TMUX -L "$_bats_socket" display-message -p -t "$first" '#{window_id}')"
+
+  airline health set -t "$first" test api warn "first is slow"
+  airline health set -t "$second" test api fail "second is unavailable"
+  run airline health show -t "$first" test api
+  assert_output "$(printf 'warn\tfirst is slow')"
+  run airline health show -t "$second" test api
+  assert_output "$(printf 'fail\tsecond is unavailable')"
+  run wopt @airline--badge-health -t "$window"
+  assert_output fail
+
+  airline health clear -t "$second" test api
+  run wopt @airline--badge-health -t "$window"
+  assert_output warn
+}
+
+@test "pane movement and destruction reproject health badges" {
+  airline session init
+  pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
+  sibling="$($TMUX -L "$_bats_socket" split-window -dP -F '#{pane_id}' -t bats)"
+  old_window="$($TMUX -L "$_bats_socket" display-message -p -t "$pane" '#{window_id}')"
+  airline health set -t "$pane" test api fail "service unavailable"
+
+  $TMUX -L "$_bats_socket" break-pane -d -s "$pane"
+  new_window="$($TMUX -L "$_bats_socket" display-message -p -t "$pane" '#{window_id}')"
+  for _ in {1..100}; do
+    old_badge="$(wopt @airline--badge-health -t "$old_window")"
+    new_badge="$(wopt @airline--badge-health -t "$new_window")"
+    [[ -z "$old_badge" && "$new_badge" == fail ]] && break
+    sleep 0.01
+  done
+  [[ -z "$old_badge" ]]
+  [[ "$new_badge" == fail ]]
+
+  $TMUX -L "$_bats_socket" join-pane -d -s "$pane" -t "$sibling"
+  for _ in {1..100}; do
+    old_badge="$(wopt @airline--badge-health -t "$old_window")"
+    [[ "$old_badge" == fail ]] && break
+    sleep 0.01
+  done
+  [[ "$old_badge" == fail ]]
+
+  $TMUX -L "$_bats_socket" kill-pane -t "$pane"
+  for _ in {1..100}; do
+    old_badge="$(wopt @airline--badge-health -t "$old_window")"
+    [[ -z "$old_badge" ]] && break
+    sleep 0.01
+  done
+  [[ -z "$old_badge" ]]
 }
 
 @test "health retains a diagnostic while projecting only its severity" {

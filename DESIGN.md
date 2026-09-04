@@ -208,7 +208,8 @@ the user selects that palette or layout again when they want its complete defini
 
 Private state exists at its native owner:
 
-- status entries, health claims, and their projected badges are window-scoped;
+- status entries are window-scoped and keyed by pane; health claims are pane-scoped;
+  both projected badges are window-scoped;
 - the problem ledger, origin claims, and projected problem badge are server-global;
 - palette/layout selections, guards, paths, suspension, committed configuration,
   and adapter declarations are session-scoped.
@@ -348,10 +349,10 @@ airline help [<noun> [<verb>]]
 airline status   set [-t <pane-target>] <active|result|attention>
                  clear [-t <pane-target>]
                  show [-t <window-target>]
-airline health   set [-t <window-target>] <contributor> <health-key> <ok|warn|fail> [<message>...]
-                 ack [-t <window-target>] <contributor> <health-key>
-                 clear [-t <window-target>] <contributor> <health-key>
-                 show [--all] [-t <window-target>] [<contributor> [<health-key>]]
+airline health   set [-t <pane-target>] <contributor> <health-key> <ok|warn|fail> [<message>...]
+                 ack [-t <pane-target>] <contributor> <health-key>
+                 clear [-t <pane-target>] <contributor> <health-key>
+                 show [--all] [-t <pane-target>] [<contributor> [<health-key>]]
 airline problem  set [--pane <pane-target>] <contributor> <problem-key> <ok|warn|fail> [<message>...]
                  close [--pane <pane-target>|--session <session-target>] [<contributor> [<problem-key>]]
                  ack <contributor> <problem-key>
@@ -423,8 +424,8 @@ installs both artifacts with the PATH shim.
   uses the current pane, while `--pane` and `--window` create tmux topology
   through the common runner core. Pane placement accepts tmux's native `-h` and
   `-v` orientation modifiers; omitting one preserves tmux's default split.
-- Status mutation resolves a pane target, while status inspection and health resolve
-  window targets. Health places `-t <window-target>` before its keyed tuple so
+- Status mutation and health resolve pane targets, while status inspection resolves
+  a window target. Health places `-t <pane-target>` before its keyed tuple so
   every trailing message word is opaque. Problems are globally visible.
   Health and problem take contributor and claim as separate identity fields.
   `problem set` attributes a claim to the current session unless `--pane` supplies
@@ -654,7 +655,8 @@ an airline problem. Airline does not copy command diagnostics into problems.
 
 ## Collections and badge projection
 
-Status holds one pane-owned entry and health holds contributor-owned claims per window.
+Status holds one pane-identified entry in a window collection. Each pane owns a
+health collection whose claims are reduced into its containing window's badge.
 Problem uses a server-global lifecycle ledger plus a server-global set of active
 origin claims.
 Each collection uses an explicit registry and a tuple per member:
@@ -671,14 +673,14 @@ Collection rules:
   scope-specific collection functions. The collection layer passes scope through
   mechanically and does not decide which domain belongs at which scope. Owner
   tuples have one canonical representation: `(global, server)`, `(session, id)`,
-  or `(window, id)`.
+  `(window, id)`, or `(pane, id)`.
 - Membership is explicit; entries are never discovered by parsing option names.
 - `set` writes the entire tuple and registers the key. `unregister` also removes the
   tuple.
 - Public identity fields are opaque and cannot contain whitespace or `:`. Status is
   identified by pane and its window collection tuples hold
   `<level>\t<pane-revision>`. Its monotonic counter is a pane-scoped private scalar,
-  so it survives status deletion and follows a pane moved between windows. Health tuples hold
+  so it survives status deletion. Pane-scoped health tuples hold
   `<badge|none>\t<active|acknowledged>\t<level>\t<message>`. Problem ledger tuples
   hold
   `<badge|none>\t<active|acknowledged|closed|resolved>\t<last-level>\t<last-message>`;
@@ -703,7 +705,7 @@ Reporters and classifier/filter/probe implementations own the diagnostic content
 Signal meaning, identity, and state transitions are defined in
 [Signal lifecycles](docs/lifecycle-signals.md). This document retains only the
 architectural consequences: status is keyed by pane within a window, health is keyed by
-contributor and claim within a window, and problem is keyed by contributor and claim
+contributor and claim within its pane owner, and problem is keyed by contributor and claim
 globally while retaining pane or session origins.
 
 All three signals use one orchestration path: resolve the native owner, enter its
@@ -711,8 +713,8 @@ transaction, apply domain lifecycle policy, reduce/project the collection, and
 redraw only when presentation changed. The common path does not make their lifecycle
 policies interchangeable.
 
-Dynamic collection operations run in owner-scoped transactions: status and health
-serialize by `(window, namespace)`, while problems serialize by the single
+Dynamic collection operations run in projection-owner transactions: status and health
+serialize by `(window, namespace)` even though health writes pane-owned state, while problems serialize by the single
 `(global, server, problem)` owner. The registry, member tuple, reduction, and
 projected badge therefore form one logical mutation even when background
 evaluations overlap.

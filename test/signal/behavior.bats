@@ -134,6 +134,25 @@ teardown() { :; }
   assert_output "$(printf 'fail\tworker unavailable')"
 }
 
+@test "health claims are pane-owned and reduced across their window" {
+  _FAKE_PANES=(%1 %2)
+  signal_health_set -t %1 test api warn "first pane is slow"
+  signal_health_set -t %2 test api fail "second pane is unavailable"
+
+  run coll_get pane %1 health test:api
+  assert_output --partial "first pane is slow"
+  run coll_get pane %2 health test:api
+  assert_output --partial "second pane is unavailable"
+  run coll_members window "$_FAKE_WIN" health
+  assert_output ""
+  run wopt @airline--badge-health
+  assert_output fail
+
+  signal_health_clear -t %2 test api
+  run wopt @airline--badge-health
+  assert_output warn
+}
+
 @test "health retains opaque diagnostics without redrawing an unchanged badge" {
   signal_health_set test api fail "connection refused" "after -t retry"
   run signal_health_show test api

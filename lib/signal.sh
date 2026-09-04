@@ -4,7 +4,7 @@
 #
 # Status is pane-owned workflow state reduced at window scope; completed results are
 # deleted after observation.
-# Health is a persistent keyed window condition. Problems are a server-global
+# Health is persistent keyed pane-owned state reduced at window scope. Problems are a server-global
 # lifecycle ledger whose active claims retain their pane or session origin.
 #
 # Signal owns validation, transactional mutation, projection orchestration, redraw
@@ -99,20 +99,20 @@ _signal_apply () {   # <window|global> <owner> <namespace> <lifecycle> [<arg>...
 # Health lifecycle policy
 #-----------------------------------------------------------------------------#
 
-_signal_health_store_unlocked () {   # <destination> <window> <contributor> <key> <level> <message>
+_signal_health_store_unlocked () {   # <destination> <pane> <contributor> <key> <level> <message>
   local -n destination="$1"
-  local owner="$2" contributor="$3" key="$4" level="$5" message="$6"
+  local pane="$2" contributor="$3" key="$4" level="$5" message="$6"
   local id tuple badge state previous_level desired has_rc=0
   destination=""
   id="$(_signal_claim_id "$contributor" "$key")"
 
-  tuple="$(coll_get window "$owner" health "$id")" || return
-  coll_has window "$owner" health "$id" || has_rc=$?
+  tuple="$(coll_get pane "$pane" health "$id")" || return
+  coll_has pane "$pane" health "$id" || has_rc=$?
   (( has_rc <= 1 )) || return "$has_rc"
 
   if [[ "$level" == ok ]]; then
     if (( has_rc == 1 )) && [[ -z "$tuple" ]]; then return 0; fi
-    coll_unregister window "$owner" health "$id" || return
+    coll_unregister pane "$pane" health "$id" || return
   else
     state=active
     if (( has_rc == 0 )); then
@@ -123,31 +123,31 @@ _signal_health_store_unlocked () {   # <destination> <window> <contributor> <key
     [[ "$state" == acknowledged ]] && badge=none
     desired="$(printf '%s\t%s\t%s\t%s' "$badge" "$state" "$level" "$message")"
     if (( has_rc == 0 )) && [[ "$tuple" == "$desired" ]]; then return 0; fi
-    coll_set window "$owner" health "$id" "$badge" "$state" "$level" "$message" || return
+    coll_set pane "$pane" health "$id" "$badge" "$state" "$level" "$message" || return
   fi
 
   destination=1
 }
 
-_signal_health_ack_unlocked () {   # <destination> <window> <contributor> <key>
+_signal_health_ack_unlocked () {   # <destination> <pane> <contributor> <key>
   local -n destination="$1"
-  local owner="$2" contributor="$3" key="$4" id tuple badge state level message
+  local pane="$2" contributor="$3" key="$4" id tuple badge state level message
   destination=""
   id="$(_signal_claim_id "$contributor" "$key")"
-  tuple="$(coll_get window "$owner" health "$id")" || return
+  tuple="$(coll_get pane "$pane" health "$id")" || return
   [[ -n "$tuple" ]] || return 0
   IFS=$'\t' read -r badge state level message <<< "$tuple"
   [[ "$state" != acknowledged ]] || return 0
-  coll_set window "$owner" health "$id" none acknowledged "$level" "$message" || return
+  coll_set pane "$pane" health "$id" none acknowledged "$level" "$message" || return
   destination=1
 }
 
-_signal_health_show_unlocked () {   # <active-only|all> <window> [<contributor> [<key>]]
-  local visibility="$1" owner="$2" contributor="${3:-}" key="${4:-}" id
+_signal_health_show_unlocked () {   # <active-only|all> <pane> [<contributor> [<key>]]
+  local visibility="$1" pane="$2" contributor="${3:-}" key="${4:-}" id
   local members member tuple badge state level message member_contributor member_key
   if [[ -n "$key" ]]; then
     id="$(_signal_claim_id "$contributor" "$key")"
-    tuple="$(coll_get window "$owner" health "$id")" || return
+    tuple="$(coll_get pane "$pane" health "$id")" || return
     [[ -n "$tuple" ]] || return 0
     IFS=$'\t' read -r badge state level message <<< "$tuple"
     [[ "$visibility" == all || "$state" == active ]] || return 0
@@ -155,11 +155,11 @@ _signal_health_show_unlocked () {   # <active-only|all> <window> [<contributor> 
     else printf '%s\t%s\n' "$level" "$message"; fi
     return
   fi
-  members="$(coll_members window "$owner" health)" || return
+  members="$(coll_members pane "$pane" health)" || return
   for member in $members; do
     member_contributor="${member%%:*}"; member_key="${member#*:}"
     [[ -z "$contributor" || "$member_contributor" == "$contributor" ]] || continue
-    tuple="$(coll_get window "$owner" health "$member")" || return
+    tuple="$(coll_get pane "$pane" health "$member")" || return
     IFS=$'\t' read -r badge state level message <<< "$tuple"
     [[ "$visibility" == all || "$state" == active ]] || continue
     if [[ "$visibility" == all ]]; then
@@ -168,6 +168,21 @@ _signal_health_show_unlocked () {   # <active-only|all> <window> [<contributor> 
       command_show_row "$member_contributor" "$member_key  $level${message:+  $message}"
     fi
   done
+}
+
+_signal_health_apply_unlocked () {   # <pane> <window> <lifecycle> [<arg>...]
+  local pane="$1" win="$2" lifecycle="$3"; shift 3
+  # Health storage is pane-owned but the transaction owner is the projected
+  # window. Load this pane into the transaction workspace before lifecycle
+  # helpers enter command substitutions so reduction sees the staged write.
+  opt_workspace_load pane "$pane" || return
+  _signal_apply_unlocked window "$win" health "$lifecycle" "$@"
+}
+
+_signal_health_apply () {   # <pane> <window> <lifecycle> [<arg>...]
+  local pane="$1" win="$2"; shift 2
+  _signal_with_transaction window "$win" health _signal_health_apply_unlocked \
+    "$pane" "$win" "$@"
 }
 
 #-----------------------------------------------------------------------------#
@@ -209,7 +224,7 @@ _signal_status_set_unlocked () {   # <destination> <window> <pane> <pane-member>
   destination=1
 }
 
-_signal_resolve_status_pane () {   # <pane-destination> <window-destination> <command> [target]
+_signal_resolve_pane_owner () {   # <pane-destination> <window-destination> <command> [target]
   local -n destination_pane="$1" destination_window="$2"
   local command="$3" target="${4:-}" resolved_pane resolved_window
   if [[ -z "$target" ]]; then
@@ -246,7 +261,7 @@ signal_status_set () {   # [-t <pane-target>] <active|result|attention>
   (( $# == 1 )) || command_die "status set: need exactly <value>"
   value="$1"
   _signal_status_valid "$value" || command_die "status set: invalid value '$value'"
-  _signal_resolve_status_pane pane win "status set" "$target"
+  _signal_resolve_pane_owner pane win "status set" "$target"
   member="${pane#%}"
   _signal_apply window "$win" status _signal_status_set_unlocked \
     "$win" "$pane" "$member" "$value" || return
@@ -294,7 +309,7 @@ signal_status_clear () {   # [-t <pane-target>]
     command_die "status clear: unknown option '$1'"
   fi
   (( $# == 0 )) || command_die "status clear: takes no arguments"
-  _signal_resolve_status_pane pane win "status clear" "$target"
+  _signal_resolve_pane_owner pane win "status clear" "$target"
   member="${pane#%}"
   _signal_apply window "$win" status _signal_status_clear_unlocked "$win" "$pane" "$member"
 }
@@ -307,7 +322,7 @@ signal_status_observed_result () {   # <pane> <revision>
   local pane win member revision="$2"
   [[ "$revision" =~ ^[0-9]+$ ]] || \
     command_die "status _observed-result: invalid revision '$revision'"
-  _signal_resolve_status_pane pane win "status _observed-result" "$1"
+  _signal_resolve_pane_owner pane win "status _observed-result" "$1"
   member="${pane#%}"
   _signal_apply window "$win" status _signal_status_clear_observed_unlocked \
     "$win" "$pane" "$member" "$revision"
@@ -341,11 +356,11 @@ signal_status_show () {   # [-t <window-target>]
 # Health public boundary
 #-----------------------------------------------------------------------------#
 
-signal_health_set () {   # [-t <window-target>] <contributor> <key> <ok|warn|fail> [<message>...]
-  local win="" contributor key level message
+signal_health_set () {   # [-t <pane-target>] <contributor> <key> <ok|warn|fail> [<message>...]
+  local target="" pane win contributor key level message
   if [[ "${1:-}" == -t ]]; then
-    if (( $# < 4 )) || [[ -z "$2" ]]; then command_die "health set: -t requires <window-target>"; fi
-    win="$2"; shift 2
+    if (( $# < 4 )) || [[ -z "$2" ]]; then command_die "health set: -t requires <pane-target>"; fi
+    target="$2"; shift 2
   elif [[ "${1:-}" == -* ]]; then
     command_die "health set: unknown option '$1'"
   fi
@@ -355,16 +370,16 @@ signal_health_set () {   # [-t <window-target>] <contributor> <key> <ok|warn|fai
   _signal_validate_contributor "health set" "$contributor"
   _signal_validate_key "health set" "$key"
   _signal_validate_condition "health set" "$level" "$message"
-  _signal_resolve_window win "health set" "$win"
-  _signal_apply window "$win" health _signal_health_store_unlocked \
-    "$win" "$contributor" "$key" "$level" "$message"
+  _signal_resolve_pane_owner pane win "health set" "$target"
+  _signal_health_apply "$pane" "$win" _signal_health_store_unlocked \
+    "$pane" "$contributor" "$key" "$level" "$message"
 }
 
-signal_health_clear () {   # [-t <window-target>] <contributor> <key>
-  local win="" contributor key
+signal_health_clear () {   # [-t <pane-target>] <contributor> <key>
+  local target="" pane win contributor key
   if [[ "${1:-}" == -t ]]; then
-    if (( $# < 4 )) || [[ -z "$2" ]]; then command_die "health clear: -t requires <window-target>"; fi
-    win="$2"; shift 2
+    if (( $# < 4 )) || [[ -z "$2" ]]; then command_die "health clear: -t requires <pane-target>"; fi
+    target="$2"; shift 2
   elif [[ "${1:-}" == -* ]]; then
     command_die "health clear: unknown option '$1'"
   fi
@@ -372,16 +387,16 @@ signal_health_clear () {   # [-t <window-target>] <contributor> <key>
   contributor="$1"; key="$2"
   _signal_validate_contributor "health clear" "$contributor"
   _signal_validate_key "health clear" "$key"
-  _signal_resolve_window win "health clear" "$win"
-  _signal_apply window "$win" health _signal_health_store_unlocked \
-    "$win" "$contributor" "$key" ok ""
+  _signal_resolve_pane_owner pane win "health clear" "$target"
+  _signal_health_apply "$pane" "$win" _signal_health_store_unlocked \
+    "$pane" "$contributor" "$key" ok ""
 }
 
-signal_health_ack () {   # [-t <window-target>] <contributor> <key>
-  local win="" contributor key
+signal_health_ack () {   # [-t <pane-target>] <contributor> <key>
+  local target="" pane win contributor key
   if [[ "${1:-}" == -t ]]; then
-    if (( $# < 4 )) || [[ -z "$2" ]]; then command_die "health ack: -t requires <window-target>"; fi
-    win="$2"; shift 2
+    if (( $# < 4 )) || [[ -z "$2" ]]; then command_die "health ack: -t requires <pane-target>"; fi
+    target="$2"; shift 2
   elif [[ "${1:-}" == -* ]]; then
     command_die "health ack: unknown option '$1'"
   fi
@@ -389,22 +404,22 @@ signal_health_ack () {   # [-t <window-target>] <contributor> <key>
   contributor="$1"; key="$2"
   _signal_validate_contributor "health ack" "$contributor"
   _signal_validate_key "health ack" "$key"
-  _signal_resolve_window win "health ack" "$win"
-  _signal_apply window "$win" health _signal_health_ack_unlocked \
-    "$win" "$contributor" "$key"
+  _signal_resolve_pane_owner pane win "health ack" "$target"
+  _signal_health_apply "$pane" "$win" _signal_health_ack_unlocked \
+    "$pane" "$contributor" "$key"
 }
 
-signal_health_show () {   # [--all] [-t <window-target>] [<contributor> [<key>]]
-  local visibility=active-only win="" contributor="" key="" seen_all="" seen_target=""
+signal_health_show () {   # [--all] [-t <pane-target>] [<contributor> [<key>]]
+  local visibility=active-only target="" pane win contributor="" key="" seen_all="" seen_target=""
   while (( $# )) && [[ "$1" == -* ]]; do
     case "$1" in
       --all)
         [[ -z "$seen_all" ]] || command_die "health show: duplicate --all"
         visibility=all; seen_all=1; shift ;;
       -t)
-        [[ $# -ge 2 && -n "$2" ]] || command_die "health show: -t requires <window-target>"
+        [[ $# -ge 2 && -n "$2" ]] || command_die "health show: -t requires <pane-target>"
         [[ -z "$seen_target" ]] || command_die "health show: duplicate -t"
-        win="$2"; seen_target=1; shift 2 ;;
+        target="$2"; seen_target=1; shift 2 ;;
       -*) command_die "health show: unknown option '$1'" ;;
       *) command_die "health show: unknown option '$1'" ;;
     esac
@@ -415,9 +430,28 @@ signal_health_show () {   # [--all] [-t <window-target>] [<contributor> [<key>]]
   contributor="${1:-}"; key="${2:-}"
   (( $# == 0 )) || _signal_validate_contributor "health show" "$contributor"
   (( $# < 2 )) || _signal_validate_key "health show" "$key"
-  _signal_resolve_window win "health show" "$win"
+  _signal_resolve_pane_owner pane win "health show" "$target"
   _signal_with_transaction window "$win" health _signal_health_show_unlocked \
-    "$visibility" "$win" "$contributor" "$key"
+    "$visibility" "$pane" "$contributor" "$key"
+}
+
+# Recompute every derived health badge after a pane topology change. Tmux's
+# layout hook does not expose both sides of a pane move, so reconcile the small
+# set of live windows and deduplicate windows linked into multiple sessions.
+signal_health_project_all () {
+  (( $# == 0 )) || command_die "health project-all: takes no arguments"
+  local win seen=" "
+  for win in $(list_all_windows); do
+    case "$seen" in *" $win "*) continue ;; esac
+    seen+="$win "
+    _signal_with_transaction window "$win" health \
+      _signal_project_and_redraw window "$win" health || return
+  done
+}
+
+signal_health_install_hooks () {
+  hook_set "window-layout-changed[90]" \
+    "run-shell -b \"'$AIRLINE_DIR/airline.sh' health project-all\""
 }
 
 #-----------------------------------------------------------------------------#
