@@ -10,48 +10,12 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/airline-completions.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
 mkdir -p "$OUTPUT_DIR"
-AIRLINE_DIR="$ROOT" "$ROOT/airline.sh" help > "$WORK/help"
 
-# path<TAB>usage<TAB>description. Indentation and the em-dash delimiter are part
-# of rendered help's tested format; this compiler never reads airline.sh itself.
-awk '
-  function record(path, annotation, split_at, usage, description) {
-    if (annotation ~ /^— /) {
-      sub(/^— /, "", annotation)
-      print path "\t@none\t" annotation
-      return
-    }
-    split_at = index(annotation, " — ")
-    if (split_at) {
-      usage = substr(annotation, 1, split_at - 1)
-      description = substr(annotation, split_at + 3)
-    } else {
-      usage = ""
-      description = annotation
-    }
-    if (usage == "") usage = "@none"
-    if (description == "") description = "@none"
-    print path "\t" usage "\t" description
-  }
-  /^[a-z][a-z-]*:$/ {
-    group = substr($0, 1, length($0) - 1)
-    groups[++group_count] = group
-    next
-  }
-  /^  [a-zA-Z_][a-zA-Z0-9_-]*  +/ {
-    line = substr($0, 3)
-    command = line
-    sub(/ .*/, "", command)
-    annotation = line
-    sub(/^[^ ]+  +/, "", annotation)
-    path = group ? group " " command : command
-    record(path, annotation)
-  }
-  END {
-    for (i = 1; i <= group_count; i++)
-      print groups[i] "\t@none\t" groups[i] " commands"
-  }
-' "$WORK/help" > "$WORK/grammar"
+# path<TAB>usage<TAB>description, emitted directly from the `#| …` annotations by
+# lib/help.sh. Rendered help is for people and is never parsed here, so changing
+# its wrapping, headings, or wording cannot break this compiler.
+AIRLINE_DIR="$ROOT" "$ROOT/airline.sh" help _grammar > "$WORK/grammar"
+[[ -s "$WORK/grammar" ]] || { echo "generate-completions: empty grammar" >&2; exit 1; }
 
 # Every semantic placeholder must be either completable or explicitly opaque.
 while IFS= read -r semantic; do

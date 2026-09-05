@@ -5,7 +5,7 @@ load ../test_helper/bats-assert/load
 
 PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 
-@test "committed completions are generated from current rendered help" {
+@test "committed completions are generated from the current grammar" {
   output_dir="$BATS_TEST_TMPDIR/generated"
   run bash "$PROJECT_ROOT/scripts/generate-completions" "$output_dir"
   assert_success
@@ -13,6 +13,40 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   assert_success
   run cmp "$PROJECT_ROOT/completions/_airline" "$output_dir/_airline"
   assert_success
+}
+
+@test "compiled grammar emits one well-formed record per command path" {
+  local grammar
+  grammar="$(env AIRLINE_DIR="$PROJECT_ROOT" "$PROJECT_ROOT/airline.sh" help _grammar)"
+
+  # Every record is path<TAB>usage<TAB>description with all three fields present.
+  run awk -F'\t' 'NF != 3 || $1 == "" || $2 == "" || $3 == "" { bad++ } END { print bad + 0 }' \
+    <<< "$grammar"
+  assert_output 0
+
+  run grep -Fx 'version	@none	Show the Airline release/API version' <<< "$grammar"
+  assert_success
+  run grep -Fx 'palette use	<palette>	Load a complete palette and repaint adapters' <<< "$grammar"
+  assert_success
+  run grep -Fx 'session	@none	session commands' <<< "$grammar"
+  assert_success
+}
+
+@test "compiled grammar is independent of human help formatting" {
+  # The completion compiler reads the `#| …` annotations, never rendered prose.
+  # Perturbing wrap width, group headings, and indentation must not move it.
+  work="$BATS_TEST_TMPDIR/reformatted"
+  cp -R "$PROJECT_ROOT" "$work"
+  sed -i 's/> 80 ))/> 48 ))/; s/%s commands:\\n/== %s ==\\n/' "$work/lib/help.sh"
+
+  run env AIRLINE_DIR="$work" "$work/airline.sh" help
+  assert_success
+  refute_line --partial 'Session commands:'   # formatting really did change
+
+  baseline="$(env AIRLINE_DIR="$PROJECT_ROOT" "$PROJECT_ROOT/airline.sh" help _grammar)"
+  run env AIRLINE_DIR="$work" "$work/airline.sh" help _grammar
+  assert_success
+  assert_equal "$output" "$baseline"
 }
 
 @test "bash completion follows commands, canonical help, and typed enums" {
