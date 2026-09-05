@@ -1,3 +1,4 @@
+#| summary: Airline's shipped default look (256-color, dark)
 # Default palette — airline's shipped default look (256-color, dark).
 #
 # `airline session init` loads this via `palette use default` when no palette is set. It is a

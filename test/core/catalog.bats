@@ -59,3 +59,76 @@ setup() {
   assert_failure 2
   assert_output "airline: palette register: need exactly one <dir>"
 }
+
+@test "metadata is read from marked header comments without executing the file" {
+  cat > "$BATS_TEST_TMPDIR/element" <<'ELEMENT'
+#!/usr/bin/env bash
+#| summary: Check one or more HTTP endpoints
+#| usage: <endpoint> [<endpoint>...]
+#| interval: 5
+
+printf 'EXECUTED\n'
+touch "$BATS_TEST_TMPDIR/side-effect"
+ELEMENT
+
+  run catalog_metadata "$BATS_TEST_TMPDIR/element"
+  assert_success
+  assert_line --index 0 "summary	Check one or more HTTP endpoints"
+  assert_line --index 1 "usage	<endpoint> [<endpoint>...]"
+  assert_line --index 2 "interval	5"
+  refute_output --partial EXECUTED
+  [ ! -e "$BATS_TEST_TMPDIR/side-effect" ]
+
+  run catalog_metadata "$BATS_TEST_TMPDIR/element" summary
+  assert_output "Check one or more HTTP endpoints"
+}
+
+@test "metadata distinguishes an empty field from an absent one" {
+  printf '#| summary: has one\n#| usage:\n' > "$BATS_TEST_TMPDIR/element"
+
+  run catalog_metadata "$BATS_TEST_TMPDIR/element" usage
+  assert_success
+  assert_output ""
+
+  run catalog_metadata "$BATS_TEST_TMPDIR/element" interval
+  assert_failure
+}
+
+@test "metadata scanning stops at the first line of code" {
+  cat > "$BATS_TEST_TMPDIR/element" <<'ELEMENT'
+#| summary: declared in the header
+opt_set_session "$AIRLINE_SESSION" @cpu_low_fg_color red
+#| summary: smuggled in below the code
+ELEMENT
+
+  run catalog_metadata "$BATS_TEST_TMPDIR/element"
+  assert_success
+  assert_output "summary	declared in the header"
+}
+
+@test "metadata rejects malformed markers and repeated keys" {
+  printf '#| summary no colon\n' > "$BATS_TEST_TMPDIR/bad-marker"
+  run catalog_metadata "$BATS_TEST_TMPDIR/bad-marker"
+  assert_failure
+  assert_output --partial "malformed marker"
+
+  printf '#| summary: one\n#| summary: two\n' > "$BATS_TEST_TMPDIR/duplicate"
+  run catalog_metadata "$BATS_TEST_TMPDIR/duplicate"
+  assert_failure
+  assert_output --partial "duplicate 'summary'"
+
+  run catalog_metadata "$BATS_TEST_TMPDIR/absent-file"
+  assert_failure
+  assert_output --partial "no such file"
+}
+
+@test "metadata reads the shipped side-effecting element kinds" {
+  # Adapters and palettes cannot be sourced for inspection: doing so applies them.
+  run catalog_metadata "$PROJECT_ROOT/layouts/adapters/cpu" summary
+  assert_success
+  refute_output ""
+
+  run catalog_metadata "$PROJECT_ROOT/layouts/palettes/dark" summary
+  assert_success
+  refute_output ""
+}

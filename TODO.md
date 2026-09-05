@@ -36,6 +36,33 @@ a breaking change to the completion compiler. Emit the tab-delimited records tha
 renderer and the completion compiler consume that instead. The `#| …` annotations
 remain the single source of truth.
 
+## Catalog element metadata
+
+Element metadata is declared in `#| key: value` header comments and read by
+`catalog_metadata` without executing the file. Inspection must not run an element:
+adapters and palettes are side-effecting snippets, so sourcing one to read its
+summary applies it. All shipped elements declare their metadata; the loaders have
+not yet been migrated onto it.
+
+- Retire the four competing metadata mechanisms. `AIRLINE_CLASSIFIER_SUMMARY`,
+  `AIRLINE_FILTER_SUMMARY`, `AIRLINE_PROBE_SUMMARY`, `AIRLINE_PROBE_USAGE`,
+  `AIRLINE_RUNNER_PROBE_INTERVAL`, and the `airline_runner_metadata` callback all
+  express summary and usage; `catalog_metadata` now supplies both for every kind.
+  Removing the callback also removes its duplicate-key validation machinery.
+- Keep functions for behavior only: `airline_runner_classify`,
+  `airline_runner_filter`, `airline_runner_probe`, `airline_runner_configure`, and
+  `airline_layout_configure`. Element validity still requires the behavior function,
+  so declared metadata and working behavior stay separately verified.
+- Read the probe interval through catalog rather than a sourced global.
+- Absent and empty are distinct: `catalog_metadata` returns non-zero for an absent
+  key and empty output for a declared empty one, replacing the `+x` test that probe
+  used for a usage string that may be empty.
+- `list` continues to emit bare names. Both completion scripts feed its output
+  straight into candidate lists, so adding summaries there is a breaking change to
+  them; summaries belong to `describe`.
+- Element files that carry both a `#| summary:` line and a near-identical title
+  comment should lose the duplication.
+
 ## Grammar coherence
 
 - `show` names two operations. In the layout domain it reports committed session

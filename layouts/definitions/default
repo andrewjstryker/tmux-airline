@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+#| summary: Dependency-free bar: session, host, and date
 # Default layout — dependency-free (session · host · date). No plugins, always works.
 airline_layout_configure () {
   local declare="$1"

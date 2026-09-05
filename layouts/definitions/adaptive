@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+#| summary: Compose only the adapted plugins that are actually installed
 # Adaptive layout (init's default) — probe each adapted plugin via the TPM install
 # convention and compose only what's present, so there are no empty blocks. Degrades to
 # the dependency-free base (session · date) when nothing is installed.

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+#| summary: Check one or more HTTP endpoints
+#| usage: <endpoint> [<endpoint>...]
+#| interval: 5
 # Show one polling result per endpoint and report its condition separately. The
 # human-readable stdout format is a convention; airline does not interpret it.
 

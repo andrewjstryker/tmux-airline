@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+#| summary: Interpret top-level TAP assertions and bailouts
 # A small TAP observer: an unsuccessful assertion warns while more tests may run;
 # completion with any unsuccessful assertion, or a bailout, fails health.
 

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+#| summary: Monitor one or more HTTP endpoints
+#| usage: [<endpoint>...]
 # A named HTTP composition with useful local defaults and optional replacements.
 
 airline_runner_metadata () {   # <declare-function>

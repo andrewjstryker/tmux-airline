@@ -3,8 +3,9 @@
 # catalog.sh — registered search paths and bare-name resolution.
 #
 # Layout and runner own the behavior of the elements they load. Catalog owns only
-# the shared trust boundary: which directories are registered, their priority, and
-# resolving/listing bare names within them. Paths are session-owned collections.
+# the shared trust boundary: which directories are registered, their priority,
+# resolving/listing bare names within them, and reading their declared metadata.
+# Paths are session-owned collections.
 
 # shellcheck shell=bash
 
@@ -47,6 +48,46 @@ catalog_list () {   # <session> <kind>
       printf '%s\n' "$name"
     done
   done
+}
+
+# Element metadata is declared in marked header comments and read without executing
+# the file. Inspection must not run a catalog element: adapters and palettes are
+# side-effecting snippets, so sourcing one to read its summary would apply it.
+#
+#   #| summary: Check one or more HTTP endpoints
+#   #| usage: <endpoint> [<endpoint>...]
+#
+# The value is the rest of the line verbatim, so there are no quoting or line
+# continuation rules to get wrong; a field that will not fit on one line does not
+# belong here. Scanning stops at the first line that is neither blank nor a comment,
+# which bounds the read and keeps declarations in the header.
+#
+# Emits key<TAB>value records in file order, or one value when a key is named.
+# Returns non-zero when a named key is absent, so callers can distinguish an absent
+# field from an empty one.
+catalog_metadata () {   # <file> [<key>]
+  local file="$1" wanted="${2:-}" line key value seen=" " found=""
+  local meta_re='^#\|[[:space:]]*([a-z][a-z-]*):[[:space:]]?(.*)$'
+  [[ -f "$file" ]] || { _catalog_error "metadata: no such file: $file"; return; }
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -n "${line//[[:space:]]/}" ]] || continue
+    [[ "$line" == '#'* ]] || break
+    [[ "$line" == '#|'* ]] || continue
+    [[ "$line" =~ $meta_re ]] || {
+      _catalog_error "metadata: malformed marker in $file: $line"; return
+    }
+    key="${BASH_REMATCH[1]}"; value="${BASH_REMATCH[2]}"
+    case "$seen" in
+      *" $key "*) _catalog_error "metadata: duplicate '$key' in $file"; return ;;
+    esac
+    seen+="$key "
+    if [[ -z "$wanted" ]]; then
+      printf '%s\t%s\n' "$key" "$value"
+    elif [[ "$key" == "$wanted" ]]; then
+      printf '%s' "$value"; found=1
+    fi
+  done < "$file"
+  [[ -z "$wanted" || -n "$found" ]]
 }
 
 # Register a user directory at the high-priority end of the path. Registration is

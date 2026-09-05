@@ -1,3 +1,4 @@
+#| summary: Light 256-color palette for any 256-color terminal
 # Light palette
 #
 # Uses explicit 256-color codes; works on any 256-color terminal without

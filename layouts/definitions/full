@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+#| summary: Every plugin this project adapts: cpu, battery, online, prefix
 # Full layout — every plugin this project adapts (cpu / battery / online / prefix).
 # Assumes the plugins are installed; use `adaptive` to light up only what's present.
 airline_layout_configure () {

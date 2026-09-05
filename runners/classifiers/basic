@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+#| summary: Map exit zero to ok and every other termination to fail
 # The portable floor: successful exit is healthy; every other termination failed.
 
 # shellcheck disable=SC2034 # runner.sh consumes catalog metadata

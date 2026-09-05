@@ -1,3 +1,4 @@
+#| summary: Apply the palette to tmux-battery's colour options
 # layouts/adapters/battery — apply the palette to tmux-battery's colour options (dynamic).
 # shellcheck shell=bash
 #
