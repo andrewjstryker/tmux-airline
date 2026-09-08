@@ -5,14 +5,6 @@
 # Show one polling result per endpoint and report its condition separately. The
 # human-readable stdout format is a convention; airline does not interpret it.
 
-# shellcheck disable=SC2034 # runner.sh consumes catalog metadata
-AIRLINE_PROBE_SUMMARY='Check one or more HTTP endpoints'
-# shellcheck disable=SC2034 # runner.sh consumes catalog metadata
-AIRLINE_PROBE_USAGE='<endpoint> [<endpoint>...]'
-
-# shellcheck disable=SC2034 # runner.sh consumes this contract declaration
-AIRLINE_RUNNER_PROBE_INTERVAL=5
-
 airline_runner_probe () {   # <lifecycle-pid> <report-function> <endpoint> [<endpoint>...]
   local _pid="$1" report="$2" endpoint code; shift 2
   (( $# > 0 )) || return 2

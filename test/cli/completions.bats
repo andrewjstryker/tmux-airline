@@ -72,7 +72,7 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   assert_equal "${COMPREPLY[*]}" "set clear show"
 
   COMP_WORDS=(airline runner run --); COMP_CWORD=3; _airline_completion
-  assert_equal "${COMPREPLY[*]}" "--pane --window --probe --classify --filter --merge-stderr --"
+  assert_equal "${COMPREPLY[*]}" "--pane --window --interval --probe --classify --filter --merge-stderr --"
 }
 
 @test "bash completion resolves typed and contextual values through the airline CLI" {

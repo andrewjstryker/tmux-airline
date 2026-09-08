@@ -31,36 +31,40 @@ setup() {
   assert_failure
 }
 
-@test "named runners require quiet metadata and a validated builder contract" {
+@test "named runners declare metadata in the header and validate their builder" {
   printf '%s\n' \
-    'airline_runner_metadata() {' \
-    '  "$1" summary "test composition"' \
-    '  "$1" usage ""' \
-    '}' \
+    '#| summary: test composition' \
+    '#| usage:' \
     'airline_runner_configure() {' \
     '  "$1" classify basic' \
     '  "$1" filter tap' \
     '}' > "$BATS_TEST_TMPDIR/runner"
+  run _runner_metadata_require runner "$BATS_TEST_TMPDIR/runner"
+  assert_success
   runner_definition_load "$BATS_TEST_TMPDIR/runner"
-  runner_definition_metadata
   run runner_definition_configure
   assert_success
 
   sed -i 's/"$1" filter tap/"$1" placement pane/' "$BATS_TEST_TMPDIR/runner"
   runner_definition_load "$BATS_TEST_TMPDIR/runner"
-  runner_definition_metadata
   run runner_definition_configure
+  assert_failure
+
+  # A summary is required; a usage line must be declared even when it is empty.
+  printf '%s\n' '#| usage:' 'airline_runner_configure() { :; }' > "$BATS_TEST_TMPDIR/no-summary"
+  run _runner_metadata_require runner "$BATS_TEST_TMPDIR/no-summary"
+  assert_failure
+  printf '%s\n' '#| summary: no usage' 'airline_runner_configure() { :; }' > "$BATS_TEST_TMPDIR/no-usage"
+  run _runner_metadata_require runner "$BATS_TEST_TMPDIR/no-usage"
   assert_failure
 }
 
 @test "watch projects only the probe from a complete runner" {
-  airline_runner_metadata() { "$1" summary "server"; "$1" usage ""; }
   airline_runner_configure() {
     "$1" classify basic
     "$1" filter tap merge-stderr
     "$1" probe http one two
   }
-  runner_definition_metadata
   runner_definition_configure
 
   runner_definition_project run
@@ -150,19 +154,27 @@ setup() {
 
 @test "probe interval must be positive seconds" {
   printf '%s\n' \
-    'AIRLINE_PROBE_SUMMARY="test probe"' \
-    'AIRLINE_PROBE_USAGE=""' \
-    'AIRLINE_RUNNER_PROBE_INTERVAL=0' \
+    '#| summary: test probe' \
+    '#| usage:' \
+    '#| interval: 0' \
     'airline_runner_probe() { "$2" ok; }' > "$BATS_TEST_TMPDIR/probe"
   run runner_probe_valid "$BATS_TEST_TMPDIR/probe"
   assert_failure
-  sed -i 's/INTERVAL=0/INTERVAL=0.05/' "$BATS_TEST_TMPDIR/probe"
+  sed -i 's/interval: 0/interval: 0.05/' "$BATS_TEST_TMPDIR/probe"
   run runner_probe_valid "$BATS_TEST_TMPDIR/probe"
   assert_success
+
+  # An undeclared interval falls back to the shipped default rather than failing.
+  printf '%s\n' '#| summary: test probe' '#| usage:' \
+    'airline_runner_probe() { "$2" ok; }' > "$BATS_TEST_TMPDIR/default-interval"
+  run runner_probe_valid "$BATS_TEST_TMPDIR/default-interval"
+  assert_success
+  run _runner_probe_interval "$BATS_TEST_TMPDIR/default-interval"
+  assert_output 5
 }
 
 @test "classifier output must be one normalized condition" {
-  printf '%s\n' 'AIRLINE_CLASSIFIER_SUMMARY="invalid test classifier"' \
+  printf '%s\n' '#| summary: invalid test classifier' \
     'airline_runner_classify() { printf "maybe\\n"; }' > "$BATS_TEST_TMPDIR/invalid"
   runner_classifier_load "$BATS_TEST_TMPDIR/invalid"
   run runner_classifier_run 0 ""
@@ -318,4 +330,71 @@ not ok 2 - later # TODO not implemented
 TAP
   run cat "$output_file"
   assert_output ok
+}
+
+@test "a named composition may pace its probe and projects the interval down" {
+  airline_runner_configure() {
+    "$1" classify basic
+    "$1" probe http one
+    "$1" interval 30
+  }
+  runner_definition_configure
+  runner_definition_project watch
+  run printf '%s\n' "${AIRLINE_RUNNER_DEFINITION_ARGV[@]}"
+  assert_output $'--interval\n30\n--probe\nhttp\none'
+}
+
+@test "a paced composition requires a probe and a positive interval" {
+  # An interval with no probe paces nothing; that is a mistake, not a no-op.
+  airline_runner_configure() { "$1" classify basic; "$1" interval 30; }
+  run runner_definition_configure
+  assert_failure
+
+  airline_runner_configure() { "$1" probe http; "$1" interval 0; }
+  run runner_definition_configure
+  assert_failure
+
+  airline_runner_configure() { "$1" probe http; "$1" interval 30; "$1" interval 60; }
+  run runner_definition_configure
+  assert_failure
+}
+
+@test "an invocation interval overrides the probe's declared default" {
+  printf '%s\n' '#| summary: test probe' '#| usage:' '#| interval: 5' \
+    'airline_runner_probe() { "$2" ok; }' > "$BATS_TEST_TMPDIR/paced"
+
+  # The element default applies when the invocation is silent.
+  AIRLINE_RUNNER_INTERVAL=""
+  runner_probe_load "$BATS_TEST_TMPDIR/paced"
+  run _runner_effective_interval
+  assert_output 5
+
+  # An explicit interval wins, whether typed or projected from a named runner.
+  AIRLINE_RUNNER_INTERVAL=30
+  run _runner_effective_interval
+  assert_output 30
+  AIRLINE_RUNNER_INTERVAL=""
+}
+
+@test "interval parsing validates its value, placement, and repetition" {
+  # Called directly: `run` would set the parsed globals in a subshell.
+  _runner_parse watch --interval 30 --probe http
+  assert_equal "$AIRLINE_RUNNER_INTERVAL" 30
+
+  # Normalization re-emits it ahead of the probe, whose arguments run to the end.
+  _runner_parse watch --interval 30 --probe http one two
+  _runner_normalize_spec watch
+  run printf '%s\n' "${AIRLINE_RUNNER_SPEC_ARGV[@]}"
+  assert_output $'--interval\n30\n--probe\nhttp\none\ntwo'
+
+  run _runner_parse watch --interval 0 --probe http
+  assert_failure
+  run _runner_parse watch --interval --probe http
+  assert_failure
+  run _runner_parse watch --interval 30 --interval 60 --probe http
+  assert_failure
+  # An interval paces probe observations, so `run` without a probe rejects it.
+  run _runner_parse run --interval 30 -- true
+  assert_failure
+  assert_output --partial "paces --probe"
 }

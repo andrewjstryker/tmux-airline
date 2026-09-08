@@ -8,6 +8,9 @@ Focused design documents own the detailed semantics of individual domains:
 
 - [Signal lifecycles](docs/lifecycle-signals.md) defines the meaning, identity, and
   state transitions of status, health, and problem signals.
+- [Runner element contracts](docs/runner-elements.md) defines what Airline supplies to
+  a classifier, filter, or probe, what each returns, and which parts of an invocation
+  belong to Airline rather than to the element.
 
 ## Principles
 
@@ -459,18 +462,22 @@ The runner separates fixed mechanics from program-specific interpretation:
 | **runner elements** | independently classify termination, interpret a stream, or probe external state |
 | **command** | when using `run`, perform the work and explain itself through its normal terminal output |
 
-Classifier, filter, and probe are first-class catalogs. Each implementation carries
-a one-line summary; probes also declare their argument usage. `show <name>` exposes
-that metadata and its resolved path without running an observation.
+Classifier, filter, and probe are first-class catalogs. Each implementation declares
+a one-line summary in a `#|` header comment; probes also declare their argument usage
+and an optional observation interval. Airline reads those declarations without
+executing the file, so `show <name>` exposes metadata and the resolved path without
+running an observation. Inspection reports what an element declares; `run` and
+`watch` verify that it behaves.
+
+The declared interval is the probe's default pace, not a fixed property. A named
+composition may override it with `configure interval`, and an invocation overrides
+both with `--interval`; the element's declaration is the fallback.
 
 A runner catalog entry is syntactic composition over those primitives:
 
 ```bash
-airline_runner_metadata() { # <declare-function>
-  local declare="$1"
-  "$declare" summary 'Monitor a TAP-producing test command'
-  "$declare" usage ''
-}
+#| summary: Monitor a TAP-producing test command
+#| usage:
 
 airline_runner_configure() { # <configure-function> [<runner-arg>...]
   local configure="$1"; shift
@@ -543,7 +550,7 @@ than replacing it with the classification.
 The concrete trusted-shell contract is:
 
 ```bash
-AIRLINE_CLASSIFIER_SUMMARY='Interpret this program termination'
+#| summary: Interpret this program termination
 
 airline_runner_classify() { # <exit-status> <signal>
   # Print `ok` or `<warn|fail><TAB><message>`.
@@ -569,7 +576,7 @@ supplied reporter when its interpretation changes. It must report at least once,
 and its final call must describe the completed stream:
 
 ```bash
-AIRLINE_FILTER_SUMMARY='Interpret this command output'
+#| summary: Interpret this command output
 
 airline_runner_filter() { # <pid> <report-function>
   local pid="$1" report="$2"
@@ -596,9 +603,9 @@ never overlaps calls, and stops the loop when the child exits or a watcher is
 interrupted:
 
 ```bash
-AIRLINE_RUNNER_PROBE_INTERVAL=5
-AIRLINE_PROBE_SUMMARY='Query current service health'
-AIRLINE_PROBE_USAGE='<endpoint> [<endpoint>...]'
+#| summary: Query current service health
+#| usage: <endpoint> [<endpoint>...]
+#| interval: 5
 
 airline_runner_probe() { # <lifecycle-pid> <report-function> [<arg>...]
   local pid="$1" report="$2"

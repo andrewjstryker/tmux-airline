@@ -3,9 +3,6 @@
 # A small TAP observer: an unsuccessful assertion warns while more tests may run;
 # completion with any unsuccessful assertion, or a bailout, fails health.
 
-# shellcheck disable=SC2034 # runner.sh consumes catalog metadata
-AIRLINE_FILTER_SUMMARY='Interpret top-level TAP assertions and bailouts'
-
 airline_runner_filter () {   # <pid> <report-function>
   local _pid="$1" report="$2" line message plan="" seen=0 failed=0 final=0
   shopt -s nocasematch

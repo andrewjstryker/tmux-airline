@@ -64,11 +64,11 @@ wait_for_pane_exit() { # <pane> <status>
   airline session init
   mkdir -p "$BATS_TEST_TMPDIR/classifiers" "$BATS_TEST_TMPDIR/filters" \
     "$BATS_TEST_TMPDIR/probes"
-  printf '%s\n' 'AIRLINE_CLASSIFIER_SUMMARY="custom classifier"' \
+  printf '%s\n' '#| summary: custom classifier' \
     'airline_runner_classify() { printf "warn\\tcustom classifier warning\\n"; }' > "$BATS_TEST_TMPDIR/classifiers/custom"
-  printf '%s\n' 'AIRLINE_FILTER_SUMMARY="custom filter"' \
+  printf '%s\n' '#| summary: custom filter' \
     'airline_runner_filter() { :; }' > "$BATS_TEST_TMPDIR/filters/custom"
-  printf '%s\n' 'AIRLINE_PROBE_SUMMARY="custom probe"' 'AIRLINE_PROBE_USAGE=""' \
+  printf '%s\n' '#| summary: custom probe' '#| usage:' \
     'airline_runner_probe() { "$2" ok; }' > "$BATS_TEST_TMPDIR/probes/custom"
 
   airline classifier register "$BATS_TEST_TMPDIR/classifiers"
@@ -125,7 +125,7 @@ wait_for_pane_exit() { # <pane> <status>
   airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
   mkdir -p "$BATS_TEST_TMPDIR/classifiers"
-  printf '%s\n' 'AIRLINE_CLASSIFIER_SUMMARY="Interpret pytest exit status"' \
+  printf '%s\n' '#| summary: Interpret pytest exit status' \
     'airline_runner_classify() { [[ "$1" == 5 ]] && printf "warn\\tno tests collected\\n" || printf "fail\\tcommand failed\\n"; }' \
     > "$BATS_TEST_TMPDIR/classifiers/pytest"
   airline classifier register "$BATS_TEST_TMPDIR/classifiers"
@@ -161,9 +161,9 @@ wait_for_pane_exit() { # <pane> <status>
   health_file="$BATS_TEST_TMPDIR/healthy"
   export health_file
   printf '%s\n' \
-    'AIRLINE_PROBE_SUMMARY="Observe test health state"' \
-    'AIRLINE_PROBE_USAGE=""' \
-    'AIRLINE_RUNNER_PROBE_INTERVAL=0.05' \
+    '#| summary: Observe test health state' \
+    '#| usage:' \
+    '#| interval: 0.05' \
     'airline_runner_probe() {' \
     '  [[ -e "$health_file" ]] && "$2" ok || "$2" fail "service is unavailable"' \
     '}' > "$BATS_TEST_TMPDIR/probes/server"
@@ -210,9 +210,9 @@ wait_for_pane_exit() { # <pane> <status>
   endpoint="http://localhost/health/live"
   export health_file observed_pid_file observed_arg_file endpoint
   printf '%s\n' \
-    'AIRLINE_PROBE_SUMMARY="Observe remote test state"' \
-    'AIRLINE_PROBE_USAGE="<endpoint>"' \
-    'AIRLINE_RUNNER_PROBE_INTERVAL=0.05' \
+    '#| summary: Observe remote test state' \
+    '#| usage: <endpoint>' \
+    '#| interval: 0.05' \
     'airline_runner_probe() {' \
     '  [[ -e "$observed_pid_file" ]] || printf "%s\n" "$1" > "$observed_pid_file"' \
     '  [[ -e "$observed_arg_file" ]] || printf "%s\n" "$3" > "$observed_arg_file"' \
@@ -220,10 +220,6 @@ wait_for_pane_exit() { # <pane> <status>
     '  [[ -e "$health_file" ]] && "$2" ok || "$2" fail "service is unavailable"' \
     '}' > "$BATS_TEST_TMPDIR/probes/remote"
   printf '%s\n' \
-    'airline_runner_metadata() {' \
-    '  "$1" summary "Watch the remote test endpoint"' \
-    '  "$1" usage "<endpoint>"' \
-    '}' \
     'airline_runner_configure() {' \
     '  local configure="$1"; shift' \
     '  (( $# == 1 )) || return 2' \
@@ -342,7 +338,7 @@ wait_for_pane_exit() { # <pane> <status>
   evidence_file="$BATS_TEST_TMPDIR/evidence"
   export evidence_file
   printf '%s\n' \
-    'AIRLINE_FILTER_SUMMARY="Capture filter input"' \
+    '#| summary: Capture filter input' \
     'airline_runner_filter() { sed -n l > "$evidence_file"; "$2" ok; }' \
     > "$BATS_TEST_TMPDIR/filters/capture"
   airline filter register "$BATS_TEST_TMPDIR/filters"
@@ -363,13 +359,13 @@ wait_for_pane_exit() { # <pane> <status>
   mkdir -p "$BATS_TEST_TMPDIR/filters" "$BATS_TEST_TMPDIR/probes"
   evidence_file="$BATS_TEST_TMPDIR/filter-evidence"
   export evidence_file
-  printf '%s\n' 'AIRLINE_FILTER_SUMMARY="Capture filter input"' \
+  printf '%s\n' '#| summary: Capture filter input' \
     'airline_runner_filter() { sed -n l > "$evidence_file"; "$2" ok; }' \
     > "$BATS_TEST_TMPDIR/filters/capture"
   printf '%s\n' \
-    'AIRLINE_PROBE_SUMMARY="Write visible probe evidence"' \
-    'AIRLINE_PROBE_USAGE=""' \
-    'AIRLINE_RUNNER_PROBE_INTERVAL=5' \
+    '#| summary: Write visible probe evidence' \
+    '#| usage:' \
+    '#| interval: 5' \
     'airline_runner_probe() {' \
     '  printf "probe evidence\n"' \
     '  "$2" ok' \
