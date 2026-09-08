@@ -297,10 +297,8 @@ There are seven catalog kinds and one plain-option kind:
 | **runner** | named run/watch composition over those primitives | expanded for one invocation |
 | **segment** | public `@airline-segment-<slot>` option | set directly or by a layout; not loadable |
 
-Every catalog has an ordered registered search path. `list` lists resolvable
-bare names and `register <dir>` prepends a trusted location. Palette, adapter, and
-layout additionally provide `use`; classifier, filter, probe, and runner provide
-`show <name>` for static metadata and the resolved path.
+All seven catalogs share search paths, marked header metadata, and `describe`.
+See [Catalogs and discovery](docs/catalogs.md) for ownership and the metadata contract.
 
 For palette, adapter, and layout:
 
@@ -365,14 +363,14 @@ airline problem  set [--pane <pane-target>] <contributor> <problem-key> <ok|warn
 airline transaction show
                     clear <global|session|window> <target> <namespace>
 
-airline palette  show [name|<palette-element>] | list | use <palette> | register <dir>
+airline palette  describe <palette> | show [name|<palette-element>] | list | use <palette> | register <dir>
 airline segment  show [<segment>]
-airline adapter  show | list | use <adapter>... | load <file> | register <dir>
-airline layout   show [name|path] | list | use <layout> | load <file> | register <dir>
-airline classifier show <classifier> | list | register <dir>
-airline filter     show <filter> | list | register <dir>
-airline probe      show <probe> | list | register <dir>
-airline runner   show <runner> [<arg>...] | list | register <dir>
+airline adapter  describe <adapter> | show | list | use <adapter>... | load <file> | register <dir>
+airline layout   describe <layout> | show [name|path] | list | use <layout> | load <file> | register <dir>
+airline classifier describe <classifier> | list | register <dir>
+airline filter     describe <filter> | list | register <dir>
+airline probe      describe <probe> | list | register <dir>
+airline runner   describe <runner> [<arg>...] | list | register <dir>
                  run [--pane [-h|-v]|--window] <runner> [<arg>...] -- <command>...
                  run [--pane [-h|-v]|--window] [--classify <classifier>]
                      [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]] -- <command>...
@@ -415,7 +413,7 @@ installs both artifacts with the PATH shim.
   and segment slots are written with `set -g @airline-*` and removed with `set -gu`.
 - Stateful nouns use bare `show` for a labeled human summary and qualified fields
   for raw scripting reads. Catalog-only classifier, filter, probe, and runner use
-  `show <name>` to describe one resolvable implementation.
+  `describe <name>` to describe one resolvable implementation.
 - `palette show name` and `layout show name` expose their active selection. Layout
   also exposes its resolved path.
 - `adapter show` lists the active adapter set, one name per line. `list` is a
@@ -465,7 +463,7 @@ The runner separates fixed mechanics from program-specific interpretation:
 Classifier, filter, and probe are first-class catalogs. Each implementation declares
 a one-line summary in a `#|` header comment; probes also declare their argument usage
 and an optional observation interval. Airline reads those declarations without
-executing the file, so `show <name>` exposes metadata and the resolved path without
+executing the file, so `describe <name>` exposes metadata and the resolved path without
 running an observation. Inspection reports what an element declares; `run` and
 `watch` verify that it behaves.
 

@@ -329,9 +329,9 @@ Airline ships `basic` as the implicit classifier, `tap` as a stream filter, and
 
 ```sh
 airline classifier list
-airline classifier show basic
-airline filter show tap
-airline probe show http
+airline classifier describe basic
+airline filter describe tap
+airline probe describe http
 ```
 
 Elements compose only for one invocation:
@@ -363,7 +363,7 @@ composition and `http` as a watch composition:
 
 ```sh
 airline runner list
-airline runner show tap
+airline runner describe tap
 airline runner run tap -- bats --formatter tap test/
 airline runner watch http http://localhost/health
 ```
@@ -561,7 +561,7 @@ Register and inspect compositions like every other catalog:
 ```sh
 airline runner register ~/.config/airline/runners
 airline runner list
-airline runner show my-tests
+airline runner describe my-tests
 ```
 
 A plugin that already owns richer scheduling or callbacks may instead call the
@@ -821,14 +821,14 @@ airline session show [state]         # print the configuration or raw session st
 airline session suspend | resume | toggle
 airline help [noun [verb]]    # all commands, one noun, or one leaf command
 
-airline palette  show [name|<palette-element>] | list | use <palette> | register <dir>
+airline palette  describe <palette> | show [name|<palette-element>] | list | use <palette> | register <dir>
 airline segment  show [<segment>]              # read-only; write with set -g @airline-segment-<segment>
-airline layout   show [name|path] | list | use <layout> | load <file> | register <dir>
-airline adapter  show | list | use <adapter>... | load <file> | register <dir>
-airline classifier show <classifier> | list | register <dir>
-airline filter     show <filter> | list | register <dir>
-airline probe      show <probe> | list | register <dir>
-airline runner   show <runner> [<arg>...] | list | register <dir>
+airline layout   describe <layout> | show [name|path] | list | use <layout> | load <file> | register <dir>
+airline adapter  describe <adapter> | show | list | use <adapter>... | load <file> | register <dir>
+airline classifier describe <classifier> | list | register <dir>
+airline filter     describe <filter> | list | register <dir>
+airline probe      describe <probe> | list | register <dir>
+airline runner   describe <runner> [<arg>...] | list | register <dir>
                  run [--pane [-h|-v]|--window] <runner> [<arg>...] -- <command>...
                  run [--pane [-h|-v]|--window] [--classify <classifier>] [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]] -- <command>...
                  watch [--pane [-h|-v]|--window] <runner> [<arg>...]
@@ -848,12 +848,13 @@ Two conventions run through it:
 
 - **`show`.** Bare `show` is a human summary; `show <field>` prints one raw
   value, newline-terminated, safe for `$(…)`. `list` lists the catalog a
-  `use` can pick from. Catalog-only runner nouns instead use `show <name>` for an
-  implementation's summary, usage, and path. Editing a color or segment option is
+  `use` can pick from. Every catalog uses `describe <name>` for an entry's
+  summary, declared usage, and path. Editing a color or segment option is
   free; the bar re-renders on the next `session apply` (or `use`, which ends in one).
 
-Help is inspected through the top-level command, for example `airline help
-palette` or `airline help runner run`. Bash and Zsh completion follows the same
+See [CLI conventions](docs/cli.md#catalog-inspection-and-active-state) for the
+inspection contract. Help is inspected through the top-level command, for example
+`airline help palette` or `airline help runner run`. Bash and Zsh completion follows the same
 grammar and completes typed values such as palette, layout, probe, session, and
 window names through the installed CLI.
 

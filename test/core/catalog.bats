@@ -132,3 +132,49 @@ ELEMENT
   assert_success
   refute_output ""
 }
+
+@test "all shipped catalog kinds satisfy the same header metadata contract" {
+  local directory file
+  for directory in layouts/palettes layouts/adapters layouts/definitions \
+    runners/classifiers runners/filters runners/probes runners/definitions; do
+    for file in "$PROJECT_ROOT/$directory/"*; do
+      run catalog_metadata_valid "$file"
+      assert_success "$file"
+    done
+  done
+}
+
+@test "description validates common metadata consistently across catalog kinds" {
+  local kind content
+  for content in '# ordinary comment' '#| summary:' '#| summary:   ' \
+    $'#| summary: first\n#| summary: second' '#| bad marker'; do
+    printf '%s\n' "$content" > "$BATS_TEST_TMPDIR/user/invalid"
+    for kind in palette adapter layout classifier filter probe runner; do
+      catalog_register s1 "$kind" "$BATS_TEST_TMPDIR/user"
+      run catalog_describe_resolve s1 "$kind" invalid
+      assert_failure
+      assert_output --partial "$kind describe: 'invalid' has invalid metadata"
+    done
+  done
+}
+
+@test "description uses the winning catalog file and renders declared usage" {
+  printf '%s\n' '#| summary: builtin summary' > "$BATS_TEST_TMPDIR/builtin/shared"
+  printf '%s\n' '#| summary: user summary' '#| usage: <argument>' \
+    'exit 99' > "$BATS_TEST_TMPDIR/user/shared"
+  catalog_register_builtin s1 classifier "$BATS_TEST_TMPDIR/builtin"
+  catalog_register s1 classifier "$BATS_TEST_TMPDIR/user"
+  local file
+  file="$(catalog_describe_resolve s1 classifier shared)"
+  run catalog_describe_render shared "$file"
+  assert_success
+  assert_output --partial 'user summary'
+  assert_output --partial '<argument>'
+  assert_output --partial "$BATS_TEST_TMPDIR/user/shared"
+  refute_output --partial 'builtin summary'
+
+  printf '%s\n' '#| summary: no arguments' '#| usage:' > "$file"
+  run catalog_describe_render shared "$file"
+  assert_success
+  assert_output --partial 'arguments    none'
+}

@@ -1,5 +1,4 @@
 #| summary: Apply the palette to tmux-prefix-highlight
-# layouts/adapters/prefix-highlight — apply the palette to tmux-prefix-highlight (dynamic).
 # shellcheck shell=bash
 #
 # A bash snippet sourced by `adapter use prefix-highlight` with PALETTE populated.

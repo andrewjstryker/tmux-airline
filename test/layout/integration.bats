@@ -399,3 +399,25 @@ write_layout() {   # <path> <configure-body>
   assert_output --partial "name"
   assert_output --partial "path"
 }
+
+@test "catalog describe leaves applied layout state intact" {
+  airline session init
+  airline palette use light
+  airline layout use minimal
+  local before
+  before="$(airline session show)"
+
+  run airline palette describe dark
+  assert_success
+  assert_output --partial 'Dark 256-color palette'
+  run airline adapter describe cpu
+  assert_success
+  assert_output --partial "tmux-cpu's colour options"
+  run airline layout describe full
+  assert_success
+  assert_output --partial 'Every plugin this project adapts'
+
+  run airline session show
+  assert_success
+  assert_output "$before"
+}

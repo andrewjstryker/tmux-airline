@@ -35,9 +35,8 @@
 # Required metadata per kind, read from the element header without executing it. A
 # field that must be declared but may be empty is checked for presence, not value.
 _runner_metadata_require () {   # <kind> <file>
-  local kind="$1" file="$2" summary
-  summary="$(catalog_metadata "$file" summary)" || return 1
-  [[ -n "$summary" ]] || return 1
+  local kind="$1" file="$2"
+  catalog_metadata_valid "$file" || return 1
   case "$kind" in
     probe)
       catalog_metadata "$file" usage >/dev/null || return 1
@@ -370,52 +369,23 @@ _runner_element_file () {   # <session> <kind> <bare-name>
   catalog_resolve "$session" "$kind" "$name"
 }
 
-_runner_element_show () {   # <session> <classifier|filter|probe> <name>
-  local session="$1" kind="$2" name="${3:-}" file summary usage="" interval=""
-  [[ -n "$name" ]] || command_die "$kind show: need <name>"
-  [[ "$name" != */* ]] || command_die "$kind show: need a bare name"
-  file="$(catalog_resolve "$session" "$kind" "$name")"
-  [[ -n "$file" ]] || command_die "$kind show: '$name' not found on the $kind path"
-  # Inspection reports what the element declares; `run` and `watch` verify that it
-  # behaves. Reading metadata must not execute a catalog file.
-  _runner_metadata_require "$kind" "$file" || \
-    command_die "$kind show: '$name' has invalid metadata"
-  summary="$(catalog_metadata "$file" summary)"
-  if [[ "$kind" == probe ]]; then
-    usage="$(catalog_metadata "$file" usage)"
-    interval="$(_runner_probe_interval "$file") seconds"
-  fi
-  command_show_row name "$name"
-  command_show_row summary "$summary"
-  [[ "$kind" == probe ]] && command_show_row arguments "${usage:-none}"
-  [[ "$kind" == probe ]] && command_show_row interval "$interval"
-  command_show_row path "$file"
-}
-
-_runner_definition_show () {   # <session> <name> [<runner-arg>...]
-  local session="$1" name="${2:-}" file probe_args="" summary usage; shift 2 || true
-  [[ -n "$name" ]] || command_die "runner show: need <name>"
-  [[ "$name" != */* ]] || command_die "runner show: need a bare name"
-  file="$(catalog_resolve "$session" runner "$name")"
-  [[ -n "$file" ]] || command_die "runner show: '$name' not found on the runner path"
-  _runner_metadata_require runner "$file" || command_die "runner show: '$name' has invalid metadata"
-  runner_definition_load "$file" || command_die "runner show: '$name' is invalid"
-  runner_definition_configure "$@" || command_die "runner show: '$name' produced an invalid configuration"
+_runner_definition_describe () {   # <session> <name> [<runner-arg>...]
+  local session="$1" name="${2:-}" file probe_args=""; shift 2 || true
+  file="$(catalog_describe_resolve "$session" runner "$name")" || return
+  _runner_metadata_require runner "$file" || command_die "runner describe: '$name' has invalid metadata"
+  runner_definition_load "$file" || command_die "runner describe: '$name' is invalid"
+  runner_definition_configure "$@" || command_die "runner describe: '$name' produced an invalid configuration"
   if (( ${#AIRLINE_RUNNER_CONFIG_PROBE_ARGS[@]} )); then
     printf -v probe_args '%q ' "${AIRLINE_RUNNER_CONFIG_PROBE_ARGS[@]}"
     probe_args="${probe_args% }"
   fi
-  command_show_row name "$name"
-  summary="$(catalog_metadata "$file" summary)"
-  usage="$(catalog_metadata "$file" usage)"
-  command_show_row summary "$summary"
-  command_show_row arguments "${usage:-none}"
+  catalog_describe_render "$name" "$file" || return
   command_show_row classifier "${AIRLINE_RUNNER_CONFIG_CLASSIFIER:-basic}"
   command_show_row filter "${AIRLINE_RUNNER_CONFIG_FILTER:-none}"
   [[ -n "$AIRLINE_RUNNER_CONFIG_FILTER_MERGE" ]] && command_show_row filter-input merged-stderr
   command_show_row probe "${AIRLINE_RUNNER_CONFIG_PROBE:-none}"
   [[ -n "$probe_args" ]] && command_show_row probe-args "$probe_args"
-  command_show_row path "$file"
+  return 0
 }
 
 # Globals intentionally cross the filter's background subshell boundary. Each CLI
@@ -901,32 +871,25 @@ _runner_watch_execute () {   # <session>; uses parsed watch specification
   return "$watch_rc"
 }
 # CLI delegation targets for runner and its primitives.
-runner_classifier_show () {
-  local s
-  (( $# == 1 )) || command_die "classifier show: need exactly one <classifier>"
-  s="$(command_current_session)"; _runner_element_show "$s" classifier "$@"
-}
 runner_classifier_list () {
   local s
   (( $# == 0 )) || command_die "classifier list: takes no arguments"
   s="$(command_current_session)"; catalog_list "$s" classifier
 }
 runner_classifier_register () { local s; s="$(command_current_session)"; catalog_register "$s" classifier "$@"; }
-runner_filter_show () {
-  local s
-  (( $# == 1 )) || command_die "filter show: need exactly one <filter>"
-  s="$(command_current_session)"; _runner_element_show "$s" filter "$@"
-}
 runner_filter_list () {
   local s
   (( $# == 0 )) || command_die "filter list: takes no arguments"
   s="$(command_current_session)"; catalog_list "$s" filter
 }
 runner_filter_register () { local s; s="$(command_current_session)"; catalog_register "$s" filter "$@"; }
-runner_probe_show () {
-  local s
-  (( $# == 1 )) || command_die "probe show: need exactly one <probe>"
-  s="$(command_current_session)"; _runner_element_show "$s" probe "$@"
+runner_probe_describe () {
+  local file
+  (( $# == 1 )) || command_die "probe describe: need exactly one <probe>"
+  file="$(catalog_describe_resolve "$(command_current_session)" probe "$1")" || return
+  _runner_metadata_require probe "$file" || command_die "probe describe: '$1' has invalid metadata"
+  catalog_describe_render "$1" "$file" || return
+  command_show_row interval "$(_runner_probe_interval "$file") seconds"
 }
 runner_probe_list () {
   local s
@@ -935,7 +898,7 @@ runner_probe_list () {
 }
 runner_probe_register () { local s; s="$(command_current_session)"; catalog_register "$s" probe "$@"; }
 
-runner_show () { local s; s="$(command_current_session)"; _runner_definition_show "$s" "$@"; }
+runner_describe () { local s; s="$(command_current_session)"; _runner_definition_describe "$s" "$@"; }
 runner_list () {
   local s
   (( $# == 0 )) || command_die "runner list: takes no arguments"

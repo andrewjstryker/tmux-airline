@@ -52,3 +52,16 @@ For example, Airline's private result-observation entry point takes both its pan
 and revision positionally because both are required and their order is unambiguous.
 Its absence from public help and completions is an API-ownership decision, not an
 argument-layout convention.
+
+## Catalog inspection and active state
+
+Every catalog kind accepts `describe <name>`: palette, adapter, layout, classifier,
+filter, probe, and runner. The name is required and must be a bare catalog name.
+`runner describe <name> [<arg>...]` also accepts arguments for resolving composition
+defaults. Segment has no catalog and accepts neither `describe` nor `list`.
+
+`show` reports live tmux state, with optional narrowing such as `palette show name`.
+Runner-domain catalogs have no installed state and do not accept `show`.
+
+See [Catalogs and discovery](catalogs.md) for shared metadata, resolution, and the
+boundary between description and domain evaluation.

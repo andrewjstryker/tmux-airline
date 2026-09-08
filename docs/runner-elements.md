@@ -43,8 +43,8 @@ and summarizes elements without evaluating anything.
 
 ## Metadata
 
-Every element declares its discovery text in `#|` header comments, which core reads
-without executing the file:
+Every element uses the [shared catalog metadata format](catalogs.md), which core
+reads without executing the file:
 
 ```bash
 #| summary: Check one or more HTTP endpoints

@@ -47,15 +47,15 @@ wait_for_pane_exit() { # <pane> <status>
   assert_line tap
   assert_line http
 
-  run airline classifier show basic
+  run airline classifier describe basic
   assert_output --partial "Map exit zero"
-  run airline probe show http
+  run airline probe describe http
   assert_output --partial "<endpoint> [<endpoint>...]"
-  run airline runner show http
+  run airline runner describe http
   assert_output --partial "classifier   basic"
   assert_output --partial "probe        http"
   assert_output --partial "http://localhost/health/live"
-  run airline runner show http http://example.test/health
+  run airline runner describe http http://example.test/health
   assert_output --partial "http://example.test/health"
   refute_output --partial "http://localhost/health/live"
 }

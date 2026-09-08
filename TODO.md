@@ -89,49 +89,16 @@ Parse its own options, stop hardcoding the 2xx policy and the curl timeouts, and
 a missing curl through `<problem>`. This lands last as the demonstration that the
 contract holds; it is the file whose defects produced this document.
 
-## Catalog element metadata
-
-- Element files that carry both a `#| summary:` line and a near-identical title
-  comment should lose the duplication.
-- `catalog_metadata` rejects a repeated header key. That rule can stand as written:
-  option documentation moved to the parse function's arms, so no header key repeats.
-
 ## Grammar coherence
 
-### Separate `show` from `describe`
+### Add evaluated layout-domain descriptions
 
-`show` names two operations today. In the layout domain it reports committed session
-state; in the runner domain it reads a catalog artifact from disk. Split them so
-`show` reports live tmux state and `describe` reads the catalog, with no noun carrying
-both meanings under one verb:
+Extend palette and layout descriptions beyond header metadata to report evaluated
+roles and contents without committing them. Keep evaluation in the owning domain
+and common discovery in catalog; derived facts do not belong in metadata headers.
 
-| Noun | `register` | `list` | `describe <name>` | `use` / `load` | `show` |
-|------|:---:|:---:|:---:|:---:|:---:|
-| palette | yes | yes | **add** | `use` only | active state |
-| adapter | yes | yes | **add** | yes | active state |
-| layout | yes | yes | **add** | yes | active state |
-| classifier | yes | yes | **rename** | — | **remove** |
-| filter | yes | yes | **rename** | — | **remove** |
-| probe | yes | yes | **rename** | — | **remove** |
-| runner | yes | yes | **rename** | — | **remove** |
-| segment | — | — | — | — | active state |
-
-Two consequences the principle implies and the code does not yet reflect:
-
-- The four runner-domain nouns lose `show` outright. An element is selected per
-  invocation and never installed, so once the catalog read becomes `describe` there is
-  no applied state left for `show` to report there.
-- The layout domain gains `describe`, closing a real gap: `use` is currently the only
-  way to learn what a palette or layout contains, and it commits the change to find
-  out. `segment` has no catalog and takes neither `describe` nor `list`.
-
-`describe` always takes a required entry name, where `show` takes optional narrowing
-(`palette show [name|<element>]`). `runner describe <runner> [<arg>...]` keeps trailing
-arguments because resolving defaults needs them; that varies the operand, not the rule.
-
-Renaming reaches beyond the dispatcher: `scripts/generate-completions` maps
-`'classifier show') semantic=classifier` and its siblings, and both completion
-artifacts regenerate.
+Build evaluated `palette describe` output together with `palette load`, sharing the evaluation core
+as detailed below. Update help, tests, and documentation for the evaluated output.
 
 ### Add `palette load`
 
@@ -152,7 +119,8 @@ unlocked implementation and differ only in resolution. `_palette_select_unlocked
 resolves the name itself today, so split resolution from evaluation; provenance records
 a path for the load form, as `layout show [name|path]` already does.
 
-Build this together with `palette describe`. Describing an unapplied palette means
+Build this together with evaluated `palette describe` output. Reporting an unapplied
+palette's roles means
 evaluating it in the staging surface and reporting its roles without committing —
 `_palette_select_unlocked` minus the commit. `use`, `load`, and `describe` should end
 up sharing one evaluation core rather than growing three.

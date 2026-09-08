@@ -32,6 +32,21 @@ implementation worklists used to reach them.
 
 ### Catalogs and discovery
 
+- Made `describe <name>` available across all seven catalogs, with common name
+  resolution, metadata validation, and field rendering owned by catalog. Palette,
+  adapter, and layout descriptions inspect headers without applying entries;
+  runner owns probe intervals and evaluated composition details. All kinds use
+  the same `#|` header strategy, documented in `docs/catalogs.md`; removed redundant
+  summary/title comments from shipped entries.
+
+- Renamed runner-domain `show` to `describe` for classifiers, filters, probes, and
+  named runners, removing the old verbs. Catalog inspection and committed tmux
+  state are semantically different operations; `show` now retains the state
+  meaning. Named-runner descriptions preserve argument-dependent defaults, while
+  element descriptions read metadata without execution. See `docs/cli.md`.
+- Fixed Zsh catalog completion losing its executable search path to a local
+  `path` variable, allowing dynamic names to be resolved through the CLI.
+
 - Replaced the four competing element-metadata mechanisms with one convention.
   Every catalog element declares `#| summary:` in its header, plus `#| usage:` and
   an optional `#| interval:` where its kind calls for them. Retired

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 #| summary: Monitor a TAP-producing test command
 #| usage:
-# A named composition for TAP-producing test commands.
 
 airline_runner_configure () {   # <configure-function>
   local configure="$1"; shift

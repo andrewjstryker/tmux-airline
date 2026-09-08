@@ -344,7 +344,7 @@ _airline_zsh_describe_children () {
 }
 
 _airline_zsh () {
-  local top="${words[2]:-}" verb path previous semantic base
+  local top="${words[2]:-}" verb command_path previous semantic base
   if (( CURRENT == 2 )); then _airline_zsh_describe_children ''; return; fi
   if [[ "$top" == help ]]; then
     if (( CURRENT == 3 )); then _airline_zsh_describe_children ''; return; fi
@@ -353,9 +353,9 @@ _airline_zsh () {
   fi
   if [[ -n "$(_airline_children "$top")" ]]; then
     if (( CURRENT == 3 )); then _airline_zsh_describe_children "$top"; return; fi
-    verb="${words[3]}"; path="$top $verb"
+    verb="${words[3]}"; command_path="$top $verb"
   else
-    path="$top"
+    command_path="$top"
   fi
   previous="${words[CURRENT-1]:-}"
   case "$previous" in
@@ -364,16 +364,16 @@ _airline_zsh () {
     --probe) compadd ${(@f)$(_airline_zsh_dynamic probe)}; return ;;
     --interval) return ;;
     -t)
-      if [[ "$path" == 'session init' ]]; then semantic=session-target
-      elif [[ "$path" == 'status set' || "$path" == 'status clear' ]]; then semantic=pane-target
+      if [[ "$command_path" == 'session init' ]]; then semantic=session-target
+      elif [[ "$command_path" == 'status set' || "$command_path" == 'status clear' ]]; then semantic=pane-target
       else semantic=window-target; fi
       compadd ${(@f)$(_airline_zsh_dynamic "$semantic")}; return
       ;;
   esac
-  if [[ "$path" == 'runner run' || "$path" == 'runner watch' ]]; then
-    if (( ${words[(I)--]} )); then [[ "$path" == 'runner run' ]] && _normal; return; fi
+  if [[ "$command_path" == 'runner run' || "$command_path" == 'runner watch' ]]; then
+    if (( ${words[(I)--]} )); then [[ "$command_path" == 'runner run' ]] && _normal; return; fi
     local -a runner_options=(--pane --window --interval --probe)
-    [[ "$path" == 'runner run' ]] && runner_options+=(--classify --filter --merge-stderr --)
+    [[ "$command_path" == 'runner run' ]] && runner_options+=(--classify --filter --merge-stderr --)
     if (( ${words[(I)--pane]} || ${words[(I)--window]} )); then
       runner_options=(${runner_options:#--pane})
       runner_options=(${runner_options:#--window})
@@ -384,7 +384,7 @@ _airline_zsh () {
     fi
     return
   fi
-  case "$path" in
+  case "$command_path" in
     'status set')
       if [[ "$PREFIX" == -* ]]; then compadd -- -t; return
       elif (( CURRENT == 4 )); then compadd active result attention; return
@@ -460,10 +460,10 @@ _airline_zsh () {
         return
       fi
       ;;
-    'palette use') semantic=palette ;; 'adapter use') semantic=adapter ;;
-    'layout use') semantic=layout ;; 'classifier show') semantic=classifier ;;
-    'filter show') semantic=filter ;; 'probe show') semantic=probe ;;
-    'runner show') semantic=runner ;;
+    'palette use'|'palette describe') semantic=palette ;; 'adapter use'|'adapter describe') semantic=adapter ;;
+    'layout use'|'layout describe') semantic=layout ;; 'classifier describe') semantic=classifier ;;
+    'filter describe') semantic=filter ;; 'probe describe') semantic=probe ;;
+    'runner describe') semantic=runner ;;
     'palette show') compadd name ${(@f)$(_airline_zsh_dynamic palette-element)}; return ;;
     'layout show') compadd name path; return ;;
     'segment show') semantic=segment ;;

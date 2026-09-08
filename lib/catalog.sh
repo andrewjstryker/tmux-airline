@@ -90,6 +90,46 @@ catalog_metadata () {   # <file> [<key>]
   [[ -z "$wanted" || -n "$found" ]]
 }
 
+# Every catalog kind shares the same discovery contract: a non-empty summary,
+# with optional file-wide fields in the same marked header.
+catalog_metadata_valid () {   # <file>
+  local summary
+  summary="$(catalog_metadata "$1" summary)" || return 1
+  [[ -n "${summary//[[:space:]]/}" ]]
+}
+
+catalog_describe_resolve () {   # <session> <kind> <name> -> validated file
+  local session="$1" kind="$2" name="${3:-}" file
+  [[ -n "$name" ]] || command_die "$kind describe: need <name>"
+  [[ "$name" != */* ]] || command_die "$kind describe: need a bare name"
+  file="$(catalog_resolve "$session" "$kind" "$name")"
+  [[ -n "$file" ]] || command_die "$kind describe: '$name' not found on the $kind path"
+  catalog_metadata_valid "$file" || command_die "$kind describe: '$name' has invalid metadata"
+  printf '%s' "$file"
+}
+
+# Domain descriptions call this directly before adding derived fields. Metadata
+# stays in the header; evaluating an implementation is never how we discover it.
+catalog_describe_render () {   # <name> <file>
+  local name="$1" file="$2" metadata key value
+  metadata="$(catalog_metadata "$file")" || return 1
+  command_show_row name "$name"
+  while IFS=$'\t' read -r key value; do
+    case "$key" in
+      summary) command_show_row summary "$value" ;;
+      usage) command_show_row arguments "${value:-none}" ;;
+    esac
+  done <<< "$metadata"
+  command_show_row path "$file"
+}
+
+catalog_describe () {   # <kind> <name>; common CLI behavior
+  local kind="$1" file; shift
+  (( $# == 1 )) || command_die "$kind describe: need exactly one <$kind>"
+  file="$(catalog_describe_resolve "$(command_current_session)" "$kind" "$1")" || return
+  catalog_describe_render "$1" "$file"
+}
+
 # Register a user directory at the high-priority end of the path. Registration is
 # the trust decision that allows later bare-name use to source executable content.
 catalog_register () {   # <session> <kind> <dir>

@@ -5,14 +5,14 @@ _airline_children () {
   case "$1" in
     '') printf %s version\ help\ session\ palette\ segment\ adapter\ layout\ classifier\ filter\ probe\ runner\ status\ health\ problem\ transaction ;;
     session) printf %s init\ apply\ show\ suspend\ resume\ toggle ;;
-    palette) printf %s show\ use\ list\ register ;;
+    palette) printf %s describe\ show\ use\ list\ register ;;
     segment) printf %s show ;;
-    adapter) printf %s use\ load\ show\ list\ register ;;
-    layout) printf %s use\ load\ show\ list\ register ;;
-    classifier) printf %s show\ list\ register ;;
-    filter) printf %s show\ list\ register ;;
-    probe) printf %s show\ list\ register ;;
-    runner) printf %s show\ list\ register\ run\ watch ;;
+    adapter) printf %s describe\ use\ load\ show\ list\ register ;;
+    layout) printf %s describe\ use\ load\ show\ list\ register ;;
+    classifier) printf %s describe\ list\ register ;;
+    filter) printf %s describe\ list\ register ;;
+    probe) printf %s describe\ list\ register ;;
+    runner) printf %s describe\ list\ register\ run\ watch ;;
     status) printf %s set\ clear\ show ;;
     health) printf %s set\ ack\ clear\ show ;;
     problem) printf %s set\ close\ ack\ clear\ resolve\ show ;;
@@ -30,31 +30,34 @@ _airline_usage () {
     session\ suspend) printf %s '' ;;
     session\ resume) printf %s '' ;;
     session\ toggle) printf %s '' ;;
+    palette\ describe) printf %s \<palette\> ;;
     palette\ show) printf %s \[name\|\<palette-element\>\] ;;
     palette\ use) printf %s \<palette\> ;;
     palette\ list) printf %s '' ;;
     palette\ register) printf %s \<dir\> ;;
     segment\ show) printf %s \[\<segment\>\] ;;
+    adapter\ describe) printf %s \<adapter\> ;;
     adapter\ use) printf %s \<adapter\>... ;;
     adapter\ load) printf %s \<file\> ;;
     adapter\ show) printf %s '' ;;
     adapter\ list) printf %s '' ;;
     adapter\ register) printf %s \<dir\> ;;
+    layout\ describe) printf %s \<layout\> ;;
     layout\ use) printf %s \<layout\> ;;
     layout\ load) printf %s \<file\> ;;
     layout\ show) printf %s \[name\|path\] ;;
     layout\ list) printf %s '' ;;
     layout\ register) printf %s \<dir\> ;;
-    classifier\ show) printf %s \<classifier\> ;;
+    classifier\ describe) printf %s \<classifier\> ;;
     classifier\ list) printf %s '' ;;
     classifier\ register) printf %s \<dir\> ;;
-    filter\ show) printf %s \<filter\> ;;
+    filter\ describe) printf %s \<filter\> ;;
     filter\ list) printf %s '' ;;
     filter\ register) printf %s \<dir\> ;;
-    probe\ show) printf %s \<probe\> ;;
+    probe\ describe) printf %s \<probe\> ;;
     probe\ list) printf %s '' ;;
     probe\ register) printf %s \<dir\> ;;
-    runner\ show) printf %s \<runner\>\ \[\<arg\>...\] ;;
+    runner\ describe) printf %s \<runner\>\ \[\<arg\>...\] ;;
     runner\ list) printf %s '' ;;
     runner\ register) printf %s \<dir\> ;;
     runner\ run) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ \[--classify\ \<classifier\>\]\ \[--filter\ \<filter\>\ \[--merge-stderr\]\]\ \[--interval\ \<seconds\>\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\}\ --\ \<command\>... ;;
@@ -100,31 +103,34 @@ _airline_description () {
     session\ suspend) printf %s Mute\ the\ palette\ +\ trap\ the\ prefix\ \(session\ dormant\) ;;
     session\ resume) printf %s Restore\ vibrant\ colours\ +\ release\ the\ prefix ;;
     session\ toggle) printf %s Flip\ active/suspended ;;
+    palette\ describe) printf %s Describe\ catalog\ metadata\ and\ resolved\ path ;;
     palette\ show) printf %s Show\ the\ palette\ summary\ or\ one\ raw\ field ;;
     palette\ use) printf %s Load\ a\ complete\ palette\ and\ repaint\ adapters ;;
     palette\ list) printf %s List\ palettes\ on\ the\ search\ path ;;
     palette\ register) printf %s Add\ a\ palette\ search\ directory ;;
     segment\ show) printf %s Show\ one\ segment\ or\ all\ segments ;;
+    adapter\ describe) printf %s Describe\ catalog\ metadata\ and\ resolved\ path ;;
     adapter\ use) printf %s Apply\ palette\ roles\ to\ one\ or\ more\ plugins ;;
     adapter\ load) printf %s Apply\ a\ one-off\ adapter\ script ;;
     adapter\ show) printf %s List\ applied\ adapters ;;
     adapter\ list) printf %s List\ adapters\ on\ the\ search\ path ;;
     adapter\ register) printf %s Add\ an\ adapter\ search\ directory ;;
+    layout\ describe) printf %s Describe\ catalog\ metadata\ and\ resolved\ path ;;
     layout\ use) printf %s Apply\ a\ named\ layout\ definition ;;
     layout\ load) printf %s Apply\ and\ record\ a\ one-off\ layout\ definition ;;
     layout\ show) printf %s Show\ active\ layout\ provenance ;;
     layout\ list) printf %s List\ layouts\ on\ the\ search\ path ;;
     layout\ register) printf %s Add\ a\ layout\ search\ directory ;;
-    classifier\ show) printf %s Show\ summary\,\ contract\,\ and\ resolved\ path ;;
+    classifier\ describe) printf %s Describe\ summary\ and\ resolved\ path ;;
     classifier\ list) printf %s List\ classifiers\ available\ to\ runners ;;
     classifier\ register) printf %s Add\ a\ classifier\ search\ directory ;;
-    filter\ show) printf %s Show\ summary\,\ contract\,\ and\ resolved\ path ;;
+    filter\ describe) printf %s Describe\ summary\ and\ resolved\ path ;;
     filter\ list) printf %s List\ filters\ available\ to\ runners ;;
     filter\ register) printf %s Add\ a\ filter\ search\ directory ;;
-    probe\ show) printf %s Show\ summary\,\ arguments\,\ interval\,\ and\ resolved\ path ;;
+    probe\ describe) printf %s Describe\ summary\,\ arguments\,\ interval\,\ and\ resolved\ path ;;
     probe\ list) printf %s List\ probes\ available\ to\ runners ;;
     probe\ register) printf %s Add\ a\ probe\ search\ directory ;;
-    runner\ show) printf %s Show\ one\ named\ composition\ with\ resolved\ defaults ;;
+    runner\ describe) printf %s Describe\ one\ named\ composition\ with\ resolved\ defaults ;;
     runner\ list) printf %s List\ named\ runner\ compositions ;;
     runner\ register) printf %s Add\ a\ runner\ search\ directory ;;
     runner\ run) printf %s Run\ a\ command\ with\ monitoring ;;
@@ -189,7 +195,7 @@ _airline_zsh_describe_children () {
 }
 
 _airline_zsh () {
-  local top="${words[2]:-}" verb path previous semantic base
+  local top="${words[2]:-}" verb command_path previous semantic base
   if (( CURRENT == 2 )); then _airline_zsh_describe_children ''; return; fi
   if [[ "$top" == help ]]; then
     if (( CURRENT == 3 )); then _airline_zsh_describe_children ''; return; fi
@@ -198,9 +204,9 @@ _airline_zsh () {
   fi
   if [[ -n "$(_airline_children "$top")" ]]; then
     if (( CURRENT == 3 )); then _airline_zsh_describe_children "$top"; return; fi
-    verb="${words[3]}"; path="$top $verb"
+    verb="${words[3]}"; command_path="$top $verb"
   else
-    path="$top"
+    command_path="$top"
   fi
   previous="${words[CURRENT-1]:-}"
   case "$previous" in
@@ -209,16 +215,16 @@ _airline_zsh () {
     --probe) compadd ${(@f)$(_airline_zsh_dynamic probe)}; return ;;
     --interval) return ;;
     -t)
-      if [[ "$path" == 'session init' ]]; then semantic=session-target
-      elif [[ "$path" == 'status set' || "$path" == 'status clear' ]]; then semantic=pane-target
+      if [[ "$command_path" == 'session init' ]]; then semantic=session-target
+      elif [[ "$command_path" == 'status set' || "$command_path" == 'status clear' ]]; then semantic=pane-target
       else semantic=window-target; fi
       compadd ${(@f)$(_airline_zsh_dynamic "$semantic")}; return
       ;;
   esac
-  if [[ "$path" == 'runner run' || "$path" == 'runner watch' ]]; then
-    if (( ${words[(I)--]} )); then [[ "$path" == 'runner run' ]] && _normal; return; fi
+  if [[ "$command_path" == 'runner run' || "$command_path" == 'runner watch' ]]; then
+    if (( ${words[(I)--]} )); then [[ "$command_path" == 'runner run' ]] && _normal; return; fi
     local -a runner_options=(--pane --window --interval --probe)
-    [[ "$path" == 'runner run' ]] && runner_options+=(--classify --filter --merge-stderr --)
+    [[ "$command_path" == 'runner run' ]] && runner_options+=(--classify --filter --merge-stderr --)
     if (( ${words[(I)--pane]} || ${words[(I)--window]} )); then
       runner_options=(${runner_options:#--pane})
       runner_options=(${runner_options:#--window})
@@ -229,7 +235,7 @@ _airline_zsh () {
     fi
     return
   fi
-  case "$path" in
+  case "$command_path" in
     'status set')
       if [[ "$PREFIX" == -* ]]; then compadd -- -t; return
       elif (( CURRENT == 4 )); then compadd active result attention; return
@@ -305,10 +311,10 @@ _airline_zsh () {
         return
       fi
       ;;
-    'palette use') semantic=palette ;; 'adapter use') semantic=adapter ;;
-    'layout use') semantic=layout ;; 'classifier show') semantic=classifier ;;
-    'filter show') semantic=filter ;; 'probe show') semantic=probe ;;
-    'runner show') semantic=runner ;;
+    'palette use'|'palette describe') semantic=palette ;; 'adapter use'|'adapter describe') semantic=adapter ;;
+    'layout use'|'layout describe') semantic=layout ;; 'classifier describe') semantic=classifier ;;
+    'filter describe') semantic=filter ;; 'probe describe') semantic=probe ;;
+    'runner describe') semantic=runner ;;
     'palette show') compadd name ${(@f)$(_airline_zsh_dynamic palette-element)}; return ;;
     'layout show') compadd name path; return ;;
     'segment show') semantic=segment ;;

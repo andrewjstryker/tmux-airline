@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 #| summary: Map exit zero to ok and every other termination to fail
-# The portable floor: successful exit is healthy; every other termination failed.
 
 airline_runner_classify () {   # <exit-status> <signal>
   local status="$1" signal="$2"

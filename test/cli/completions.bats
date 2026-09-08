@@ -63,7 +63,7 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   assert_equal "${COMPREPLY[*]}" "init apply show suspend resume toggle"
 
   COMP_WORDS=(airline help palette ""); COMP_CWORD=3; _airline_completion
-  assert_equal "${COMPREPLY[*]}" "show use list register"
+  assert_equal "${COMPREPLY[*]}" "describe show use list register"
 
   COMP_WORDS=(airline health set runner build ""); COMP_CWORD=5; _airline_completion
   assert_equal "${COMPREPLY[*]}" "ok warn fail"
@@ -116,4 +116,65 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   command -v zsh >/dev/null || skip "zsh is not installed"
   run zsh -n "$PROJECT_ROOT/completions/_airline"
   assert_success
+}
+
+@test "catalog help and bash completions distinguish describe from state show" {
+  source "$PROJECT_ROOT/completions/airline.bash"
+  local noun
+  for noun in palette adapter layout classifier filter probe runner; do
+    run env AIRLINE_DIR="$PROJECT_ROOT" "$PROJECT_ROOT/airline.sh" help "$noun"
+    assert_success
+    assert_output --partial 'describe'
+    if [[ "$noun" != palette && "$noun" != adapter && "$noun" != layout ]]; then
+      refute_output --regexp '(^|[[:space:]])show([[:space:]]|$)'
+    fi
+
+    COMP_WORDS=(airline "$noun" de); COMP_CWORD=2; _airline_completion
+    assert_equal "${COMPREPLY[*]}" describe
+    COMP_WORDS=(airline "$noun" sh); COMP_CWORD=2; _airline_completion || true
+    if [[ "$noun" == palette || "$noun" == adapter || "$noun" == layout ]]; then
+      assert_equal "${COMPREPLY[*]}" show
+    else
+      assert_equal "${COMPREPLY[*]}" ''
+    fi
+  done
+}
+
+@test "bash describe completion resolves all seven catalog kinds" {
+  mkdir -p "$BATS_TEST_TMPDIR/bin"
+  cat > "$BATS_TEST_TMPDIR/bin/airline" <<'CLI'
+#!/usr/bin/env bash
+[[ "$2" == list ]] && printf '%s-sample\n' "$1"
+CLI
+  chmod +x "$BATS_TEST_TMPDIR/bin/airline"
+  PATH="$BATS_TEST_TMPDIR/bin:$PATH"
+  source "$PROJECT_ROOT/completions/airline.bash"
+  local noun
+  for noun in palette adapter layout classifier filter probe runner; do
+    COMP_WORDS=(airline "$noun" describe "$noun-"); COMP_CWORD=3; _airline_completion
+    assert_equal "${COMPREPLY[*]}" "$noun-sample"
+  done
+}
+
+@test "zsh describe completion resolves all seven catalog kinds" {
+  command -v zsh >/dev/null || skip "zsh is not installed"
+  mkdir -p "$BATS_TEST_TMPDIR/bin"
+  cat > "$BATS_TEST_TMPDIR/bin/airline" <<'CLI'
+#!/usr/bin/env bash
+[[ "$2" == list ]] && printf '%s-sample\n' "$1"
+CLI
+  chmod +x "$BATS_TEST_TMPDIR/bin/airline"
+  local noun
+  for noun in palette adapter layout classifier filter probe runner; do
+    run env PATH="$BATS_TEST_TMPDIR/bin:$PATH" zsh -f -c '
+      compdef() { :; }
+      compadd() { print -rl -- "$@"; }
+      source "$1"
+      words=(airline "$2" describe "")
+      CURRENT=4
+      _airline_zsh
+    ' zsh "$PROJECT_ROOT/completions/_airline" "$noun"
+    assert_success
+    assert_output "$noun-sample"
+  done
 }

@@ -27,11 +27,11 @@ setup() {
     layout_segment_show \
     layout_adapter_show layout_adapter_list layout_adapter_use layout_adapter_load layout_adapter_register \
     layout_show layout_list layout_use layout_load layout_register \
-    runner_classifier_show runner_classifier_list runner_classifier_register \
-    runner_filter_show runner_filter_list runner_filter_register \
-    runner_probe_show runner_probe_list runner_probe_register \
-    runner_show runner_list runner_register runner_run runner_watch \
-    command_version; do
+    runner_classifier_list runner_classifier_register \
+    runner_filter_list runner_filter_register \
+    runner_probe_describe runner_probe_list runner_probe_register \
+    runner_describe runner_list runner_register runner_run runner_watch \
+    catalog_describe command_version; do
     eval "$fn () { _record_delegate \"\$@\"; }"
   done
 }
@@ -66,7 +66,7 @@ palette use light|layout_palette_use <light>
 segment show left-out|layout_segment_show <left-out>
 adapter load /tmp/adapter|layout_adapter_load </tmp/adapter>
 layout register /tmp/layouts|layout_register </tmp/layouts>
-classifier show basic|runner_classifier_show <basic>
+classifier describe basic|catalog_describe <classifier> <basic>
 filter list|runner_filter_list
 probe register /tmp/probes|runner_probe_register </tmp/probes>
 runner run tap -- true|runner_run <tap> <--> <true>
