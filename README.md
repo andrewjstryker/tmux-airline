@@ -414,7 +414,7 @@ filter, and probe catalogs; shipped examples live under `runners/`. `run` uses t
 like:
 
 ```bash
-AIRLINE_CLASSIFIER_SUMMARY='Interpret pytest termination'
+#| summary: Interpret pytest termination
 
 airline_runner_classify() { # <exit-status> <signal>
   case "$1" in
@@ -437,7 +437,7 @@ A filter receives a tee'd copy of stdout by default. `--merge-stderr` applies
 ordinary `2>&1` semantics before the tee:
 
 ```bash
-AIRLINE_FILTER_SUMMARY='Interpret top-level TAP output'
+#| summary: Interpret top-level TAP output
 
 airline_runner_filter() { # <pid> <report-function>
   local pid="$1" report="$2"
@@ -467,9 +467,9 @@ A long-lived process can instead define a probe when an API or other state sourc
 contains useful current information absent from its logs:
 
 ```bash
-AIRLINE_RUNNER_PROBE_INTERVAL=5
-AIRLINE_PROBE_SUMMARY='Check service health endpoints'
-AIRLINE_PROBE_USAGE='<endpoint> [<endpoint>...]'
+#| summary: Check service health endpoints
+#| usage: <endpoint> [<endpoint>...]
+#| interval: 5
 
 airline_runner_probe() { # <lifecycle-pid> <report-function> [<arg>...]
   local pid="$1" report="$2"
@@ -521,15 +521,12 @@ PID argument identifies the local watcher lifecycle, not the remote service.
 ### Named runner compositions
 
 Runner definitions are trusted shell files in an independently registered catalog;
-shipped definitions live in `runners/definitions/`. Two required functions build a
-validated composition:
+shipped definitions live in `runners/definitions/`. A `#|` header declares the
+discovery text and one required function builds a validated composition:
 
 ```bash
-airline_runner_metadata() { # <declare-function>
-  local declare="$1"
-  "$declare" summary 'Monitor a TAP-producing test command'
-  "$declare" usage ''
-}
+#| summary: Monitor a TAP-producing test command
+#| usage:
 
 airline_runner_configure() { # <configure-function> [<runner-arg>...]
   local configure="$1"; shift
@@ -537,6 +534,10 @@ airline_runner_configure() { # <configure-function> [<runner-arg>...]
   "$configure" filter tap
 }
 ```
+
+`#| interval:` sets a probe's default pace. A composition may override it with
+`"$configure" interval 30`, and any invocation overrides both with `--interval
+<seconds>`, so a slow endpoint does not require its own copy of the probe.
 
 The metadata callback accepts `summary` and `usage`. The configuration callback
 accepts `classify`, `filter`, and `probe` declarations, validates their

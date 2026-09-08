@@ -4,26 +4,27 @@
 #
 # Elements are trusted shell selected independently for one invocation:
 #
+# Every element declares `#| summary:` in its header, plus `#| usage:` and an
+# optional `#| interval:` where the kind calls for them. Catalog reads those without
+# executing the file, so discovery never runs an element.
+#
 #   runners/classifiers/<name>: airline_runner_classify <exit-status> <signal>
 #       Print `ok` or `<warn|fail><TAB><message>`.
-#       AIRLINE_CLASSIFIER_SUMMARY describes it for `classifier show`.
 #
 #   runners/filters/<name>: airline_runner_filter <pid> <report-function>
 #       Read stdout (or merged stdout/stderr when core requests it) from stdin and
 #       call the reporter with `ok` or `<warn|fail> <message>` as evidence changes.
 #       Emit a definitive report at EOF; that terminal health remains after exit.
-#       AIRLINE_FILTER_SUMMARY describes it for `filter show`.
 #
 #   runners/probes/<name>: airline_runner_probe <lifecycle-pid> <report-function> [<arg>...]
 #       Perform one bounded observation, calling the reporter with `ok` or
 #       `<warn|fail> <message>` for each condition. Stdout is uninterpreted user
 #       output. Airline reduces reports and retains diagnostics at the worst level.
-#       AIRLINE_PROBE_SUMMARY and AIRLINE_PROBE_USAGE provide discovery metadata.
-#       AIRLINE_RUNNER_PROBE_INTERVAL optionally sets seconds between observations.
+#       `#| interval:` optionally sets seconds between observations (default 5).
 #
-#   runners/definitions/<name>: airline_runner_metadata + airline_runner_configure
-#       Declare discovery text and build one normalized monitoring composition by
-#       calling core-supplied callbacks. Run uses the full result; watch its subset.
+#   runners/definitions/<name>: airline_runner_configure
+#       Build one normalized monitoring composition by calling core-supplied
+#       callbacks. Run uses the full result; watch its subset.
 #
 # The contract/mechanics section has no tmux knowledge. The command orchestration
 # later in this module reaches tmux only through tmux.sh and projects normalized
@@ -31,16 +32,42 @@
 
 # shellcheck shell=bash
 
-runner_classifier_load () {   # <file>
-  unset -f airline_runner_classify 2>/dev/null || true
-  unset AIRLINE_CLASSIFIER_SUMMARY
-  # shellcheck source=/dev/null
-  source "$1" || return 1
-  declare -F airline_runner_classify >/dev/null || return 1
-  [[ -n "${AIRLINE_CLASSIFIER_SUMMARY:-}" ]]
+# Required metadata per kind, read from the element header without executing it. A
+# field that must be declared but may be empty is checked for presence, not value.
+_runner_metadata_require () {   # <kind> <file>
+  local kind="$1" file="$2" summary
+  summary="$(catalog_metadata "$file" summary)" || return 1
+  [[ -n "$summary" ]] || return 1
+  case "$kind" in
+    probe)
+      catalog_metadata "$file" usage >/dev/null || return 1
+      _runner_interval_valid "$(_runner_probe_interval "$file")" || return 1
+      ;;
+    runner) catalog_metadata "$file" usage >/dev/null || return 1 ;;
+  esac
 }
 
-runner_classifier_valid () ( runner_classifier_load "$1" )
+# Seconds between probe observations. An interval supplied at invocation — directly
+# or projected from a named runner — overrides the probe's declared default.
+_runner_effective_interval () {
+  printf '%s' "${AIRLINE_RUNNER_INTERVAL:-${AIRLINE_RUNNER_PROBE_INTERVAL:-5}}"
+}
+
+# Declared seconds between probe observations; the shipped default when unstated.
+_runner_probe_interval () {   # <file>
+  local interval
+  interval="$(catalog_metadata "$1" interval)" || interval=""
+  printf '%s' "${interval:-5}"
+}
+
+runner_classifier_load () {   # <file>
+  unset -f airline_runner_classify 2>/dev/null || true
+  # shellcheck source=/dev/null
+  source "$1" || return 1
+  declare -F airline_runner_classify >/dev/null
+}
+
+runner_classifier_valid () ( _runner_metadata_require classifier "$1" && runner_classifier_load "$1" )
 
 runner_classifier_run () {   # <exit-status> <signal>
   local report condition message rc=0
@@ -55,14 +82,12 @@ runner_classifier_run () {   # <exit-status> <signal>
 
 runner_filter_load () {   # <file>
   unset -f airline_runner_filter 2>/dev/null || true
-  unset AIRLINE_FILTER_SUMMARY
   # shellcheck source=/dev/null
   source "$1" || return 1
-  declare -F airline_runner_filter >/dev/null || return 1
-  [[ -n "${AIRLINE_FILTER_SUMMARY:-}" ]]
+  declare -F airline_runner_filter >/dev/null
 }
 
-runner_filter_valid () ( runner_filter_load "$1" )
+runner_filter_valid () ( _runner_metadata_require filter "$1" && runner_filter_load "$1" )
 
 AIRLINE_RUNNER_FILTER_PID=""
 AIRLINE_RUNNER_FILTER_REPORT=""
@@ -137,16 +162,14 @@ _runner_interval_valid () {   # positive integer or decimal seconds
 
 runner_probe_load () {   # <file>
   unset -f airline_runner_probe 2>/dev/null || true
-  unset AIRLINE_PROBE_SUMMARY AIRLINE_PROBE_USAGE AIRLINE_RUNNER_PROBE_INTERVAL
   # shellcheck source=/dev/null
   source "$1" || return 1
   declare -F airline_runner_probe >/dev/null || return 1
-  [[ -n "${AIRLINE_PROBE_SUMMARY:-}" ]] || return 1
-  [[ -n "${AIRLINE_PROBE_USAGE+x}" ]] || return 1
-  _runner_interval_valid "${AIRLINE_RUNNER_PROBE_INTERVAL:-5}"
+  # Declared metadata; airline holds it internally for the observation loop.
+  AIRLINE_RUNNER_PROBE_INTERVAL="$(_runner_probe_interval "$1")"
 }
 
-runner_probe_valid () ( runner_probe_load "$1" )
+runner_probe_valid () ( _runner_metadata_require probe "$1" && runner_probe_load "$1" )
 
 # A probe's stdout belongs to the user. Its reporter is the separate machine
 # channel: collect every call made during one observation, validate it, and expose
@@ -200,7 +223,7 @@ runner_probe_once () {   # <lifecycle-pid> [<arg>...]
 _runner_probe_loop () {   # <pid> <report-function> <error-function> [<probe-arg>...]
   local lifecycle_pid="$1" report="$2" error="$3" interval
   shift 3
-  interval="${AIRLINE_RUNNER_PROBE_INTERVAL:-5}"
+  interval="$(_runner_effective_interval)"
   while kill -0 "$lifecycle_pid" 2>/dev/null; do
     if runner_probe_once "$lifecycle_pid" "$@"; then
       "$report" "$AIRLINE_RUNNER_PROBE_CONDITION" "$AIRLINE_RUNNER_PROBE_MESSAGE"
@@ -228,13 +251,13 @@ runner_probe_stop () {   # <probe-pid>
   wait "$pid" 2>/dev/null || true
 }
 
-# A named runner is syntactic composition, not lifecycle machinery. Two required
-# functions call validated core callbacks; stdout is never a protocol channel.
+# A named runner is syntactic composition, not lifecycle machinery. Its one required
+# function calls validated core callbacks; stdout is never a protocol channel.
+# Discovery text is header metadata, so listing a runner never evaluates it.
 runner_definition_load () {   # <file>
-  unset -f airline_runner_metadata airline_runner_configure 2>/dev/null || true
+  unset -f airline_runner_configure 2>/dev/null || true
   # shellcheck source=/dev/null
   source "$1" || return 1
-  declare -F airline_runner_metadata >/dev/null || return 1
   declare -F airline_runner_configure >/dev/null
 }
 
@@ -247,55 +270,12 @@ _runner_contract_call () {   # <function> <callback> [<arg>...]; require quiet s
   return "$rc"
 }
 
-AIRLINE_RUNNER_SUMMARY=""
-AIRLINE_RUNNER_USAGE=""
-AIRLINE_RUNNER_METADATA_INVALID=""
-AIRLINE_RUNNER_METADATA_SUMMARY_SEEN=""
-AIRLINE_RUNNER_METADATA_USAGE_SEEN=""
-
-_runner_metadata_collect () {   # <summary|usage> <value>
-  local field="${1:-}" value="${2:-}"
-  if (( $# != 2 )) || [[ "$value" == *$'\n'* ]]; then
-    AIRLINE_RUNNER_METADATA_INVALID=1
-    return 1
-  fi
-  case "$field" in
-    summary)
-      [[ -z "$AIRLINE_RUNNER_METADATA_SUMMARY_SEEN" && -n "$value" ]] || {
-        AIRLINE_RUNNER_METADATA_INVALID=1; return 1;
-      }
-      AIRLINE_RUNNER_METADATA_SUMMARY_SEEN=1
-      AIRLINE_RUNNER_SUMMARY="$value"
-      ;;
-    usage)
-      [[ -z "$AIRLINE_RUNNER_METADATA_USAGE_SEEN" ]] || {
-        AIRLINE_RUNNER_METADATA_INVALID=1; return 1;
-      }
-      AIRLINE_RUNNER_METADATA_USAGE_SEEN=1
-      AIRLINE_RUNNER_USAGE="$value"
-      ;;
-    *) AIRLINE_RUNNER_METADATA_INVALID=1; return 1 ;;
-  esac
-}
-
-runner_definition_metadata () {
-  # shellcheck disable=SC2034 # consumed by runner orchestration below
-  AIRLINE_RUNNER_SUMMARY=""
-  # shellcheck disable=SC2034 # consumed by runner orchestration below
-  AIRLINE_RUNNER_USAGE=""
-  AIRLINE_RUNNER_METADATA_INVALID=""
-  AIRLINE_RUNNER_METADATA_SUMMARY_SEEN=""
-  AIRLINE_RUNNER_METADATA_USAGE_SEEN=""
-  _runner_contract_call airline_runner_metadata _runner_metadata_collect || return 1
-  [[ -z "$AIRLINE_RUNNER_METADATA_INVALID" ]] || return 1
-  [[ -n "$AIRLINE_RUNNER_METADATA_SUMMARY_SEEN" && -n "$AIRLINE_RUNNER_METADATA_USAGE_SEEN" ]]
-}
-
 AIRLINE_RUNNER_CONFIG_CLASSIFIER=""
 AIRLINE_RUNNER_CONFIG_FILTER=""
 AIRLINE_RUNNER_CONFIG_FILTER_MERGE=""
 AIRLINE_RUNNER_CONFIG_PROBE=""
 AIRLINE_RUNNER_CONFIG_PROBE_ARGS=()
+AIRLINE_RUNNER_CONFIG_INTERVAL=""
 AIRLINE_RUNNER_CONFIG_INVALID=""
 AIRLINE_RUNNER_CONFIG_SEEN=""
 
@@ -323,6 +303,13 @@ _runner_configure_collect () {   # <classify|filter|probe> ...
       AIRLINE_RUNNER_CONFIG_PROBE="$2"
       AIRLINE_RUNNER_CONFIG_PROBE_ARGS=("${@:3}")
       ;;
+    interval)
+      if (( $# != 2 )) || [[ -n "$AIRLINE_RUNNER_CONFIG_INTERVAL" ]] || \
+        ! _runner_interval_valid "$2"; then
+        AIRLINE_RUNNER_CONFIG_INVALID=1; return 1
+      fi
+      AIRLINE_RUNNER_CONFIG_INTERVAL="$2"
+      ;;
     *) AIRLINE_RUNNER_CONFIG_INVALID=1; return 1 ;;
   esac
   AIRLINE_RUNNER_CONFIG_SEEN=1
@@ -334,10 +321,14 @@ runner_definition_configure () {   # [<runner-arg>...]
   AIRLINE_RUNNER_CONFIG_FILTER_MERGE=""
   AIRLINE_RUNNER_CONFIG_PROBE=""
   AIRLINE_RUNNER_CONFIG_PROBE_ARGS=()
+  AIRLINE_RUNNER_CONFIG_INTERVAL=""
   AIRLINE_RUNNER_CONFIG_INVALID=""
   AIRLINE_RUNNER_CONFIG_SEEN=""
   _runner_contract_call airline_runner_configure _runner_configure_collect "$@" || return 1
-  [[ -z "$AIRLINE_RUNNER_CONFIG_INVALID" && -n "$AIRLINE_RUNNER_CONFIG_SEEN" ]]
+  [[ -z "$AIRLINE_RUNNER_CONFIG_INVALID" && -n "$AIRLINE_RUNNER_CONFIG_SEEN" ]] || return 1
+  # An interval paces probe observations; declaring one without a probe is a mistake
+  # rather than a silently ignored setting.
+  [[ -z "$AIRLINE_RUNNER_CONFIG_INTERVAL" || -n "$AIRLINE_RUNNER_CONFIG_PROBE" ]]
 }
 
 AIRLINE_RUNNER_DEFINITION_ARGV=()
@@ -354,6 +345,9 @@ runner_definition_project () {   # <run|watch>
     fi
   fi
   if [[ -n "$AIRLINE_RUNNER_CONFIG_PROBE" ]]; then
+    # Interval precedes the probe: probe arguments run to the end of the option list.
+    [[ -z "$AIRLINE_RUNNER_CONFIG_INTERVAL" ]] || \
+      AIRLINE_RUNNER_DEFINITION_ARGV+=(--interval "$AIRLINE_RUNNER_CONFIG_INTERVAL")
     AIRLINE_RUNNER_DEFINITION_ARGV+=(
       --probe "$AIRLINE_RUNNER_CONFIG_PROBE" "${AIRLINE_RUNNER_CONFIG_PROBE_ARGS[@]}"
     )
@@ -382,22 +376,15 @@ _runner_element_show () {   # <session> <classifier|filter|probe> <name>
   [[ "$name" != */* ]] || command_die "$kind show: need a bare name"
   file="$(catalog_resolve "$session" "$kind" "$name")"
   [[ -n "$file" ]] || command_die "$kind show: '$name' not found on the $kind path"
-  case "$kind" in
-    classifier)
-      runner_classifier_load "$file" || command_die "classifier show: '$name' is invalid"
-      summary="$AIRLINE_CLASSIFIER_SUMMARY"
-      ;;
-    filter)
-      runner_filter_load "$file" || command_die "filter show: '$name' is invalid"
-      summary="$AIRLINE_FILTER_SUMMARY"
-      ;;
-    probe)
-      runner_probe_load "$file" || command_die "probe show: '$name' is invalid"
-      summary="$AIRLINE_PROBE_SUMMARY"
-      usage="$AIRLINE_PROBE_USAGE"
-      interval="${AIRLINE_RUNNER_PROBE_INTERVAL:-5} seconds"
-      ;;
-  esac
+  # Inspection reports what the element declares; `run` and `watch` verify that it
+  # behaves. Reading metadata must not execute a catalog file.
+  _runner_metadata_require "$kind" "$file" || \
+    command_die "$kind show: '$name' has invalid metadata"
+  summary="$(catalog_metadata "$file" summary)"
+  if [[ "$kind" == probe ]]; then
+    usage="$(catalog_metadata "$file" usage)"
+    interval="$(_runner_probe_interval "$file") seconds"
+  fi
   command_show_row name "$name"
   command_show_row summary "$summary"
   [[ "$kind" == probe ]] && command_show_row arguments "${usage:-none}"
@@ -406,21 +393,23 @@ _runner_element_show () {   # <session> <classifier|filter|probe> <name>
 }
 
 _runner_definition_show () {   # <session> <name> [<runner-arg>...]
-  local session="$1" name="${2:-}" file probe_args=""; shift 2 || true
+  local session="$1" name="${2:-}" file probe_args="" summary usage; shift 2 || true
   [[ -n "$name" ]] || command_die "runner show: need <name>"
   [[ "$name" != */* ]] || command_die "runner show: need a bare name"
   file="$(catalog_resolve "$session" runner "$name")"
   [[ -n "$file" ]] || command_die "runner show: '$name' not found on the runner path"
+  _runner_metadata_require runner "$file" || command_die "runner show: '$name' has invalid metadata"
   runner_definition_load "$file" || command_die "runner show: '$name' is invalid"
-  runner_definition_metadata || command_die "runner show: '$name' has invalid metadata"
   runner_definition_configure "$@" || command_die "runner show: '$name' produced an invalid configuration"
   if (( ${#AIRLINE_RUNNER_CONFIG_PROBE_ARGS[@]} )); then
     printf -v probe_args '%q ' "${AIRLINE_RUNNER_CONFIG_PROBE_ARGS[@]}"
     probe_args="${probe_args% }"
   fi
   command_show_row name "$name"
-  command_show_row summary "$AIRLINE_RUNNER_SUMMARY"
-  command_show_row arguments "${AIRLINE_RUNNER_USAGE:-none}"
+  summary="$(catalog_metadata "$file" summary)"
+  usage="$(catalog_metadata "$file" usage)"
+  command_show_row summary "$summary"
+  command_show_row arguments "${usage:-none}"
   command_show_row classifier "${AIRLINE_RUNNER_CONFIG_CLASSIFIER:-basic}"
   command_show_row filter "${AIRLINE_RUNNER_CONFIG_FILTER:-none}"
   [[ -n "$AIRLINE_RUNNER_CONFIG_FILTER_MERGE" ]] && command_show_row filter-input merged-stderr
@@ -570,8 +559,9 @@ _runner_expand_named () {   # <session> <run|watch> [invocation...]
   [[ "$name" != */* ]] || command_die "runner $mode: runner must be a bare name"
   file="$(catalog_resolve "$session" runner "$name")"
   [[ -n "$file" ]] || command_die "runner $mode: runner '$name' not found"
+  _runner_metadata_require runner "$file" || \
+    command_die "runner $mode: runner '$name' has invalid metadata"
   runner_definition_load "$file" || command_die "runner $mode: runner '$name' is invalid"
-  runner_definition_metadata || command_die "runner $mode: runner '$name' has invalid metadata"
 
   if [[ "$mode" == run ]]; then
     while (( $# )); do
@@ -602,7 +592,7 @@ _runner_expand_named () {   # <session> <run|watch> [invocation...]
 
 _runner_spec_token () {
   case "${1:-}" in
-    --pane|--window|--classify|--filter|--probe|--) return 0 ;;
+    --pane|--window|--classify|--filter|--probe|--interval|--) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -614,6 +604,7 @@ _runner_parse () {   # <run|watch> [spec...]
   AIRLINE_RUNNER_CLASSIFIER=""
   AIRLINE_RUNNER_FILTER=""
   AIRLINE_RUNNER_FILTER_MERGE=""
+  AIRLINE_RUNNER_INTERVAL=""
   AIRLINE_RUNNER_PROBE=""
   AIRLINE_RUNNER_PROBE_ARGS=()
   AIRLINE_RUNNER_COMMAND=()
@@ -650,6 +641,12 @@ _runner_parse () {   # <run|watch> [spec...]
         AIRLINE_RUNNER_FILTER="$2"; shift 2
         if [[ "${1:-}" == --merge-stderr ]]; then AIRLINE_RUNNER_FILTER_MERGE=1; shift; fi
         ;;
+      --interval)
+        [[ -z "$AIRLINE_RUNNER_INTERVAL" ]] || command_die "runner $mode: interval already specified"
+        [[ $# -ge 2 && -n "$2" ]] || command_die "runner $mode: --interval requires <seconds>"
+        _runner_interval_valid "$2" || \
+          command_die "runner $mode: --interval must be positive seconds"
+        AIRLINE_RUNNER_INTERVAL="$2"; shift 2 ;;
       --probe)
         [[ -z "$AIRLINE_RUNNER_PROBE" ]] || command_die "runner $mode: probe already specified"
         [[ $# -ge 2 && -n "$2" ]] || command_die "runner $mode: --probe requires <name>"
@@ -674,6 +671,8 @@ _runner_parse () {   # <run|watch> [spec...]
   else
     [[ -n "$AIRLINE_RUNNER_PROBE" ]] || command_die "runner watch: need --probe <name> [<arg>...]"
   fi
+  [[ -z "$AIRLINE_RUNNER_INTERVAL" || -n "$AIRLINE_RUNNER_PROBE" ]] || \
+    command_die "runner $mode: --interval paces --probe observations"
 }
 
 _runner_validate_spec () {   # <session> <run|watch>
@@ -705,9 +704,15 @@ _runner_normalize_spec () {   # <run|watch>
     [[ -n "$AIRLINE_RUNNER_FILTER_MERGE" ]] && AIRLINE_RUNNER_SPEC_ARGV+=(--merge-stderr)
   fi
   if [[ -n "$AIRLINE_RUNNER_PROBE" ]]; then
+    [[ -z "$AIRLINE_RUNNER_INTERVAL" ]] || \
+      AIRLINE_RUNNER_SPEC_ARGV+=(--interval "$AIRLINE_RUNNER_INTERVAL")
     AIRLINE_RUNNER_SPEC_ARGV+=(--probe "$AIRLINE_RUNNER_PROBE" "${AIRLINE_RUNNER_PROBE_ARGS[@]}")
   fi
-  [[ "$mode" == run ]] && AIRLINE_RUNNER_SPEC_ARGV+=(-- "${AIRLINE_RUNNER_COMMAND[@]}")
+  # An `if` rather than a trailing `&&`: watch normalizes successfully and must not
+  # report the mode test's status as failure.
+  if [[ "$mode" == run ]]; then
+    AIRLINE_RUNNER_SPEC_ARGV+=(-- "${AIRLINE_RUNNER_COMMAND[@]}")
+  fi
 }
 
 # Run one command in the calling pane. The process is started as a child so airline
@@ -869,7 +874,7 @@ _runner_watch_execute () {   # <session>; uses parsed watch specification
   AIRLINE_RUNNER_PROBE_HEALTH_KEY="$probe_health_key"
   AIRLINE_RUNNER_PROBE_CONTRIBUTOR="$probe_contributor"
   AIRLINE_RUNNER_PROBE_PROBLEM_KEY=probe
-  interval="${AIRLINE_RUNNER_PROBE_INTERVAL:-5}"
+  interval="$(_runner_effective_interval)"
 
   signal_health_set -t "$pane" "$probe_contributor" "$probe_health_key" ok
   signal_status_set -t "$pane" active

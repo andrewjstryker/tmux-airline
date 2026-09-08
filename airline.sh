@@ -232,8 +232,8 @@ cmd_runner () {
     show)      runner_show "$@" ;;       #| <runner> [<arg>...] — show one named composition with resolved defaults
     list)      runner_list "$@" ;;       #| — list named runner compositions
     register)  runner_register "$@" ;;  #| <dir> — add a runner search directory
-    run)       runner_run "$@" ;;        #| [--pane [-h|-v]|--window] {<runner> [<arg>...] | [--classify <classifier>] [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]]} -- <command>... — run a command with monitoring
-    watch)     runner_watch "$@" ;;      #| [--pane [-h|-v]|--window] {<runner> [<arg>...] | --probe <probe> [<arg>...]} — watch probe state until interrupted
+    run)       runner_run "$@" ;;        #| [--pane [-h|-v]|--window] {<runner> [<arg>...] | [--classify <classifier>] [--filter <filter> [--merge-stderr]] [--interval <seconds>] [--probe <probe> [<arg>...]]} -- <command>... — run a command with monitoring
+    watch)     runner_watch "$@" ;;      #| [--pane [-h|-v]|--window] {<runner> [<arg>...] | [--interval <seconds>] --probe <probe> [<arg>...]} — watch probe state until interrupted
     *) command_die "unknown runner command: $verb" ;;
   esac
   # help:end runner

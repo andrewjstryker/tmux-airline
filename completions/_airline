@@ -57,8 +57,8 @@ _airline_usage () {
     runner\ show) printf %s \<runner\>\ \[\<arg\>...\] ;;
     runner\ list) printf %s '' ;;
     runner\ register) printf %s \<dir\> ;;
-    runner\ run) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ \[--classify\ \<classifier\>\]\ \[--filter\ \<filter\>\ \[--merge-stderr\]\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\}\ --\ \<command\>... ;;
-    runner\ watch) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ --probe\ \<probe\>\ \[\<arg\>...\]\} ;;
+    runner\ run) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ \[--classify\ \<classifier\>\]\ \[--filter\ \<filter\>\ \[--merge-stderr\]\]\ \[--interval\ \<seconds\>\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\}\ --\ \<command\>... ;;
+    runner\ watch) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ \[--interval\ \<seconds\>\]\ --probe\ \<probe\>\ \[\<arg\>...\]\} ;;
     status\ set) printf %s \[-t\ \<pane-target\>\]\ \<active\|result\|attention\> ;;
     status\ clear) printf %s \[-t\ \<pane-target\>\] ;;
     status\ show) printf %s \[-t\ \<window-target\>\] ;;
@@ -207,6 +207,7 @@ _airline_zsh () {
     --classify) compadd ${(@f)$(_airline_zsh_dynamic classifier)}; return ;;
     --filter) compadd ${(@f)$(_airline_zsh_dynamic filter)}; return ;;
     --probe) compadd ${(@f)$(_airline_zsh_dynamic probe)}; return ;;
+    --interval) return ;;
     -t)
       if [[ "$path" == 'session init' ]]; then semantic=session-target
       elif [[ "$path" == 'status set' || "$path" == 'status clear' ]]; then semantic=pane-target
@@ -216,7 +217,7 @@ _airline_zsh () {
   esac
   if [[ "$path" == 'runner run' || "$path" == 'runner watch' ]]; then
     if (( ${words[(I)--]} )); then [[ "$path" == 'runner run' ]] && _normal; return; fi
-    local -a runner_options=(--pane --window --probe)
+    local -a runner_options=(--pane --window --interval --probe)
     [[ "$path" == 'runner run' ]] && runner_options+=(--classify --filter --merge-stderr --)
     if (( ${words[(I)--pane]} || ${words[(I)--window]} )); then
       runner_options=(${runner_options:#--pane})

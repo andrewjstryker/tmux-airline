@@ -22,7 +22,7 @@ while IFS= read -r semantic; do
   case "$semantic" in
     adapter|classifier|contributor|dir|file|filter|health-key|layout|message|namespace|palette|\
       palette-element|pane-target|probe|problem-key|runner|segment|session-target|target|window-target|\
-      arg|argument|command|noun|verb) ;;
+      arg|argument|command|noun|verb|seconds) ;;
     *) printf "generate-completions: unknown help placeholder <%s>\n" "$semantic" >&2; exit 1 ;;
   esac
 done < <(grep -oE '<[a-z][a-z-]*>' "$WORK/grammar" | tr -d '<>' | sort -u)
@@ -137,7 +137,7 @@ _airline_position_token () {   # <usage> <zero-based-position>
     token="${syntax[i]}"
     if [[ -n "$skip" ]]; then skip=""; continue; fi
     case "$token" in
-      -t|--classify|--filter|--probe) skip=1; continue ;;
+      -t|--classify|--filter|--probe|--interval) skip=1; continue ;;
       --|--*|-*) continue ;;
     esac
     if (( position == wanted )); then printf '%s' "$token"; return; fi
@@ -151,7 +151,7 @@ _airline_argument_position () {   # already-entered leaf arguments
   for arg in "$@"; do
     if [[ -n "$skip" ]]; then skip=""; continue; fi
     case "$arg" in
-      -t|--pane|--session|--classify|--filter|--probe) skip=1 ;;
+      -t|--pane|--session|--classify|--filter|--probe|--interval) skip=1 ;;
       --window|-h|-v|--merge-stderr) ;;
       --) ;;
       *) ((count++)) || true ;;
@@ -187,8 +187,9 @@ _airline_runner_complete () {   # <run|watch> <current> <prior-args...>
     --classify) COMPREPLY=( $(compgen -W "$(_airline_dynamic classifier)" -- "$current") ); return ;;
     --filter)   COMPREPLY=( $(compgen -W "$(_airline_dynamic filter)" -- "$current") ); return ;;
     --probe)    COMPREPLY=( $(compgen -W "$(_airline_dynamic probe)" -- "$current") ); return ;;
+    --interval) return ;;
   esac
-  local options='--probe'
+  local options='--interval --probe'
   [[ -n "$placement_seen" ]] || options="--pane --window $options"
   [[ "$previous" != --pane ]] || options="-h -v $options"
   [[ "$mode" == run ]] && options+=' --classify --filter --merge-stderr --'
@@ -361,6 +362,7 @@ _airline_zsh () {
     --classify) compadd ${(@f)$(_airline_zsh_dynamic classifier)}; return ;;
     --filter) compadd ${(@f)$(_airline_zsh_dynamic filter)}; return ;;
     --probe) compadd ${(@f)$(_airline_zsh_dynamic probe)}; return ;;
+    --interval) return ;;
     -t)
       if [[ "$path" == 'session init' ]]; then semantic=session-target
       elif [[ "$path" == 'status set' || "$path" == 'status clear' ]]; then semantic=pane-target
@@ -370,7 +372,7 @@ _airline_zsh () {
   esac
   if [[ "$path" == 'runner run' || "$path" == 'runner watch' ]]; then
     if (( ${words[(I)--]} )); then [[ "$path" == 'runner run' ]] && _normal; return; fi
-    local -a runner_options=(--pane --window --probe)
+    local -a runner_options=(--pane --window --interval --probe)
     [[ "$path" == 'runner run' ]] && runner_options+=(--classify --filter --merge-stderr --)
     if (( ${words[(I)--pane]} || ${words[(I)--window]} )); then
       runner_options=(${runner_options:#--pane})

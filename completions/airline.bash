@@ -58,8 +58,8 @@ _airline_usage () {
     runner\ show) printf %s \<runner\>\ \[\<arg\>...\] ;;
     runner\ list) printf %s '' ;;
     runner\ register) printf %s \<dir\> ;;
-    runner\ run) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ \[--classify\ \<classifier\>\]\ \[--filter\ \<filter\>\ \[--merge-stderr\]\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\}\ --\ \<command\>... ;;
-    runner\ watch) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ --probe\ \<probe\>\ \[\<arg\>...\]\} ;;
+    runner\ run) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ \[--classify\ \<classifier\>\]\ \[--filter\ \<filter\>\ \[--merge-stderr\]\]\ \[--interval\ \<seconds\>\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\}\ --\ \<command\>... ;;
+    runner\ watch) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ \[--interval\ \<seconds\>\]\ --probe\ \<probe\>\ \[\<arg\>...\]\} ;;
     status\ set) printf %s \[-t\ \<pane-target\>\]\ \<active\|result\|attention\> ;;
     status\ clear) printf %s \[-t\ \<pane-target\>\] ;;
     status\ show) printf %s \[-t\ \<window-target\>\] ;;
@@ -222,7 +222,7 @@ _airline_position_token () {   # <usage> <zero-based-position>
     token="${syntax[i]}"
     if [[ -n "$skip" ]]; then skip=""; continue; fi
     case "$token" in
-      -t|--classify|--filter|--probe) skip=1; continue ;;
+      -t|--classify|--filter|--probe|--interval) skip=1; continue ;;
       --|--*|-*) continue ;;
     esac
     if (( position == wanted )); then printf '%s' "$token"; return; fi
@@ -236,7 +236,7 @@ _airline_argument_position () {   # already-entered leaf arguments
   for arg in "$@"; do
     if [[ -n "$skip" ]]; then skip=""; continue; fi
     case "$arg" in
-      -t|--pane|--session|--classify|--filter|--probe) skip=1 ;;
+      -t|--pane|--session|--classify|--filter|--probe|--interval) skip=1 ;;
       --window|-h|-v|--merge-stderr) ;;
       --) ;;
       *) ((count++)) || true ;;
@@ -272,8 +272,9 @@ _airline_runner_complete () {   # <run|watch> <current> <prior-args...>
     --classify) COMPREPLY=( $(compgen -W "$(_airline_dynamic classifier)" -- "$current") ); return ;;
     --filter)   COMPREPLY=( $(compgen -W "$(_airline_dynamic filter)" -- "$current") ); return ;;
     --probe)    COMPREPLY=( $(compgen -W "$(_airline_dynamic probe)" -- "$current") ); return ;;
+    --interval) return ;;
   esac
-  local options='--probe'
+  local options='--interval --probe'
   [[ -n "$placement_seen" ]] || options="--pane --window $options"
   [[ "$previous" != --pane ]] || options="-h -v $options"
   [[ "$mode" == run ]] && options+=' --classify --filter --merge-stderr --'

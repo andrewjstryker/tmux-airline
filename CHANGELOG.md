@@ -30,6 +30,32 @@ implementation worklists used to reach them.
   conflicting placement selections. Fixed-arity commands reject trailing operands
   instead of silently discarding them.
 
+### Catalogs and discovery
+
+- Replaced the four competing element-metadata mechanisms with one convention.
+  Every catalog element declares `#| summary:` in its header, plus `#| usage:` and
+  an optional `#| interval:` where its kind calls for them. Retired
+  `AIRLINE_CLASSIFIER_SUMMARY`, `AIRLINE_FILTER_SUMMARY`, `AIRLINE_PROBE_SUMMARY`,
+  `AIRLINE_PROBE_USAGE`, `AIRLINE_RUNNER_PROBE_INTERVAL`, and the
+  `airline_runner_metadata` callback with its duplicate-key validation machinery.
+- Catalog reads declared metadata without executing the file, so inspection no
+  longer runs a catalog element. Adapters and palettes are side-effecting snippets
+  that cannot be sourced for inspection without applying them; they now carry
+  metadata for the first time. Inspection reports what an element declares, while
+  `run` and `watch` verify that it behaves.
+- Made the probe observation interval overridable. It was declarable by a probe
+  author and reachable by no one else: neither a named composition nor an
+  invocation could change it, so pacing a probe differently meant copying its file.
+  A composition now sets it with `configure interval` and an invocation with
+  `--interval <seconds>`, with the element's declaration as the fallback. This
+  follows the existing `merge-stderr` pattern, which already exposed an
+  element-behavior modifier at both levels; probe interval was the only
+  configurable dimension in the runner subsystem reachable from neither.
+- Compiled the shell completions from the annotated grammar rather than from
+  rendered help. Help formatting and completion metadata no longer share a parser,
+  so wrapping, headings, and wording are free to change without regenerating
+  completions.
+
 ### Rendering and configuration
 
 - Made committed palettes and layouts session-owned through rendering. Window status
