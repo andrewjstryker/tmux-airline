@@ -220,6 +220,8 @@ wait_for_pane_exit() { # <pane> <status>
     '  [[ -e "$health_file" ]] && "$2" ok || "$2" fail "service is unavailable"' \
     '}' > "$BATS_TEST_TMPDIR/probes/remote"
   printf '%s\n' \
+    '#| summary: Watch remote test state' \
+    '#| usage: <endpoint>' \
     'airline_runner_configure() {' \
     '  local configure="$1"; shift' \
     '  (( $# == 1 )) || return 2' \
@@ -229,6 +231,11 @@ wait_for_pane_exit() { # <pane> <status>
     > "$BATS_TEST_TMPDIR/runners/remote-watch"
   airline probe register "$BATS_TEST_TMPDIR/probes"
   airline runner register "$BATS_TEST_TMPDIR/runners"
+
+  run airline runner describe remote-watch "$endpoint"
+  assert_success
+  assert_output --partial 'probe        remote'
+  assert_output --partial "$endpoint"
 
   TMUX_PANE="$pane" AIRLINE_DIR="$PROJECT_ROOT" AIRLINE_TMUX="$TMUX -L $_bats_socket" \
     "$PROJECT_ROOT/airline.sh" runner watch remote-watch "$endpoint" \
