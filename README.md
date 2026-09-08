@@ -539,19 +539,21 @@ airline_runner_configure() { # <configure-function> [<runner-arg>...]
 `"$configure" interval 30`, and any invocation overrides both with `--interval
 <seconds>`, so a slow endpoint does not require its own copy of the probe.
 
-The metadata callback accepts `summary` and `usage`. The configuration callback
-accepts `classify`, `filter`, and `probe` declarations, validates their
-arity and cardinality, and preserves probe arguments as argv. It cannot specify `--`
+Metadata uses the shared `#|` headers. The configuration callback accepts
+`classify`, `filter`, `probe`, and `interval` declarations, validates their
+arity and cardinality, and preserves arguments for every element as argv. It cannot specify `--`
 or a command. Unexpected callback fields, duplicates, or stdout make the definition
 invalid.
 
 ```bash
-"$configure" classify <name>
-"$configure" filter <name> [merge-stderr]
+"$configure" classify <name> [<arg>...]
+"$configure" filter <name> [<arg>...] [--merge-stderr]
 "$configure" probe <name> [<arg>...]
 ```
 
-Arguments supplied after a named runner are passed to its configuration function.
+See [runner element arguments](docs/runner-elements.md#arguments-and-named-compositions)
+for reserved tokens and argument boundaries. Arguments supplied after a named runner
+are passed to its configuration function.
 A definition can therefore provide defaults while allowing replacements. `run` uses
 the complete configuration; `watch` uses only the probe, failing when the runner has
 none. Placement remains an option on the `run` or `watch` invocation and cannot be
@@ -830,7 +832,7 @@ airline filter     describe <filter> | list | register <dir>
 airline probe      describe <probe> | list | register <dir>
 airline runner   describe <runner> [<arg>...] | list | register <dir>
                  run [--pane [-h|-v]|--window] <runner> [<arg>...] -- <command>...
-                 run [--pane [-h|-v]|--window] [--classify <classifier>] [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]] -- <command>...
+                 run [--pane [-h|-v]|--window] [--classify <classifier> [<arg>...]] [--filter <filter> [<arg>...]] [--merge-stderr] [--probe <probe> [<arg>...]] -- <command>...
                  watch [--pane [-h|-v]|--window] <runner> [<arg>...]
                  watch [--pane [-h|-v]|--window] --probe <probe> [<arg>...]
 airline status   set [-t <pane-target>] <active|result|attention> | clear [-t <pane-target>] | show [-t <window-target>]

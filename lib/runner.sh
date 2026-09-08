@@ -8,10 +8,10 @@
 # optional `#| interval:` where the kind calls for them. Catalog reads those without
 # executing the file, so discovery never runs an element.
 #
-#   runners/classifiers/<name>: airline_runner_classify <exit-status> <signal>
+#   runners/classifiers/<name>: airline_runner_classify <exit-status> <signal> [<arg>...]
 #       Print `ok` or `<warn|fail><TAB><message>`.
 #
-#   runners/filters/<name>: airline_runner_filter <pid> <report-function>
+#   runners/filters/<name>: airline_runner_filter <pid> <report-function> [<arg>...]
 #       Read stdout (or merged stdout/stderr when core requests it) from stdin and
 #       call the reporter with `ok` or `<warn|fail> <message>` as evidence changes.
 #       Emit a definitive report at EOF; that terminal health remains after exit.
@@ -68,9 +68,9 @@ runner_classifier_load () {   # <file>
 
 runner_classifier_valid () ( _runner_metadata_require classifier "$1" && runner_classifier_load "$1" )
 
-runner_classifier_run () {   # <exit-status> <signal>
+runner_classifier_run () {   # <exit-status> <signal> [<arg>...]
   local report condition message rc=0
-  report="$(airline_runner_classify "$1" "$2")" || rc=$?
+  report="$(airline_runner_classify "$@")" || rc=$?
   (( rc == 0 )) || return 1
   condition="${report%%$'\t'*}"
   if [[ "$report" == *$'\t'* ]]; then message="${report#*$'\t'}"
@@ -97,12 +97,12 @@ _runner_filter_forward () {   # <ok> | <warn|fail> <message>
   "$AIRLINE_RUNNER_FILTER_REPORT" "$@"
 }
 
-runner_filter_start () {   # <pid> <report-function> <input>
-  local child_pid="$1" report="$2" input="$3"
+runner_filter_start () {   # <pid> <report-function> <input> [<arg>...]
+  local child_pid="$1" report="$2" input="$3"; shift 3
   (
     AIRLINE_RUNNER_FILTER_REPORT="$report"
     AIRLINE_RUNNER_FILTER_REPORTED=""
-    airline_runner_filter "$child_pid" _runner_filter_forward < "$input" || exit $?
+    airline_runner_filter "$child_pid" _runner_filter_forward "$@" < "$input" || exit $?
     [[ -n "$AIRLINE_RUNNER_FILTER_REPORTED" ]]
   ) &
   # shellcheck disable=SC2034 # consumed by runner orchestration below
@@ -270,7 +270,9 @@ _runner_contract_call () {   # <function> <callback> [<arg>...]; require quiet s
 }
 
 AIRLINE_RUNNER_CONFIG_CLASSIFIER=""
+AIRLINE_RUNNER_CONFIG_CLASSIFIER_ARGS=()
 AIRLINE_RUNNER_CONFIG_FILTER=""
+AIRLINE_RUNNER_CONFIG_FILTER_ARGS=()
 AIRLINE_RUNNER_CONFIG_FILTER_MERGE=""
 AIRLINE_RUNNER_CONFIG_PROBE=""
 AIRLINE_RUNNER_CONFIG_PROBE_ARGS=()
@@ -281,26 +283,39 @@ AIRLINE_RUNNER_CONFIG_SEEN=""
 _runner_configure_collect () {   # <classify|filter|probe> ...
   local field="${1:-}"
   case "$field" in
-    classify)
-      if (( $# != 2 )) || [[ -n "$AIRLINE_RUNNER_CONFIG_CLASSIFIER" || -z "$2" ]]; then
+    classify|filter|probe)
+      local name="${2:-}" arg
+      local -a args=()
+      if (( $# < 2 )) || [[ -z "$name" ]] || _runner_spec_token "$name"; then
         AIRLINE_RUNNER_CONFIG_INVALID=1; return 1
       fi
-      AIRLINE_RUNNER_CONFIG_CLASSIFIER="$2"
-      ;;
-    filter)
-      if (( $# < 2 || $# > 3 )) || [[ -n "$AIRLINE_RUNNER_CONFIG_FILTER" || -z "$2" ]] || \
-        { (( $# == 3 )) && [[ "$3" != merge-stderr ]]; }; then
-        AIRLINE_RUNNER_CONFIG_INVALID=1; return 1
-      fi
-      AIRLINE_RUNNER_CONFIG_FILTER="$2"
-      (( $# == 3 )) && AIRLINE_RUNNER_CONFIG_FILTER_MERGE=1
-      ;;
-    probe)
-      if (( $# < 2 )) || [[ -n "$AIRLINE_RUNNER_CONFIG_PROBE" || -z "$2" ]]; then
-        AIRLINE_RUNNER_CONFIG_INVALID=1; return 1
-      fi
-      AIRLINE_RUNNER_CONFIG_PROBE="$2"
-      AIRLINE_RUNNER_CONFIG_PROBE_ARGS=("${@:3}")
+      shift 2
+      for arg in "$@"; do
+        if [[ "$field" == filter && "$arg" == --merge-stderr ]]; then
+          [[ -z "$AIRLINE_RUNNER_CONFIG_FILTER_MERGE" ]] || {
+            AIRLINE_RUNNER_CONFIG_INVALID=1; return 1
+          }
+          AIRLINE_RUNNER_CONFIG_FILTER_MERGE=1
+        elif _runner_spec_token "$arg"; then
+          AIRLINE_RUNNER_CONFIG_INVALID=1; return 1
+        else
+          args+=("$arg")
+        fi
+      done
+      case "$field" in
+        classify)
+          [[ -z "$AIRLINE_RUNNER_CONFIG_CLASSIFIER" ]] || { AIRLINE_RUNNER_CONFIG_INVALID=1; return 1; }
+          AIRLINE_RUNNER_CONFIG_CLASSIFIER="$name"
+          AIRLINE_RUNNER_CONFIG_CLASSIFIER_ARGS=("${args[@]}") ;;
+        filter)
+          [[ -z "$AIRLINE_RUNNER_CONFIG_FILTER" ]] || { AIRLINE_RUNNER_CONFIG_INVALID=1; return 1; }
+          AIRLINE_RUNNER_CONFIG_FILTER="$name"
+          AIRLINE_RUNNER_CONFIG_FILTER_ARGS=("${args[@]}") ;;
+        probe)
+          [[ -z "$AIRLINE_RUNNER_CONFIG_PROBE" ]] || { AIRLINE_RUNNER_CONFIG_INVALID=1; return 1; }
+          AIRLINE_RUNNER_CONFIG_PROBE="$name"
+          AIRLINE_RUNNER_CONFIG_PROBE_ARGS=("${args[@]}") ;;
+      esac
       ;;
     interval)
       if (( $# != 2 )) || [[ -n "$AIRLINE_RUNNER_CONFIG_INTERVAL" ]] || \
@@ -316,7 +331,9 @@ _runner_configure_collect () {   # <classify|filter|probe> ...
 
 runner_definition_configure () {   # [<runner-arg>...]
   AIRLINE_RUNNER_CONFIG_CLASSIFIER=""
+  AIRLINE_RUNNER_CONFIG_CLASSIFIER_ARGS=()
   AIRLINE_RUNNER_CONFIG_FILTER=""
+  AIRLINE_RUNNER_CONFIG_FILTER_ARGS=()
   AIRLINE_RUNNER_CONFIG_FILTER_MERGE=""
   AIRLINE_RUNNER_CONFIG_PROBE=""
   AIRLINE_RUNNER_CONFIG_PROBE_ARGS=()
@@ -336,15 +353,14 @@ runner_definition_project () {   # <run|watch>
   AIRLINE_RUNNER_DEFINITION_ARGV=()
   if [[ "$mode" == run ]]; then
     [[ -n "$AIRLINE_RUNNER_CONFIG_CLASSIFIER" ]] && \
-      AIRLINE_RUNNER_DEFINITION_ARGV+=(--classify "$AIRLINE_RUNNER_CONFIG_CLASSIFIER")
+      AIRLINE_RUNNER_DEFINITION_ARGV+=(--classify "$AIRLINE_RUNNER_CONFIG_CLASSIFIER" "${AIRLINE_RUNNER_CONFIG_CLASSIFIER_ARGS[@]}")
     if [[ -n "$AIRLINE_RUNNER_CONFIG_FILTER" ]]; then
-      AIRLINE_RUNNER_DEFINITION_ARGV+=(--filter "$AIRLINE_RUNNER_CONFIG_FILTER")
+      AIRLINE_RUNNER_DEFINITION_ARGV+=(--filter "$AIRLINE_RUNNER_CONFIG_FILTER" "${AIRLINE_RUNNER_CONFIG_FILTER_ARGS[@]}")
       [[ -n "$AIRLINE_RUNNER_CONFIG_FILTER_MERGE" ]] && \
         AIRLINE_RUNNER_DEFINITION_ARGV+=(--merge-stderr)
     fi
   fi
   if [[ -n "$AIRLINE_RUNNER_CONFIG_PROBE" ]]; then
-    # Interval precedes the probe: probe arguments run to the end of the option list.
     [[ -z "$AIRLINE_RUNNER_CONFIG_INTERVAL" ]] || \
       AIRLINE_RUNNER_DEFINITION_ARGV+=(--interval "$AIRLINE_RUNNER_CONFIG_INTERVAL")
     AIRLINE_RUNNER_DEFINITION_ARGV+=(
@@ -370,7 +386,7 @@ _runner_element_file () {   # <session> <kind> <bare-name>
 }
 
 _runner_definition_describe () {   # <session> <name> [<runner-arg>...]
-  local session="$1" name="${2:-}" file probe_args=""; shift 2 || true
+  local session="$1" name="${2:-}" file probe_args="" classifier_args="" filter_args=""; shift 2 || true
   file="$(catalog_describe_resolve "$session" runner "$name")" || return
   _runner_metadata_require runner "$file" || command_die "runner describe: '$name' has invalid metadata"
   runner_definition_load "$file" || command_die "runner describe: '$name' is invalid"
@@ -379,9 +395,17 @@ _runner_definition_describe () {   # <session> <name> [<runner-arg>...]
     printf -v probe_args '%q ' "${AIRLINE_RUNNER_CONFIG_PROBE_ARGS[@]}"
     probe_args="${probe_args% }"
   fi
+  if (( ${#AIRLINE_RUNNER_CONFIG_CLASSIFIER_ARGS[@]} )); then
+    printf -v classifier_args '%q ' "${AIRLINE_RUNNER_CONFIG_CLASSIFIER_ARGS[@]}"
+  fi
+  if (( ${#AIRLINE_RUNNER_CONFIG_FILTER_ARGS[@]} )); then
+    printf -v filter_args '%q ' "${AIRLINE_RUNNER_CONFIG_FILTER_ARGS[@]}"
+  fi
   catalog_describe_render "$name" "$file" || return
   command_show_row classifier "${AIRLINE_RUNNER_CONFIG_CLASSIFIER:-basic}"
+  [[ -z "$classifier_args" ]] || command_show_row classifier-args "${classifier_args% }"
   command_show_row filter "${AIRLINE_RUNNER_CONFIG_FILTER:-none}"
+  [[ -z "$filter_args" ]] || command_show_row filter-args "${filter_args% }"
   [[ -n "$AIRLINE_RUNNER_CONFIG_FILTER_MERGE" ]] && command_show_row filter-input merged-stderr
   command_show_row probe "${AIRLINE_RUNNER_CONFIG_PROBE:-none}"
   [[ -n "$probe_args" ]] && command_show_row probe-args "$probe_args"
@@ -481,12 +505,14 @@ _runner_finish () {   # <condition> <message> <pane> <health-contributor> <healt
 }
 
 # Parsed runner specification. The CLI composes at most one element of each type for
-# one operation. Probe arguments end at the next recognized runner option, at `--`
+# one operation. Element arguments end at the next recognized runner option, at `--`
 # for run, or at argv exhaustion for watch.
 AIRLINE_RUNNER_PLACEMENT=here
 AIRLINE_RUNNER_PANE_ORIENTATION=""
 AIRLINE_RUNNER_CLASSIFIER=""
+AIRLINE_RUNNER_CLASSIFIER_ARGS=()
 AIRLINE_RUNNER_FILTER=""
+AIRLINE_RUNNER_FILTER_ARGS=()
 AIRLINE_RUNNER_FILTER_MERGE=""
 AIRLINE_RUNNER_PROBE=""
 AIRLINE_RUNNER_PROBE_ARGS=()
@@ -562,7 +588,7 @@ _runner_expand_named () {   # <session> <run|watch> [invocation...]
 
 _runner_spec_token () {
   case "${1:-}" in
-    --pane|--window|--classify|--filter|--probe|--interval|--) return 0 ;;
+    --pane|--window|--classify|--filter|--probe|--interval|--merge-stderr|--) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -572,7 +598,9 @@ _runner_parse () {   # <run|watch> [spec...]
   AIRLINE_RUNNER_PLACEMENT=here
   AIRLINE_RUNNER_PANE_ORIENTATION=""
   AIRLINE_RUNNER_CLASSIFIER=""
+  AIRLINE_RUNNER_CLASSIFIER_ARGS=()
   AIRLINE_RUNNER_FILTER=""
+  AIRLINE_RUNNER_FILTER_ARGS=()
   AIRLINE_RUNNER_FILTER_MERGE=""
   AIRLINE_RUNNER_INTERVAL=""
   AIRLINE_RUNNER_PROBE=""
@@ -603,13 +631,21 @@ _runner_parse () {   # <run|watch> [spec...]
         [[ "$mode" == run ]] || command_die "runner watch: --classify is not applicable"
         [[ -z "$AIRLINE_RUNNER_CLASSIFIER" ]] || command_die "runner run: classifier already specified"
         [[ $# -ge 2 && -n "$2" ]] || command_die "runner run: --classify requires <name>"
-        AIRLINE_RUNNER_CLASSIFIER="$2"; shift 2 ;;
+        ! _runner_spec_token "$2" || command_die "runner run: --classify requires <name>"
+        AIRLINE_RUNNER_CLASSIFIER="$2"; shift 2
+        while (( $# )) && ! _runner_spec_token "$1"; do
+          AIRLINE_RUNNER_CLASSIFIER_ARGS+=("$1"); shift
+        done
+        ;;
       --filter)
         [[ "$mode" == run ]] || command_die "runner watch: --filter is not applicable"
         [[ -z "$AIRLINE_RUNNER_FILTER" ]] || command_die "runner run: filter already specified"
         [[ $# -ge 2 && -n "$2" ]] || command_die "runner run: --filter requires <name>"
+        ! _runner_spec_token "$2" || command_die "runner run: --filter requires <name>"
         AIRLINE_RUNNER_FILTER="$2"; shift 2
-        if [[ "${1:-}" == --merge-stderr ]]; then AIRLINE_RUNNER_FILTER_MERGE=1; shift; fi
+        while (( $# )) && ! _runner_spec_token "$1"; do
+          AIRLINE_RUNNER_FILTER_ARGS+=("$1"); shift
+        done
         ;;
       --interval)
         [[ -z "$AIRLINE_RUNNER_INTERVAL" ]] || command_die "runner $mode: interval already specified"
@@ -620,17 +656,18 @@ _runner_parse () {   # <run|watch> [spec...]
       --probe)
         [[ -z "$AIRLINE_RUNNER_PROBE" ]] || command_die "runner $mode: probe already specified"
         [[ $# -ge 2 && -n "$2" ]] || command_die "runner $mode: --probe requires <name>"
+        ! _runner_spec_token "$2" || command_die "runner $mode: --probe requires <name>"
         AIRLINE_RUNNER_PROBE="$2"; shift 2
         while (( $# )) && ! _runner_spec_token "$1"; do
           AIRLINE_RUNNER_PROBE_ARGS+=("$1"); shift
         done
-        [[ $# == 0 || "$1" == -- ]] || \
-          command_die "runner $mode: --probe and its arguments must follow other options"
         ;;
       --)
         [[ "$mode" == run ]] || command_die "runner watch: unexpected -- (watch ends at end of arguments)"
         shift; AIRLINE_RUNNER_COMMAND=("$@"); break ;;
-      --merge-stderr) command_die "runner $mode: --merge-stderr must immediately follow --filter <name>" ;;
+      --merge-stderr)
+        [[ -z "$AIRLINE_RUNNER_FILTER_MERGE" ]] || command_die "runner $mode: --merge-stderr already specified"
+        AIRLINE_RUNNER_FILTER_MERGE=1; shift ;;
       *) command_die "runner $mode: unknown option '$1'" ;;
     esac
   done
@@ -643,6 +680,8 @@ _runner_parse () {   # <run|watch> [spec...]
   fi
   [[ -z "$AIRLINE_RUNNER_INTERVAL" || -n "$AIRLINE_RUNNER_PROBE" ]] || \
     command_die "runner $mode: --interval paces --probe observations"
+  [[ -z "$AIRLINE_RUNNER_FILTER_MERGE" || -n "$AIRLINE_RUNNER_FILTER" ]] || \
+    command_die "runner $mode: --merge-stderr requires --filter"
 }
 
 _runner_validate_spec () {   # <session> <run|watch>
@@ -668,9 +707,9 @@ AIRLINE_RUNNER_SPEC_ARGV=()
 _runner_normalize_spec () {   # <run|watch>
   local mode="$1"
   AIRLINE_RUNNER_SPEC_ARGV=()
-  [[ "$mode" == run ]] && AIRLINE_RUNNER_SPEC_ARGV+=(--classify "$AIRLINE_RUNNER_CLASSIFIER")
+  [[ "$mode" == run ]] && AIRLINE_RUNNER_SPEC_ARGV+=(--classify "$AIRLINE_RUNNER_CLASSIFIER" "${AIRLINE_RUNNER_CLASSIFIER_ARGS[@]}")
   if [[ -n "$AIRLINE_RUNNER_FILTER" ]]; then
-    AIRLINE_RUNNER_SPEC_ARGV+=(--filter "$AIRLINE_RUNNER_FILTER")
+    AIRLINE_RUNNER_SPEC_ARGV+=(--filter "$AIRLINE_RUNNER_FILTER" "${AIRLINE_RUNNER_FILTER_ARGS[@]}")
     [[ -n "$AIRLINE_RUNNER_FILTER_MERGE" ]] && AIRLINE_RUNNER_SPEC_ARGV+=(--merge-stderr)
   fi
   if [[ -n "$AIRLINE_RUNNER_PROBE" ]]; then
@@ -749,7 +788,7 @@ _runner_execute () {   # <session>; uses parsed run specification
   AIRLINE_RUNNER_PROBE_CONTRIBUTOR="$probe_contributor"
   AIRLINE_RUNNER_PROBE_PROBLEM_KEY=probe
   if [[ -n "$AIRLINE_RUNNER_FILTER" ]]; then
-    runner_filter_start "$child_pid" _runner_filter_report "$AIRLINE_RUNNER_STREAM_INPUT"
+    runner_filter_start "$child_pid" _runner_filter_report "$AIRLINE_RUNNER_STREAM_INPUT" "${AIRLINE_RUNNER_FILTER_ARGS[@]}"
     filter_pid="$AIRLINE_RUNNER_FILTER_PID"
     runner_stream_start
   fi
@@ -777,7 +816,7 @@ _runner_execute () {   # <session>; uses parsed run specification
     signal_health_set -t "$pane" "$probe_contributor" "$probe_health_key" ok
   (( rc > 128 )) && signal="$((rc - 128))"
 
-  if classification="$(runner_classifier_run "$rc" "$signal")"; then
+  if classification="$(runner_classifier_run "$rc" "$signal" "${AIRLINE_RUNNER_CLASSIFIER_ARGS[@]}")"; then
     condition="${classification%%$'\t'*}"
     if [[ "$classification" == *$'\t'* ]]; then message="${classification#*$'\t'}"
     else message=""; fi

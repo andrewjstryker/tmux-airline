@@ -372,8 +372,8 @@ airline filter     describe <filter> | list | register <dir>
 airline probe      describe <probe> | list | register <dir>
 airline runner   describe <runner> [<arg>...] | list | register <dir>
                  run [--pane [-h|-v]|--window] <runner> [<arg>...] -- <command>...
-                 run [--pane [-h|-v]|--window] [--classify <classifier>]
-                     [--filter <filter> [--merge-stderr]] [--probe <probe> [<arg>...]] -- <command>...
+                 run [--pane [-h|-v]|--window] [--classify <classifier> [<arg>...]]
+                     [--filter <filter> [<arg>...]] [--merge-stderr] [--probe <probe> [<arg>...]] -- <command>...
                  watch [--pane [-h|-v]|--window] <runner> [<arg>...]
                  watch [--pane [-h|-v]|--window] --probe <probe> [<arg>...]
 ```
@@ -484,18 +484,10 @@ airline_runner_configure() { # <configure-function> [<runner-arg>...]
 }
 ```
 
-Both functions call core-owned callbacks; stdout is not a protocol. Metadata accepts
-exactly one `summary` and one `usage`. Configuration accepts at most one each of
-`classify`, `filter`, and `probe`; the callback preserves probe argument boundaries
-and validates every declaration. Arguments following a named runner are
-passed to `airline_runner_configure`, allowing definitions to supply useful defaults
-or accept replacements.
-
-```bash
-"$configure" classify <name>
-"$configure" filter <name> [merge-stderr]
-"$configure" probe <name> [<arg>...]
-```
+The configure function calls a core-owned callback; stdout is not its protocol.
+Metadata remains in the shared `#|` headers. See
+[runner element arguments](docs/runner-elements.md#arguments-and-named-compositions)
+for configure declarations, argument boundaries, and reserved tokens.
 
 The result is one complete monitoring composition. `run` consumes classifier,
 filter, and probe; `watch` projects the probe and fails when none was configured.

@@ -7,6 +7,16 @@ implementation worklists used to reach them.
 
 ### Public interface and organization
 
+- Added classifier and filter arguments to explicit runner specifications and named
+  composition callbacks, closing the policy-input gap that previously required
+  copying elements to customize them. Arguments survive normalization and spawned
+  pane/window reentry; `runner describe` exposes all selected element arguments.
+- Made `--merge-stderr` a reserved core token throughout the option block and
+  rejected it without a filter or when repeated. Probe arguments no longer force
+  the probe to be last. Configure filter declarations now use `--merge-stderr`;
+  bare `merge-stderr` is an opaque filter argument, removing the ambiguity introduced
+  by variadic filter arguments. See `docs/runner-elements.md` for the contract.
+
 - Consolidated session initialization, apply, state, suspend, resume, and toggle
   operations under `airline session`.
 - Replaced private process-entry commands with targeted public operations where the

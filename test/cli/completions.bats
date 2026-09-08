@@ -178,3 +178,31 @@ CLI
     assert_output "$noun-sample"
   done
 }
+
+@test "bash runner completion offers reserved options after each element's arguments" {
+  source "$PROJECT_ROOT/completions/airline.bash"
+  local kind
+  for kind in --classify --filter --probe; do
+    COMP_WORDS=(airline runner run "$kind" custom 'one two' --m)
+    COMP_CWORD=6; _airline_completion
+    assert_equal "${COMPREPLY[*]}" --merge-stderr
+  done
+  COMP_WORDS=(airline runner watch --probe custom endpoint --i)
+  COMP_CWORD=6; _airline_completion
+  assert_equal "${COMPREPLY[*]}" --interval
+}
+
+@test "zsh runner completion offers reserved options after probe arguments" {
+  command -v zsh >/dev/null || skip "zsh is not installed"
+  run zsh -f -c '
+    compdef() { :; }
+    compadd() { print -rl -- "$@"; }
+    source "$1"
+    words=(airline runner run --probe custom endpoint --m)
+    CURRENT=7 PREFIX=--m
+    _airline_zsh
+  ' zsh "$PROJECT_ROOT/completions/_airline"
+  assert_success
+  assert_line --merge-stderr
+  assert_line --filter
+}

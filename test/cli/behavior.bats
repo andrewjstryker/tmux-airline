@@ -155,3 +155,45 @@ RUNNER
   assert_equal "$(prv_get_session s1 palette)" light
   assert_equal "$(prv_get_session s1 layout)" minimal
 }
+
+@test "runner run delivers configured arguments through execution and describe" {
+  cat > "$BATS_TEST_TMPDIR/custom" <<'ELEMENT'
+#| summary: Argument-aware elements
+#| usage: <value>
+airline_runner_classify() {
+  [[ $# == 4 && "$1" == 0 && "$2" == '' && "$3" == 'one two' && "$4" == '' ]] || return 1
+  printf 'warn\tconfigured classification\n'
+}
+airline_runner_filter() {
+  local report="$2"; shift 2
+  [[ $# == 2 && "$1" == 'three four' && "$2" == '' ]] || return 1
+  local line
+  read -r line
+  [[ "$line" == 'child output' ]] || return 1
+  "$report" ok
+}
+airline_runner_configure() {
+  "$1" classify custom 'one two' ''
+  "$1" filter custom 'three four' '' --merge-stderr
+}
+ELEMENT
+  local kind
+  for kind in classifier filter runner; do
+    main "$kind" register "$BATS_TEST_TMPDIR"
+  done
+  run main runner describe custom
+  assert_success
+  assert_output --partial "classifier-args one\\ two ''"
+  assert_output --partial "filter-args  three\\ four ''"
+
+  main runner run custom -- printf 'child output\n' >/dev/null
+  run main health show airline-runner-classifier-custom command
+  assert_success
+  assert_output --partial 'configured classification'
+  run main problem show airline-runner-classifier-custom classify
+  assert_success
+  assert_output ''
+  run main problem show airline-runner-filter-custom filter
+  assert_success
+  assert_output ''
+}

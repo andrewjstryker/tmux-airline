@@ -62,7 +62,7 @@ setup() {
 @test "watch projects only the probe from a complete runner" {
   airline_runner_configure() {
     "$1" classify basic
-    "$1" filter tap merge-stderr
+    "$1" filter tap --merge-stderr
     "$1" probe http one two
   }
   runner_definition_configure
@@ -97,9 +97,9 @@ setup() {
   assert_failure
   assert_output --partial "placement already specified"
 
-  run _runner_parse run --probe visible endpoint --filter tap -- true
-  assert_failure
-  assert_output --partial "must follow other options"
+  _runner_parse run --probe visible endpoint --filter tap -- true
+  assert_equal "${AIRLINE_RUNNER_PROBE_ARGS[*]}" endpoint
+  assert_equal "$AIRLINE_RUNNER_FILTER" tap
 }
 
 @test "spawned placements re-enter public runner commands with normalized argv" {
@@ -397,4 +397,136 @@ TAP
   run _runner_parse run --interval 30 -- true
   assert_failure
   assert_output --partial "paces --probe"
+}
+
+@test "every element keeps opaque arguments up to the next reserved token" {
+  _runner_parse run --probe remote 'https://example/a b' --interval 2 \
+    --classify custom --policy 'one two' '' '*' \
+    --filter capture --format json merge-stderr --merge-stderr -- printf '%s' --probe
+  assert_equal "${AIRLINE_RUNNER_PROBE_ARGS[*]}" 'https://example/a b'
+  assert_equal "$AIRLINE_RUNNER_INTERVAL" 2
+  run printf '<%s>' "${AIRLINE_RUNNER_CLASSIFIER_ARGS[@]}"
+  assert_output '<--policy><one two><><*>'
+  run printf '<%s>' "${AIRLINE_RUNNER_FILTER_ARGS[@]}"
+  assert_output '<--format><json><merge-stderr>'
+  assert_equal "$AIRLINE_RUNNER_FILTER_MERGE" 1
+  run printf '<%s>' "${AIRLINE_RUNNER_COMMAND[@]}"
+  assert_output '<printf><%s><--probe>'
+
+  _runner_normalize_spec run
+  local -a normalized=("${AIRLINE_RUNNER_SPEC_ARGV[@]}")
+  _runner_parse run "${normalized[@]}"
+  _runner_normalize_spec run
+  assert_equal "$(printf '<%s>' "${AIRLINE_RUNNER_SPEC_ARGV[@]}")" "$(printf '<%s>' "${normalized[@]}")"
+
+  _runner_parse run -- true
+  assert_equal "${#AIRLINE_RUNNER_CLASSIFIER_ARGS[@]}" 0
+  assert_equal "${#AIRLINE_RUNNER_FILTER_ARGS[@]}" 0
+  assert_equal "$AIRLINE_RUNNER_FILTER_MERGE" ''
+}
+
+@test "merge stderr is independent of option order and requires a filter" {
+  local -a spec=(--classify basic --filter tap --probe http endpoint)
+  local index
+  for index in 0 2 4 7; do
+    _runner_parse run "${spec[@]:0:index}" --merge-stderr "${spec[@]:index}" -- true
+    assert_equal "$AIRLINE_RUNNER_FILTER_MERGE" 1
+    assert_equal "${AIRLINE_RUNNER_PROBE_ARGS[*]}" endpoint
+  done
+  run _runner_parse run --merge-stderr -- true
+  assert_failure
+  assert_output --partial '--merge-stderr requires --filter'
+  run _runner_parse watch --probe http endpoint --merge-stderr
+  assert_failure
+  assert_output --partial '--merge-stderr requires --filter'
+  run _runner_parse run --filter tap --merge-stderr --merge-stderr -- true
+  assert_failure
+  assert_output --partial '--merge-stderr already specified'
+}
+
+@test "reserved tokens cannot replace names or hide duplicate element selections" {
+  local option
+  for option in --classify --filter --probe; do
+    run _runner_parse run "$option" --merge-stderr -- true
+    assert_failure
+    assert_output --partial "$option requires <name>"
+    run _runner_parse run "$option" custom arg "$option" other -- true
+    assert_failure
+    assert_output --partial 'already specified'
+  done
+  run _runner_parse watch --probe http endpoint --filter tap arg
+  assert_failure
+  assert_output --partial '--filter is not applicable'
+}
+
+@test "named and explicit compositions normalize to the same element arguments" {
+  airline_runner_configure() {
+    "$1" classify custom --policy 'one two' '' '*'
+    "$1" filter capture --format json --merge-stderr merge-stderr
+    "$1" probe remote endpoint
+    "$1" interval 2
+  }
+  runner_definition_configure
+  runner_definition_project run
+  _runner_parse run "${AIRLINE_RUNNER_DEFINITION_ARGV[@]}" -- true
+  _runner_normalize_spec run
+  local named
+  named="$(printf '<%s>' "${AIRLINE_RUNNER_SPEC_ARGV[@]}")"
+  _runner_parse run --merge-stderr --probe remote endpoint --interval 2 \
+    --filter capture --format json merge-stderr --classify custom --policy 'one two' '' '*' -- true
+  _runner_normalize_spec run
+  assert_equal "$(printf '<%s>' "${AIRLINE_RUNNER_SPEC_ARGV[@]}")" "$named"
+
+  runner_definition_project watch
+  _runner_parse watch "${AIRLINE_RUNNER_DEFINITION_ARGV[@]}"
+  assert_equal "${AIRLINE_RUNNER_PROBE_ARGS[*]}" endpoint
+  assert_equal "$AIRLINE_RUNNER_FILTER_MERGE" ''
+  assert_equal "${#AIRLINE_RUNNER_CLASSIFIER_ARGS[@]}" 0
+
+  airline_runner_configure() { "$1" classify basic; }
+  runner_definition_configure
+  assert_equal "${#AIRLINE_RUNNER_CONFIG_CLASSIFIER_ARGS[@]}" 0
+  assert_equal "${#AIRLINE_RUNNER_CONFIG_FILTER_ARGS[@]}" 0
+  assert_equal "$AIRLINE_RUNNER_CONFIG_FILTER_MERGE" ''
+}
+
+@test "configure rejects reserved argument tokens before they can change the projected grammar" {
+  local kind token
+  for kind in classify filter probe; do
+    for token in --pane --window --classify --filter --probe --interval --; do
+      airline_runner_configure() { "$1" "$kind" custom "$token"; }
+      run runner_definition_configure
+      assert_failure
+    done
+  done
+  airline_runner_configure() { "$1" filter custom --merge-stderr --merge-stderr; }
+  run runner_definition_configure
+  assert_failure
+  airline_runner_configure() { "$1" classify custom --merge-stderr; }
+  run runner_definition_configure
+  assert_failure
+}
+
+@test "classifier and background filter receive arguments intact after core parameters" {
+  airline_runner_classify() {
+    [[ $# == 6 && "$1" == 7 && "$2" == '' && "$3" == '--policy' && "$4" == 'one two' && "$5" == '' && "$6" == '*' ]] || return 1
+    printf 'warn\tconfigured classification\n'
+  }
+  run runner_classifier_run 7 '' --policy 'one two' '' '*'
+  assert_success
+  assert_output $'warn\tconfigured classification'
+
+  local evidence="$BATS_TEST_TMPDIR/args" input="$BATS_TEST_TMPDIR/input"
+  printf 'stream evidence\n' > "$input"
+  report_state() { printf '%s\n' "$*" >> "$evidence"; }
+  airline_runner_filter() {
+    local pid="$1" report="$2"; shift 2
+    [[ "$pid" == 4321 && $# == 4 && "$1" == '--format' && "$2" == 'one two' && "$3" == '' && "$4" == '*' ]] || return 1
+    cat >> "$evidence"
+    "$report" ok
+  }
+  runner_filter_start 4321 report_state "$input" --format 'one two' '' '*'
+  runner_filter_wait "$AIRLINE_RUNNER_FILTER_PID"
+  run cat "$evidence"
+  assert_output $'stream evidence\nok'
 }

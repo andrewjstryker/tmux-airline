@@ -111,6 +111,50 @@ An element is never required to accept arguments. A classifier that hardcodes it
 mapping is a valid classifier; the seam exists so that policy has somewhere to live
 other than a forked copy of the file.
 
+## Arguments and named compositions
+
+All three element kinds receive the arguments after their name, up to the next
+reserved token. Core options may follow probe arguments as well as classifier or
+filter arguments. For example:
+
+```bash
+airline runner run --merge-stderr --probe http https://example/health --interval 30 \
+  --classify custom --policy strict --filter custom --format compact -- make test
+```
+
+Here the classifier receives `--policy strict`, the filter receives `--format
+compact`, and the probe receives the endpoint. Unknown element options pass through
+opaquely at this stage; element parse callbacks are the next contract stage. Empty
+arguments, whitespace, and shell metacharacters retain their original argv boundaries.
+Everything after `--` belongs to the child command, including reserved spellings.
+
+A reserved token ends an element's argument block. Arguments cannot resume after a
+standalone core option: put all filter arguments before `--merge-stderr`, or put
+`--merge-stderr` before `--filter`. Repeated element selections and repeated
+`--merge-stderr` are errors. `watch` still rejects classifiers and filters.
+
+Named compositions receive the same argument channels through their configure callback:
+
+```bash
+"$configure" classify <name> [<arg>...]
+"$configure" filter <name> [<arg>...] [--merge-stderr]
+"$configure" probe <name> [<arg>...]
+"$configure" interval <seconds>
+```
+
+Within a filter declaration, `--merge-stderr` is a core modifier and may appear
+anywhere after the name; it is removed from the filter's arguments. The old bare
+`merge-stderr` spelling is now an ordinary argument. Other reserved runner tokens
+are rejected in element argument declarations, preventing a composition from
+changing placement or selecting another element through its argv. Use the dedicated
+configure fields to select elements and set the interval.
+
+Named compositions project to the same explicit specification used for ad hoc
+invocations. Normalization preserves element arguments when reentering the CLI in a
+new pane or window. `runner describe` shows classifier, filter, and probe arguments
+with shell quoting so empty arguments and spaces are visible. A watch invocation
+projects only the probe and its interval from a named composition.
+
 ## Required functions
 
 Each kind exposes one function named for its action:

@@ -30,22 +30,8 @@ only prospective work.
 ## Runner element contracts
 
 `docs/runner-elements.md` is the normative contract. The code does not yet meet it.
-The stages below are ordered by dependency: each assumes the ones above it. Stages 1
-and 2 change the grammar and require regenerated completions; stage 4 breaks every
-element, so it lands after the seams it depends on exist.
-
-### 1. Argument seam for every element kind
-
-Give classifiers and filters the argument channel probes already have, in both the
-invocation grammar and the `configure` callbacks, where `configure classify` today
-rejects anything past the name. Closing this asymmetry is the policy seam; an element
-is never obliged to use it.
-
-### 2. `--merge-stderr` becomes a reserved token
-
-Claim it anywhere in the option block instead of requiring it to immediately follow
-`--filter <name>`, which variadic filter arguments make ambiguous. Reject it when no
-filter was selected, as `--interval` already is without a probe.
+The remaining stages below are ordered by dependency: each assumes the ones above it.
+The reporter contract breaks every element, so it lands after its validation seam.
 
 ### 3. Parse functions and their documentation
 

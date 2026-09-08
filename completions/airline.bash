@@ -61,7 +61,7 @@ _airline_usage () {
     runner\ describe) printf %s \<runner\>\ \[\<arg\>...\] ;;
     runner\ list) printf %s '' ;;
     runner\ register) printf %s \<dir\> ;;
-    runner\ run) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ \[--classify\ \<classifier\>\]\ \[--filter\ \<filter\>\ \[--merge-stderr\]\]\ \[--interval\ \<seconds\>\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\}\ --\ \<command\>... ;;
+    runner\ run) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ \[--classify\ \<classifier\>\ \[\<arg\>...\]\]\ \[--filter\ \<filter\>\ \[\<arg\>...\]\]\ \[--merge-stderr\]\ \[--interval\ \<seconds\>\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\}\ --\ \<command\>... ;;
     runner\ watch) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ \[--interval\ \<seconds\>\]\ --probe\ \<probe\>\ \[\<arg\>...\]\} ;;
     status\ set) printf %s \[-t\ \<pane-target\>\]\ \<active\|result\|attention\> ;;
     status\ clear) printf %s \[-t\ \<pane-target\>\] ;;
@@ -264,7 +264,7 @@ _airline_option_values () {   # <usage>
 }
 
 _airline_runner_complete () {   # <run|watch> <current> <prior-args...>
-  local mode="$1" current="$2" previous="" arg placement_seen="" probe_seen=""; shift 2
+  local mode="$1" current="$2" previous="" arg placement_seen=""; shift 2
   (( $# == 0 )) || previous="${!#}"
   for arg in "$@"; do
     if [[ "$arg" == -- ]]; then
@@ -272,7 +272,6 @@ _airline_runner_complete () {   # <run|watch> <current> <prior-args...>
       return
     fi
     [[ "$arg" != --pane && "$arg" != --window ]] || placement_seen=1
-    [[ "$arg" != --probe ]] || probe_seen=1
   done
   case "$previous" in
     --classify) COMPREPLY=( $(compgen -W "$(_airline_dynamic classifier)" -- "$current") ); return ;;
@@ -284,9 +283,6 @@ _airline_runner_complete () {   # <run|watch> <current> <prior-args...>
   [[ -n "$placement_seen" ]] || options="--pane --window $options"
   [[ "$previous" != --pane ]] || options="-h -v $options"
   [[ "$mode" == run ]] && options+=' --classify --filter --merge-stderr --'
-  if [[ -n "$probe_seen" ]]; then
-    if [[ "$mode" == run ]]; then options=--; else options=""; fi
-  fi
   if [[ "$current" == -* ]]; then
     COMPREPLY=( $(compgen -W "$options" -- "$current") )
   elif (( $# == 0 )); then

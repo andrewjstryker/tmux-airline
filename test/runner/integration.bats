@@ -445,3 +445,44 @@ wait_for_pane_exit() { # <pane> <status>
 }
 
 # --- result observation -----------------------------------------------------
+
+@test "named runner arguments survive spawned pane reentry and merged filter input" {
+  airline session init
+  mkdir -p "$BATS_TEST_TMPDIR/catalog"
+  cat > "$BATS_TEST_TMPDIR/catalog/arguments" <<'ELEMENT'
+#| summary: Verify element arguments across process boundaries
+#| usage: <evidence-directory>
+airline_runner_classify() {
+  local status="$1" signal="$2" directory="$3"; shift 3
+  [[ "$status" == 7 && "$signal" == '' && $# == 3 && "$1" == '--policy' && "$2" == 'one two' && "$3" == '' ]] || return 1
+  printf 'classifier arguments received\n' > "$directory/classifier"
+  printf 'warn\tconfigured classification\n'
+}
+airline_runner_filter() {
+  local report="$2" directory="$3"; shift 3
+  [[ $# == 3 && "$1" == '--format' && "$2" == 'three four' && "$3" == '' ]] || return 1
+  cat > "$directory/filter"
+  "$report" ok
+}
+airline_runner_configure() {
+  "$1" classify arguments "$2" --policy 'one two' ''
+  "$1" filter arguments "$2" --format 'three four' '' --merge-stderr
+}
+ELEMENT
+  local kind spawned
+  for kind in classifier filter runner; do
+    airline "$kind" register "$BATS_TEST_TMPDIR/catalog"
+  done
+  run airline runner run --pane arguments "$BATS_TEST_TMPDIR" -- bash -c \
+    'printf "stdout evidence\n"; printf "stderr evidence\n" >&2; exit 7'
+  assert_success
+  spawned="$output"
+  run wait_for_pane_exit "$spawned" 7
+  assert_success
+  run cat "$BATS_TEST_TMPDIR/classifier"
+  assert_output 'classifier arguments received'
+  run cat "$BATS_TEST_TMPDIR/filter"
+  assert_output $'stdout evidence\nstderr evidence'
+  run airline health show -t "$spawned" airline-runner-classifier-arguments command
+  assert_output $'warn\tconfigured classification'
+}

@@ -60,7 +60,7 @@ _airline_usage () {
     runner\ describe) printf %s \<runner\>\ \[\<arg\>...\] ;;
     runner\ list) printf %s '' ;;
     runner\ register) printf %s \<dir\> ;;
-    runner\ run) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ \[--classify\ \<classifier\>\]\ \[--filter\ \<filter\>\ \[--merge-stderr\]\]\ \[--interval\ \<seconds\>\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\}\ --\ \<command\>... ;;
+    runner\ run) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ \[--classify\ \<classifier\>\ \[\<arg\>...\]\]\ \[--filter\ \<filter\>\ \[\<arg\>...\]\]\ \[--merge-stderr\]\ \[--interval\ \<seconds\>\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\}\ --\ \<command\>... ;;
     runner\ watch) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ \[--interval\ \<seconds\>\]\ --probe\ \<probe\>\ \[\<arg\>...\]\} ;;
     status\ set) printf %s \[-t\ \<pane-target\>\]\ \<active\|result\|attention\> ;;
     status\ clear) printf %s \[-t\ \<pane-target\>\] ;;
