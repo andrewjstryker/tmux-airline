@@ -53,6 +53,45 @@ and revision positionally because both are required and their order is unambiguo
 Its absence from public help and completions is an API-ownership decision, not an
 argument-layout convention.
 
+## Exit statuses and errors
+
+Exit statuses describe whether a command completed successfully. They are separate
+from signal conditions (`ok`, `warn`, `fail`) and problem lifecycle states
+(`active`, `acknowledged`, `closed`, `resolved`). Successfully reporting a `fail`
+condition returns `0`; it does not make the reporting command fail.
+
+| Status | Meaning |
+|--------|---------|
+| `0` | Success, including an operation that requires no state change. |
+| `1` | General execution or infrastructure failure, such as an unavailable launcher or a failed transaction acquisition or write. |
+| `2` | Airline rejected the operation: invalid arguments, an invalid element contract, an unresolved target, or another command-level error. Read stderr for the specific reason. |
+| `129`, `130`, `143` | Signal termination handled by Airline: HUP, INT, or TERM, respectively (`128 + signal number`). |
+
+Status `2` is not exclusively a syntax error: command-level failures such as an
+unreadable version file or refused transaction recovery also use it. Lower-level
+operations can propagate other nonzero statuses; Airline does not normalize every
+failure into this table. Scripts should treat any nonzero status as failure unless
+the command's particular contract gives it another meaning. Diagnostics are for
+people; do not parse their wording as a stable machine interface.
+
+There are two runner-specific distinctions:
+
+- `runner run` in the current pane returns the child command's exit status after
+  execution. A child can itself return `2`, so that number alone cannot distinguish
+  an Airline error from a child failure. Classifier, filter, and probe reports do
+  not replace the child's exit status.
+- With `--pane` or `--window`, the launching command does not wait for the spawned
+  workload's eventual result. Its exit status cannot report that workload's outcome.
+
+Hosted health and problem reporting functions follow the same mutation contract as
+the CLI: `0` means success (including no change), `2` reports validation or target
+resolution failure, and runtime failures can propagate a nonzero status. They
+return to the calling element instead of exiting its shell. In shell code,
+`"$problem" contributor key ok || return` propagates the reporting call's failure;
+the bare `return` preserves that call's nonzero status. Tests establish correct
+behavior, but callers still need to handle runtime failures such as a target pane
+disappearing. See [runner element contracts](runner-elements.md).
+
 ## Catalog inspection and active state
 
 Every catalog kind accepts `describe <name>`: palette, adapter, layout, classifier,
