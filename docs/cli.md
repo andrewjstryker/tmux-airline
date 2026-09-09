@@ -65,6 +65,8 @@ condition returns `0`; it does not make the reporting command fail.
 | `0` | Success, including an operation that requires no state change. |
 | `1` | General execution or infrastructure failure, such as an unavailable launcher or a failed transaction acquisition or write. |
 | `2` | Airline rejected the operation: invalid arguments, an invalid element contract, an unresolved target, or another command-level error. Read stderr for the specific reason. |
+| `70` | Palette evaluation or configuration is incomplete or could not be evaluated. |
+| `80` | Layout evaluation or application failed. |
 | `129`, `130`, `143` | Signal termination handled by Airline: HUP, INT, or TERM, respectively (`128 + signal number`). |
 
 Status `2` is not exclusively a syntax error: command-level failures such as an
@@ -101,6 +103,10 @@ defaults. Segment has no catalog and accepts neither `describe` nor `list`.
 
 `show` reports live tmux state, with optional narrowing such as `palette show name`.
 Runner-domain catalogs have no installed state and do not accept `show`.
+
+`palette describe` also evaluates the file's roles without selecting it. `palette
+load <file>` applies an unregistered palette, following the same validation and
+repaint path as `palette use <name>`. See [palettes](palettes.md).
 
 See [Catalogs and discovery](catalogs.md) for shared metadata, resolution, and the
 boundary between description and domain evaluation.

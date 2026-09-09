@@ -31,43 +31,9 @@ only prospective work.
 
 ### Add evaluated layout-domain descriptions
 
-Extend palette and layout descriptions beyond header metadata to report evaluated
-roles and contents without committing them. Keep evaluation in the owning domain
-and common discovery in catalog; derived facts do not belong in metadata headers.
-
-Build evaluated `palette describe` output together with `palette load`, sharing the evaluation core
-as detailed below. Update help, tests, and documentation for the evaluated output.
-
-### Add `palette load`
-
-`adapter` and `layout` accept `load <file>` for a one-off unregistered path; `palette`
-does not, so a palette must be registered before it can be applied. Add it.
-
-Sourcing the file yourself is not a substitute, which is what settles this. A palette
-is standard tmux config in syntax only: `_palette_select_unlocked` stages the file into
-an isolated session surface, checks every role in `AIRLINE_PALETTE_ELEMENTS` is present
-and non-empty, captures the values, clears the stage so the palette's options never
-leak into user config, then commits them and records provenance. Its caller adds
-adapter repaint, `render`, the transaction, and problem reporting on an incomplete
-palette. `tmux source-file` gets the raw `set-option` effects and none of that, and
-`session apply` cannot recover it because the private snapshot was never written.
-
-Implementation is small, following `layout_load`, where `use` and `load` share one
-unlocked implementation and differ only in resolution. `_palette_select_unlocked`
-resolves the name itself today, so split resolution from evaluation; provenance records
-a path for the load form, as `layout show [name|path]` already does.
-
-Build this together with evaluated `palette describe` output. Reporting an unapplied
-palette's roles means
-evaluating it in the staging surface and reporting its roles without committing —
-`_palette_select_unlocked` minus the commit. `use`, `load`, and `describe` should end
-up sharing one evaluation core rather than growing three.
-
-Precedent worth recording, because the next borderline case will cite it: this closes
-an asymmetry that had a working workaround (`register` then `use`), unlike `describe`
-and the element argument seam, where the capability was otherwise unreachable. The bar
-applied here is that a capability present in two of three siblings is a defect in the
-third, even when a detour exists.
+Extend layout descriptions beyond header metadata to report evaluated segments
+and adapters without committing them. Reuse the layout declaration evaluator;
+keep common discovery in catalog and derived facts out of metadata headers.
 
 - Affirmed, no change: `problem close` keeps its wildcard. With both identity
   operands omitted it closes every claim held by the named origin, which is the only

@@ -124,7 +124,8 @@ source_file_session () {   # <session> <file>
   while IFS= read -r line || [[ -n "$line" ]]; do
     trimmed="${line#"${line%%[![:space:]]*}"}"
     [[ -z "$trimmed" || "${trimmed:0:1}" == '#' || "$trimmed" == *=* ]] && continue
-    eval "t=($trimmed)" 2>/dev/null || continue
+    # Keep the closing parenthesis outside an inline palette comment.
+    eval "t=($trimmed"$'\n'")" 2>/dev/null || continue
     local i=1
     [[ "${t[1]:-}" == -g ]] && i=2
     name="${t[$i]:-}"; val="${t[$((i+1))]:-}"

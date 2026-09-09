@@ -57,6 +57,9 @@ implementation worklists used to reach them.
 
 ### Catalogs and discovery
 
+- Added `palette load <file>` with absolute-path provenance and evaluated roles in
+  `palette describe`. Selection, file loading, and inspection share one staged
+  evaluator; inspection does not commit configuration or mutate problem claims.
 - Added derived `modes` to `runner describe`: every valid composition supports
   `run`, and compositions declaring a probe also support `watch`. Modes reflect
   configuration evaluated with the supplied arguments, without a metadata field.

@@ -63,7 +63,7 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   assert_equal "${COMPREPLY[*]}" "init apply show suspend resume toggle"
 
   COMP_WORDS=(airline help palette ""); COMP_CWORD=3; _airline_completion
-  assert_equal "${COMPREPLY[*]}" "describe show use list register"
+  assert_equal "${COMPREPLY[*]}" "describe show use load list register"
 
   COMP_WORDS=(airline health set runner build ""); COMP_CWORD=5; _airline_completion
   assert_equal "${COMPREPLY[*]}" "ok warn fail"

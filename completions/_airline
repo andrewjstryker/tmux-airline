@@ -5,7 +5,7 @@ _airline_children () {
   case "$1" in
     '') printf %s version\ help\ session\ palette\ segment\ adapter\ layout\ classifier\ filter\ probe\ runner\ status\ health\ problem\ transaction ;;
     session) printf %s init\ apply\ show\ suspend\ resume\ toggle ;;
-    palette) printf %s describe\ show\ use\ list\ register ;;
+    palette) printf %s describe\ show\ use\ load\ list\ register ;;
     segment) printf %s show ;;
     adapter) printf %s describe\ use\ load\ show\ list\ register ;;
     layout) printf %s describe\ use\ load\ show\ list\ register ;;
@@ -33,6 +33,7 @@ _airline_usage () {
     palette\ describe) printf %s \<palette\> ;;
     palette\ show) printf %s \[name\|\<palette-element\>\] ;;
     palette\ use) printf %s \<palette\> ;;
+    palette\ load) printf %s \<file\> ;;
     palette\ list) printf %s '' ;;
     palette\ register) printf %s \<dir\> ;;
     segment\ show) printf %s \[\<segment\>\] ;;
@@ -103,9 +104,10 @@ _airline_description () {
     session\ suspend) printf %s Mute\ the\ palette\ +\ trap\ the\ prefix\ \(session\ dormant\) ;;
     session\ resume) printf %s Restore\ vibrant\ colours\ +\ release\ the\ prefix ;;
     session\ toggle) printf %s Flip\ active/suspended ;;
-    palette\ describe) printf %s Describe\ catalog\ metadata\,\ options\,\ and\ resolved\ path ;;
+    palette\ describe) printf %s Describe\ metadata\ and\ evaluated\ roles\ without\ applying ;;
     palette\ show) printf %s Show\ the\ palette\ summary\ or\ one\ raw\ field ;;
     palette\ use) printf %s Load\ a\ complete\ palette\ and\ repaint\ adapters ;;
+    palette\ load) printf %s Load\ a\ complete\ palette\ file\ and\ repaint\ adapters ;;
     palette\ list) printf %s List\ palettes\ on\ the\ search\ path ;;
     palette\ register) printf %s Add\ a\ palette\ search\ directory ;;
     segment\ show) printf %s Show\ one\ segment\ or\ all\ segments ;;

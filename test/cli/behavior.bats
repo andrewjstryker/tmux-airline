@@ -23,6 +23,7 @@ session suspend extra
 session resume extra
 session toggle extra
 palette describe dark extra
+palette load /tmp/palette extra
 palette show name extra
 palette list extra
 segment show left-out extra
@@ -69,7 +70,7 @@ CASES
   mkdir -p "$BATS_TEST_TMPDIR/catalog"
   printf '%s\n' '#| summary: Inspection fixture' '#| usage: <target>' \
     '#| interval: 7' 'exit 99' > "$BATS_TEST_TMPDIR/catalog/sample"
-  for noun in palette adapter layout classifier filter probe; do
+  for noun in adapter layout classifier filter probe; do
     main "$noun" register "$BATS_TEST_TMPDIR/catalog"
     run main "$noun" describe sample
     assert_success
@@ -198,7 +199,6 @@ RUNNER
   prv_set_session s1 palette light
   prv_set_session s1 layout minimal
   local before="$_FAKE_WRITES"
-  main palette describe dark >/dev/null
   main adapter describe cpu >/dev/null
   main layout describe full >/dev/null
   assert_equal "$_FAKE_WRITES" "$before"

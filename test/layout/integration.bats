@@ -68,6 +68,44 @@ write_layout() {   # <path> <configure-body>
   assert_output "light"
 }
 
+@test "palette load and describe share native evaluation without committing inspection" {
+  airline session init
+  mkdir -p "$BATS_TEST_TMPDIR/palettes"
+  palette_file="$BATS_TEST_TMPDIR/palettes/custom palette"
+  cp "$PROJECT_ROOT/layouts/palettes/default" "$palette_file"
+  printf 'set-option @airline-inner-bg colour55\n' >> "$palette_file"
+  airline palette register "$BATS_TEST_TMPDIR/palettes"
+  prior="$(airline palette show inner-bg)"
+  prior_name="$(airline palette show name)"
+  run airline palette describe 'custom palette'
+  assert_success
+  assert_output --partial 'inner-bg     colour55'
+  run airline palette show inner-bg
+  assert_output "$prior"
+  run airline palette show name
+  assert_output "$prior_name"
+  run sopt @airline-inner-bg
+  assert_output ''
+
+  airline palette load "$palette_file"
+  run airline palette show name
+  assert_output "$palette_file"
+  run airline palette show inner-bg
+  assert_output colour55
+  run sopt @airline-inner-bg
+  assert_output ''
+
+  printf '#| summary: Broken source\nset-option @airline-inner-bg colour99\nnot-a-tmux-command\n' > "$palette_file"
+  run airline palette describe 'custom palette'
+  assert_failure 70
+  run airline palette show inner-bg
+  assert_output colour55
+  run sopt @airline-inner-bg
+  assert_output ''
+  run airline problem show airline airline-palette
+  assert_output ''
+}
+
 # --- palette / segment (static config nouns: read-only `show`, written via set -g) --
 
 @test "manual palette and segment inputs preserve clear provenance and show contracts" {

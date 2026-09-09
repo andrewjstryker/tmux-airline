@@ -14,7 +14,7 @@ SHELLCHECK_SOURCES := airline airline.sh airline.tmux scripts/check-version scri
 
 FAST_TESTS := test/architecture.bats test/cli/grammar.bats test/cli/behavior.bats test/cli/completions.bats \
 	test/core/collections.bats test/core/catalog.bats test/core/render.bats test/runner/behavior.bats \
-	test/signal/behavior.bats test/session/behavior.bats test/transaction/behavior.bats
+	test/signal/behavior.bats test/session/behavior.bats test/layout/behavior.bats test/transaction/behavior.bats
 INTEGRATION_TESTS := test/session/integration.bats test/layout/integration.bats \
 	test/runner/integration.bats test/signal/integration.bats \
 	test/transaction/integration.bats test/core/tmux.bats test/cli/wrapper.bats

@@ -23,7 +23,7 @@ setup() {
     signal_health_set signal_health_ack signal_health_clear signal_health_show \
     signal_problem_set signal_problem_close signal_problem_ack signal_problem_clear signal_problem_resolve signal_problem_show \
     transaction_show transaction_clear_stale \
-    layout_palette_show layout_palette_list layout_palette_use layout_palette_register \
+    layout_palette_show layout_palette_list layout_palette_use layout_palette_load layout_palette_describe layout_palette_register \
     layout_segment_show \
     layout_adapter_show layout_adapter_list layout_adapter_use layout_adapter_load layout_adapter_register \
     layout_show layout_list layout_use layout_load layout_register \
@@ -63,6 +63,8 @@ problem clear sensors cpu|signal_problem_clear <sensors> <cpu>
 problem resolve sensors cpu|signal_problem_resolve <sensors> <cpu>
 transaction clear global server problem|transaction_clear_stale <global> <server> <problem>
 palette use light|layout_palette_use <light>
+palette load /tmp/palette|layout_palette_load </tmp/palette>
+palette describe light|layout_palette_describe <light>
 segment show left-out|layout_segment_show <left-out>
 adapter load /tmp/adapter|layout_adapter_load </tmp/adapter>
 layout register /tmp/layouts|layout_register </tmp/layouts>

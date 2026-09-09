@@ -66,7 +66,7 @@ without a region have no option section.
 
 ## Description and evaluation
 
-Palette, adapter, layout, classifier, and filter descriptions currently read only
+Adapter, layout, classifier, and filter descriptions currently read only
 metadata. Probe descriptions add the validated interval. These operations never
 execute the inspected file or apply configuration. Metadata describes the entry;
 it does not prove that the entry can execute successfully.
@@ -79,9 +79,13 @@ invocation does. It launches
 no command or observation. The runner domain owns that evaluation and adds its
 results to the common catalog description through direct calls.
 
+Palette descriptions evaluate all required roles through the same session staging
+path as `palette use` and `palette load`, without committing the candidate palette.
+See [palette selection and inspection](palettes.md) for staging and trust boundaries.
+
 Derived fields belong to the owning domain, not in duplicated header declarations.
-Evaluating palette roles or layout contents without committing them remains separate
-work; it must reuse the domain's evaluation path. Catalog has no evaluator registry
+Evaluating layout contents without committing them remains separate work; it must
+reuse the domain's evaluation path. Catalog has no evaluator registry
 and does not depend on layout or runner.
 
 See [CLI conventions](cli.md) for argument and target rules, and

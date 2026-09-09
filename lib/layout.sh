@@ -60,11 +60,10 @@ _apply_public_unlocked () {
   [[ -z "$_AIRLINE_SEGMENTS_PATCHED" ]] || prv_unset_session "$session" layout
 }
 
-_palette_select_unlocked () {
-  local session="$1" name="$2" file element value missing="" rc=0
-  local -A captured=()
-  file="$(catalog_resolve "$session" palette "$name")"
-  [[ -n "$file" ]] || return 2
+_palette_evaluate_unlocked () {   # <session> <file> <handle> <destination>; caller owns config transaction
+  local session="$1" file="$2" name="$3" element value missing="" rc=0
+  local -n captured="$4"
+  captured=()
 
   _palette_stage_clear "$session"
   source_file_session "$session" "$file" || rc=$?
@@ -76,7 +75,10 @@ _palette_select_unlocked () {
   for element in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
     if stage_has_session "$session" "$element"; then
       value="$(stage_get_session "$session" "$element")"
-      if [[ -n "$value" ]]; then captured[$element]="$value"
+      if [[ -n "$value" ]]; then
+        # Caller supplies an associative array through the nameref.
+        # shellcheck disable=SC2034,SC2004
+        captured[$element]="$value"
       else missing="${missing:+$missing, }$element"; fi
     else
       missing="${missing:+$missing, }$element"
@@ -87,10 +89,23 @@ _palette_select_unlocked () {
     printf "airline: palette '%s' is incomplete: missing %s\n" "$name" "$missing" >&2
     return "$AIRLINE_CONFIG_PALETTE_FAILURE"
   fi
+}
+
+_palette_commit_unlocked () {   # <session> <file> <handle>
+  local session="$1" file="$2" handle="$3" element
+  local -A evaluated=()
+  _palette_evaluate_unlocked "$session" "$file" "$handle" evaluated || return
   for element in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
-    cfg_set_session "$session" "$element" "${captured[$element]}"
+    cfg_set_session "$session" "$element" "${evaluated[$element]}" || return
   done
-  prv_set_session "$session" palette "$name"
+  prv_set_session "$session" palette "$handle"
+}
+
+_palette_select_unlocked () {   # <session> <name>; initialization selects the default
+  local session="$1" name="$2" file
+  file="$(catalog_resolve "$session" palette "$name")"
+  [[ -n "$file" ]] || return 2
+  _palette_commit_unlocked "$session" "$file" "$name"
 }
 
 #-----------------------------------------------------------------------------#
@@ -469,16 +484,47 @@ layout_palette_show () {
   s="$(command_current_session)"; _palette_show "$s" "$@"
 }
 layout_palette_use () {
-  local s name rc=0
+  local s name file
   [[ $# -eq 1 && -n "$1" ]] || command_die "palette use: need exactly one <name>"
-  name="$1"; [[ "$name" != */* ]] || command_die "palette use: '$name' — use a bare name"
+  name="$1"; [[ "$name" != */* ]] || command_die "palette use: '$name' — bare name (or 'palette load <path>')"
   s="$(command_current_session)"
-  [[ -n "$(catalog_resolve "$s" palette "$name")" ]] || command_die "palette use: '$name' not found on the palette path"
-  with_session_transaction "$s" config _palette_use_apply_unlocked "$s" "$name" || rc=$?
+  file="$(catalog_resolve "$s" palette "$name")"
+  [[ -n "$file" ]] || command_die "palette use: '$name' not found on the palette path"
+  _palette_apply "$s" "$file" "$name"
+}
+layout_palette_load () {
+  local s path abs
+  [[ $# -eq 1 && -n "$1" ]] || command_die "palette load: need exactly one <file>"
+  path="$1"; abs="$(_abspath "$path")"
+  [[ -f "$abs" ]] || command_die "palette load: no such file: $path"
+  s="$(command_current_session)"
+  _palette_apply "$s" "$abs" "$abs"
+}
+_palette_apply () {   # <session> <file> <handle>
+  local s="$1" file="$2" handle="$3" rc=0
+  with_session_transaction "$s" config _palette_apply_unlocked "$s" "$file" "$handle" || rc=$?
   if (( rc == AIRLINE_CONFIG_PALETTE_FAILURE )); then
-    signal_problem_report "$s" airline "$AIRLINE_PROBLEM_PALETTE" fail "palette '$name' is incomplete or could not be evaluated"
-  else signal_problem_report "$s" airline "$AIRLINE_PROBLEM_PALETTE" ok ""; fi
-  (( rc == 0 )) || return "$rc"
+    signal_problem_report "$s" airline "$AIRLINE_PROBLEM_PALETTE" fail "palette '$handle' is incomplete or could not be evaluated"
+  elif (( rc == 0 )); then
+    signal_problem_report "$s" airline "$AIRLINE_PROBLEM_PALETTE" ok ""
+  fi
+  return "$rc"
+}
+layout_palette_describe () {
+  local s file
+  (( $# == 1 )) || command_die "palette describe: need exactly one <palette>"
+  s="$(command_current_session)"
+  file="$(catalog_describe_resolve "$s" palette "$1")" || return
+  with_session_transaction "$s" config _palette_describe_unlocked "$s" "$file" "$1"
+}
+_palette_describe_unlocked () {   # <session> <file> <name>
+  local element
+  local -A evaluated=()
+  _palette_evaluate_unlocked "$1" "$2" "$3" evaluated || return
+  catalog_describe_render "$3" "$2" || return
+  for element in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
+    command_show_row "$element" "${evaluated[$element]}"
+  done
 }
 layout_palette_list () {
   local s
@@ -564,9 +610,9 @@ layout_list () {
 }
 layout_register () { local s; s="$(command_current_session)"; catalog_register "$s" layout "$@"; }
 
-_palette_use_apply_unlocked () {
+_palette_apply_unlocked () {
   _apply_public_unlocked "$1" &&
-    _palette_select_unlocked "$1" "$2" &&
+    _palette_commit_unlocked "$1" "$2" "$3" &&
     _reapply_adapters_unlocked "$1" && render "$1"
 }
 _layout_use_render_unlocked () {

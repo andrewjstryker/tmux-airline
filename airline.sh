@@ -140,9 +140,10 @@ cmd_palette () {
   local verb="${1:-}"; shift || true
   # help:begin palette
   case "$verb" in
-    describe)  catalog_describe palette "$@" ;; #| <palette> — describe catalog metadata, options, and resolved path
+    describe)  layout_palette_describe "$@" ;; #| <palette> — describe metadata and evaluated roles without applying
     show)      layout_palette_show "$@" ;;      #| [name|<palette-element>] — show the palette summary or one raw field
     use)       layout_palette_use "$@" ;;       #| <palette> — load a complete palette and repaint adapters
+    load)      layout_palette_load "$@" ;;      #| <file> — load a complete palette file and repaint adapters
     list)      layout_palette_list "$@" ;;      #| — list palettes on the search path
     register)  layout_palette_register "$@" ;; #| <dir> — add a palette search directory
     *) command_die "unknown palette command: $verb" ;;
