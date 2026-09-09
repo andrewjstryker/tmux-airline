@@ -36,7 +36,7 @@ options; commands with fixed operands reject a recognized option placed there.
 Variadic opaque arguments, such as diagnostic messages and named-runner arguments,
 instead retain their contents.
 
-With no `-t`, status and health mutations use the current pane, while window-level
+With no `-t`, status, health, and problem mutations use the current pane, while window-level
 inspection uses the current window. Behavioral modifiers
 such as `--all` and `--merge-stderr` are also options. A trailing positional may be
 optional when it naturally narrows or selects command output, as in `segment show
@@ -113,3 +113,20 @@ repaint path as `palette use <name>`. See [palettes](palettes.md).
 
 See [Catalogs and discovery](catalogs.md) for shared metadata, resolution, and the
 boundary between description and domain evaluation.
+
+## Problem origins and targets
+
+`problem set [-t <pane-target>] <contributor> <key> <level> [<message>...]`
+always reports for a pane, defaulting to the current pane. The old `--pane` spelling
+is rejected. This changes the former session default as well as the option name.
+
+`problem close [-t <pane-target> | --session <session-target>] [<contributor> [<key>]]`
+defaults to the current pane too. The target options are mutually exclusive and must
+precede the identity operands. Omitting both identity operands closes every claim
+held by the selected origin; it does not sweep other origins. Hooks use this form
+when a pane or session disappears, accepting its departed canonical `%N` or `$N` ID.
+`set` requires a live pane.
+
+Session origins are reserved for core configuration reports. Public `close --session`
+remains available for lifecycle hooks and manual cleanup of those claims. See
+[signal lifecycles](lifecycle-signals.md) for recovery and retained history.

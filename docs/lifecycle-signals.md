@@ -219,7 +219,18 @@ The separate origin claims prevent one reporter from erasing another reporter's
 observation. They also let Airline respond accurately when a pane or session exits.
 This produces distinct lifecycle operations:
 
-- `set ... warn|fail` adds or updates the current pane or session origin claim. A
+Public `problem set` is pane-only, defaults to the current pane, and accepts `-t`
+for another pane. Core palette and layout evaluation reports create session claims
+through the internal signal service; the CLI cannot create session claims.
+
+`problem close [-t <pane-target> | --session <session-target>]` defaults to the
+current pane. Omitting contributor and key closes **every claim at that origin**;
+omitting only the key closes that contributor's claims there. This sweep is also
+used by the pane-exited, pane-died, and session-closed hooks. It does not remove
+claims at other origins. The final disappearing claim leaves `closed` history;
+recovery through `ok` leaves `resolved` history instead.
+
+- `set [-t <pane-target>] ... warn|fail` adds or updates the selected pane origin claim. A
   new report reopens `closed` or `resolved` history.
 - `set ... ok` demonstrates recovery only for the current origin. If other claims
   remain, the problem follows their reduced level. Removing the final claim records
@@ -236,7 +247,8 @@ This produces distinct lifecycle operations:
 - `clear` deletes the entire problem identity: current claims and all retained
   active, acknowledged, closed, or resolved history.
 
-Use `set ... ok` when recovery is known only for one pane or session. Use `resolve`
+Use `set ... ok` when recovery is known only for the selected pane. Core configuration
+reports use the same origin-specific recovery for their session claims. Use `resolve`
 when the contributor can verify the shared requirement itself. For example, a plugin
 that reported a missing executable may resolve the problem after finding the
 executable, because that verification establishes that its advertised capability is

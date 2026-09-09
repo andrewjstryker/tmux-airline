@@ -96,10 +96,15 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   COMP_WORDS=(airline problem clear example d); COMP_CWORD=4; _airline_completion
   assert_equal "${COMPREPLY[*]}" deploy
 
-  COMP_WORDS=(airline problem set --pane %3 ""); COMP_CWORD=5; _airline_completion
+  COMP_WORDS=(airline problem set -t %3 ""); COMP_CWORD=5; _airline_completion
   assert_equal "${COMPREPLY[*]}" example
 
-  COMP_WORDS=(airline problem set --pane %3 example build w); COMP_CWORD=7; _airline_completion
+  COMP_WORDS=(airline problem set -t '%'); COMP_CWORD=4; _airline_completion
+  assert_equal "${COMPREPLY[*]}" '%2 %3'
+  COMP_WORDS=(airline problem close -t '%'); COMP_CWORD=4; _airline_completion
+  assert_equal "${COMPREPLY[*]}" '%2 %3'
+
+  COMP_WORDS=(airline problem set -t %3 example build w); COMP_CWORD=7; _airline_completion
   assert_equal "${COMPREPLY[*]}" warn
 
   COMP_WORDS=(airline problem close --session '$'); COMP_CWORD=4; _airline_completion

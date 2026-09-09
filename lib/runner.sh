@@ -411,13 +411,13 @@ _runner_health_report () {   # <contributor> <key> <condition> [<message>...]
 }
 
 _runner_problem_report () {   # <contributor> <key> <condition> [<message>...]
-  signal_problem_set --pane "$AIRLINE_RUNNER_PANE" "$@"
+  signal_problem_set -t "$AIRLINE_RUNNER_PANE" "$@"
 }
 
 _runner_probe_result () {   # <exit-status>; only core's execution diagnostic
   local condition=ok message=""
   if (( $1 != 0 )); then condition=fail; message="runner probe '$AIRLINE_RUNNER_PROBE' exited with status $1"; fi
-  signal_problem_set --pane "$AIRLINE_RUNNER_PANE" airline-runner "probe-${AIRLINE_RUNNER_PROBE//[^a-zA-Z0-9_-]/-}" "$condition" "$message"
+  signal_problem_set -t "$AIRLINE_RUNNER_PANE" airline-runner "probe-${AIRLINE_RUNNER_PROBE//[^a-zA-Z0-9_-]/-}" "$condition" "$message"
 }
 
 _runner_finish () {   # <condition> <message> <pane> <health-contributor> <health-key>
@@ -687,7 +687,7 @@ _runner_execute () {   # <session>; uses parsed run specification
     streams=stdout
     if ! runner_stream_prepare "$streams"; then
       runner_stream_cleanup
-      signal_problem_set --pane "$pane" airline-runner "filter-${AIRLINE_RUNNER_FILTER//[^a-zA-Z0-9_-]/-}" fail "runner filter '$AIRLINE_RUNNER_FILTER' could not prepare"
+      signal_problem_set -t "$pane" airline-runner "filter-${AIRLINE_RUNNER_FILTER//[^a-zA-Z0-9_-]/-}" fail "runner filter '$AIRLINE_RUNNER_FILTER' could not prepare"
       return 2
     fi
     trap runner_stream_cleanup EXIT
@@ -720,9 +720,9 @@ _runner_execute () {   # <session>; uses parsed run specification
     runner_stream_wait || true
   fi
   if ! runner_filter_wait "$filter_pid"; then
-    signal_problem_set --pane "$pane" airline-runner "filter-${AIRLINE_RUNNER_FILTER//[^a-zA-Z0-9_-]/-}" fail "runner filter '$AIRLINE_RUNNER_FILTER' failed"
+    signal_problem_set -t "$pane" airline-runner "filter-${AIRLINE_RUNNER_FILTER//[^a-zA-Z0-9_-]/-}" fail "runner filter '$AIRLINE_RUNNER_FILTER' failed"
   elif [[ -n "$filter_pid" ]]; then
-    signal_problem_set --pane "$pane" airline-runner "filter-${AIRLINE_RUNNER_FILTER//[^a-zA-Z0-9_-]/-}" ok
+    signal_problem_set -t "$pane" airline-runner "filter-${AIRLINE_RUNNER_FILTER//[^a-zA-Z0-9_-]/-}" ok
   fi
   if [[ -n "$streams" ]]; then
     runner_stream_cleanup
@@ -734,11 +734,11 @@ _runner_execute () {   # <session>; uses parsed run specification
     condition="${classification%%$'\t'*}"
     if [[ "$classification" == *$'\t'* ]]; then message="${classification#*$'\t'}"
     else message=""; fi
-    signal_problem_report "$session" "$classifier_contributor" classify ok ""
+    signal_problem_set -t "$pane" "$classifier_contributor" classify ok ""
     _runner_finish "$condition" "$message" "$pane" \
       "$classifier_contributor" "$classifier_health_key"
   else
-    signal_problem_report "$session" "$classifier_contributor" classify fail \
+    signal_problem_set -t "$pane" "$classifier_contributor" classify fail \
       "runner classifier '$AIRLINE_RUNNER_CLASSIFIER' failed or emitted an invalid condition"
     signal_health_set -t "$pane" "$classifier_contributor" "$classifier_health_key" ok
     signal_status_set -t "$pane" result

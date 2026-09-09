@@ -211,7 +211,7 @@ Filters and probes receive two function names, called as follows:
 
 The functions bind the invocation's pane context. Health is stored on that pane;
 problems carry that pane as their origin in the global ledger. This is equivalent to
-`health set -t <pane>` and `problem set --pane <pane>` in the current CLI grammar.
+`health set -t <pane>` and `problem set -t <pane>` in the current CLI grammar.
 The element chooses both contributor and key. Use public CLI target options for
 reporting deliberately directed outside the invocation's pane.
 

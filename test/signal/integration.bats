@@ -107,9 +107,13 @@ setup() {
 
   $TMUX -L "$_bats_socket" new-session -d -s other
   other="$($TMUX -L "$_bats_socket" display-message -p -t other '#{session_id}')"
+  other_pane="$($TMUX -L "$_bats_socket" display-message -p -t other '#{pane_id}')"
   airline_session other session init
   airline_session other problem set example-other capability warn "other session degraded"
-  airline problem close --session other example-other capability
+  run airline problem show --all example-other capability
+  assert_output --partial "pane:$other_pane"
+  refute_output --partial "session:$other"
+  airline problem close -t "$other_pane" example-other capability
   run airline problem show --all example-other capability
   assert_output --partial "closed"
   run $TMUX -L "$_bats_socket" display-message -p -t "$other" '#{E:status-right}'
@@ -142,7 +146,7 @@ setup() {
   pane="$($TMUX -L "$_bats_socket" split-window -dP -F '#{pane_id}' -t bats \
     "tmux wait-for -S '$ready'; tmux wait-for '$release'")"
   $TMUX -L "$_bats_socket" wait-for "$ready"
-  airline problem set --pane "$pane" example-cpu sensors fail "sensor unavailable"
+  airline problem set -t "$pane" example-cpu sensors fail "sensor unavailable"
   run get_option @airline--badge-problem
   assert_output fail
 
@@ -165,9 +169,9 @@ setup() {
   second="$($TMUX -L "$_bats_socket" split-window -dP -F '#{pane_id}' -t bats)"
   second_target="$($TMUX -L "$_bats_socket" display-message -p -t "$second" \
     '#{session_name}:#{window_index}.#{pane_index}')"
-  airline problem set --pane "$first" example-cpu sensors warn "first degraded"
-  airline problem set --pane "$second" example-cpu sensors fail "second failed"
-  airline problem close --pane "$second_target" example-cpu sensors
+  airline problem set -t "$first" example-cpu sensors warn "first degraded"
+  airline problem set -t "$second" example-cpu sensors fail "second failed"
+  airline problem close -t "$second_target" example-cpu sensors
 
   run airline problem show example-cpu sensors
   assert_output --partial "active  warn"
@@ -230,4 +234,37 @@ setup() {
 @test "process CLI propagates failed problem reporting" {
   run airline_with_tmux_failure flush problem set test cpu fail "sensor unavailable"
   assert_failure
+}
+
+@test "problem default reports use the calling pane and close leaves other panes intact" {
+  airline session init
+  first="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
+  second="$($TMUX -L "$_bats_socket" split-window -dP -F '#{pane_id}' -t bats)"
+  target="$($TMUX -L "$_bats_socket" display-message -p -t "$second" '#{session_name}:#{window_index}.#{pane_index}')"
+  airline problem set example curl fail missing
+  airline problem set -t "$target" example curl fail missing
+  airline problem close
+  run airline problem show --all example curl
+  refute_output --partial "pane:$first"
+  assert_output --partial "pane:$second"
+  refute_output --partial 'session:'
+}
+
+@test "session close hook retires core session claims without closing pane claims elsewhere" {
+  airline session init
+  session="$($TMUX -L "$_bats_socket" new-session -dP -s retiring -F '#{session_id}')"
+  airline session init -t "$session"
+  AIRLINE_DIR="$PROJECT_ROOT" AIRLINE_TMUX="$TMUX -L $_bats_socket" \
+    bash -c 'source "$AIRLINE_DIR/airline.sh"; signal_problem_report "$1" airline config fail broken' _ "$session"
+  airline problem set example curl fail missing
+  $TMUX -L "$_bats_socket" kill-session -t "$session"
+  for _ in {1..100}; do
+    output="$(airline problem show --all airline config)"
+    [[ "$output" == *closed* ]] && break
+    sleep 0.01
+  done
+  [[ "$output" == *closed* ]]
+  [[ "$output" != *"session:$session"* ]]
+  run airline problem show example curl
+  assert_output --partial 'active  fail'
 }

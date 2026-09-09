@@ -527,7 +527,7 @@ Airline maps its state onto tmux's normal scopes:
   Health claims are stored on their pane, while status uses pane identity in its
   window collection. Their documented `-t` targets resolve the corresponding owner.
 - Problems belong to the tmux server. A pane-hosted reporter may preserve its
-  runtime origin with `problem set --pane <pane-target>`.
+  runtime origin with `problem set -t <pane-target>`.
 
 A window entry has three layers, owned by two parties. **airline** owns the
 entry's *color* (the name itself); **plugins** speak through two *badges* that
@@ -598,7 +598,7 @@ The contributor contract is:
 - include an instance in the claim key when concurrent instances report independently;
 - use `ok` when a retained health claim recovers; reserve `clear` for destructive
   removal and `ack` for user acknowledgement;
-- use `problem set ... ok` when the current pane or session origin recovers, and
+- use `problem set ... ok` when the selected pane origin recovers, and
   `problem resolve` only when the contributor has verified that the underlying
   capability is restored for every origin represented by that problem;
 - report an inability to provide the contributor's advertised capability as a
@@ -703,8 +703,9 @@ fi
 airline problem resolve tmux-cpu sensors
 ```
 
-By default, a claim belongs to the current session context. A pane-hosted reporter
-can preserve its origin explicitly with `problem set --pane "$TMUX_PANE" ...`.
+By default, a CLI claim belongs to the current pane. Select another pane with
+`problem set -t <pane-target> ...`. Session-origin claims are created internally
+for palette and layout configuration failures.
 Several panes and sessions may assert the same contributor/key pair independently;
 `problem set ... ok` removes only the current origin's claim. Airline installs tmux
 pane/session close hooks to retire claims when their origins disappear without
@@ -720,7 +721,7 @@ current origins.
 operation: use it after verifying that the underlying capability is restored
 globally. It removes every origin claim, including stale assertions that have not
 run again, and retains a `resolved` ledger entry. If recovery is known only for one
-pane or session, use `problem set ... ok` from that origin instead; the ledger
+pane, use `problem set [-t <pane-target>] ... ok` for that origin instead; the ledger
 becomes `resolved` when the final claim recovers. `problem close` is normally
 hook-driven, but is public so jobs may retire pane- or session-origin claims
 explicitly without asserting recovery; its final claim produces `closed` history.
@@ -778,7 +779,7 @@ airline runner   describe <runner> [<arg>...] | list | register <dir>
                  watch [--pane [-h|-v]|--window] --probe <probe> [<arg>...]
 airline status   set [-t <pane-target>] <active|result|attention> | clear [-t <pane-target>] | show [-t <window-target>]
 airline health   set [-t <pane-target>] <contributor> <health-key> <ok|warn|fail> [<message>...] | ack|clear [-t <pane-target>] <contributor> <health-key> | show [--all] [-t <pane-target>] [<contributor> [<health-key>]]
-airline problem  set [--pane <pane-target>] <contributor> <problem-key> <ok|warn|fail> [<message>...] | close [--pane <pane-target>|--session <session-target>] [<contributor> [<problem-key>]] | ack|clear|resolve <contributor> <problem-key> | show [--all] [<contributor> [<problem-key>]]
+airline problem  set [-t <pane-target>] <contributor> <problem-key> <ok|warn|fail> [<message>...] | close [-t <pane-target>|--session <session-target>] [<contributor> [<problem-key>]] | ack|clear|resolve <contributor> <problem-key> | show [--all] [<contributor> [<problem-key>]]
 airline transaction show | clear <global|session|window> <target> <namespace>
 ```
 

@@ -233,7 +233,7 @@ _airline_completion () {
   case "$previous" in
     -t)
       if [[ "$path" == 'session init' ]]; then token=session-target
-      elif [[ "$path" == 'status set' || "$path" == 'status clear' ]]; then token=pane-target
+      elif [[ "$path" == 'status set' || "$path" == 'status clear' || "$path" == problem\ * ]]; then token=pane-target
       else token=window-target; fi
       _airline_complete_dynamic "$token" "$current"
       return
@@ -407,19 +407,19 @@ _airline_zsh () {
       fi
       ;;
     'problem set')
-      if [[ "${words[4]:-}" == --pane ]]; then
+      if [[ "${words[4]:-}" == -t ]]; then
         if (( CURRENT == 5 )); then semantic=pane-target
         elif (( CURRENT == 6 )); then semantic=problem-contributor
         elif (( CURRENT == 7 )); then semantic=problem-key
         elif (( CURRENT == 8 )); then compadd ok warn fail; return
         fi
-      elif (( CURRENT == 4 )); then compadd ${(@f)$(_airline_zsh_dynamic problem-contributor)} --pane; return
+      elif (( CURRENT == 4 )); then compadd ${(@f)$(_airline_zsh_dynamic problem-contributor)} -t; return
       elif (( CURRENT == 5 )); then semantic=problem-key
       elif (( CURRENT == 6 )); then compadd ok warn fail; return
       fi
       ;;
     'problem close')
-      if [[ "${words[4]:-}" == --pane ]]; then
+      if [[ "${words[4]:-}" == -t ]]; then
         if (( CURRENT == 5 )); then semantic=pane-target
         elif (( CURRENT == 6 )); then semantic=problem-contributor
         elif (( CURRENT == 7 )); then semantic=problem-key
@@ -429,7 +429,7 @@ _airline_zsh () {
         elif (( CURRENT == 6 )); then semantic=problem-contributor
         elif (( CURRENT == 7 )); then semantic=problem-key
         fi
-      elif (( CURRENT == 4 )); then compadd ${(@f)$(_airline_zsh_dynamic problem-contributor)} --pane --session; return
+      elif (( CURRENT == 4 )); then compadd ${(@f)$(_airline_zsh_dynamic problem-contributor)} -t --session; return
       elif (( CURRENT == 5 )); then semantic=problem-key
       fi
       ;;

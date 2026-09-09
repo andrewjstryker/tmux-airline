@@ -354,8 +354,8 @@ airline health   set [-t <pane-target>] <contributor> <health-key> <ok|warn|fail
                  ack [-t <pane-target>] <contributor> <health-key>
                  clear [-t <pane-target>] <contributor> <health-key>
                  show [--all] [-t <pane-target>] [<contributor> [<health-key>]]
-airline problem  set [--pane <pane-target>] <contributor> <problem-key> <ok|warn|fail> [<message>...]
-                 close [--pane <pane-target>|--session <session-target>] [<contributor> [<problem-key>]]
+airline problem  set [-t <pane-target>] <contributor> <problem-key> <ok|warn|fail> [<message>...]
+                 close [-t <pane-target>|--session <session-target>] [<contributor> [<problem-key>]]
                  ack <contributor> <problem-key>
                  clear <contributor> <problem-key>
                  resolve <contributor> <problem-key>
@@ -429,8 +429,9 @@ installs both artifacts with the PATH shim.
   a window target. Health places `-t <pane-target>` before its keyed tuple so
   every trailing message word is opaque. Problems are globally visible.
   Health and problem take contributor and claim as separate identity fields.
-  `problem set` attributes a claim to the current session unless `--pane` supplies
-  a pane origin; lifecycle hooks close claims for destroyed origins. Health and
+  `problem set` attributes a claim to the current pane; `-t` selects another pane.
+  Core configuration reports retain session origins. Lifecycle hooks close claims
+  for destroyed origins. Health and
   problem require a user-facing message for `warn` and `fail`; `ok` is message-free
   reporter recovery. For health it removes the condition; for problem it removes
   one origin claim and records `resolved` history when the final claim recovers.

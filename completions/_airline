@@ -70,8 +70,8 @@ _airline_usage () {
     health\ ack) printf %s \[-t\ \<pane-target\>\]\ \<contributor\>\ \<health-key\> ;;
     health\ clear) printf %s \[-t\ \<pane-target\>\]\ \<contributor\>\ \<health-key\> ;;
     health\ show) printf %s \[--all\]\ \[-t\ \<pane-target\>\]\ \[\<contributor\>\ \[\<health-key\>\]\] ;;
-    problem\ set) printf %s \[--pane\ \<pane-target\>\]\ \<contributor\>\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
-    problem\ close) printf %s \[--pane\ \<pane-target\>\|--session\ \<session-target\>\]\ \[\<contributor\>\ \[\<problem-key\>\]\] ;;
+    problem\ set) printf %s \[-t\ \<pane-target\>\]\ \<contributor\>\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
+    problem\ close) printf %s \[-t\ \<pane-target\>\|--session\ \<session-target\>\]\ \[\<contributor\>\ \[\<problem-key\>\]\] ;;
     problem\ ack) printf %s \<contributor\>\ \<problem-key\> ;;
     problem\ clear) printf %s \<contributor\>\ \<problem-key\> ;;
     problem\ resolve) printf %s \<contributor\>\ \<problem-key\> ;;
@@ -264,19 +264,19 @@ _airline_zsh () {
       fi
       ;;
     'problem set')
-      if [[ "${words[4]:-}" == --pane ]]; then
+      if [[ "${words[4]:-}" == -t ]]; then
         if (( CURRENT == 5 )); then semantic=pane-target
         elif (( CURRENT == 6 )); then semantic=problem-contributor
         elif (( CURRENT == 7 )); then semantic=problem-key
         elif (( CURRENT == 8 )); then compadd ok warn fail; return
         fi
-      elif (( CURRENT == 4 )); then compadd ${(@f)$(_airline_zsh_dynamic problem-contributor)} --pane; return
+      elif (( CURRENT == 4 )); then compadd ${(@f)$(_airline_zsh_dynamic problem-contributor)} -t; return
       elif (( CURRENT == 5 )); then semantic=problem-key
       elif (( CURRENT == 6 )); then compadd ok warn fail; return
       fi
       ;;
     'problem close')
-      if [[ "${words[4]:-}" == --pane ]]; then
+      if [[ "${words[4]:-}" == -t ]]; then
         if (( CURRENT == 5 )); then semantic=pane-target
         elif (( CURRENT == 6 )); then semantic=problem-contributor
         elif (( CURRENT == 7 )); then semantic=problem-key
@@ -286,7 +286,7 @@ _airline_zsh () {
         elif (( CURRENT == 6 )); then semantic=problem-contributor
         elif (( CURRENT == 7 )); then semantic=problem-key
         fi
-      elif (( CURRENT == 4 )); then compadd ${(@f)$(_airline_zsh_dynamic problem-contributor)} --pane --session; return
+      elif (( CURRENT == 4 )); then compadd ${(@f)$(_airline_zsh_dynamic problem-contributor)} -t --session; return
       elif (( CURRENT == 5 )); then semantic=problem-key
       fi
       ;;

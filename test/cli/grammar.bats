@@ -56,8 +56,8 @@ status clear -t %3|signal_status_clear <-t> <%3>
 status _observed-result %3 7|signal_status_observed_result <%3> <7>
 health ack -t @2 sensors cpu|signal_health_ack <-t> <@2> <sensors> <cpu>
 health clear -t @2 sensors cpu|signal_health_clear <-t> <@2> <sensors> <cpu>
-problem set --pane %2 sensors cpu warn sensors-missing|signal_problem_set <--pane> <%2> <sensors> <cpu> <warn> <sensors-missing>
-problem close --pane %2 sensors cpu|signal_problem_close <--pane> <%2> <sensors> <cpu>
+problem set -t %2 sensors cpu warn sensors-missing|signal_problem_set <-t> <%2> <sensors> <cpu> <warn> <sensors-missing>
+problem close -t %2 sensors cpu|signal_problem_close <-t> <%2> <sensors> <cpu>
 problem ack sensors cpu|signal_problem_ack <sensors> <cpu>
 problem clear sensors cpu|signal_problem_clear <sensors> <cpu>
 problem resolve sensors cpu|signal_problem_resolve <sensors> <cpu>

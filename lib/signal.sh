@@ -650,7 +650,7 @@ _signal_problem_show_unlocked () {   # <active-only|all> [<contributor> [<key>]]
 _signal_problem_resolve_pane () {   # <destination> <command> <target> [allow-missing-canonical]
   local -n destination="$1"
   local command="$2" target="$3" allow_missing="${4:-}" resolved
-  [[ -n "$target" ]] || { _signal_error "$command: --pane requires <pane-target>"; return; }
+  [[ -n "$target" ]] || { _signal_error "$command: -t requires <pane-target>"; return; }
   if resolved="$(resolve_pane "$target" 2>/dev/null)" && [[ -n "$resolved" ]]; then
     :
   elif [[ -n "$allow_missing" && "$target" =~ ^%[0-9]+$ ]]; then
@@ -663,46 +663,49 @@ _signal_problem_resolve_pane () {   # <destination> <command> <target> [allow-mi
   destination="$resolved"
 }
 
-signal_problem_set () {   # [--pane <pane-target>] <contributor> <key> <ok|warn|fail> [<message>...]
-  local kind=session origin="" contributor key level message
-  if [[ "${1:-}" == --pane ]]; then
-    (( $# >= 2 )) || { _signal_error "problem set: --pane requires <pane-target>"; return; }
-    kind=pane; origin="$2"; shift 2
+signal_problem_set () {   # [-t <pane-target>] <contributor> <key> <ok|warn|fail> [<message>...]
+  local origin="" contributor key level message
+  if [[ "${1:-}" == -t ]]; then
+    [[ $# -ge 2 && -n "$2" ]] || { _signal_error "problem set: -t requires <pane-target>"; return; }
+    origin="$2"; shift 2
   elif [[ "${1:-}" == -* ]]; then
     _signal_error "problem set: unknown option '$1'"; return
   fi
+  [[ "${1:-}" != -* ]] || { _signal_error "problem set: unexpected option '$1'"; return; }
   contributor="${1:-}"; key="${2:-}"; level="${3:-}"
   shift $(( $# < 3 ? $# : 3 )); message="$*"
   _signal_validate_contributor "problem set" "$contributor" || return
   _signal_validate_key "problem set" "$key" || return
   _signal_validate_condition "problem set" "$level" "$message" || return
-  if [[ "$kind" == pane ]]; then _signal_problem_resolve_pane origin "problem set" "$origin" || return
-  else origin="$(command_current_session)"; fi
+  [[ -n "$origin" ]] || origin="$(current_pane)"
+  _signal_problem_resolve_pane origin "problem set" "$origin" || return
   _signal_apply global server problem _signal_problem_claim_set_unlocked \
-    "$kind" "$origin" "$contributor" "$key" "$level" "$message"
+    pane "$origin" "$contributor" "$key" "$level" "$message"
 }
 
-signal_problem_close () {   # [--pane <pane-target>|--session <session-target>] [<contributor> [<key>]]
-  local kind=session origin="" contributor="" key="" target=""
+signal_problem_close () {   # [-t <pane-target>|--session <session-target>] [<contributor> [<key>]]
+  local kind=pane origin="" contributor="" key="" target=""
   case "${1:-}" in
-    --pane)
-      (( $# >= 2 )) || command_die "problem close: --pane requires <pane-target>"
+    -t)
+      [[ $# -ge 2 && -n "$2" ]] || command_die "problem close: -t requires <pane-target>"
       kind=pane; target="$2"; shift 2 ;;
     --session)
-      (( $# >= 2 )) || command_die "problem close: --session requires <session-target>"
-      target="$2"; shift 2 ;;
+      [[ $# -ge 2 && -n "$2" ]] || command_die "problem close: --session requires <session-target>"
+      kind=session; target="$2"; shift 2 ;;
     -*) command_die "problem close: unknown option '$1'" ;;
   esac
+  [[ "${1:-}" != -* ]] || command_die "problem close: unexpected option '$1'"
   (( $# <= 2 )) || command_die "problem close: too many arguments"
-  [[ "${1:-}" != --pane && "${1:-}" != --session && \
-     "${2:-}" != --pane && "${2:-}" != --session ]] || \
+  [[ "${1:-}" != -t && "${1:-}" != --session && \
+     "${2:-}" != -t && "${2:-}" != --session ]] || \
     command_die "problem close: options must precede arguments"
   contributor="${1:-}"; key="${2:-}"
   [[ -z "$contributor" ]] || _signal_validate_contributor "problem close" "$contributor" || return
   [[ -z "$key" ]] || _signal_validate_key "problem close" "$key" || return
   if [[ "$kind" == pane ]]; then
+    [[ -n "$target" ]] || target="$(current_pane)"
     _signal_problem_resolve_pane origin "problem close" "$target" allow-missing-canonical || return
-  elif [[ -n "$target" ]]; then
+  else
     if origin="$(resolve_session_target "$target" 2>/dev/null)" && [[ -n "$origin" ]]; then
       :
     elif [[ "$target" =~ ^\$[0-9]+$ ]]; then
@@ -711,7 +714,7 @@ signal_problem_close () {   # [--pane <pane-target>|--session <session-target>] 
     else
       command_die "problem close: cannot resolve session '$target'"
     fi
-  else origin="$(command_current_session)"; fi
+  fi
   _signal_apply global server problem _signal_problem_close_unlocked \
     "$kind" "$origin" "$contributor" "$key"
 }
@@ -767,9 +770,9 @@ signal_problem_report () {   # <session> <contributor> <key> <ok|warn|fail> <mes
 
 signal_problem_install_hooks () {
   hook_set "pane-exited[90]" \
-    "run-shell -b \"'$AIRLINE_DIR/airline.sh' problem close --pane '#{hook_pane}'\""
+    "run-shell -b \"'$AIRLINE_DIR/airline.sh' problem close -t '#{hook_pane}'\""
   hook_set "pane-died[90]" \
-    "run-shell -b \"'$AIRLINE_DIR/airline.sh' problem close --pane '#{hook_pane}'\""
+    "run-shell -b \"'$AIRLINE_DIR/airline.sh' problem close -t '#{hook_pane}'\""
   hook_set "session-closed[90]" \
     "run-shell -b \"'$AIRLINE_DIR/airline.sh' problem close --session '#{hook_session}'\""
 }

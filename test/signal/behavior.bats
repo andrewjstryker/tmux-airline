@@ -181,8 +181,8 @@ teardown() { :; }
 }
 
 @test "global problems retain independent session and pane claims" {
-  signal_problem_set test cpu warn "sensors missing"
-  signal_problem_set --pane %2 test cpu fail "query timed out"
+  signal_problem_report s1 test cpu warn "sensors missing"
+  signal_problem_set -t %2 test cpu fail "query timed out"
   run signal_problem_show --all test cpu
   assert_output --partial "active  fail"
   assert_output --partial "session:s1"
@@ -190,10 +190,10 @@ teardown() { :; }
   run prv_get_global "$AIRLINE_KEY_PROBLEM"
   assert_output fail
 
-  signal_problem_set --pane %2 test cpu ok
+  signal_problem_set -t %2 test cpu ok
   run prv_get_global "$AIRLINE_KEY_PROBLEM"
   assert_output warn
-  signal_problem_set test cpu ok
+  signal_problem_report s1 test cpu ok ''
   run signal_problem_show --all test cpu
   assert_output --partial "resolved  warn  sensors missing"
 }
@@ -220,9 +220,9 @@ teardown() { :; }
   run signal_problem_set test cpu warn
   assert_failure
   assert_output --partial "need <message>"
-  run signal_problem_set --pane
+  run signal_problem_set -t
   assert_failure
-  assert_output --partial "--pane requires <pane-target>"
+  assert_output --partial "-t requires <pane-target>"
   run signal_problem_clear
   assert_failure
   assert_output --partial "need exactly <contributor> <key>"
@@ -256,8 +256,8 @@ teardown() { :; }
 }
 
 @test "close and resolve retain distinct terminal history" {
-  signal_problem_set --pane %2 test cpu warn "sensors missing"
-  signal_problem_close --pane %2
+  signal_problem_set -t %2 test cpu warn "sensors missing"
+  signal_problem_close -t %2
   run signal_problem_show test cpu
   assert_output ""
   run signal_problem_show --all test cpu
@@ -351,7 +351,7 @@ signal_health_clear test api --unknown
 signal_health_show test --all
 signal_health_show test api -t @1
 signal_problem_show test --all
-signal_problem_close test --pane
+signal_problem_close test -t
 CASES
 
   run signal_health_show 'bad contributor'
@@ -409,7 +409,7 @@ CASES
   assert_equal "$_FAKE_REDRAWS" 2
   signal_problem_clear test cpu
   assert_equal "$_FAKE_REDRAWS" 2
-  signal_problem_close --pane %9
+  signal_problem_close -t %9
   assert_equal "$_FAKE_REDRAWS" 2
   signal_problem_resolve test missing
   assert_equal "$_FAKE_REDRAWS" 2
@@ -439,4 +439,79 @@ CASES
   assert_equal "$_FAKE_REDRAWS" 1
   signal_problem_report s1 airline airline-layout ok ""
   assert_equal "$_FAKE_REDRAWS" 2
+}
+
+@test "problem set defaults to the current pane and recovery is origin-specific" {
+  signal_problem_set example curl fail missing
+  signal_problem_set -t %2 example curl fail missing
+  run signal_problem_show --all example curl
+  assert_output --partial 'pane:%1'
+  assert_output --partial 'pane:%2'
+  refute_output --partial 'session:'
+  signal_problem_set example curl ok
+  run signal_problem_show --all example curl
+  refute_output --partial 'pane:%1'
+  assert_output --partial 'pane:%2'
+  assert_output --partial 'active  fail'
+}
+
+@test "problem close sweeps only the selected origin including core session claims" {
+  signal_problem_set first a fail missing
+  signal_problem_set second b warn missing
+  signal_problem_set -t %2 first a fail elsewhere
+  signal_problem_report s1 airline config fail broken
+  signal_problem_close
+  run signal_problem_show --all
+  refute_output --partial 'pane:%1'
+  assert_output --partial 'pane:%2'
+  assert_output --partial 'session:s1'
+  signal_problem_close --session s1
+  run signal_problem_show --all
+  refute_output --partial 'session:s1'
+  assert_output --partial 'pane:%2'
+  signal_problem_close -t %2
+  run signal_problem_show
+  assert_output ''
+}
+
+@test "problem target resolution rejects invalid set targets but close accepts departed canonical origins" {
+  resolve_pane() { [[ "$1" == named ]] && printf '%%2'; }
+  signal_problem_set -t named example curl fail missing
+  run signal_problem_show --all
+  assert_output --partial 'pane:%2'
+  local rc=0 before="$(declare -p _FAKE_OPT)"
+  signal_problem_set -t %2 example curl ok || rc=$?
+  assert_equal "$rc" 2
+  assert_equal "$(declare -p _FAKE_OPT)" "$before"
+  signal_problem_close -t %2
+  run signal_problem_show --all example curl
+  assert_output --partial 'closed'
+  signal_problem_report '$9' airline config fail missing
+  resolve_session_target() { return 1; }
+  signal_problem_close --session '$9'
+  run signal_problem_show --all airline config
+  assert_output --partial 'closed'
+}
+
+@test "problem commands reject legacy, empty, duplicate, and conflicting target options" {
+  local command
+  for command in \
+    'signal_problem_set --pane %1 test key ok' \
+    'signal_problem_set --session s1 test key ok' \
+    'signal_problem_set -t %1 -t %2 test key ok' \
+    'signal_problem_set -t %1 --session s1 test key ok' \
+    'signal_problem_close --pane %1' \
+    'signal_problem_close -t %1 --session s1' \
+    'signal_problem_close --session s1 -t %1' \
+    'signal_problem_close -t %1 -t %2' \
+    'signal_problem_close --session s1 --session s2'; do
+    run $command
+    assert_failure 2
+  done
+  run signal_problem_set -t '' test key ok
+  assert_failure 2
+  run signal_problem_close -t ''
+  assert_failure 2
+  run signal_problem_close --session ''
+  assert_failure 2
 }

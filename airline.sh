@@ -110,8 +110,8 @@ cmd_problem () {
   local verb="${1:-}"; shift || true
   # help:begin problem
   case "$verb" in
-    set)     signal_problem_set "$@" ;;     #| [--pane <pane-target>] <contributor> <problem-key> <ok|warn|fail> [<message>...] — report or recover an origin claim
-    close)   signal_problem_close "$@" ;;   #| [--pane <pane-target>|--session <session-target>] [<contributor> [<problem-key>]] — close an origin's claims
+    set)     signal_problem_set "$@" ;;     #| [-t <pane-target>] <contributor> <problem-key> <ok|warn|fail> [<message>...] — report or recover an origin claim
+    close)   signal_problem_close "$@" ;;   #| [-t <pane-target>|--session <session-target>] [<contributor> [<problem-key>]] — close an origin's claims
     ack)     signal_problem_ack "$@" ;;     #| <contributor> <problem-key> — acknowledge and hide the current problem state
     clear)   signal_problem_clear "$@" ;;   #| <contributor> <problem-key> — delete a problem, its history, and all origin claims
     resolve) signal_problem_resolve "$@" ;; #| <contributor> <problem-key> — declare the capability restored globally and retain resolved history

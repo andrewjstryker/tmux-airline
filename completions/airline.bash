@@ -71,8 +71,8 @@ _airline_usage () {
     health\ ack) printf %s \[-t\ \<pane-target\>\]\ \<contributor\>\ \<health-key\> ;;
     health\ clear) printf %s \[-t\ \<pane-target\>\]\ \<contributor\>\ \<health-key\> ;;
     health\ show) printf %s \[--all\]\ \[-t\ \<pane-target\>\]\ \[\<contributor\>\ \[\<health-key\>\]\] ;;
-    problem\ set) printf %s \[--pane\ \<pane-target\>\]\ \<contributor\>\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
-    problem\ close) printf %s \[--pane\ \<pane-target\>\|--session\ \<session-target\>\]\ \[\<contributor\>\ \[\<problem-key\>\]\] ;;
+    problem\ set) printf %s \[-t\ \<pane-target\>\]\ \<contributor\>\ \<problem-key\>\ \<ok\|warn\|fail\>\ \[\<message\>...\] ;;
+    problem\ close) printf %s \[-t\ \<pane-target\>\|--session\ \<session-target\>\]\ \[\<contributor\>\ \[\<problem-key\>\]\] ;;
     problem\ ack) printf %s \<contributor\>\ \<problem-key\> ;;
     problem\ clear) printf %s \<contributor\>\ \<problem-key\> ;;
     problem\ resolve) printf %s \<contributor\>\ \<problem-key\> ;;
@@ -326,7 +326,7 @@ _airline_completion () {
   case "$previous" in
     -t)
       if [[ "$path" == 'session init' ]]; then token=session-target
-      elif [[ "$path" == 'status set' || "$path" == 'status clear' ]]; then token=pane-target
+      elif [[ "$path" == 'status set' || "$path" == 'status clear' || "$path" == problem\ * ]]; then token=pane-target
       else token=window-target; fi
       _airline_complete_dynamic "$token" "$current"
       return

@@ -7,6 +7,13 @@ implementation worklists used to reach them.
 
 ### Public interface and organization
 
+- Made `problem set` pane-only with the current pane as its default and `-t` for
+  explicit targets. `problem close` follows the same default and retains `--session`
+  for core-origin cleanup. Removed the old problem `--pane` spelling; updated
+  reporters, lifecycle hooks, completions, and the documented origin contract.
+  Classifier execution diagnostics now use the runner pane too, so pane closure
+  retires them consistently with filter and probe execution diagnostics.
+
 - Added HTTP probe `--expect`, `--timeout`, and `--connect-timeout` policy options,
   retaining 2xx success and the existing five-second total/two-second connection
   budgets by default. Policy is validated before execution, applies across all

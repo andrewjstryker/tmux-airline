@@ -332,7 +332,7 @@ ELEMENT
   AIRLINE_RUNNER_PANE='%1'
   local snapshot
   main health set -t %1 external endpoint fail 'unhealthy endpoint'
-  main problem set --pane %1 external capability fail 'cannot observe'
+  main problem set -t %1 external capability fail 'cannot observe'
   snapshot="$(declare -p _FAKE_OPT)"
   _FAKE_OPT=()
   _runner_health_report external endpoint fail 'unhealthy endpoint'
@@ -376,7 +376,7 @@ ELEMENT
   main filter register "$BATS_TEST_TMPDIR"
   main probe register "$BATS_TEST_TMPDIR"
   main health set author endpoint fail 'previous observation'
-  main problem set --pane %1 author prerequisite fail 'not recovered'
+  main problem set -t %1 author prerequisite fail 'not recovered'
   main runner run --filter silent --probe silent -- printf 'input\n' >/dev/null
   run main health show author endpoint
   assert_output $'fail\tprevious observation'
@@ -384,4 +384,21 @@ ELEMENT
   assert_output --partial 'not recovered'
   run main problem show airline-runner
   assert_output ''
+}
+
+@test "classifier execution diagnostics belong to the runner pane and close with it" {
+  mkdir "$BATS_TEST_TMPDIR/classifiers"
+  cat > "$BATS_TEST_TMPDIR/classifiers/invalid" <<'CLASSIFIER'
+#| summary: Invalid result fixture
+airline_runner_classify() { printf 'bogus\n'; }
+CLASSIFIER
+  main classifier register "$BATS_TEST_TMPDIR/classifiers"
+  main runner run --classify invalid -- true
+  run main problem show --all airline-runner-classifier-invalid classify
+  assert_success
+  assert_output --partial 'pane:%1'
+  refute_output --partial 'session:'
+  main problem close
+  run main problem show --all airline-runner-classifier-invalid classify
+  assert_output --partial 'closed'
 }
