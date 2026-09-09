@@ -79,7 +79,7 @@ reads without executing the file:
 
 ```bash
 #| summary: Check one or more HTTP endpoints
-#| usage: [--timeout <seconds>] [--expect <pattern>] <endpoint> [<endpoint>...]
+#| usage: [--expect <regex>] [--timeout <seconds>] [--connect-timeout <seconds>] <endpoint> [<endpoint>...]
 ```
 
 `summary` is required, and `usage` gives the synopsis of an element that accepts
@@ -95,7 +95,7 @@ airline_runner_probe_parse () {
   # options:begin
   case "$1" in
     --timeout) … ;; #| <seconds> — per-request budget
-    --expect)  … ;; #| <pattern> — status treated as healthy; default 2[0-9][0-9]
+    --expect)  … ;; #| <regex> — full status-code match; default 2[0-9][0-9]
   esac
   # options:end
 }
@@ -317,8 +317,33 @@ curl and is explicitly recovered when curl becomes available. Health keys are
 `endpoint-` followed by the hexadecimal bytes of each URL, giving stable distinct
 keys without forbidden whitespace or colons. Successful checks recover only their
 endpoint key. Last observations remain when polling stops; removed endpoints require
-explicit cleanup through the public health API. Timeout and status-policy options
-remain the separate HTTP probe work item.
+explicit cleanup through the public health API.
+
+HTTP policy options precede the endpoints and apply to every endpoint in that poll:
+
+| Option | Meaning | Default |
+|--------|---------|---------|
+| `--expect <regex>` | Bash extended regular expression matching the entire HTTP status code | `2[0-9][0-9]` |
+| `--timeout <seconds>` | Curl total request budget, per endpoint | `5` |
+| `--connect-timeout <seconds>` | Curl connection budget, within the total budget | `2` |
+
+Timeouts accept positive integers or decimals such as `0.5`. Zero, negative values,
+missing values, empty endpoints, and empty or malformed regular expressions fail
+invocation validation before work starts. Repeated options use the last value.
+Only successful curl requests with a status code from 100 through 599 can be healthy;
+transport failures and invalid codes fail regardless of the expression. Expressions
+are matched against the whole code: `204|503` accepts either code, whereas `20` does
+not accept `200`. Quote expressions to prevent the invoking shell from interpreting them.
+
+```bash
+airline runner watch http --expect '204|503' --timeout 3 --connect-timeout 1 \
+  https://example/health/live https://example/health/ready
+```
+
+The named HTTP composition forwards options and endpoints intact to the probe.
+With no arguments it supplies the two localhost health endpoints. When arguments
+are supplied, at least one explicit endpoint is required, including when setting
+policy options. `probe describe http` lists the options alongside their defaults.
 
 Unexpected filter/probe execution failures use the core contributor `airline-runner`
 with `filter-<name>` or `probe-<name>` keys (non-identifier characters replaced by

@@ -372,10 +372,12 @@ A runner catalog entry contains monitoring configuration, never the command. It 
 expanded for that invocation and does not become active session state. With no
 arguments, the shipped `http` runner checks
 `http://localhost/health/live` and `http://localhost/health/ready`; supplied
-endpoints replace those defaults.
+endpoints replace those defaults. HTTP accepts `--expect <regex>`, `--timeout
+<seconds>`, and `--connect-timeout <seconds>` before explicit endpoints; see
+`airline probe describe http` and the [HTTP policy contract](docs/runner-elements.md#shipped-contributor-policies).
 
 While watching, status is `active` and probe reports drive health. Stopping the
-watch clears both; there is no artificial command exit to classify.
+watch clears status; contributors own recovery of their health claims.
 
 `--pane [-h|-v]` and `--window` override the current-pane placement and are mutually
 exclusive. Probe arguments continue to end-of-argv for `watch`.

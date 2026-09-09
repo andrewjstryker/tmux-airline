@@ -27,16 +27,6 @@ only prospective work.
 - Move completed entries to `CHANGELOG.md`; do not accumulate checked-off history
   here.
 
-## Runner element contracts
-
-`docs/runner-elements.md` is the normative contract. The code does not yet meet it.
-
-### HTTP probe policy options
-
-Add validated HTTP status-policy and timeout options instead of hardcoding the 2xx
-policy and curl timeouts. Document them on the parse function's arms and verify
-configured policy across multiple endpoints.
-
 ## Grammar coherence
 
 ### Add evaluated layout-domain descriptions

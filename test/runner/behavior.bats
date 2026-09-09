@@ -290,6 +290,100 @@ setup() {
   assert_failure
 }
 
+@test "http probe validates policy arguments without executing requests or reporting" {
+  runner_probe_load "$PROJECT_ROOT/runners/probes/http"
+  curl() { printf 'unexpected request\n'; return 99; }
+  local option value
+  for option in --timeout --connect-timeout; do
+    for value in 0 0.00 -1 1s NaN '' .5 1.; do
+      run airline_runner_probe_parse "$option" "$value" http://service/one
+      assert_failure 2
+      assert_output --partial "$option needs positive seconds"
+    done
+    run airline_runner_probe_parse "$option"
+    assert_failure 2
+    assert_output --partial "$option needs a value"
+  done
+  for value in '' '[' '(' ')|('; do
+    run airline_runner_probe_parse --expect "$value" http://service/one
+    assert_failure 2
+    assert_output --partial 'valid nonempty regular expression'
+  done
+  run airline_runner_probe_parse --unknown http://service/one
+  assert_failure 2
+  run airline_runner_probe_parse --expect
+  assert_failure 2
+  run airline_runner_probe_parse --timeout 3
+  assert_failure 2
+  assert_output --partial 'need at least one endpoint'
+  run airline_runner_probe_parse http://service/one --timeout 3
+  assert_failure 2
+  run airline_runner_probe_parse ''
+  assert_failure 2
+  run airline_runner_probe_parse --timeout 0.5 --connect-timeout 1 --expect '204|503' \
+    http://service/one http://service/two
+  assert_success
+  assert_output ''
+}
+
+@test "http probe applies full status matches and timeout budgets to every endpoint" {
+  runner_probe_load "$PROJECT_ROOT/runners/probes/http"
+  local requests="$BATS_TEST_TMPDIR/requests" reports="$BATS_TEST_TMPDIR/reports"
+  curl() {
+    printf '%s\n' "$@" >> "$requests"
+    case "${*: -1}" in
+      */ready) printf 204 ;;
+      */maintenance) printf 503 ;;
+      */partial) printf 200 ;;
+      */transport) printf 204; return 28 ;;
+      */invalid) printf 000 ;;
+    esac
+  }
+  health() { printf '%s\n' "$*" >> "$reports"; }
+  problem() { :; }
+  run airline_runner_probe 4321 health problem --expect '204|503' \
+    --timeout 9 --connect-timeout 0.25 --timeout 0.75 http://service/ready http://service/maintenance
+  assert_success
+  assert_output $'ok 204 http://service/ready\nok 503 http://service/maintenance'
+  run cat "$requests"
+  assert_output $'--silent\n--output\n/dev/null\n--write-out\n%{http_code}\n--connect-timeout\n0.25\n--max-time\n0.75\n--\nhttp://service/ready\n--silent\n--output\n/dev/null\n--write-out\n%{http_code}\n--connect-timeout\n0.25\n--max-time\n0.75\n--\nhttp://service/maintenance'
+  run cat "$reports"
+  assert_line 'airline-http endpoint-687474703a2f2f736572766963652f7265616479 ok'
+  assert_line 'airline-http endpoint-687474703a2f2f736572766963652f6d61696e74656e616e6365 ok'
+
+  run airline_runner_probe 4321 health problem --expect '20' http://service/partial
+  assert_output 'fail 200 http://service/partial'
+  run airline_runner_probe 4321 health problem --expect '.*' http://service/transport http://service/invalid
+  assert_output $'fail 000 http://service/transport\nfail 000 http://service/invalid'
+
+  # Each execution reparses original argv, restoring defaults after custom policy.
+  : > "$requests"
+  run airline_runner_probe 4321 health problem http://service/ready http://service/maintenance
+  assert_success
+  assert_output $'ok 204 http://service/ready\nfail 503 http://service/maintenance'
+  run cat "$requests"
+  assert_line --index 6 '2'
+  assert_line --index 8 '5'
+  run cat "$reports"
+  assert_line 'airline-http endpoint-687474703a2f2f736572766963652f6d61696e74656e616e6365 fail HTTP 503 from http://service/maintenance'
+}
+
+@test "named http composition forwards policy argv and only defaults with no arguments" {
+  runner_definition_load "$PROJECT_ROOT/runners/definitions/http"
+  runner_definition_configure --expect '204|503' --timeout 0.5 http://service/one http://service/two
+  runner_definition_project watch
+  run printf '%s\n' "${AIRLINE_RUNNER_DEFINITION_ARGV[@]}"
+  assert_output $'--probe\nhttp\n--expect\n204|503\n--timeout\n0.5\nhttp://service/one\nhttp://service/two'
+  run runner_probe_valid "$PROJECT_ROOT/runners/probes/http" "${AIRLINE_RUNNER_CONFIG_PROBE_ARGS[@]}"
+  assert_success
+  runner_definition_configure
+  run printf '%s\n' "${AIRLINE_RUNNER_CONFIG_PROBE_ARGS[@]}"
+  assert_output $'http://localhost/health/live\nhttp://localhost/health/ready'
+  runner_definition_configure --timeout 3
+  run runner_probe_valid "$PROJECT_ROOT/runners/probes/http" "${AIRLINE_RUNNER_CONFIG_PROBE_ARGS[@]}"
+  assert_failure 2
+}
+
 @test "tap filter warns on a failed assertion and fails at completion" {
   output_file="$BATS_TEST_TMPDIR/tap-output"
   export output_file

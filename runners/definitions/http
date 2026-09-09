@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 #| summary: Monitor one or more HTTP endpoints
-#| usage: [<endpoint>...]
-# A named HTTP composition with useful local defaults and optional replacements.
+#| usage: [<http-probe-option>...] [<endpoint>...]
+# With no arguments, use local defaults. Otherwise forward probe options and endpoints.
 
-airline_runner_configure () {   # <configure-function> [<endpoint>...]
+airline_runner_configure () {   # <configure-function> [<http-probe-arg>...]
   local configure="$1"; shift
-  local -a endpoints=("$@")
-  if (( ${#endpoints[@]} == 0 )); then
-    endpoints=(
+  local -a probe_args=("$@")
+  if (( ${#probe_args[@]} == 0 )); then
+    probe_args=(
       http://localhost/health/live
       http://localhost/health/ready
     )
   fi
   "$configure" classify basic
-  "$configure" probe http "${endpoints[@]}"
+  "$configure" probe http "${probe_args[@]}"
 }

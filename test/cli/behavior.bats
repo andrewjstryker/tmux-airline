@@ -82,6 +82,23 @@ CASES
   done
 }
 
+@test "http policy is discoverable and invalid named policy fails before command launch" {
+  main probe register "$PROJECT_ROOT/runners/probes"
+  main runner register "$PROJECT_ROOT/runners/definitions"
+  main classifier register "$PROJECT_ROOT/runners/classifiers"
+  run main probe describe http
+  assert_success
+  assert_output --partial '--expect'
+  assert_output --partial 'full status-code match; default 2[0-9][0-9]'
+  assert_output --partial 'positive total request budget; default 5'
+  assert_output --partial 'positive connection budget; default 2'
+
+  run main runner run http --timeout 0 http://service/one -- touch "$BATS_TEST_TMPDIR/launched"
+  assert_failure 2
+  assert_output --partial '--timeout needs positive seconds'
+  [[ ! -e "$BATS_TEST_TMPDIR/launched" ]]
+}
+
 @test "element describe rejects invalid metadata" {
   printf '%s\n' '#| summary: first' '#| summary: duplicate' > "$BATS_TEST_TMPDIR/invalid"
   main classifier register "$BATS_TEST_TMPDIR"

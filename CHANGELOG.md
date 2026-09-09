@@ -7,6 +7,11 @@ implementation worklists used to reach them.
 
 ### Public interface and organization
 
+- Added HTTP probe `--expect`, `--timeout`, and `--connect-timeout` policy options,
+  retaining 2xx success and the existing five-second total/two-second connection
+  budgets by default. Policy is validated before execution, applies across all
+  endpoints, and is documented through `probe describe http`. Named HTTP compositions
+  forward options and explicit endpoints; no arguments retain the localhost defaults.
 - Supplied filters and probes with health and problem functions accepting author-owned
   contributor/key identities. Both call the same signal mutation functions as the CLI
   in the existing shell, with the invocation's pane bound as context. Validation
