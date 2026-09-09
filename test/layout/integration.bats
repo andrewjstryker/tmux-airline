@@ -459,3 +459,27 @@ write_layout() {   # <path> <configure-body>
   assert_success
   assert_output "$before"
 }
+
+@test "layout describe evaluates native declarations without applying adapters or configuration" {
+  airline session init
+  mkdir "$BATS_TEST_TMPDIR/layouts"
+  printf 'touch "%s"\n' "$BATS_TEST_TMPDIR/adapter-ran" > "$BATS_TEST_TMPDIR/layouts/fixture-adapter"
+  cat > "$BATS_TEST_TMPDIR/layouts/inspect" <<'LAYOUT'
+#| summary: Inspect native declarations
+airline_layout_configure() {
+  "$1" segment left-out 'candidate #S'
+  "$1" adapter use fixture-adapter
+}
+LAYOUT
+  airline layout register "$BATS_TEST_TMPDIR/layouts"
+  airline adapter register "$BATS_TEST_TMPDIR/layouts"
+  before="$($TMUX -L "$_bats_socket" show-options -t bats)"
+  run airline layout describe inspect
+  assert_success
+  assert_line 'left-out     candidate #S'
+  assert_line 'use          fixture-adapter'
+  [[ ! -e "$BATS_TEST_TMPDIR/adapter-ran" ]]
+  assert_equal "$($TMUX -L "$_bats_socket" show-options -t bats)" "$before"
+  run airline problem show airline airline-layout
+  assert_output ''
+}

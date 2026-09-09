@@ -29,12 +29,6 @@ only prospective work.
 
 ## Grammar coherence
 
-### Add evaluated layout-domain descriptions
-
-Extend layout descriptions beyond header metadata to report evaluated segments
-and adapters without committing them. Reuse the layout declaration evaluator;
-keep common discovery in catalog and derived facts out of metadata headers.
-
 - Affirmed, no change: `problem close` keeps its wildcard. With both identity
   operands omitted it closes every claim held by the named origin, which is the only
   mutation whose blast radius grows as the command gets shorter. That is the point of

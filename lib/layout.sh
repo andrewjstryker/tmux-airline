@@ -282,21 +282,29 @@ _layout_declare () {   # <segment|adapter> ...
 }
 
 _layout_definition_evaluate () {   # <session> <file>
-  local session="$1" file="$2" rc=0
+  local session="$1" file="$2" rc=0 output
+  output="$(mktemp "${TMPDIR:-/tmp}/airline-layout-contract.XXXXXX")" || return 1
   AIRLINE_LAYOUT_CONFIG_SESSION="$session"
   _layout_contract_reset
   unset -f airline_layout_configure 2>/dev/null || true
   airline () { _layout_contract_reject "nested airline commands are not layout declarations"; }
-  # shellcheck source=/dev/null
-  source "$file" || rc=$?
-  if (( rc == 0 )) && ! declare -F airline_layout_configure >/dev/null; then
-    _layout_contract_reject "missing airline_layout_configure"
+  {
+    # shellcheck source=/dev/null
+    source "$file" || rc=$?
+    if (( rc == 0 )) && ! declare -F airline_layout_configure >/dev/null; then
+      _layout_contract_reject "missing airline_layout_configure"
+      rc=1
+    fi
+    if (( rc == 0 )); then
+      airline_layout_configure _layout_declare || rc=$?
+    fi
+  } > "$output"
+  unset -f airline
+  if [[ -s "$output" ]]; then
+    AIRLINE_LAYOUT_CONFIG_MESSAGE="wrote to stdout"
     rc=1
   fi
-  if (( rc == 0 )); then
-    airline_layout_configure _layout_declare || rc=$?
-  fi
-  unset -f airline
+  rm -f "$output"
   [[ -z "$AIRLINE_LAYOUT_CONFIG_INVALID" ]] || rc=1
   return "$rc"
 }
@@ -341,17 +349,11 @@ _layout_failure () {   # <session> <handle> <detail>
 }
 
 _apply_layout_unlocked () {
-  local session="$1" handle="$2" file output rc=0 detail
+  local session="$1" handle="$2" file rc=0 detail
   file="$(_layout_file "$session" "$handle")"
   [[ -n "$file" ]] || { _layout_failure "$session" "$handle" "was not found"; return; }
   prv_unset_session "$session" "$AIRLINE_CONFIG_ERROR"
-  output="$(mktemp "${TMPDIR:-/tmp}/airline-layout-contract.XXXXXX")" || return 1
-  _layout_definition_evaluate "$session" "$file" > "$output" || rc=$?
-  if [[ -s "$output" ]]; then
-    AIRLINE_LAYOUT_CONFIG_MESSAGE="wrote to stdout"
-    rc=1
-  fi
-  rm -f "$output"
+  _layout_definition_evaluate "$session" "$file" || rc=$?
   if (( rc != 0 )); then
     detail="could not be evaluated"
     [[ -z "$AIRLINE_LAYOUT_CONFIG_MESSAGE" ]] || detail="$AIRLINE_LAYOUT_CONFIG_MESSAGE"
@@ -598,6 +600,29 @@ layout_load () {
   esac
   (( rc == 0 )) || return "$rc"
 }
+layout_describe () (
+  local session file slot i
+  (( $# == 1 )) || command_die "layout describe: need exactly one <layout>"
+  session="$(command_current_session)"
+  file="$(catalog_describe_resolve "$session" layout "$1")" || return
+  if ! _layout_definition_evaluate "$session" "$file"; then
+    printf "airline: layout '%s' %s\n" "$1" "${AIRLINE_LAYOUT_CONFIG_MESSAGE:-could not be evaluated}" >&2
+    return "$AIRLINE_CONFIG_LAYOUT_FAILURE"
+  fi
+  catalog_describe_render "$1" "$file" || return
+  printf '\nsegments:\n'
+  for slot in "${AIRLINE_SEGMENT_SLOTS[@]}"; do
+    command_show_row "$slot" "${AIRLINE_LAYOUT_CONFIG_SEGMENTS[$slot]:-}"
+  done
+  printf '\nadapters:\n'
+  if (( ${#AIRLINE_LAYOUT_CONFIG_ADAPTER_KEYS[@]} == 0 )); then
+    printf '  (none)\n'
+  else
+    for (( i=0; i<${#AIRLINE_LAYOUT_CONFIG_ADAPTER_KEYS[@]}; i++ )); do
+      command_show_row "${AIRLINE_LAYOUT_CONFIG_ADAPTER_KINDS[i]}" "${AIRLINE_LAYOUT_CONFIG_ADAPTER_HANDLES[i]}"
+    done
+  fi
+)
 layout_show () {
   local s
   (( $# <= 1 )) || command_die "layout show: too many arguments"

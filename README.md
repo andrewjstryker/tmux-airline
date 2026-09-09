@@ -261,8 +261,11 @@ plain `apply` copies global edits and renders the committed arrangement:
 ```tmux
 airline layout use minimal
 airline layout show          # the active layout + its file
+airline layout describe full # inspect evaluated segments and adapters without applying
 airline layout list     # what's on the layout path
 ```
+
+See [layout inspection and application](docs/layouts.md) for evaluation and validation rules.
 
 | Layout     | What it composes                                                    |
 |------------|---------------------------------------------------------------------|

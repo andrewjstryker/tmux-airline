@@ -57,6 +57,9 @@ implementation worklists used to reach them.
 
 ### Catalogs and discovery
 
+- Extended `layout describe` with evaluated segment slots and ordered adapter
+  declarations, sharing validation with layout application. Inspection does not
+  execute adapters, commit configuration, or change problem claims.
 - Added `palette load <file>` with absolute-path provenance and evaluated roles in
   `palette describe`. Selection, file loading, and inspection share one staged
   evaluator; inspection does not commit configuration or mutate problem claims.

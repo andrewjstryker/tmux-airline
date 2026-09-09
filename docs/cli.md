@@ -104,6 +104,9 @@ defaults. Segment has no catalog and accepts neither `describe` nor `list`.
 `show` reports live tmux state, with optional narrowing such as `palette show name`.
 Runner-domain catalogs have no installed state and do not accept `show`.
 
+`layout describe` evaluates segment and adapter declarations without applying them;
+`layout show` still reports the active selection. See [layouts](layouts.md).
+
 `palette describe` also evaluates the file's roles without selecting it. `palette
 load <file>` applies an unregistered palette, following the same validation and
 repaint path as `palette use <name>`. See [palettes](palettes.md).

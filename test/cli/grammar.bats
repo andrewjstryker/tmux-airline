@@ -26,7 +26,7 @@ setup() {
     layout_palette_show layout_palette_list layout_palette_use layout_palette_load layout_palette_describe layout_palette_register \
     layout_segment_show \
     layout_adapter_show layout_adapter_list layout_adapter_use layout_adapter_load layout_adapter_register \
-    layout_show layout_list layout_use layout_load layout_register \
+    layout_show layout_list layout_use layout_load layout_describe layout_register \
     runner_classifier_list runner_classifier_register \
     runner_filter_list runner_filter_register \
     runner_probe_describe runner_probe_list runner_probe_register \
@@ -65,6 +65,7 @@ transaction clear global server problem|transaction_clear_stale <global> <server
 palette use light|layout_palette_use <light>
 palette load /tmp/palette|layout_palette_load </tmp/palette>
 palette describe light|layout_palette_describe <light>
+layout describe full|layout_describe <full>
 segment show left-out|layout_segment_show <left-out>
 adapter load /tmp/adapter|layout_adapter_load </tmp/adapter>
 layout register /tmp/layouts|layout_register </tmp/layouts>

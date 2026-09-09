@@ -92,3 +92,85 @@ teardown() { :; }
   assert_equal "$rc" "$AIRLINE_CONFIG_PALETTE_FAILURE"
   assert_equal "$(declare -p _FAKE_OPT)" "$before"
 }
+
+@test "layout describe reports segments and ordered adapter declarations without applying" {
+  mkdir -p "$BATS_TEST_TMPDIR/catalog"
+  printf 'touch "%s"\n' "$BATS_TEST_TMPDIR/adapter-ran" > "$BATS_TEST_TMPDIR/catalog/named"
+  cp "$BATS_TEST_TMPDIR/catalog/named" "$BATS_TEST_TMPDIR/local adapter"
+  catalog_register s1 adapter "$BATS_TEST_TMPDIR/catalog"
+  catalog_register s1 layout "$BATS_TEST_TMPDIR/catalog"
+  export LAYOUT_TEST_ADAPTER="$BATS_TEST_TMPDIR/local adapter"
+  cat > "$BATS_TEST_TMPDIR/catalog/inspect" <<'LAYOUT'
+#| summary: Inspect declarations
+_LAYOUT_TEST_SOURCED=changed
+airline_layout_configure() {
+  "$1" segment left-out '#S'
+  "$1" segment right-out ''
+  "$1" adapter use named
+  "$1" adapter load "$LAYOUT_TEST_ADAPTER"
+}
+LAYOUT
+  cfg_set_session s1 segment-left-out old
+  prv_set_session s1 layout old
+  prv_set_session s1 config-error 'retained diagnostic'
+  signal_problem_report s1 airline airline-layout fail 'existing failure'
+  local before="$(declare -p _FAKE_OPT)" writes="$_FAKE_WRITES"
+  layout_describe inspect > "$BATS_TEST_TMPDIR/description"
+  assert_equal "$(declare -p _FAKE_OPT)" "$before"
+  assert_equal "$_FAKE_WRITES" "$writes"
+  [[ ! -e "$BATS_TEST_TMPDIR/adapter-ran" && -z "${_LAYOUT_TEST_SOURCED:-}" && -z "${_RENDERED:-}" ]]
+  run cat "$BATS_TEST_TMPDIR/description"
+  assert_success
+  assert_line 'left-out     #S'
+  assert_line 'left-mid     '
+  assert_line 'right-out    '
+  assert_output --partial $'adapters:\nuse          named\nload         '
+  assert_output --partial "$LAYOUT_TEST_ADAPTER"
+}
+
+@test "layout describe evaluates current environment and resets previous declarations" {
+  mkdir "$BATS_TEST_TMPDIR/catalog"
+  catalog_register s1 layout "$BATS_TEST_TMPDIR/catalog"
+  cat > "$BATS_TEST_TMPDIR/catalog/conditional" <<'LAYOUT'
+#| summary: Environment-dependent layout
+airline_layout_configure() {
+  if [[ "$LAYOUT_TEST_MODE" == full ]]; then
+    "$1" segment left-out '#S'
+  fi
+}
+LAYOUT
+  LAYOUT_TEST_MODE=full layout_describe conditional > "$BATS_TEST_TMPDIR/full"
+  LAYOUT_TEST_MODE=empty layout_describe conditional > "$BATS_TEST_TMPDIR/empty"
+  run cat "$BATS_TEST_TMPDIR/full"
+  assert_line 'left-out     #S'
+  run cat "$BATS_TEST_TMPDIR/empty"
+  assert_line 'left-out     '
+  assert_output --partial $'adapters:\n  (none)'
+}
+
+@test "layout describe rejects invalid declarations and stdout without changing state" {
+  mkdir "$BATS_TEST_TMPDIR/catalog"
+  catalog_register s1 layout "$BATS_TEST_TMPDIR/catalog"
+  local body before rc
+  before="$(declare -p _FAKE_OPT)"
+  for body in \
+    ':' \
+    'airline_layout_configure() { "$1" segment unknown value; }' \
+    'airline_layout_configure() { "$1" segment left-out a; "$1" segment left-out b; }' \
+    'airline_layout_configure() { "$1" adapter use missing; }' \
+    'airline_layout_configure() { "$1" adapter load /no/such/adapter; }' \
+    'airline_layout_configure() { printf unexpected; }' \
+    'printf unexpected; airline_layout_configure() { :; }' \
+    'airline_layout_configure() { airline segment show; }' \
+    'airline_layout_configure() { return 7; }'; do
+    printf '#| summary: Invalid fixture\n%s\n' "$body" > "$BATS_TEST_TMPDIR/catalog/invalid"
+    rc=0
+    layout_describe invalid > "$BATS_TEST_TMPDIR/description" 2>&1 || rc=$?
+    assert_equal "$rc" "$AIRLINE_CONFIG_LAYOUT_FAILURE"
+    assert_equal "$(declare -p _FAKE_OPT)" "$before"
+    run cat "$BATS_TEST_TMPDIR/description"
+    assert_output --partial "airline: layout 'invalid'"
+    refute_output --partial 'segments:'
+    refute_output --partial 'unexpected'
+  done
+}

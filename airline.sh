@@ -182,7 +182,7 @@ cmd_layout () {
   local verb="${1:-}"; shift || true
   # help:begin layout
   case "$verb" in
-    describe)  catalog_describe layout "$@" ;; #| <layout> — describe catalog metadata, options, and resolved path
+    describe)  layout_describe "$@" ;; #| <layout> — describe metadata, evaluated segments, and adapters without applying
     use)       layout_use "$@" ;;       #| <layout> — apply a named layout definition
     load)      layout_load "$@" ;;      #| <file> — apply and record a one-off layout definition
     show)      layout_show "$@" ;;      #| [name|path] — show active layout provenance

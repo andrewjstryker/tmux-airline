@@ -117,7 +117,7 @@ _airline_description () {
     adapter\ show) printf %s List\ applied\ adapters ;;
     adapter\ list) printf %s List\ adapters\ on\ the\ search\ path ;;
     adapter\ register) printf %s Add\ an\ adapter\ search\ directory ;;
-    layout\ describe) printf %s Describe\ catalog\ metadata\,\ options\,\ and\ resolved\ path ;;
+    layout\ describe) printf %s Describe\ metadata\,\ evaluated\ segments\,\ and\ adapters\ without\ applying ;;
     layout\ use) printf %s Apply\ a\ named\ layout\ definition ;;
     layout\ load) printf %s Apply\ and\ record\ a\ one-off\ layout\ definition ;;
     layout\ show) printf %s Show\ active\ layout\ provenance ;;

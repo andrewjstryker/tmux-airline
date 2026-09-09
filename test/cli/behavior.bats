@@ -70,7 +70,7 @@ CASES
   mkdir -p "$BATS_TEST_TMPDIR/catalog"
   printf '%s\n' '#| summary: Inspection fixture' '#| usage: <target>' \
     '#| interval: 7' 'exit 99' > "$BATS_TEST_TMPDIR/catalog/sample"
-  for noun in adapter layout classifier filter probe; do
+  for noun in adapter classifier filter probe; do
     main "$noun" register "$BATS_TEST_TMPDIR/catalog"
     run main "$noun" describe sample
     assert_success
