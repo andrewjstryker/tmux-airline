@@ -35,31 +35,11 @@ only prospective work.
 
 ## Documentation
 
-- Split the README by audience. Keep installation, palettes, segments and layouts,
-  and suspend/resume; move `Process runners` to `docs/runners.md` and the signal
-  how-to to `docs/signals.md`, leaving `docs/lifecycle-signals.md` as the reference.
-  State the `use`/`load`/`register`/`list`/`show` verb algebra once, up front, so the
-  command surface reads as five ideas rather than fifty paths.
-- Mark where each audience can stop reading. Daily use ends at palettes and layouts;
-  signals are for plugin authors; runners and acknowledgement are advanced. Demote
-  the runner and problem bullets in the feature list, which currently recruit for the
-  smallest audience above the fold.
-- Reduce the signal state diagrams. Draw `clear` and `resolve` as prose captions
-  rather than as an edge from every state; problem drops from nineteen edges to
-  roughly nine, status from thirteen to nine. Health is already legible and is the
-  control case.
-- Add a sequence diagram for the problem claim layer. The self-loops in the problem
-  chart are multi-origin facts forced into a single-object state machine, which
-  cannot show two origins where one recovers and the problem stays active. Annotate
-  each message with the resulting claim set.
 - Delete the dependency graph in `DESIGN.md`. The file/responsibility table and the
   layer stack already state the architecture, the layer stack is what the
   architecture lint enforces, and the graph draws all thirty cross-module edges that
   the surrounding prose says the design does not prescribe. Keep the render dataflow
   diagram.
-- Describe the runner surface as three tiers: `run -- <command>` with the default
-  classifier, a named composition, and the explicit element specification that both
-  lower to. Present ad hoc specification as the normal form rather than an escape.
 
 ## Deferred
 

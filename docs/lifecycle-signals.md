@@ -94,11 +94,11 @@ stateDiagram-v2
     Attention --> Result: producer reports completion
     Result --> Active: producer reports new work
     Result --> Attention: producer requests input
-    Result --> None: clear after viewing
-    Active --> None: clear
-    Attention --> None: clear
-    Result --> None: clear
+    Result --> None: focus leaves pane, same revision
 ```
+
+From any retained status, `clear` deletes the pane entry and returns it to **No
+entry**. Repeating the current phase leaves it unchanged.
 
 Status is lightweight window-local workflow state with one entry per pane. The pane
 is both its identity and its explanation: it contains the progress, result, or
@@ -179,88 +179,112 @@ moves or disappears.
 
 ## Problem
 
+A problem means that Airline or a contributor cannot provide an advertised
+capability. Its global visibility is separate from the scope of each report.
+There are two retained objects:
+
+| Object | Identity | Contents |
+|--------|----------|----------|
+| Origin claim | contributor + problem key + origin kind and ID | One pane's or session's current `warn` or `fail` observation |
+| Problem record | contributor + problem key | Reduced level, diagnostic, and lifecycle state shared across origins |
+
+Two HTTP probes using `airline-http` / `curl` in different panes contribute two
+claims to **one problem record**. Different contributor names identify different
+problems, even if both use the key `curl`. Claims belong to origins, not to individual
+probe processes: a replacement probe in the same pane can recover that pane's claim.
+
+`ok` is a recovery report about one origin; **resolved** is a state of the shared
+record. Reporting `ok` removes only the selected origin's claim. If no such claim
+exists, it creates nothing and changes nothing, even if another origin still holds
+this problem. If claims remain, the record follows their reduced level. Recovery
+of the final claim marks the record `resolved` and retains its last diagnostic.
+
+### Shared record lifecycle
+
 ```mermaid
 stateDiagram-v2
     state "No problem" as None
-    state "Active<br/>visible, one or more origin claims" as Active
+    state "Active<br/>visible, claims retained" as Active
     state "Acknowledged<br/>hidden, claims retained" as Acknowledged
     state "Closed<br/>reporters gone without recovery" as Closed
     state "Resolved<br/>recovery retained as history" as Resolved
 
     [*] --> None
-    None --> Active: set warn/fail
-    Active --> Active: add/update an origin
-    Active --> Active: origin recovery/close while claims remain
+    None --> Active: first warn/fail report
     Active --> Acknowledged: ack
-    Acknowledged --> Acknowledged: origin changes, same reduced level remains
     Acknowledged --> Active: reduced level changes
-    Active --> Resolved: set ok removes final claim
-    Acknowledged --> Resolved: set ok removes final claim
+    Active --> Resolved: ok removes final claim
+    Acknowledged --> Resolved: ok removes final claim
     Active --> Closed: close removes final claim
     Acknowledged --> Closed: close removes final claim
     Closed --> Active: new warn/fail report
     Resolved --> Active: new warn/fail report
-    Active --> Resolved: resolve
-    Acknowledged --> Resolved: resolve
-    Closed --> Resolved: resolve
-    Active --> None: clear
-    Acknowledged --> None: clear
-    Closed --> None: clear
-    Resolved --> None: clear
 ```
 
-A problem means that Airline or a contributor cannot provide an advertised
-capability. Problems are global because the broken contract matters independently
-of the window where it was discovered. The contributor and problem key identify the
-capability; pane and session origins identify the reporters currently asserting
-that it is unavailable.
+From any retained state, `clear` removes the record and **all its origin claims**,
+returning to **No problem**. `resolve` removes all claims for that contributor/key
+and marks an existing record **Resolved**, retaining its last diagnostic. Neither
+operation creates a record when none exists.
 
-The separate origin claims prevent one reporter from erasing another reporter's
-observation. They also let Airline respond accurately when a pane or session exits.
-This produces distinct lifecycle operations:
+While claims remain, adding, updating, recovering, or closing one origin recomputes
+the shared record. An active record stays active. An acknowledged record stays
+hidden while the reduced level is unchanged, including when a diagnostic changes;
+a change in reduced level makes it active again. `ack` changes visibility without
+removing claims or asserting recovery.
+
+### Multiple origins
+
+This sequence uses one contributor/key, `airline-http` / `curl`. `A` and `B` denote
+pane origins; the braces show the claim set **after** each operation.
+
+```mermaid
+sequenceDiagram
+    participant A as HTTP probe in pane A
+    participant B as HTTP probe in pane B
+    participant P as Shared problem record
+    participant H as Airline lifecycle hook
+
+    A->>P: set fail: curl missing — claims {A: fail}
+    Note over P: Active, fail
+    B->>P: set fail: curl missing — claims {A: fail, B: fail}
+    Note over P: Active, fail
+    Note over A,B: User installs curl; A checks again, B has not reported recovery
+    A->>P: set ok — claims {B: fail}
+    Note over P: Active, fail: B still holds a claim
+    A->>P: set ok again — claims {B: fail}
+    Note over P: No change: A has no claim to withdraw
+    Note over B,H: Pane B exits
+    H->>P: close pane B — claims {}
+    Note over P: Closed: last diagnostic retained, badge hidden
+```
+
+A fresh probe in a third pane behaves like A's second `ok`: it has no claim to
+withdraw and cannot recover B's observation. If B reports `ok` instead of closing,
+the empty claim set produces **Resolved**. An explicit `resolve` also produces
+**Resolved**, removing every remaining claim for this problem at once.
+
+### Targets and lifecycle authority
 
 Public `problem set` is pane-only, defaults to the current pane, and accepts `-t`
 for another pane. Core palette and layout evaluation reports create session claims
 through the internal signal service; the CLI cannot create session claims.
+Successful configuration evaluation recovers only the session origin it evaluated.
 
 `problem close [-t <pane-target> | --session <session-target>]` defaults to the
 current pane. Omitting contributor and key closes **every claim at that origin**;
 omitting only the key closes that contributor's claims there. This sweep is also
-used by the pane-exited, pane-died, and session-closed hooks. It does not remove
-claims at other origins. The final disappearing claim leaves `closed` history;
-recovery through `ok` leaves `resolved` history instead.
+used by the pane-exited, pane-died, and session-closed hooks installed during session
+initialization. It does not remove claims at other origins. The final disappearing
+claim leaves `closed` history: reporting stopped without demonstrating recovery.
 
-- `set [-t <pane-target>] ... warn|fail` adds or updates the selected pane origin claim. A
-  new report reopens `closed` or `resolved` history.
-- `set ... ok` demonstrates recovery only for the current origin. If other claims
-  remain, the problem follows their reduced level. Removing the final claim records
-  the problem as `resolved`.
-- `close` removes claims belonging to an origin that disappeared. If it removes the
-  final claim, the problem becomes `closed`: retained history records that reporting
-  stopped without claiming the capability recovered.
-- `ack` hides an active problem without asserting recovery or removing its claims.
-  Reports at the same reduced level remain acknowledged; a level change makes the
-  problem active again.
-- `resolve` is the contributor's authoritative assertion that the underlying
-  capability is restored for the whole problem identity. It removes every origin
-  claim and retains a `resolved` ledger entry with the last diagnostic.
-- `clear` deletes the entire problem identity: current claims and all retained
-  active, acknowledged, closed, or resolved history.
-
-Use `set ... ok` when recovery is known only for the selected pane. Core configuration
-reports use the same origin-specific recovery for their session claims. Use `resolve`
-when the contributor can verify the shared requirement itself. For example, a plugin
-that reported a missing executable may resolve the problem after finding the
-executable, because that verification establishes that its advertised capability is
-available again. `ack` is never a recovery assertion, and `close` is never proof of
-recovery. Use `clear` only when the retained lifecycle itself should be discarded.
+Use `set ... ok` when recovery is known for the selected pane. Use `resolve` when
+the contributor or user can establish recovery for the entire problem identity.
+Finding curl in one pane's environment is enough to withdraw that pane's claim;
+it does not by itself establish that every other reporting environment has recovered.
+`ack` is never a recovery assertion, and `close` is never proof of recovery. Use
+`clear` when the retained lifecycle itself should be discarded.
 
 `show` lists active, visible problems. `show --all` includes active, acknowledged,
-closed, and resolved entries together with any current origins. The ledger is
-retained current lifecycle state, not an append-only event log: a new failure report
-reopens and replaces a closed or resolved terminal state.
-
-Airline's own configuration and runner components follow the same contract as
-external contributors. A configuration operation that succeeds reports recovery
-for the session origin it just evaluated. A component that can authoritatively
-verify a globally shared dependency may instead resolve the entire problem.
+closed, and resolved records together with any current origins. The ledger retains
+the current lifecycle state and last diagnostic, not an append-only event log: a
+new failure report reopens and replaces a closed or resolved terminal state.

@@ -7,6 +7,14 @@ implementation worklists used to reach them.
 
 ### Public interface and organization
 
+- Focused the README on installation, configuration, and daily use, with help
+  examples and links to dedicated runner, signal-reporting, and development guides.
+  Documented shared configuration verbs and the three runner usage tiers.
+
+- Clarified origin claims versus shared problem records in the signal lifecycle
+  reference. Added a multi-origin recovery/closure sequence and simplified status
+  and problem state diagrams, documenting global clear/resolve effects in prose.
+
 - Made `problem set` pane-only with the current pane as its default and `-t` for
   explicit targets. `problem close` follows the same default and retains `--session`
   for core-origin cleanup. Removed the old problem `--pane` spelling; updated
