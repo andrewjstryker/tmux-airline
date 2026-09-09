@@ -90,6 +90,30 @@ catalog_metadata () {   # <file> [<key>]
   [[ -z "$wanted" || -n "$found" ]]
 }
 
+# Read option annotations without sourcing the file. Literal option names and
+# alternations are supported; function names and brace placement are irrelevant.
+catalog_options () {   # <file> -> option<TAB>annotation
+  local file="$1" line marker active="" found=""
+  local arm_re='^[[:space:]]*\(?[[:space:]]*(-[a-zA-Z0-9_-]+([[:space:]]*\|[[:space:]]*-[a-zA-Z0-9_-]+)*)[[:space:]]*\).*#[|][[:space:]]*(.+)$'
+  [[ -f "$file" ]] || { _catalog_error "options: no such file: $file"; return; }
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    marker="${line#"${line%%[![:space:]]*}"}"
+    case "$marker" in
+      '# options:begin')
+        [[ -z "$found" ]] || { _catalog_error "options: duplicate section in $file"; return; }
+        active=1; found=1 ;;
+      '# options:end')
+        [[ -n "$active" ]] || { _catalog_error "options: unmatched section end in $file"; return; }
+        active="" ;;
+      *)
+        if [[ -n "$active" && "$line" =~ $arm_re ]]; then
+          printf '%s\t%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[3]}"
+        fi ;;
+    esac
+  done < "$file"
+  [[ -z "$active" ]] || { _catalog_error "options: incomplete section in $file"; return; }
+}
+
 # Every catalog kind shares the same discovery contract: a non-empty summary,
 # with optional file-wide fields in the same marked header.
 catalog_metadata_valid () {   # <file>
@@ -111,8 +135,9 @@ catalog_describe_resolve () {   # <session> <kind> <name> -> validated file
 # Domain descriptions call this directly before adding derived fields. Metadata
 # stays in the header; evaluating an implementation is never how we discover it.
 catalog_describe_render () {   # <name> <file>
-  local name="$1" file="$2" metadata key value
+  local name="$1" file="$2" metadata options key value
   metadata="$(catalog_metadata "$file")" || return 1
+  options="$(catalog_options "$file")" || return 1
   command_show_row name "$name"
   while IFS=$'\t' read -r key value; do
     case "$key" in
@@ -121,6 +146,12 @@ catalog_describe_render () {   # <name> <file>
     esac
   done <<< "$metadata"
   command_show_row path "$file"
+  if [[ -n "$options" ]]; then
+    printf 'options:\n'
+    while IFS=$'\t' read -r key value; do
+      printf '  %s %s\n' "$key" "$value"
+    done <<< "$options"
+  fi
 }
 
 catalog_describe () {   # <kind> <name>; common CLI behavior

@@ -402,9 +402,8 @@ its pane.
 Completion health is persistent and retains the classifier's opaque diagnostic;
 Airline does not manufacture or interpret that text. A selected filter may interpret
 a copied output stream to project live health with its own diagnostic. Its final
-stream condition is retained independently of classifier health. Probe health is
-cleared when probing stops because Airline can no longer assert that observation is
-current.
+stream condition is retained independently of classifier health. Filter and probe authors own their keys and recovery; stopping the runner does not
+clear their observations.
 
 ### Runner elements
 
@@ -433,90 +432,27 @@ airline runner run -- pytest
 airline runner run --classify pytest -- make test
 ```
 
-A filter receives a tee'd copy of stdout by default. `--merge-stderr` applies
-ordinary `2>&1` semantics before the tee:
-
-```bash
-#| summary: Interpret top-level TAP output
-
-airline_runner_filter() { # <pid> <report-function>
-  local pid="$1" report="$2"
-  while IFS= read -r line; do
-    # Report `ok` or `warn|fail "user-facing diagnostic"`.
-    # A later `ok` reports recovery.
-  done
-  # Always finish with `ok`, or `warn|fail "user-facing diagnostic"`.
-}
-```
-
-The filter must report at least once; exiting without a report is an integration
-failure. Airline retains the last report after EOF until the next run clears that
-filter contributor. The classifier and filter have separate health contributors,
-so a stream diagnostic is not erased by exit classification.
-
-Airline ships `tap` as the filtering example. It warns when a
-top-level TAP assertion fails, fails when the unsuccessful plan completes or the
-stream bails out, reports `ok` after a clean stream, and leaves TODO/SKIP failures
-alone:
+Filters receive copied command stdout; `--merge-stderr` includes stderr in that copy.
+Probes perform bounded observations, with their stdout shown directly in the pane.
+Both receive health and problem reporting functions that call the same mutations as
+the CLI without launching another Airline process. The author supplies contributor
+and key and decides when to report recovery.
 
 ```sh
 airline runner run --filter tap -- bats --formatter tap test/
+airline runner watch http http://localhost/health/live http://localhost/health/ready
 ```
 
-A long-lived process can instead define a probe when an API or other state source
-contains useful current information absent from its logs:
+The shipped TAP filter reports under `airline-tap` / `assertions`. The HTTP probe uses
+`airline-http`, separate health keys for each endpoint, and a `curl` capability problem.
+Each 2xx response recovers its endpoint; other responses or connection failures report
+failure. Missing curl is a capability problem, and missing endpoints are a CLI error.
+HTTP requests retain two-second connection and five-second total timeouts.
 
-```bash
-#| summary: Check service health endpoints
-#| usage: <endpoint> [<endpoint>...]
-#| interval: 5
-
-airline_runner_probe() { # <lifecycle-pid> <report-function> [<arg>...]
-  local pid="$1" report="$2"
-  # Make one bounded query, write useful results to stdout, and call:
-  # "$report" ok
-  # "$report" warn|fail "user-facing diagnostic"
-}
-```
-
-Probe stdout is uninterpreted user output. Airline writes it to the pane but never
-parses it; formats such as `ok 204 <endpoint>` are conventions implementations may
-adopt, not part of the protocol. Health observations travel only through the
-reporter callback. During `run`, probe stdout bypasses the command-output tee, so a
-selected filter sees only command output. During `watch`, probe stdout supplies the
-visible polling transcript.
-
-The shipped `http` probe checks one or more endpoints uniformly:
-
-```sh
-airline runner watch --probe http \
-  http://localhost/health/live \
-  http://localhost/health/ready
-```
-
-The equivalent shipped named composition is shorter:
-
-```sh
-airline runner watch http \
-  http://localhost/health/live \
-  http://localhost/health/ready
-```
-
-At least one URL is required. For each endpoint the probe writes its condition,
-HTTP status, and URL to stdout. Each 2xx response reports `ok`; every other response
-or connection failure reports `fail` with an endpoint diagnostic. Airline ignores
-probe stdout, reduces callback reports to the worst condition, and retains an
-opaque message reported at that severity. Each request has a two-second
-connection timeout and a five-second total timeout. Missing `curl` or invalid
-arguments use the problem API.
-
-Airline runs one probe at a time, schedules the next after the interval, and stops
-on process exit (`run`) or interruption (`watch`). It validates observations and
-projects filter and probe health independently. The probe owns timeouts and domain
-semantics; airline does not add persistence, restart policy, or general job
-management. A probe that exits nonzero, calls no reporter, or reports an invalid
-value creates a problem until a valid observation recovers it. Under `watch`, the
-PID argument identifies the local watcher lifecycle, not the remote service.
+Core does not require a report on every observation or clear element claims when a
+run/watch stops. The signal API reduces claims and applies its ordinary lifecycle
+rules. See [runner element contracts](docs/runner-elements.md) for callback signatures,
+key ownership, validation, and recovery semantics.
 
 ### Named runner compositions
 

@@ -456,7 +456,7 @@ The runner separates fixed mechanics from program-specific interpretation:
 
 | Owner | Responsibility |
 |-------|----------------|
-| **airline core** | select placement, own the run/watch lifecycle, preserve command I/O, retain spawned panes/windows, maintain contributor identity, validate observations, project status/health, and return a run child's exit status |
+| **airline core** | select placement, own the run/watch lifecycle, preserve command I/O, retain spawned panes/windows, project its own status and command outcome, report orchestration failures, and return a run child's exit status |
 | **runner elements** | independently classify termination, interpret a stream, or probe external state |
 | **command** | when using `run`, perform the work and explain itself through its normal terminal output |
 
@@ -549,106 +549,20 @@ airline_runner_classify() { # <exit-status> <signal>
 
 ### Live observation
 
-A long-lived process may become unhealthy and later repair itself without exiting.
-One run invocation may additionally select a filter, a probe, or both. Each reports
-current state as `ok`, or as `warn`/`fail` with a diagnostic message, while the
-process remains active. Reports are state, not transitions: repeated observations
-are safe, and a later `ok` clears that observer's health claim after recovery.
+Filters observe a copy of command stdout (or merged stderr); probes perform bounded
+queries sequentially until the command ends or a watch is interrupted. Probe stdout
+bypasses the filter and remains uninterpreted user output. A watch has no child
+command to classify; its status clears on interruption.
 
-Airline owns the observation lifecycle and validates and projects each value, but it
-does not know what a Kubernetes readiness state, server log message, or recovery
-event means. The implementation owns domain interpretation; core supplies only the
-small mechanics that are common across implementations.
+Both element kinds receive health and problem function names. Those bind pane context
+and call the same signal mutation functions as the CLI, without starting another
+Airline command graph. Authors own contributor names, keys, and recovery; core owns
+scheduling, command status, and separate execution diagnostics. Silence is valid,
+and stopping a runner does not recover contributor claims.
 
-A filter reads a tee'd copy of stdout by default. `--merge-stderr` applies ordinary
-`2>&1` semantics before the tee. The filter consumes through EOF and calls the
-supplied reporter when its interpretation changes. It must report at least once,
-and its final call must describe the completed stream:
-
-```bash
-#| summary: Interpret this command output
-
-airline_runner_filter() { # <pid> <report-function>
-  local pid="$1" report="$2"
-  while IFS= read -r line; do
-    # Interpret line, then call either:
-    # "$report" ok
-    # "$report" warn|fail "diagnostic message"
-  done
-  # Finish with `ok`, or `warn|fail "diagnostic message"`.
-}
-```
-
-Airline rejects a filter that exits without a report. The filter contributor is
-cleared when the next run starts, updated by progressive reports, and retained after
-EOF. It therefore preserves stream evidence that may be richer than, or independent
-of, the classifier's interpretation of the process exit. Classifier and filter use
-separate contributors; neither overwrites the other. Both remain subordinate to the
-single runner-owned status lifecycle.
-
-A probe is justified when a bounded API or state query provides current information
-that the process does not write to its selected output streams. The implementation
-defines one observation; airline invokes it sequentially at the declared interval,
-never overlaps calls, and stops the loop when the child exits or a watcher is
-interrupted:
-
-```bash
-#| summary: Query current service health
-#| usage: <endpoint> [<endpoint>...]
-#| interval: 5
-
-airline_runner_probe() { # <lifecycle-pid> <report-function> [<arg>...]
-  local pid="$1" report="$2"
-  # Perform one bounded query, write user-facing evidence to stdout, and call:
-  # "$report" ok
-  # "$report" warn|fail "diagnostic message"
-}
-```
-
-The probe must bound its own I/O. Airline supplies no persistence, retries beyond
-the next scheduled observation, restart policy, or general job management. A
-nonzero probe exit, no reporter calls, or an invalid reported value is an integration
-problem; a valid later result clears it. Airline reduces multiple reports from one
-invocation to their worst condition and retains an opaque diagnostic reported at
-that severity. Probe stdout is an uninterpreted human channel:
-airline passes it to the pane and assigns no meaning to its format. During `run` it
-bypasses the command-output tee, so a selected filter cannot observe it. During
-`watch` it is the visible polling transcript. Filter and probe use independent
-health claims. Probe health has a different lifetime from filter health: it
-asserts only the most recent bounded observation while probing is active. Airline
-clears that claim when the run or watch lifecycle stops because it can no
-longer claim the observation is current.
-
-`runner watch` owns a probe lifecycle without launching a command:
-
-```sh
-airline runner watch --probe http http://localhost/health
-airline runner watch --window --probe http endpoint1 endpoint2
-```
-
-Its status remains `active` until interruption, then clears; there is no fabricated
-terminal result to classify. The probe's first argument is the local airline watcher
-PID, useful only as lifecycle identity—it is not the remote service PID. Probe
-arguments continue to end-of-argv for `watch`; only `run` needs `--` to separate its
-command. Omitted placement means the current pane. A plugin
-that already owns richer scheduling or callbacks may still drive the public health
-API directly; that is an alternative integration shape, not a remote/local boundary.
-
-Finite jobs normally need only classification, though a test protocol can use a
-filter to expose failures before the suite exits and retain its terminal stream
-diagnostic afterward. The shipped `tap` filter observes top-level TAP output: an
-ordinary `not ok` warns while the suite can continue, completion with a failure or
-`Bail out!` fails, and a clean completed stream reports `ok`. TODO/SKIP failures are
-ignored.
-Servers launched by `run` may use a filter, a probe, or both before classification
-at eventual exit. Remote services may use a probe-only watch. The shipped `http`
-probe accepts one or more endpoints, writes the condition, HTTP status, and endpoint
-for each check, reports `ok` for each 2xx response and `fail` otherwise through its
-callback, and leaves their worst-case reduction to airline. Its stdout format is a
-shipped convention, not a core protocol.
-
-A command failure, including an unavailable executable, is a job result and is not
-an airline problem. Airline does not copy command diagnostics into problems.
+See [runner element contracts](docs/runner-elements.md) for signatures, reporting
+semantics, and shipped contributor policies. A command failure remains a job result;
+Airline does not copy command diagnostics into problems.
 
 ## Collections and badge projection
 

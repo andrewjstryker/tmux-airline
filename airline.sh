@@ -140,7 +140,7 @@ cmd_palette () {
   local verb="${1:-}"; shift || true
   # help:begin palette
   case "$verb" in
-    describe)  catalog_describe palette "$@" ;; #| <palette> — describe catalog metadata and resolved path
+    describe)  catalog_describe palette "$@" ;; #| <palette> — describe catalog metadata, options, and resolved path
     show)      layout_palette_show "$@" ;;      #| [name|<palette-element>] — show the palette summary or one raw field
     use)       layout_palette_use "$@" ;;       #| <palette> — load a complete palette and repaint adapters
     list)      layout_palette_list "$@" ;;      #| — list palettes on the search path
@@ -166,7 +166,7 @@ cmd_adapter () {
   local verb="${1:-}"; shift || true
   # help:begin adapter
   case "$verb" in
-    describe)  catalog_describe adapter "$@" ;; #| <adapter> — describe catalog metadata and resolved path
+    describe)  catalog_describe adapter "$@" ;; #| <adapter> — describe catalog metadata, options, and resolved path
     use)       layout_adapter_use "$@" ;;       #| <adapter>... — apply palette roles to one or more plugins
     load)      layout_adapter_load "$@" ;;      #| <file> — apply a one-off adapter script
     show)      layout_adapter_show "$@" ;;      #| — list applied adapters
@@ -181,7 +181,7 @@ cmd_layout () {
   local verb="${1:-}"; shift || true
   # help:begin layout
   case "$verb" in
-    describe)  catalog_describe layout "$@" ;; #| <layout> — describe catalog metadata and resolved path
+    describe)  catalog_describe layout "$@" ;; #| <layout> — describe catalog metadata, options, and resolved path
     use)       layout_use "$@" ;;       #| <layout> — apply a named layout definition
     load)      layout_load "$@" ;;      #| <file> — apply and record a one-off layout definition
     show)      layout_show "$@" ;;      #| [name|path] — show active layout provenance
@@ -196,7 +196,7 @@ cmd_classifier () {
   local verb="${1:-}"; shift || true
   # help:begin classifier
   case "$verb" in
-    describe)  catalog_describe classifier "$@" ;;      #| <classifier> — describe summary and resolved path
+    describe)  catalog_describe classifier "$@" ;;      #| <classifier> — describe metadata, options, and resolved path
     list)      runner_classifier_list "$@" ;;      #| — list classifiers available to runners
     register)  runner_classifier_register "$@" ;; #| <dir> — add a classifier search directory
     *) command_die "unknown classifier command: $verb" ;;
@@ -208,7 +208,7 @@ cmd_filter () {
   local verb="${1:-}"; shift || true
   # help:begin filter
   case "$verb" in
-    describe)  catalog_describe filter "$@" ;;      #| <filter> — describe summary and resolved path
+    describe)  catalog_describe filter "$@" ;;      #| <filter> — describe metadata, options, and resolved path
     list)      runner_filter_list "$@" ;;      #| — list filters available to runners
     register)  runner_filter_register "$@" ;; #| <dir> — add a filter search directory
     *) command_die "unknown filter command: $verb" ;;
@@ -220,7 +220,7 @@ cmd_probe () {
   local verb="${1:-}"; shift || true
   # help:begin probe
   case "$verb" in
-    describe)  runner_probe_describe "$@" ;;      #| <probe> — describe summary, arguments, interval, and resolved path
+    describe)  runner_probe_describe "$@" ;;      #| <probe> — describe metadata, options, interval, and resolved path
     list)      runner_probe_list "$@" ;;      #| — list probes available to runners
     register)  runner_probe_register "$@" ;; #| <dir> — add a probe search directory
     *) command_die "unknown probe command: $verb" ;;

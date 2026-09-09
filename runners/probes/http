@@ -5,20 +5,35 @@
 # Show one polling result per endpoint and report its condition separately. The
 # human-readable stdout format is a convention; airline does not interpret it.
 
-airline_runner_probe () {   # <lifecycle-pid> <report-function> <endpoint> [<endpoint>...]
-  local _pid="$1" report="$2" endpoint code; shift 2
-  (( $# > 0 )) || return 2
-  command -v curl >/dev/null 2>&1 || return 127
+airline_runner_probe_parse () {
+  (( $# > 0 )) && return 0
+  printf 'http probe: need at least one endpoint\n' >&2
+  return 2
+}
+
+airline_runner_probe () {   # <lifecycle-pid> <health> <problem> <endpoint> [<endpoint>...]
+  local _pid="$1" health="$2" problem="$3" endpoint code key byte i LC_ALL=C; shift 3
+  if ! command -v curl >/dev/null 2>&1; then
+    "$problem" airline-http curl fail "curl is not installed"
+    return
+  fi
+  "$problem" airline-http curl ok || return
 
   for endpoint in "$@"; do
+    # Hex-encoded endpoint bytes are stable, collision-free public claim keys.
+    key=endpoint-
+    for (( i=0; i<${#endpoint}; i++ )); do
+      printf -v byte '%02x' "'${endpoint:i:1}"
+      key+="$byte"
+    done
     code="$(curl --silent --output /dev/null --write-out '%{http_code}' \
       --connect-timeout 2 --max-time 5 -- "$endpoint")" || code=""
     if [[ "$code" =~ ^2[0-9][0-9]$ ]]; then
       printf 'ok %s %s\n' "$code" "$endpoint"
-      "$report" ok
+      "$health" airline-http "$key" ok || return
     else
       printf 'fail %s %s\n' "${code:-000}" "$endpoint"
-      "$report" fail "HTTP ${code:-000} from $endpoint"
+      "$health" airline-http "$key" fail "HTTP ${code:-000} from $endpoint" || return
     fi
   done
 }

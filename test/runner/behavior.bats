@@ -157,7 +157,7 @@ setup() {
     '#| summary: test probe' \
     '#| usage:' \
     '#| interval: 0' \
-    'airline_runner_probe() { "$2" ok; }' > "$BATS_TEST_TMPDIR/probe"
+    'airline_runner_probe() { "$2" test-probe state ok; }' > "$BATS_TEST_TMPDIR/probe"
   run runner_probe_valid "$BATS_TEST_TMPDIR/probe"
   assert_failure
   sed -i 's/interval: 0/interval: 0.05/' "$BATS_TEST_TMPDIR/probe"
@@ -166,7 +166,7 @@ setup() {
 
   # An undeclared interval falls back to the shipped default rather than failing.
   printf '%s\n' '#| summary: test probe' '#| usage:' \
-    'airline_runner_probe() { "$2" ok; }' > "$BATS_TEST_TMPDIR/default-interval"
+    'airline_runner_probe() { "$2" test-probe state ok; }' > "$BATS_TEST_TMPDIR/default-interval"
   run runner_probe_valid "$BATS_TEST_TMPDIR/default-interval"
   assert_success
   run _runner_probe_interval "$BATS_TEST_TMPDIR/default-interval"
@@ -189,25 +189,24 @@ setup() {
   report_state() { printf '%s\n' "$*" >> "$output_file"; }
   airline_runner_filter() {
     local pid="$1" report="$2"
-    "$report" warn "filter degraded"
+    "$report" test-filter stream warn "filter degraded"
     printf '%s\n' "$pid" >> "$output_file"
     sed -n '1p' >> "$output_file"
   }
 
-  runner_filter_start 4321 report_state "$input_file"
+  runner_filter_start 4321 report_state report_state "$input_file"
   wait "$AIRLINE_RUNNER_FILTER_PID"
   run cat "$output_file"
-  assert_output $'warn filter degraded\n4321\nserver evidence'
+  assert_output $'test-filter stream warn filter degraded\n4321\nserver evidence'
 }
 
-@test "filter must emit at least one condition report" {
+@test "filter may complete without changing any claims" {
   input_file="$BATS_TEST_TMPDIR/filter-input"
   : > "$input_file"
   airline_runner_filter() { :; }
 
-  runner_filter_start 4321 report_state "$input_file"
-  run runner_filter_wait "$AIRLINE_RUNNER_FILTER_PID"
-  assert_failure
+  runner_filter_start 4321 report_state report_state "$input_file"
+  runner_filter_wait "$AIRLINE_RUNNER_FILTER_PID"
 }
 
 @test "probe observations are sequential and repeat while the child lives" {
@@ -215,17 +214,17 @@ setup() {
   state_file="$BATS_TEST_TMPDIR/probe-state"
   export output_file state_file
   AIRLINE_RUNNER_PROBE_INTERVAL=0.05
-  report_state() { printf '%s\n' "$1" >> "$output_file"; }
-  report_error() { printf 'error\n' >> "$output_file"; }
+  report_state() { printf '%s\n' "$3" >> "$output_file"; }
+  report_error() { if (( $1 != 0 )); then printf 'error\n' >> "$output_file"; fi; }
   airline_runner_probe() {
     local report="$2"
-    if [[ -e "$state_file" ]]; then "$report" ok
-    else : > "$state_file"; "$report" fail "probe unavailable"; fi
+    if [[ -e "$state_file" ]]; then "$report" test-probe state ok
+    else : > "$state_file"; "$report" test-probe state fail "probe unavailable"; fi
   }
 
   sleep 0.18 &
   child_pid=$!
-  runner_probe_start "$child_pid" report_state report_error
+  runner_probe_start "$child_pid" report_state report_state report_error
   wait "$child_pid"
   runner_probe_stop "$AIRLINE_RUNNER_PROBE_PID"
   run sed -n '1p' "$output_file"
@@ -234,53 +233,60 @@ setup() {
   assert_success
 }
 
-@test "probe core validates and reduces multiple reports" {
+@test "probe reporters preserve independent contributor keys and silent polls are valid" {
+  AIRLINE_RUNNER_PANE='%1'
   airline_runner_probe() {
-    local report="$2"
+    local health="$2" problem="$3"
     printf 'uninterpreted probe output\n'
-    "$report" ok
-    "$report" fail "primary failed"
-    "$report" fail "secondary also failed"
-    "$report" warn "secondary degraded"
+    "$health" test-service primary fail "primary failed"
+    "$health" test-service secondary ok
+    "$problem" test-service dependency fail "dependency absent"
   }
   transcript="$BATS_TEST_TMPDIR/probe-transcript"
-  runner_probe_once 4321 > "$transcript"
-  assert_equal "$AIRLINE_RUNNER_PROBE_CONDITION" fail
-  assert_equal "$AIRLINE_RUNNER_PROBE_MESSAGE" "primary failed"
+  airline_runner_probe 4321 _runner_health_report _runner_problem_report > "$transcript"
+  run signal_health_show test-service primary
+  assert_output $'fail\tprimary failed'
+  run signal_problem_show test-service dependency
+  assert_output --partial 'dependency absent'
   run cat "$transcript"
-  assert_output "uninterpreted probe output"
+  assert_output 'uninterpreted probe output'
 
-  airline_runner_probe() { "$2" ok; "$2" maybe; }
-  run runner_probe_once 4321
-  assert_failure
-
-  airline_runner_probe() { printf 'output without a report\n'; }
-  run runner_probe_once 4321
-  assert_failure
+  airline_runner_probe() { :; }
+  airline_runner_probe 4321 _runner_health_report _runner_problem_report
+  run signal_health_show test-service primary
+  assert_output $'fail\tprimary failed'
+  airline_runner_probe() { "$2" test-service primary maybe; }
+  run airline_runner_probe 4321 _runner_health_report _runner_problem_report
+  assert_failure 2
 }
 
-@test "http probe reports every endpoint and airline reduces the worst" {
-  reports_file="$BATS_TEST_TMPDIR/http-reports"
-  export reports_file
-  report_state() { printf '%s\n' "$*" >> "$reports_file"; }
-  curl() {
-    local url="${*: -1}"
-    if [[ "$url" == *unhealthy* ]]; then printf 503; else printf 204; fi
-  }
+@test "http probe owns per-endpoint health and its curl capability claim" {
+  AIRLINE_RUNNER_PANE='%1'
+  curl() { if [[ "${*: -1}" == *unhealthy* ]]; then printf 503; else printf 204; fi; }
   runner_probe_load "$PROJECT_ROOT/runners/probes/http"
-  run airline_runner_probe 4321 report_state \
-    http://service/one http://service/unhealthy http://service/two
-  assert_output $'ok 204 http://service/one\nfail 503 http://service/unhealthy\nok 204 http://service/two'
-  run cat "$reports_file"
-  assert_output $'ok\nfail HTTP 503 from http://service/unhealthy\nok'
-
   transcript="$BATS_TEST_TMPDIR/http-transcript"
-  runner_probe_once 4321 \
+  airline_runner_probe 4321 _runner_health_report _runner_problem_report \
     http://service/one http://service/unhealthy http://service/two > "$transcript"
-  assert_equal "$AIRLINE_RUNNER_PROBE_CONDITION" fail
+  run signal_health_show airline-http
+  assert_output --partial 'HTTP 503 from http://service/unhealthy'
   run cat "$transcript"
-  assert_output --partial "fail 503 http://service/unhealthy"
-  run runner_probe_once 4321
+  assert_output --partial 'fail 503 http://service/unhealthy'
+
+  curl() { printf 204; }
+  airline_runner_probe 4321 _runner_health_report _runner_problem_report \
+    http://service/unhealthy > "$transcript"
+  run signal_health_show airline-http
+  assert_output ''
+
+  command() { if [[ "$*" == '-v curl' ]]; then return 1; fi; builtin command "$@"; }
+  airline_runner_probe 4321 _runner_health_report _runner_problem_report http://service/one
+  run signal_problem_show airline-http curl
+  assert_output --partial 'curl is not installed'
+  unset -f command
+  airline_runner_probe 4321 _runner_health_report _runner_problem_report http://service/one > "$transcript"
+  run signal_problem_show airline-http curl
+  assert_output ''
+  run runner_probe_valid "$PROJECT_ROOT/runners/probes/http"
   assert_failure
 }
 
@@ -290,7 +296,7 @@ setup() {
   report_state() { printf '%s\n' "$*" >> "$output_file"; }
   runner_filter_load "$PROJECT_ROOT/runners/filters/tap"
 
-  airline_runner_filter 4321 report_state <<'TAP'
+  airline_runner_filter 4321 report_state report_state <<'TAP'
 TAP version 13
 1..3
 ok 1 - first
@@ -298,7 +304,7 @@ not ok 2 - second
 ok 3 - third
 TAP
   run cat "$output_file"
-  assert_output $'warn TAP assertion failed: not ok 2 - second\nfail TAP stream completed with unsuccessful assertions'
+  assert_output $'airline-tap assertions warn TAP assertion failed: not ok 2 - second\nairline-tap assertions fail TAP stream completed with unsuccessful assertions'
 }
 
 @test "tap filter ignores TODO failures and fails immediately on bailout" {
@@ -307,14 +313,14 @@ TAP
   report_state() { printf '%s\n' "$*" >> "$output_file"; }
   runner_filter_load "$PROJECT_ROOT/runners/filters/tap"
 
-  airline_runner_filter 4321 report_state <<'TAP'
+  airline_runner_filter 4321 report_state report_state <<'TAP'
 1..2
 not ok 1 - later # TODO not implemented
 ok 2 - done
 Bail out! infrastructure disappeared
 TAP
   run cat "$output_file"
-  assert_output "fail TAP bailout: Bail out! infrastructure disappeared"
+  assert_output "airline-tap assertions fail TAP bailout: Bail out! infrastructure disappeared"
 }
 
 @test "tap filter reports ok after a clean stream" {
@@ -323,13 +329,13 @@ TAP
   report_state() { printf '%s\n' "$*" >> "$output_file"; }
   runner_filter_load "$PROJECT_ROOT/runners/filters/tap"
 
-  airline_runner_filter 4321 report_state <<'TAP'
+  airline_runner_filter 4321 report_state report_state <<'TAP'
 1..2
 ok 1 - first
 not ok 2 - later # TODO not implemented
 TAP
   run cat "$output_file"
-  assert_output ok
+  assert_output "airline-tap assertions ok"
 }
 
 @test "a named composition may pace its probe and projects the interval down" {
@@ -361,7 +367,7 @@ TAP
 
 @test "an invocation interval overrides the probe's declared default" {
   printf '%s\n' '#| summary: test probe' '#| usage:' '#| interval: 5' \
-    'airline_runner_probe() { "$2" ok; }' > "$BATS_TEST_TMPDIR/paced"
+    'airline_runner_probe() { "$2" test-probe state ok; }' > "$BATS_TEST_TMPDIR/paced"
 
   # The element default applies when the invocation is silent.
   AIRLINE_RUNNER_INTERVAL=""
@@ -520,13 +526,61 @@ TAP
   printf 'stream evidence\n' > "$input"
   report_state() { printf '%s\n' "$*" >> "$evidence"; }
   airline_runner_filter() {
-    local pid="$1" report="$2"; shift 2
+    local pid="$1" report="$2"; shift 3
     [[ "$pid" == 4321 && $# == 4 && "$1" == '--format' && "$2" == 'one two' && "$3" == '' && "$4" == '*' ]] || return 1
     cat >> "$evidence"
-    "$report" ok
+    "$report" test-filter stream ok
   }
-  runner_filter_start 4321 report_state "$input" --format 'one two' '' '*'
+  runner_filter_start 4321 report_state report_state "$input" --format 'one two' '' '*'
   runner_filter_wait "$AIRLINE_RUNNER_FILTER_PID"
   run cat "$evidence"
-  assert_output $'stream evidence\nok'
+  assert_output $'stream evidence\ntest-filter stream ok'
+}
+
+@test "optional element parsers receive only argv and cannot leak validation state" {
+  local kind action
+  for kind in classifier filter probe; do
+    action="$kind"; [[ "$kind" != classifier ]] || action=classify
+    cat > "$BATS_TEST_TMPDIR/parsed" <<ELEMENT
+#| summary: Parser fixture
+#| usage: <arg>...
+airline_runner_${action}() { :; }
+airline_runner_${action}_parse() {
+  [[ \$# == 3 && \$1 == 'one two' && \$2 == '' && \$3 == '*' ]] || return 2
+  AIRLINE_RUNNER_INTERVAL=999
+}
+ELEMENT
+    AIRLINE_RUNNER_INTERVAL=5
+    "runner_${kind}_valid" "$BATS_TEST_TMPDIR/parsed" 'one two' '' '*'
+    assert_equal "$AIRLINE_RUNNER_INTERVAL" 5
+    run "runner_${kind}_valid" "$BATS_TEST_TMPDIR/parsed" wrong
+    assert_failure
+
+    # Loading a second element must remove a parser inherited from the first.
+    "runner_${kind}_load" "$BATS_TEST_TMPDIR/parsed"
+    printf '%s\n' '#| summary: Parser-free fixture' '#| usage:' \
+      "airline_runner_${action}() { :; }" > "$BATS_TEST_TMPDIR/unparsed"
+    run "runner_${kind}_valid" "$BATS_TEST_TMPDIR/unparsed" opaque
+    assert_success
+    "runner_${kind}_load" "$BATS_TEST_TMPDIR/unparsed"
+    run declare -F "airline_runner_${action}_parse"
+    assert_failure
+  done
+}
+
+@test "core probe recovery cannot clear contributor capability or health claims" {
+  AIRLINE_RUNNER_PANE='%1'
+  AIRLINE_RUNNER_PROBE=custom
+  _runner_health_report custom endpoint fail 'last observation failed'
+  _runner_problem_report custom capability fail 'dependency unavailable'
+  _runner_probe_result 9
+  run signal_problem_show airline-runner probe-custom
+  assert_output --partial 'exited with status 9'
+  _runner_probe_result 0
+  run signal_problem_show airline-runner probe-custom
+  assert_output ''
+  run signal_health_show custom endpoint
+  assert_output $'fail\tlast observation failed'
+  run signal_problem_show custom capability
+  assert_output --partial 'dependency unavailable'
 }

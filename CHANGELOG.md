@@ -7,6 +7,16 @@ implementation worklists used to reach them.
 
 ### Public interface and organization
 
+- Supplied filters and probes with health and problem functions accepting author-owned
+  contributor/key identities. Both call the same signal mutation functions as the CLI
+  in the existing shell, with the invocation's pane bound as context. Validation
+  errors return to the element; there is no additional CLI dispatch or signal policy.
+- Removed runner-owned observation collection, mandatory reporting, and automatic
+  clearing of element claims. Core execution diagnostics have separate identities;
+  contributor recovery remains explicit. Migrated TAP to `airline-tap` / `assertions`
+  and HTTP to `airline-http` with per-endpoint keys and explicit curl failure/recovery.
+  HTTP argument errors now fail validation rather than becoming discarded exit codes.
+
 - Added classifier and filter arguments to explicit runner specifications and named
   composition callbacks, closing the policy-input gap that previously required
   copying elements to customize them. Arguments survive normalization and spawned
@@ -41,6 +51,14 @@ implementation worklists used to reach them.
   instead of silently discarding them.
 
 ### Catalogs and discovery
+
+- Added optional classify, filter, and probe parse callbacks during invocation
+  validation. Parser-rejected arguments now surface the element's diagnostic as a
+  CLI error before launching work, changing topology, or reporting signals.
+  Validation preserves original argv and cannot leak shell state into execution.
+- Added static option documentation under `describe`, read from annotated dashed
+  `case` arms and alternations between `options:begin` / `options:end` markers.
+  Catalog owns extraction and rendering; summary and usage remain header metadata.
 
 - Made `describe <name>` available across all seven catalogs, with common name
   resolution, metadata validation, and field rendering owned by catalog. Palette,

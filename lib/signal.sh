@@ -24,30 +24,34 @@ _signal_status_valid () {
   return 1
 }
 
+# Signal entry points are also called by hosted elements: validation failures return
+# to the caller rather than exiting its shell. The CLI propagates the same status.
+_signal_error () { printf 'airline: %s\n' "$*" >&2; return 2; }
+
 _signal_validate_key () {   # <command> <key>
   local command="$1" key="$2"
-  [[ -n "$key" ]] || command_die "$command: need <key>"
-  [[ "$key" != *[[:space:]]* ]] || command_die "$command: key must not contain whitespace"
-  [[ "$key" != *:* ]] || command_die "$command: key must not contain ':'"
+  [[ -n "$key" ]] || { _signal_error "$command: need <key>"; return; }
+  [[ "$key" != *[[:space:]]* ]] || { _signal_error "$command: key must not contain whitespace"; return; }
+  [[ "$key" != *:* ]] || { _signal_error "$command: key must not contain ':'"; return; }
 }
 
 _signal_validate_contributor () {   # <command> <contributor>
   local command="$1" contributor="$2"
-  [[ -n "$contributor" ]] || command_die "$command: need <contributor>"
+  [[ -n "$contributor" ]] || { _signal_error "$command: need <contributor>"; return; }
   [[ "$contributor" != *[[:space:]]* ]] || \
-    command_die "$command: contributor must not contain whitespace"
-  [[ "$contributor" != *:* ]] || command_die "$command: contributor must not contain ':'"
+    { _signal_error "$command: contributor must not contain whitespace"; return; }
+  [[ "$contributor" != *:* ]] || { _signal_error "$command: contributor must not contain ':'"; return; }
 }
 
 _signal_claim_id () { printf '%s:%s' "$1" "$2"; }
 
 _signal_validate_condition () {   # <command> <ok|warn|fail> <message>
   local command="$1" level="$2" message="$3"
-  signal_condition_valid "$level" || command_die "$command: invalid level '$level'"
-  [[ "$message" != *$'\t'* ]] || command_die "$command: message must not contain a tab"
+  signal_condition_valid "$level" || { _signal_error "$command: invalid level '$level'"; return; }
+  [[ "$message" != *$'\t'* ]] || { _signal_error "$command: message must not contain a tab"; return; }
   case "$level" in
-    ok) [[ -z "$message" ]] || command_die "$command: ok takes no <message>" ;;
-    warn|fail) [[ -n "$message" ]] || command_die "$command: need <message>" ;;
+    ok) [[ -z "$message" ]] || { _signal_error "$command: ok takes no <message>"; return; } ;;
+    warn|fail) [[ -n "$message" ]] || { _signal_error "$command: need <message>"; return; } ;;
   esac
 }
 
@@ -228,15 +232,15 @@ _signal_resolve_pane_owner () {   # <pane-destination> <window-destination> <com
   local -n destination_pane="$1" destination_window="$2"
   local command="$3" target="${4:-}" resolved_pane resolved_window
   if [[ -z "$target" ]]; then
-    resolved_pane="$(current_pane)" || command_die "$command: cannot resolve current pane"
+    resolved_pane="$(current_pane)" || { _signal_error "$command: cannot resolve current pane"; return; }
   else
-    resolved_pane="$(resolve_pane "$target")" || command_die "$command: cannot resolve pane '$target'"
+    resolved_pane="$(resolve_pane "$target")" || { _signal_error "$command: cannot resolve pane '$target'"; return; }
   fi
-  [[ -n "$resolved_pane" ]] || command_die "$command: cannot resolve pane '${target:-current}'"
+  [[ -n "$resolved_pane" ]] || { _signal_error "$command: cannot resolve pane '${target:-current}'"; return; }
   resolved_window="$(resolve_window "$resolved_pane")" || \
-    command_die "$command: cannot resolve window for pane '$resolved_pane'"
+    { _signal_error "$command: cannot resolve window for pane '$resolved_pane'"; return; }
   [[ -n "$resolved_window" ]] || \
-    command_die "$command: cannot resolve window for pane '$resolved_pane'"
+    { _signal_error "$command: cannot resolve window for pane '$resolved_pane'"; return; }
   # shellcheck disable=SC2034 # assignment is through a caller-selected nameref
   destination_pane="$resolved_pane"
   # shellcheck disable=SC2034 # assignment is through a caller-selected nameref
@@ -261,7 +265,7 @@ signal_status_set () {   # [-t <pane-target>] <active|result|attention>
   (( $# == 1 )) || command_die "status set: need exactly <value>"
   value="$1"
   _signal_status_valid "$value" || command_die "status set: invalid value '$value'"
-  _signal_resolve_pane_owner pane win "status set" "$target"
+  _signal_resolve_pane_owner pane win "status set" "$target" || return
   member="${pane#%}"
   _signal_apply window "$win" status _signal_status_set_unlocked \
     "$win" "$pane" "$member" "$value" || return
@@ -309,7 +313,7 @@ signal_status_clear () {   # [-t <pane-target>]
     command_die "status clear: unknown option '$1'"
   fi
   (( $# == 0 )) || command_die "status clear: takes no arguments"
-  _signal_resolve_pane_owner pane win "status clear" "$target"
+  _signal_resolve_pane_owner pane win "status clear" "$target" || return
   member="${pane#%}"
   _signal_apply window "$win" status _signal_status_clear_unlocked "$win" "$pane" "$member"
 }
@@ -322,7 +326,7 @@ signal_status_observed_result () {   # <pane> <revision>
   local pane win member revision="$2"
   [[ "$revision" =~ ^[0-9]+$ ]] || \
     command_die "status _observed-result: invalid revision '$revision'"
-  _signal_resolve_pane_owner pane win "status _observed-result" "$1"
+  _signal_resolve_pane_owner pane win "status _observed-result" "$1" || return
   member="${pane#%}"
   _signal_apply window "$win" status _signal_status_clear_observed_unlocked \
     "$win" "$pane" "$member" "$revision"
@@ -359,18 +363,18 @@ signal_status_show () {   # [-t <window-target>]
 signal_health_set () {   # [-t <pane-target>] <contributor> <key> <ok|warn|fail> [<message>...]
   local target="" pane win contributor key level message
   if [[ "${1:-}" == -t ]]; then
-    if (( $# < 4 )) || [[ -z "$2" ]]; then command_die "health set: -t requires <pane-target>"; fi
+    if (( $# < 4 )) || [[ -z "$2" ]]; then _signal_error "health set: -t requires <pane-target>"; return; fi
     target="$2"; shift 2
   elif [[ "${1:-}" == -* ]]; then
-    command_die "health set: unknown option '$1'"
+    _signal_error "health set: unknown option '$1'"; return
   fi
   contributor="${1:-}"; key="${2:-}"; level="${3:-}"
   shift $(( $# < 3 ? $# : 3 ))
   message="$*"
-  _signal_validate_contributor "health set" "$contributor"
-  _signal_validate_key "health set" "$key"
-  _signal_validate_condition "health set" "$level" "$message"
-  _signal_resolve_pane_owner pane win "health set" "$target"
+  _signal_validate_contributor "health set" "$contributor" || return
+  _signal_validate_key "health set" "$key" || return
+  _signal_validate_condition "health set" "$level" "$message" || return
+  _signal_resolve_pane_owner pane win "health set" "$target" || return
   _signal_health_apply "$pane" "$win" _signal_health_store_unlocked \
     "$pane" "$contributor" "$key" "$level" "$message"
 }
@@ -385,9 +389,9 @@ signal_health_clear () {   # [-t <pane-target>] <contributor> <key>
   fi
   (( $# == 2 )) || command_die "health clear: need exactly <contributor> <key>"
   contributor="$1"; key="$2"
-  _signal_validate_contributor "health clear" "$contributor"
-  _signal_validate_key "health clear" "$key"
-  _signal_resolve_pane_owner pane win "health clear" "$target"
+  _signal_validate_contributor "health clear" "$contributor" || return
+  _signal_validate_key "health clear" "$key" || return
+  _signal_resolve_pane_owner pane win "health clear" "$target" || return
   _signal_health_apply "$pane" "$win" _signal_health_store_unlocked \
     "$pane" "$contributor" "$key" ok ""
 }
@@ -402,9 +406,9 @@ signal_health_ack () {   # [-t <pane-target>] <contributor> <key>
   fi
   (( $# == 2 )) || command_die "health ack: need exactly <contributor> <key>"
   contributor="$1"; key="$2"
-  _signal_validate_contributor "health ack" "$contributor"
-  _signal_validate_key "health ack" "$key"
-  _signal_resolve_pane_owner pane win "health ack" "$target"
+  _signal_validate_contributor "health ack" "$contributor" || return
+  _signal_validate_key "health ack" "$key" || return
+  _signal_resolve_pane_owner pane win "health ack" "$target" || return
   _signal_health_apply "$pane" "$win" _signal_health_ack_unlocked \
     "$pane" "$contributor" "$key"
 }
@@ -428,9 +432,9 @@ signal_health_show () {   # [--all] [-t <pane-target>] [<contributor> [<key>]]
     command_die "health show: options must precede arguments"
   (( $# <= 2 )) || command_die "health show: too many arguments"
   contributor="${1:-}"; key="${2:-}"
-  (( $# == 0 )) || _signal_validate_contributor "health show" "$contributor"
-  (( $# < 2 )) || _signal_validate_key "health show" "$key"
-  _signal_resolve_pane_owner pane win "health show" "$target"
+  (( $# == 0 )) || _signal_validate_contributor "health show" "$contributor" || return
+  (( $# < 2 )) || _signal_validate_key "health show" "$key" || return
+  _signal_resolve_pane_owner pane win "health show" "$target" || return
   _signal_with_transaction window "$win" health _signal_health_show_unlocked \
     "$visibility" "$pane" "$contributor" "$key"
 }
@@ -646,14 +650,14 @@ _signal_problem_show_unlocked () {   # <active-only|all> [<contributor> [<key>]]
 _signal_problem_resolve_pane () {   # <destination> <command> <target> [allow-missing-canonical]
   local -n destination="$1"
   local command="$2" target="$3" allow_missing="${4:-}" resolved
-  [[ -n "$target" ]] || command_die "$command: --pane requires <pane-target>"
+  [[ -n "$target" ]] || { _signal_error "$command: --pane requires <pane-target>"; return; }
   if resolved="$(resolve_pane "$target" 2>/dev/null)" && [[ -n "$resolved" ]]; then
     :
   elif [[ -n "$allow_missing" && "$target" =~ ^%[0-9]+$ ]]; then
     # pane-exited/pane-died supplies canonical identity after the pane is gone.
     resolved="$target"
   else
-    command_die "$command: cannot resolve pane '$target'"
+    _signal_error "$command: cannot resolve pane '$target'"; return
   fi
   # shellcheck disable=SC2034 # assignment is through the caller-selected nameref
   destination="$resolved"
@@ -662,17 +666,17 @@ _signal_problem_resolve_pane () {   # <destination> <command> <target> [allow-mi
 signal_problem_set () {   # [--pane <pane-target>] <contributor> <key> <ok|warn|fail> [<message>...]
   local kind=session origin="" contributor key level message
   if [[ "${1:-}" == --pane ]]; then
-    (( $# >= 2 )) || command_die "problem set: --pane requires <pane-target>"
+    (( $# >= 2 )) || { _signal_error "problem set: --pane requires <pane-target>"; return; }
     kind=pane; origin="$2"; shift 2
   elif [[ "${1:-}" == -* ]]; then
-    command_die "problem set: unknown option '$1'"
+    _signal_error "problem set: unknown option '$1'"; return
   fi
   contributor="${1:-}"; key="${2:-}"; level="${3:-}"
   shift $(( $# < 3 ? $# : 3 )); message="$*"
-  _signal_validate_contributor "problem set" "$contributor"
-  _signal_validate_key "problem set" "$key"
-  _signal_validate_condition "problem set" "$level" "$message"
-  if [[ "$kind" == pane ]]; then _signal_problem_resolve_pane origin "problem set" "$origin"
+  _signal_validate_contributor "problem set" "$contributor" || return
+  _signal_validate_key "problem set" "$key" || return
+  _signal_validate_condition "problem set" "$level" "$message" || return
+  if [[ "$kind" == pane ]]; then _signal_problem_resolve_pane origin "problem set" "$origin" || return
   else origin="$(command_current_session)"; fi
   _signal_apply global server problem _signal_problem_claim_set_unlocked \
     "$kind" "$origin" "$contributor" "$key" "$level" "$message"
@@ -694,10 +698,10 @@ signal_problem_close () {   # [--pane <pane-target>|--session <session-target>] 
      "${2:-}" != --pane && "${2:-}" != --session ]] || \
     command_die "problem close: options must precede arguments"
   contributor="${1:-}"; key="${2:-}"
-  [[ -z "$contributor" ]] || _signal_validate_contributor "problem close" "$contributor"
-  [[ -z "$key" ]] || _signal_validate_key "problem close" "$key"
+  [[ -z "$contributor" ]] || _signal_validate_contributor "problem close" "$contributor" || return
+  [[ -z "$key" ]] || _signal_validate_key "problem close" "$key" || return
   if [[ "$kind" == pane ]]; then
-    _signal_problem_resolve_pane origin "problem close" "$target" allow-missing-canonical
+    _signal_problem_resolve_pane origin "problem close" "$target" allow-missing-canonical || return
   elif [[ -n "$target" ]]; then
     if origin="$(resolve_session_target "$target" 2>/dev/null)" && [[ -n "$origin" ]]; then
       :
@@ -714,22 +718,22 @@ signal_problem_close () {   # [--pane <pane-target>|--session <session-target>] 
 
 signal_problem_clear () {   # <contributor> <key>
   (( $# == 2 )) || command_die "problem clear: need exactly <contributor> <key>"
-  _signal_validate_contributor "problem clear" "$1"
-  _signal_validate_key "problem clear" "$2"
+  _signal_validate_contributor "problem clear" "$1" || return
+  _signal_validate_key "problem clear" "$2" || return
   _signal_apply global server problem _signal_problem_clear_unlocked "$1" "$2"
 }
 
 signal_problem_ack () {   # <contributor> <key>
   (( $# == 2 )) || command_die "problem ack: need exactly <contributor> <key>"
-  _signal_validate_contributor "problem ack" "$1"
-  _signal_validate_key "problem ack" "$2"
+  _signal_validate_contributor "problem ack" "$1" || return
+  _signal_validate_key "problem ack" "$2" || return
   _signal_apply global server problem _signal_problem_ack_unlocked "$1" "$2"
 }
 
 signal_problem_resolve () {   # <contributor> <key>
   (( $# == 2 )) || command_die "problem resolve: need exactly <contributor> <key>"
-  _signal_validate_contributor "problem resolve" "$1"
-  _signal_validate_key "problem resolve" "$2"
+  _signal_validate_contributor "problem resolve" "$1" || return
+  _signal_validate_key "problem resolve" "$2" || return
   _signal_apply global server problem _signal_problem_resolve_unlocked "$1" "$2"
 }
 
@@ -748,8 +752,8 @@ signal_problem_show () {   # [--all] [<contributor> [<key>]]
     command_die "problem show: options must precede arguments"
   (( $# <= 2 )) || command_die "problem show: too many arguments"
   contributor="${1:-}"; key="${2:-}"
-  (( $# == 0 )) || _signal_validate_contributor "problem show" "$contributor"
-  (( $# < 2 )) || _signal_validate_key "problem show" "$key"
+  (( $# == 0 )) || _signal_validate_contributor "problem show" "$contributor" || return
+  (( $# < 2 )) || _signal_validate_key "problem show" "$key" || return
   _signal_with_transaction global server problem _signal_problem_show_unlocked \
     "$visibility" "$contributor" "$key"
 }

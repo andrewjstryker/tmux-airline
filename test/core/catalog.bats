@@ -178,3 +178,52 @@ ELEMENT
   assert_success
   assert_output --partial 'arguments    none'
 }
+
+@test "option documentation reads dashed arms and alternations without executing code" {
+  cat > "$BATS_TEST_TMPDIR/options" <<'ELEMENT'
+#| summary: Documented options
+#| usage: [--timeout <seconds>]
+exit 99
+outside() {
+  case "$1" in
+    --hidden) : ;; #| — outside the documented region
+  esac
+}
+private_parse_helper()
+{
+  # options:begin
+  case "$1" in
+    --timeout|-t) : ;; #| <seconds> — request budget
+    ( --expect | -e ) : ;; #| <pattern> — expected result
+    --quiet) : ;; #| — silence normal output
+    *) : ;;
+  esac
+  # options:end
+}
+ELEMENT
+  run catalog_options "$BATS_TEST_TMPDIR/options"
+  assert_success
+  assert_output $'--timeout|-t\t<seconds> — request budget\n--expect | -e\t<pattern> — expected result\n--quiet\t— silence normal output'
+  run catalog_describe_render options "$BATS_TEST_TMPDIR/options"
+  assert_success
+  assert_output --partial 'options:'
+  assert_output --partial '--timeout|-t <seconds> — request budget'
+  refute_output --partial '--hidden'
+}
+
+@test "option documentation is optional but malformed section boundaries fail" {
+  local content
+  printf '%s\n' '#| summary: No options' > "$BATS_TEST_TMPDIR/options"
+  run catalog_options "$BATS_TEST_TMPDIR/options"
+  assert_success
+  assert_output ''
+  for content in '# options:begin' '# options:end' \
+    $'# options:begin\n# options:begin\n# options:end' \
+    $'# options:begin\n# options:end\n# options:begin\n# options:end'; do
+    printf '%s\n' '#| summary: Invalid documentation' "$content" > "$BATS_TEST_TMPDIR/options"
+    run catalog_describe_render options "$BATS_TEST_TMPDIR/options"
+    assert_failure
+    assert_output --partial 'airline: options:'
+    refute_output --partial 'summary      Invalid documentation'
+  done
+}

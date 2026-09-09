@@ -69,7 +69,7 @@ wait_for_pane_exit() { # <pane> <status>
   printf '%s\n' '#| summary: custom filter' \
     'airline_runner_filter() { :; }' > "$BATS_TEST_TMPDIR/filters/custom"
   printf '%s\n' '#| summary: custom probe' '#| usage:' \
-    'airline_runner_probe() { "$2" ok; }' > "$BATS_TEST_TMPDIR/probes/custom"
+    'airline_runner_probe() { "$2" test-elements probe ok; }' > "$BATS_TEST_TMPDIR/probes/custom"
 
   airline classifier register "$BATS_TEST_TMPDIR/classifiers"
   airline filter register "$BATS_TEST_TMPDIR/filters"
@@ -165,14 +165,14 @@ wait_for_pane_exit() { # <pane> <status>
     '#| usage:' \
     '#| interval: 0.05' \
     'airline_runner_probe() {' \
-    '  [[ -e "$health_file" ]] && "$2" ok || "$2" fail "service is unavailable"' \
+    '  [[ -e "$health_file" ]] && "$2" test-elements probe ok || "$2" test-elements probe fail "service is unavailable"' \
     '}' > "$BATS_TEST_TMPDIR/probes/server"
   airline probe register "$BATS_TEST_TMPDIR/probes"
 
   airline runner run --probe server -- bash -c 'sleep 0.15; touch "$health_file"; sleep 0.5' & runner_pid=$!
   observed=""
   for _ in {1..100}; do
-    observed="$(airline health show airline-runner-probe-server "$probe_key")"
+    observed="$(airline health show test-elements "$probe_key")"
     [[ "$observed" == "$(printf 'fail\tservice is unavailable')" ]] && break
     sleep 0.01
   done
@@ -180,7 +180,7 @@ wait_for_pane_exit() { # <pane> <status>
 
   recovered=fail
   for _ in {1..100}; do
-    recovered="$(airline health show airline-runner-probe-server "$probe_key")"
+    recovered="$(airline health show test-elements "$probe_key")"
     [[ -z "$recovered" ]] && break
     sleep 0.01
   done
@@ -190,7 +190,7 @@ wait_for_pane_exit() { # <pane> <status>
   assert_output --partial active
 
   wait "$runner_pid"
-  run airline problem show airline-runner-probe-server probe
+  run airline problem show test-elements probe
   assert_output ""
   run airline status show -t "$pane"
   assert_output --partial "$pane"
@@ -201,7 +201,7 @@ wait_for_pane_exit() { # <pane> <status>
   airline session init
   session="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{session_id}')"
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
-  probe_key=watch-probe
+  probe_key=probe
   mkdir -p "$BATS_TEST_TMPDIR/probes" "$BATS_TEST_TMPDIR/runners"
   health_file="$BATS_TEST_TMPDIR/healthy"
   observed_pid_file="$BATS_TEST_TMPDIR/watcher-pid"
@@ -215,9 +215,9 @@ wait_for_pane_exit() { # <pane> <status>
     '#| interval: 0.05' \
     'airline_runner_probe() {' \
     '  [[ -e "$observed_pid_file" ]] || printf "%s\n" "$1" > "$observed_pid_file"' \
-    '  [[ -e "$observed_arg_file" ]] || printf "%s\n" "$3" > "$observed_arg_file"' \
-    '  printf "polled %s\n" "$3"' \
-    '  [[ -e "$health_file" ]] && "$2" ok || "$2" fail "service is unavailable"' \
+    '  [[ -e "$observed_arg_file" ]] || printf "%s\n" "$4" > "$observed_arg_file"' \
+    '  printf "polled %s\n" "$4"' \
+    '  [[ -e "$health_file" ]] && "$2" test-elements probe ok || "$2" test-elements probe fail "service is unavailable"' \
     '}' > "$BATS_TEST_TMPDIR/probes/remote"
   printf '%s\n' \
     '#| summary: Watch remote test state' \
@@ -243,7 +243,7 @@ wait_for_pane_exit() { # <pane> <status>
 
   observed=""
   for _ in {1..100}; do
-    observed="$(airline health show airline-runner-probe-remote "$probe_key")"
+    observed="$(airline health show test-elements "$probe_key")"
     [[ "$observed" == "$(printf 'fail\tservice is unavailable')" ]] && break
     sleep 0.01
   done
@@ -261,7 +261,7 @@ wait_for_pane_exit() { # <pane> <status>
   touch "$health_file"
   recovered=fail
   for _ in {1..100}; do
-    recovered="$(airline health show airline-runner-probe-remote "$probe_key")"
+    recovered="$(airline health show test-elements "$probe_key")"
     [[ -z "$recovered" ]] && break
     sleep 0.01
   done
@@ -272,9 +272,9 @@ wait_for_pane_exit() { # <pane> <status>
   assert_equal "${watch_rc:-0}" 143
   run airline status show -t "$pane"
   assert_output ""
-  run airline health show airline-runner-probe-remote "$probe_key"
+  run airline health show test-elements "$probe_key"
   assert_output ""
-  run airline problem show airline-runner-probe-remote probe
+  run airline problem show test-elements probe
   assert_output ""
 }
 
@@ -288,7 +288,7 @@ wait_for_pane_exit() { # <pane> <status>
 @test "tap runner preserves output and filters progressive test health" {
   airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
-  filter_key=filter
+  filter_key=assertions
   output_file="$BATS_TEST_TMPDIR/tap-stream"
 
   airline runner run --filter tap -- bash -c \
@@ -297,7 +297,7 @@ wait_for_pane_exit() { # <pane> <status>
 
   observed=""
   for _ in {1..100}; do
-    observed="$(airline health show airline-runner-filter-tap "$filter_key")"
+    observed="$(airline health show airline-tap "$filter_key")"
     [[ "$observed" == warn$'\t'* ]] && break
     sleep 0.01
   done
@@ -305,7 +305,7 @@ wait_for_pane_exit() { # <pane> <status>
 
   completed=""
   for _ in {1..100}; do
-    completed="$(airline health show airline-runner-filter-tap "$filter_key")"
+    completed="$(airline health show airline-tap "$filter_key")"
     [[ "$completed" == fail$'\t'* ]] && break
     sleep 0.01
   done
@@ -316,7 +316,7 @@ wait_for_pane_exit() { # <pane> <status>
   assert_equal "${runner_rc:-0}" 1
   run cat "$output_file"
   assert_output --partial "not ok 2 - second"
-  run airline health show airline-runner-filter-tap "$filter_key"
+  run airline health show airline-tap "$filter_key"
   assert_output "$(printf 'fail\tTAP stream completed with unsuccessful assertions')"
   run airline health show airline-runner-classifier-basic command
   assert_output "$(printf 'fail\tcommand exited with status 1')"
@@ -325,7 +325,7 @@ wait_for_pane_exit() { # <pane> <status>
 @test "filter health remains independent of successful exit classification" {
   airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
-  filter_key=filter
+  filter_key=assertions
 
   run airline runner run --filter tap -- bash -c \
     'printf "1..1\nnot ok 1 - semantic failure\n"'
@@ -335,7 +335,7 @@ wait_for_pane_exit() { # <pane> <status>
   assert_output --partial result
   run airline health show airline-runner-classifier-basic command
   assert_output ""
-  run airline health show airline-runner-filter-tap "$filter_key"
+  run airline health show airline-tap "$filter_key"
   assert_output "$(printf 'fail\tTAP stream completed with unsuccessful assertions')"
 }
 
@@ -346,7 +346,7 @@ wait_for_pane_exit() { # <pane> <status>
   export evidence_file
   printf '%s\n' \
     '#| summary: Capture filter input' \
-    'airline_runner_filter() { sed -n l > "$evidence_file"; "$2" ok; }' \
+    'airline_runner_filter() { sed -n l > "$evidence_file"; "$2" test-elements probe ok; }' \
     > "$BATS_TEST_TMPDIR/filters/capture"
   airline filter register "$BATS_TEST_TMPDIR/filters"
 
@@ -367,7 +367,7 @@ wait_for_pane_exit() { # <pane> <status>
   evidence_file="$BATS_TEST_TMPDIR/filter-evidence"
   export evidence_file
   printf '%s\n' '#| summary: Capture filter input' \
-    'airline_runner_filter() { sed -n l > "$evidence_file"; "$2" ok; }' \
+    'airline_runner_filter() { sed -n l > "$evidence_file"; "$2" test-elements probe ok; }' \
     > "$BATS_TEST_TMPDIR/filters/capture"
   printf '%s\n' \
     '#| summary: Write visible probe evidence' \
@@ -375,7 +375,7 @@ wait_for_pane_exit() { # <pane> <status>
     '#| interval: 5' \
     'airline_runner_probe() {' \
     '  printf "probe evidence\n"' \
-    '  "$2" ok' \
+    '  "$2" test-elements probe ok' \
     '}' > "$BATS_TEST_TMPDIR/probes/visible"
   airline filter register "$BATS_TEST_TMPDIR/filters"
   airline probe register "$BATS_TEST_TMPDIR/probes"
@@ -459,10 +459,10 @@ airline_runner_classify() {
   printf 'warn\tconfigured classification\n'
 }
 airline_runner_filter() {
-  local report="$2" directory="$3"; shift 3
+  local report="$2" directory="$4"; shift 4
   [[ $# == 3 && "$1" == '--format' && "$2" == 'three four' && "$3" == '' ]] || return 1
   cat > "$directory/filter"
-  "$report" ok
+  "$report" test-elements output ok
 }
 airline_runner_configure() {
   "$1" classify arguments "$2" --policy 'one two' ''
@@ -485,4 +485,77 @@ ELEMENT
   assert_output $'stdout evidence\nstderr evidence'
   run airline health show -t "$spawned" airline-runner-classifier-arguments command
   assert_output $'warn\tconfigured classification'
+}
+
+@test "invalid probe options fail before starting work or creating topology" {
+  airline session init
+  mkdir -p "$BATS_TEST_TMPDIR/probes"
+  cat > "$BATS_TEST_TMPDIR/probes/validated" <<'PROBE'
+#| summary: Probe with invocation validation
+#| usage: --target <target>
+airline_runner_probe_parse() {
+  [[ $# == 2 && "$1" == --target ]] && return 0
+  printf 'expected --target and one target\n' >&2
+  return 2
+}
+airline_runner_probe() { "$2" test-elements probe ok; }
+PROBE
+  airline probe register "$BATS_TEST_TMPDIR/probes"
+  local panes_before status_before
+  panes_before="$($TMUX -L "$_bats_socket" list-panes -a -F '#{pane_id}')"
+  status_before="$(airline status show)"
+  run airline runner run --probe validated --typo -- touch "$BATS_TEST_TMPDIR/started"
+  assert_failure 2
+  assert_output --partial 'expected --target and one target'
+  [[ ! -e "$BATS_TEST_TMPDIR/started" ]]
+  run airline runner watch --window --probe validated --typo
+  assert_failure 2
+  assert_output --partial 'expected --target and one target'
+  run "$TMUX" -L "$_bats_socket" list-panes -a -F '#{pane_id}'
+  assert_output "$panes_before"
+  run airline status show
+  assert_output "$status_before"
+  run airline health show airline-runner-probe-validated
+  assert_output ''
+  run airline problem show airline-runner-probe-validated
+  assert_output ''
+}
+
+@test "background filter reporters share CLI mutations and preserve contributor recovery ownership" {
+  airline session init
+  mkdir -p "$BATS_TEST_TMPDIR/filters"
+  cat > "$BATS_TEST_TMPDIR/filters/reporting" <<'FILTER'
+#| summary: Report health and capability independently
+#| usage: <fail|recover>
+airline_runner_filter() {
+  local health="$2" problem="$3" mode="$4"
+  cat >/dev/null
+  if [[ "$mode" == fail ]]; then
+    "$problem" example-filter dependency fail 'dependency absent' || return
+    "$health" example-filter endpoint fail 'observed failure' || return
+    "$health" example-filter other ok
+  else
+    "$health" example-filter endpoint ok || return
+    "$problem" example-filter dependency ok
+  fi
+}
+FILTER
+  airline filter register "$BATS_TEST_TMPDIR/filters"
+  run airline runner run --filter reporting fail -- true
+  assert_success
+  run airline health show example-filter endpoint
+  assert_output $'fail\tobserved failure'
+  run airline problem show example-filter dependency
+  assert_output --partial 'dependency absent'
+  # A successful command and another healthy key do not recover either claim.
+  run airline problem show airline-runner filter-reporting
+  assert_output ''
+  run airline runner run --filter reporting recover -- true
+  assert_success
+  run airline health show example-filter endpoint
+  assert_output ''
+  run airline problem show example-filter dependency
+  assert_output ''
+  run airline problem show --all example-filter dependency
+  assert_output --partial resolved
 }

@@ -41,6 +41,29 @@ The same rules apply to palette files written in tmux syntax and to shell elemen
 Registration does not source or validate every entry: validation happens when a
 specific description is requested. Invocation may require additional domain contracts.
 
+## Option documentation
+
+File-wide summary and usage stay in the header. Individual options are annotated on
+their implementation's `case` arms in one optional marked region:
+
+```bash
+# options:begin
+case "$1" in
+  --timeout|-t) ... ;; #| <seconds> — request budget
+  --quiet) ... ;; #| — suppress normal output
+esac
+# options:end
+```
+
+Catalog reads these annotations without executing the file and renders them under
+`options:` in `describe`. It accepts dashed option names and literal alternations,
+with optional spaces and an opening parenthesis. Markers may be indented; function
+names and brace layout do not affect extraction. Unannotated arms and annotations
+outside the region are ignored. This is a documentation reader, not a shell parser
+or a generated option parser. Use literal unquoted option spellings in documented
+arms. Duplicate, unclosed, or unmatched regions make the description fail; files
+without a region have no option section.
+
 ## Description and evaluation
 
 Palette, adapter, layout, classifier, and filter descriptions currently read only

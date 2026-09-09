@@ -30,50 +30,16 @@ only prospective work.
 ## Runner element contracts
 
 `docs/runner-elements.md` is the normative contract. The code does not yet meet it.
-The remaining stages below are ordered by dependency: each assumes the ones above it.
-The reporter contract breaks every element, so it lands after its validation seam.
+### Derived composition modes
 
-### 3. Parse functions and their documentation
+Report `describe` modes as derived facts from the evaluated composition, rather than
+leaving watch capability to be discovered at invocation.
 
-Add `airline_runner_<kind>_parse`, called during invocation validation, so a mistyped
-element option is a CLI error rather than a runtime signal; elements without options
-omit it. Document each option on its `case` arm between `options:begin`/`options:end`
-markers and render them under `describe`. `lib/help.sh`'s arm pattern anchors on an
-identifier (`[a-zA-Z_]…`) and one token per arm, so the element reader needs a regex
-accepting `--opt)` and alternations.
+### HTTP probe policy options
 
-### 4. Reporter contract
-
-Rename the filter and probe reporter parameter from `report` to `health`, and add a
-`<problem>` reporter beside it. Core already holds the contributor and key and already
-writes problems from the filter's background subshell, so this extends
-`_runner_filter_report`'s shape rather than adding a mechanism. Classifiers receive
-neither reporter. Breaking for every element.
-
-### 5. Retire the discarded status codes
-
-Core clears a capability claim when a later observation succeeds, so an element reports
-a problem only when it cannot function and never reports recovery. With stages 3 and 4
-in place, retire `return 127` and every `return 2` that currently reports a usage error
-into a status code `runner_probe_once` discards.
-
-### 6. Dead code and key collisions
-
-- Remove the write-only `load` problem key. `lib/runner.sh:745` and `:870` report it
-  `ok`, and nothing sets it to `warn` or `fail`; an element that cannot load is
-  rejected as a CLI error at validation, so the claim being cleared cannot exist.
-- Give `_runner_probe_error` its own problem key so a generic failure notice cannot
-  overwrite an element's specific diagnostic.
-- Reword `lib/runner.sh`'s "stdout is never a protocol channel" comment, which is true
-  of runner definitions and false of classifiers.
-- Report `describe` modes as derived facts from the evaluated composition, rather than
-  leaving watch capability to be discovered at invocation.
-
-### 7. Rewrite the shipped http probe
-
-Parse its own options, stop hardcoding the 2xx policy and the curl timeouts, and report
-a missing curl through `<problem>`. This lands last as the demonstration that the
-contract holds; it is the file whose defects produced this document.
+Add validated HTTP status-policy and timeout options instead of hardcoding the 2xx
+policy and curl timeouts. Document them on the parse function's arms and verify
+configured policy across multiple endpoints.
 
 ## Grammar coherence
 

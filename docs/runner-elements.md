@@ -5,6 +5,9 @@ catalog and calls at a defined moment. This document defines what Airline hands 
 kind, what each kind hands back, and which parts of an invocation belong to Airline
 rather than to the element.
 
+Catalog registration does not make an element part of Airline core. The reporting
+functions below are in-process entry points to the same mutations exposed by the CLI.
+
 The governing rule is that **Airline validates the contract, not the policy.** Core
 checks that a condition report is well formed and that a required function exists. It
 has no opinion on whether a 2xx response means healthy, whether exit status 5 deserves
@@ -17,13 +20,37 @@ needs a channel through which a user can supply it.
 | Kind | Airline supplies | Element returns | Invoked |
 |------|------------------|-----------------|---------|
 | Classifier | exit status, signal, argv | one condition on stdout | once, when the child exits |
-| Filter | child pid, `<health>`, `<problem>`, the command's output on stdin, argv | conditions through `<health>` | once; reads until EOF |
-| Probe | lifecycle pid, `<health>`, `<problem>`, argv | conditions through `<health>` | repeatedly, paced by core |
+| Filter | child pid, health and problem functions, stdin, argv | publishes its own signals through the supplied functions | once; reads until EOF |
+| Probe | lifecycle pid, health and problem functions, argv | publishes its own signals through the supplied functions | repeatedly, paced by core |
 
-Output shape follows input shape. One exit event yields exactly one condition, so a
-classifier returns it on stdout and core parses it. A stream or a repeated poll yields
-many conditions over time, so filters and probes receive a reporter callback. This is
-a consequence of what each kind observes, not an inconsistency between them.
+A classifier returns a condition for the completed command on stdout. Filters and
+probes are contributors: they select their identities and keys, publish observations,
+and report recovery through the supplied health and problem functions. Airline performs the
+lifecycle mutations and reduction over their claims.
+
+## Ownership
+
+Catalog entries are authored extensions, including the entries shipped with Airline.
+Their authors own contributor names, key meanings, and recovery policy. Core does not
+assign an element's claim identity from its catalog name, clear its claims because an
+invocation succeeded, or require it to report on every call.
+
+Runner core owns scheduling, child process handling, status transitions, its command
+outcome projection from the classifier's return, and diagnostics about failures of
+those mechanisms. Those are core's claims. They must not share identities with
+contributor-managed claims. Signal core owns validated lifecycle mutations, reduction,
+and origin cleanup through the public lifecycle rules.
+
+There are two calling paths to the same signal mutations. External processes use
+the CLI; hosted elements use supplied functions to avoid starting another Airline
+command-dispatch graph for each report. Both paths call `signal_health_set` or
+`signal_problem_set`, which own validation and the shared lifecycle/projection path.
+No second lifecycle implementation or runner-specific observation reducer exists.
+
+Supplying a function does not transfer claim ownership to core. The private
+result-observation callback has a different purpose: it carries a revision token
+owned by Airline. Health/problem reporting needs no private identity token. Parse
+and configure callbacks validate arguments and declare compositions, respectively.
 
 ## Run and watch
 
@@ -60,7 +87,7 @@ Individual options are documented where they are implemented, on the arms of the
 function's `case`, between explicit markers:
 
 ```bash
-_http_probe_parse () {
+airline_runner_probe_parse () {
   # options:begin
   case "$1" in
     --timeout) … ;; #| <seconds> — per-request budget
@@ -123,9 +150,9 @@ airline runner run --merge-stderr --probe http https://example/health --interval
 ```
 
 Here the classifier receives `--policy strict`, the filter receives `--format
-compact`, and the probe receives the endpoint. Unknown element options pass through
-opaquely at this stage; element parse callbacks are the next contract stage. Empty
-arguments, whitespace, and shell metacharacters retain their original argv boundaries.
+compact`, and the probe receives the endpoint. Core passes element options opaquely
+to the optional parse callback for validation. Empty arguments, whitespace, and shell
+metacharacters retain their original argv boundaries.
 Everything after `--` belongs to the child command, including reserved spellings.
 
 A reserved token ends an element's argument block. Arguments cannot resume after a
@@ -165,74 +192,132 @@ airline_runner_filter   <child-pid> <health> <problem> [<arg>...]
 airline_runner_probe    <lifecycle-pid> <health> <problem> [<arg>...]
 ```
 
-A classifier receives no reporters. It is a pure function of its arguments, and a pure
-function has no external capability to lose: it must be implementable in Bash without
-external dependencies. Its two failure modes belong to core rather than to itself — an
-element that cannot load is rejected as a usage error before the run starts, and one
-that emits an invalid condition is reported by core as a problem against it. Work that
-needs an external tool is observation, not classification: a filter decides at end of
-stream, a probe polls while the process lives, and both carry `<problem>`.
+A classifier returns one condition on stdout. Core validates that result and may
+project it as its own command outcome; this function result does not give core
+ownership of the classifier author's other signal claims. An element that cannot
+load is rejected before execution, and an invalid classifier result is a core
+contract diagnostic.
 
-Core supplies every reporter. An element receives no ambient configuration: there are
-no environment variables in this contract, and everything an element needs arrives as
-an argument or on stdin.
+Filters and probes receive two function names, called as follows:
+
+```bash
+"$health"  <contributor> <key> <ok|warn|fail> [<message>...]
+"$problem" <contributor> <key> <ok|warn|fail> [<message>...]
+```
+
+The functions bind the invocation's pane context. Health is stored on that pane;
+problems carry that pane as their origin in the global ledger. This is equivalent to
+`health set -t <pane>` and `problem set --pane <pane>` in the current CLI grammar.
+The element chooses both contributor and key. Use public CLI target options for
+reporting deliberately directed outside the invocation's pane.
+
+Messages follow CLI semantics: trailing words are joined with spaces, `ok` takes no
+message, and `warn`/`fail` require one. Both reporting functions return zero on success
+and nonzero on validation or mutation failure. An invalid tuple returns status 2
+with a diagnostic rather than exiting the hosting shell. Elements must handle or
+propagate failures, for example with `"$health" author key fail message || return`.
+There is no private identity supplied through environment variables.
+
+A reporter executes in its caller's existing shell process. For a filter or background
+probe loop, this is already a subshell; reporting neither starts a CLI subprocess
+nor sends a message to the parent runner process. Normal signal transactions still
+provide concurrency control. The provided names are part of the element calling
+contract; their implementation names are private and must not be hardcoded.
 
 An element that accepts arguments also exposes a parse function, which core calls when
 it validates the invocation:
 
 ```bash
-airline_runner_<kind>_parse <arg>...
+airline_runner_classify_parse [<arg>...]
+airline_runner_filter_parse [<arg>...]
+airline_runner_probe_parse [<arg>...]
 ```
 
 A non-zero return means the invocation was wrong, and core reports the element's
 message as an ordinary CLI error before anything starts. This is what keeps a
 mistyped option from becoming a runtime signal: bad input is a usage error, not a
 statement about health or about a missing capability. An element with no options
-omits the function.
+omits the function. Parsers receive only element arguments, without process IDs or
+reporters. Validation runs before launching a command, creating a pane/window, or
+publishing lifecycle signals, for both explicit and named invocations. A named watch
+validates only the probe selected by its projected composition.
+
+Write a useful diagnostic to stderr and return non-zero on invalid input. Airline
+includes the diagnostic in a CLI error with exit status 2. Output from successful
+validation is discarded. Parsing runs in an isolated validation subshell: shell
+variables, functions, and argument changes do not configure the later observation.
+Execution receives the original argv. An element may share a private parsing helper
+between its validation callback and its action to avoid duplicating option policy.
+Keep validation free of external side effects; subshell isolation does not undo file
+writes or external commands. Loading an element clears its action and parse function
+first, so an omitted parser cannot inherit a previously loaded element's parser.
 
 Element-private helpers share a namespace with core once sourced, so they carry the
 element's own name as a prefix: `_http_probe_report`, not `_report`.
 
 ## Reporting
 
-Three outcomes, three channels. Choosing between them is a question about what
-happened, not about severity.
+**Usage error** — an unknown option, a missing value, or no target. The optional parse
+function rejects it during invocation validation, before execution.
 
-**Usage error** — an unknown option, a missing value, no target. Reported by the parse
-function and surfaced as a CLI error at invocation.
-
-**Capability failure** — the element cannot do what it advertises, because a required
-executable is absent or a prerequisite is missing. Reported through `<problem>`, which
-raises the global claim that a contributor cannot provide a capability:
+**Observation** — what a filter or probe actually saw. The contributor chooses health
+keys and calls the supplied health function. For example, a probe checking two endpoints can
+maintain two independent claims:
 
 ```bash
-"$problem" fail "curl is not installed"
+"$health" example-http live fail "live endpoint returned HTTP 503"
+"$health" example-http ready ok
 ```
 
-The claim's identity — contributor and key — is core's, derived from the element's kind
-and name. An element never supplies, chooses, or inspects it, so core passes a reporter
-that already holds it rather than exporting the identity for the element to quote back.
-The reporter is an ordinary function call even where the element runs in a forked
-process: a filter executes inside a background subshell, and its reporter writes
-signals from there today.
+The healthy endpoint cannot erase the failing endpoint's claim. Airline reduces the
+remaining claims; the reporter publishes each mutation directly. The author decides
+whether endpoints need distinct keys or a deliberately aggregated report. Stable key selection and retiring keys for removed endpoints
+belong to that author.
 
-Because core owns the identity, core also clears the claim when a later observation
-succeeds. An element therefore reports a problem only when it cannot function, and
-never reports recovery.
+**Capability failure** — the contributor cannot observe because a required executable
+or prerequisite is missing. It chooses a problem key and reports failure and recovery
+through the supplied problem function:
 
-**Observation** — what the element actually saw. Reported through `<health>` for
-filters and probes, and on stdout for classifiers. Core reduces every condition
-reported during one observation to the worst, and projects a single claim. An element
-supplies evidence; the runner owns the claim.
+```bash
+"$problem" example-http curl fail "curl is not installed"
+# When the contributor verifies that capability is available again:
+"$problem" example-http curl ok
+```
 
-The two reporters differ in what they assert, not in how they are delivered. `<health>`
-says what the element saw; `<problem>` says the element could not look. A run that
-reports `fail` health is working correctly; a run that raises a problem is not.
+The supplied problem function binds a pane origin, while the contributor owns its
+key. Core must not infer recovery from a successful process exit or from a health report: neither
+proves that a separate capability claim has recovered. Public origin cleanup still
+applies when a pane or session disappears, and remains distinct from contributor
+recovery. See [signal lifecycles](lifecycle-signals.md).
+
+A filter or probe may publish no changes when there is no new evidence. A missing
+report is not itself a contract failure. Unexpected execution failures can produce a
+separate core diagnostic; they do not authorize core to overwrite or recover the
+element's claims. Capability failures are reported through the supplied problem
+function, rather than magic exit codes whose meaning core must guess.
 
 ## Trust and boundaries
 
-Elements are trusted shell: registering a directory is the decision to allow it. They
-receive no tmux handle, no session target, and no access to private state, and they
-make no tmux calls of their own. Stdout is user-facing output whose format Airline does
-not interpret, except for a classifier's single condition line, where stdout is the
-return channel.
+Elements are trusted shell: registering a directory is the decision to allow it.
+Their supplied reporting functions call public signal mutations in the current
+process. Elements do not access private state or write signal storage directly. Stdout is user-facing output, except for a classifier's single condition
+line, where stdout is the return channel.
+
+## Shipped contributor policies
+
+The TAP filter owns `airline-tap` / `assertions`. It reports progressive failures and
+a final stream result; core does not clear that result at the next invocation.
+
+The HTTP probe owns `airline-http`. Its `curl` problem key describes availability of
+curl and is explicitly recovered when curl becomes available. Health keys are
+`endpoint-` followed by the hexadecimal bytes of each URL, giving stable distinct
+keys without forbidden whitespace or colons. Successful checks recover only their
+endpoint key. Last observations remain when polling stops; removed endpoints require
+explicit cleanup through the public health API. Timeout and status-policy options
+remain the separate HTTP probe work item.
+
+Unexpected filter/probe execution failures use the core contributor `airline-runner`
+with `filter-<name>` or `probe-<name>` keys (non-identifier characters replaced by
+hyphens). Successful later execution recovers only that core diagnostic. Classifier
+results retain core's command-outcome identity. Element authors should choose their
+own contributor names, rather than core's `airline-runner` namespace.
