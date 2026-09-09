@@ -94,11 +94,13 @@ CASES
   main runner register "$PROJECT_ROOT/runners/definitions"
   run main runner describe tap
   assert_success
+  assert_line 'modes        run'
   assert_output --partial 'filter       tap'
   assert_output --partial 'probe        none'
 
   run main runner describe http
   assert_success
+  assert_line 'modes        run watch'
   assert_output --partial 'classifier   basic'
   assert_output --partial 'probe        http'
   assert_output --partial 'http://localhost/health/live'
@@ -121,6 +123,37 @@ RUNNER
   run main runner describe custom incomplete
   assert_failure
   assert_output --partial "runner describe: 'custom' produced an invalid configuration"
+}
+
+@test "runner describe derives modes from the composition evaluated with its arguments" {
+  mkdir -p "$BATS_TEST_TMPDIR/catalog"
+  cat > "$BATS_TEST_TMPDIR/catalog/conditional" <<'RUNNER'
+#| summary: Conditional probe fixture
+#| usage: <command|observe>
+airline_runner_configure() {
+  local configure="$1"; shift
+  case "$1" in
+    command) "$configure" classify basic ;;
+    observe) "$configure" probe http http://localhost/health ;;
+    *) return 2 ;;
+  esac
+}
+RUNNER
+  main runner register "$BATS_TEST_TMPDIR/catalog"
+
+  # Reevaluate in the same shell so a prior probe cannot leak into later modes.
+  main runner describe conditional observe > "$BATS_TEST_TMPDIR/observe"
+  main runner describe conditional command > "$BATS_TEST_TMPDIR/command"
+  run cat "$BATS_TEST_TMPDIR/observe"
+  assert_success
+  assert_line 'modes        run watch'
+  run cat "$BATS_TEST_TMPDIR/command"
+  assert_success
+  assert_line 'modes        run'
+
+  run main runner describe conditional invalid
+  assert_failure
+  refute_output --partial 'modes '
 }
 
 @test "layout catalogs require a bare description name and segment has no catalog" {

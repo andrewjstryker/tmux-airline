@@ -52,6 +52,9 @@ implementation worklists used to reach them.
 
 ### Catalogs and discovery
 
+- Added derived `modes` to `runner describe`: every valid composition supports
+  `run`, and compositions declaring a probe also support `watch`. Modes reflect
+  configuration evaluated with the supplied arguments, without a metadata field.
 - Added optional classify, filter, and probe parse callbacks during invocation
   validation. Parser-rejected arguments now surface the element's diagnostic as a
   CLI error before launching work, changing topology, or reporting signals.

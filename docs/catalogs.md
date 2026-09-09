@@ -72,8 +72,10 @@ execute the inspected file or apply configuration. Metadata describes the entry;
 it does not prove that the entry can execute successfully.
 
 Named-runner descriptions additionally evaluate the trusted composition's configure
-function to report selected elements and resolved defaults. `runner describe <name>
-[<arg>...]` forwards arguments intact, just as a named invocation does. It launches
+function to report supported modes, selected elements, and resolved defaults.
+Every valid composition supports `run`; one declaring a probe also supports `watch`.
+`runner describe <name> [<arg>...]` forwards arguments intact, just as a named
+invocation does. It launches
 no command or observation. The runner domain owns that evaluation and adds its
 results to the common catalog description through direct calls.
 

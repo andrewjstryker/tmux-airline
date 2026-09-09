@@ -359,6 +359,9 @@ _runner_definition_describe () {   # <session> <name> [<runner-arg>...]
     printf -v filter_args '%q ' "${AIRLINE_RUNNER_CONFIG_FILTER_ARGS[@]}"
   fi
   catalog_describe_render "$name" "$file" || return
+  local modes=run
+  [[ -z "$AIRLINE_RUNNER_CONFIG_PROBE" ]] || modes+=' watch'
+  command_show_row modes "$modes"
   command_show_row classifier "${AIRLINE_RUNNER_CONFIG_CLASSIFIER:-basic}"
   [[ -z "$classifier_args" ]] || command_show_row classifier-args "${classifier_args% }"
   command_show_row filter "${AIRLINE_RUNNER_CONFIG_FILTER:-none}"

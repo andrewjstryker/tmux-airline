@@ -30,10 +30,6 @@ only prospective work.
 ## Runner element contracts
 
 `docs/runner-elements.md` is the normative contract. The code does not yet meet it.
-### Derived composition modes
-
-Report `describe` modes as derived facts from the evaluated composition, rather than
-leaving watch capability to be discovered at invocation.
 
 ### HTTP probe policy options
 

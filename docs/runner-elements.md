@@ -65,8 +65,12 @@ which inputs exist, and the available kinds follow:
 A named composition is therefore usable with `watch` exactly when it declares a probe.
 Core derives this from the composition rather than from a declaration: a composition
 that declares no probe fails `watch` with a diagnostic naming the missing capability.
-`describe` evaluates a composition and can report the modes it supports; `list` names
-and summarizes elements without evaluating anything.
+`runner describe <name> [<arg>...]` evaluates the composition with those arguments
+and reports `modes`: `run` for every valid composition, or `run watch` when it
+declares a probe. Arguments can change the selected elements and therefore the
+reported modes. This is a derived fact, not a metadata field or a guarantee that
+the selected elements will execute successfully. `list` names and summarizes
+elements without evaluating anything.
 
 ## Metadata
 
