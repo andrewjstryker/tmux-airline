@@ -5,6 +5,13 @@ implementation worklists used to reach them.
 
 ## Unreleased — 3.0.0
 
+### Development tooling
+
+- Added an isolated performance harness for CLI overhead, fresh/repeated session
+  initialization, apply, health reporting, and basic/TAP runners. Recorded the
+  C++ core/Lua catalog proposal as a deferred option pending measurements and
+  maintenance experience.
+
 ### Public interface and organization
 
 - Focused the README on installation, configuration, and daily use, with help

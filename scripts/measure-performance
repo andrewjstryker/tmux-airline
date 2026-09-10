@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""Measure Airline CLI latency against disposable tmux servers; emit JSON."""
+
+import argparse
+import datetime
+import json
+import os
+from pathlib import Path
+import platform
+import shutil
+import statistics
+import subprocess
+import sys
+import tempfile
+import time
+
+
+def positive(value):
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError("must be positive")
+    return number
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--samples", type=positive, default=5)
+    parser.add_argument("--warmups", type=int, default=1)
+    parser.add_argument("--timeout", type=positive, default=60,
+                        help="timeout per command in seconds (default: 60)")
+    args = parser.parse_args()
+    if args.warmups < 0:
+        parser.error("--warmups must be nonnegative")
+    for command in ("tmux", "bash"):
+        if not shutil.which(command):
+            parser.error(f"{command} is required")
+
+    root = Path(__file__).resolve().parent.parent
+    cli = str(root / "airline.sh")
+    results = {}
+
+    def run(command, env=None):
+        return subprocess.run(command, cwd=root, env=env, check=True,
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              text=True, timeout=args.timeout).stdout.strip()
+
+    def git(*arguments):
+        try:
+            return run(["git", *arguments])
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+    metadata = {
+        "timestamp_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "python": platform.python_version(),
+        "tmux": run(["tmux", "-V"]),
+        "bash": run(["bash", "--version"]).splitlines()[0],
+        "revision": git("rev-parse", "HEAD"),
+        "working_tree_status": git("status", "--porcelain"),
+        "root": str(root),
+        "samples": args.samples,
+        "warmups": args.warmups,
+        "timeout_seconds": args.timeout,
+    }
+
+    for iteration in range(args.warmups + args.samples):
+        with tempfile.TemporaryDirectory(prefix="airline-perf-", dir="/tmp") as tmp:
+            env = {key: value for key, value in os.environ.items()
+                   if not key.startswith(("AIRLINE_", "TMUX"))
+                   and key not in ("BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS")
+                   and not key.startswith("BASH_FUNC_")}
+            env.update(HOME=tmp, XDG_CONFIG_HOME=tmp, LC_ALL="C",
+                       AIRLINE_DIR=str(root), TMUX_PANE="%0")
+            socket = str(Path(tmp) / "socket")
+            tmux = ["tmux", "-S", socket]
+            env["AIRLINE_TMUX"] = f"tmux -S {socket}"
+
+            def measure(name, commands):
+                start = time.perf_counter_ns()
+                for command in commands:
+                    run([cli, *command], env)
+                elapsed = (time.perf_counter_ns() - start) / 1_000_000
+                if iteration >= args.warmups:
+                    results.setdefault(name, []).append(elapsed)
+
+            try:
+                # Explicit command avoids starting user shell configuration.
+                run([*tmux, "-f", "/dev/null", "new-session", "-d",
+                     "-s", "performance", "sleep 86400"], env)
+                measure("cli_version", [["version"]])
+                measure("fresh_init", [["session", "init"]])
+                measure("repeat_init", [["session", "init"]])
+                measure("unchanged_apply", [["session", "apply"]])
+                measure("health_set_clear", [
+                    ["health", "set", "performance", "sample", "warn", "sample"],
+                    ["health", "set", "performance", "sample", "ok"],
+                ])
+                measure("runner_basic", [["runner", "run", "--", "true"]])
+                measure("runner_tap", [["runner", "run", "tap", "--", "bash",
+                                         "-c", "printf '1..1\\nok 1 - sample\\n'"]])
+            finally:
+                subprocess.run([*tmux, "kill-server"], env=env,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               timeout=args.timeout, check=False)
+        label = "warmup" if iteration < args.warmups else "sample"
+        print(f"Completed {label} {iteration + 1}/{args.warmups + args.samples}",
+              file=sys.stderr)
+
+    report = {"metadata": metadata, "measurements": {}}
+    for name, values in results.items():
+        summary = {"samples_ms": values, "median_ms": statistics.median(values),
+                   "min_ms": min(values), "max_ms": max(values)}
+        report["measurements"][name] = summary
+        print(f"{name:20} median {summary['median_ms']:9.2f} ms "
+              f"range {min(values):.2f}–{max(values):.2f}", file=sys.stderr)
+    print(json.dumps(report, indent=2))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except subprocess.CalledProcessError as error:
+        print(f"Command failed: {error.cmd}\n{error.stderr}", file=sys.stderr)
+        sys.exit(1)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)

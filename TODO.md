@@ -43,6 +43,10 @@ only prospective work.
 
 ## Deferred
 
+- Reassess the [C++ core and Lua catalog proposal](docs/native-core-proposal.md)
+  after the implementation settles, using [performance measurements](docs/performance.md)
+  and actual maintenance demands. No migration is scheduled.
+
 - Grow the runner catalog once the surface settles. `watch` requires `--probe` and
   one probe ships, so the verb has a single out-of-the-box use; additional probes
   and definitions are what make the composed-runner path the default in practice

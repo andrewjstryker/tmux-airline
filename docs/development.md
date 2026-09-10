@@ -19,6 +19,12 @@ with the corresponding `lib/` module; `make test-integration` runs every real-tm
 suite. Behavior belongs in fast tests; run the real-tmux integration suite before
 merging to main. Run `make lint` for ShellCheck and the architecture guards.
 
+## Performance and deferred architecture
+
+See [performance measurements](performance.md) for the isolated CLI benchmark
+harness and comparison limits. The [C++ core and Lua catalog proposal](native-core-proposal.md)
+is deferred pending measured latency and maintenance experience after stabilization.
+
 ## Transaction recovery
 
 Airline serializes collection updates with owner-scoped tmux locks. A process killed
