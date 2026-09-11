@@ -33,6 +33,31 @@ only prospective work.
   as a bare positional where the rest of the grammar uses options. Low-traffic
   diagnostics; leave the grammar alone and make the ordering explicit in help.
 
+## Latency
+
+Measured and attributed in the [latency profile](docs/latency-profile.md). These are
+internal mechanics: no public grammar, option name, or storage format changes.
+
+- Add nameref-destination read variants (`coll_get_into`, `coll_members_into`,
+  `opt_get_into`) and convert the loop-resident call sites in `signal.sh`,
+  `render.sh`, and `layout.sh`. Command substitution forks to return a value that a
+  transaction already holds in memory: ~0.87 ms per read against ~0.01 ms for the
+  nameref the write path already uses. This is the one change that takes the ~13 ms
+  marginal cost per stored collection member down to a fraction of a millisecond.
+
+- Preload the session scope before `catalog_paths` resolves the seven
+  `@airline--path-*` options, so they come from the workspace instead of seven
+  separate tmux round trips.
+
+- Narrow or reuse the option snapshot. Snapshot parsing is about half of every Bash
+  command executed during an init, and most parsed options are ones Airline never
+  reads.
+
+- Only if the ledger scan still measures after the above: index problem claims by
+  `contributor:key` rather than filtering every member. Decided against a `jq`-style
+  document store: it would beat the code as written, but loses to the nameref change
+  above until well over a hundred members, and costs a runtime dependency.
+
 ## Documentation
 
 - Delete the dependency graph in `DESIGN.md`. The file/responsibility table and the

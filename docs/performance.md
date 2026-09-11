@@ -51,5 +51,10 @@ observations, not CI pass/fail thresholds. Five samples do not establish reliabl
 tail latency. They do not attribute elapsed time to Bash versus tmux: profiling
 would be a separate next step if the measurements justify it.
 
+These measurements report what each operation costs, not where the time goes.
+`scripts/profile-latency` attributes it to primitives, subprocess counts, executed
+Bash commands, and collection size; the [latency profile](latency-profile.md) records
+its findings and the resulting recommendations.
+
 The [deferred native-core proposal](native-core-proposal.md) records how these
 measurements inform a possible C++/Lua migration.

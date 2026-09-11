@@ -22,7 +22,9 @@ merging to main. Run `make lint` for ShellCheck and the architecture guards.
 ## Performance and deferred architecture
 
 See [performance measurements](performance.md) for the isolated CLI benchmark
-harness and comparison limits. The [C++ core and Lua catalog proposal](native-core-proposal.md)
+harness and comparison limits, and the [latency profile](latency-profile.md) for
+where that time goes, an assessment of the collection storage design, and the
+prospective work it suggests. The [C++ core and Lua catalog proposal](native-core-proposal.md)
 is deferred pending measured latency and maintenance experience after stabilization.
 
 ## Transaction recovery

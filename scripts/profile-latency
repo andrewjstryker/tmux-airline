@@ -1,0 +1,494 @@
+#!/usr/bin/env python3
+"""Attribute Airline CLI latency to primitives, hotspots, and collection size.
+
+`measure-performance` reports what operations cost. This reports *where* that cost
+goes: the price of each mechanical primitive, the split between tmux round trips
+and Bash forks, which functions execute the most commands, and how latency scales
+with the number of members in a collection.
+
+Like `measure-performance`, every measurement runs against a disposable tmux server
+on its own socket under a temporary home. The user's tmux server is never contacted.
+"""
+
+import argparse
+import datetime
+import json
+import os
+from pathlib import Path
+import platform
+import re
+import shutil
+import statistics
+import subprocess
+import sys
+import tempfile
+import time
+
+GROUPS = ("primitives", "attribution", "hotspots", "scaling")
+
+
+def positive(value):
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError("must be positive")
+    return number
+
+
+class Server:
+    """A disposable tmux server with one detached session and a clean environment."""
+
+    def __init__(self, root, timeout):
+        self.root = root
+        self.timeout = timeout
+        self.cli = str(root / "airline.sh")
+
+    def __enter__(self):
+        self._tmp = tempfile.TemporaryDirectory(prefix="airline-profile-", dir="/tmp")
+        tmp = self._tmp.name
+        # Drop inherited Airline/tmux state and Bash startup injection, exactly as
+        # the measurement harness does, so a developer's shell cannot skew a run.
+        self.env = {key: value for key, value in os.environ.items()
+                    if not key.startswith(("AIRLINE_", "TMUX"))
+                    and key not in ("BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS")
+                    and not key.startswith("BASH_FUNC_")}
+        self.socket = str(Path(tmp) / "socket")
+        self.env.update(HOME=tmp, XDG_CONFIG_HOME=tmp, LC_ALL="C",
+                        AIRLINE_DIR=str(self.root), TMUX_PANE="%0",
+                        AIRLINE_TMUX=f"tmux -S {self.socket}")
+        self.tmp = tmp
+        # Explicit command avoids starting user shell configuration.
+        self.run(["tmux", "-S", self.socket, "-f", "/dev/null", "new-session",
+                  "-d", "-s", "profile", "sleep 86400"])
+        return self
+
+    def __exit__(self, *_):
+        subprocess.run(["tmux", "-S", self.socket, "kill-server"], env=self.env,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       timeout=self.timeout, check=False)
+        self._tmp.cleanup()
+        return False
+
+    def run(self, command, check=True):
+        return subprocess.run(command, cwd=self.root, env=self.env, check=check,
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              text=True, timeout=self.timeout)
+
+    def airline(self, *arguments, check=True):
+        return self.run([self.cli, *arguments], check=check)
+
+    def bash(self, script, check=True):
+        return self.run(["bash", "-c", script], check=check)
+
+    def price(self, name, body, iterations, setup="", repeats=5):
+        """Memoized `time_bash`, so every group quotes the same figure for a primitive.
+
+        Re-measuring the same primitive per group produced figures that disagreed by
+        more than the effect being studied, which would make the attribution and the
+        primitive table inconsistent within one report.
+        """
+        if not hasattr(self, "_prices"):
+            self._prices = {}
+        if name not in self._prices:
+            self._prices[name] = self.time_bash(body, iterations, setup, repeats)
+        return self._prices[name]
+
+    def time_bash(self, body, iterations, setup="", repeats=5):
+        """Median per-operation microseconds for a Bash loop body.
+
+        The empty loop is measured the same way and subtracted, so interpreter
+        startup and loop overhead do not land in the reported figure.
+        """
+        def elapsed(statement):
+            script = (f"{setup}\n"
+                      f"for ((profile_index=0; profile_index<{iterations}; profile_index++)); do\n"
+                      f"  {statement}\n"
+                      f"done\n")
+            start = time.perf_counter_ns()
+            self.bash(script)
+            return time.perf_counter_ns() - start
+
+        loaded = statistics.median(elapsed(body) for _ in range(repeats))
+        baseline = statistics.median(elapsed(":") for _ in range(repeats))
+        return max(loaded - baseline, 0) / iterations / 1000
+
+
+def median_ms(server, commands, samples):
+    """Median wall-clock milliseconds for one pass over a list of CLI argument lists."""
+    def once():
+        start = time.perf_counter_ns()
+        for command in commands:
+            server.airline(*command)
+        return (time.perf_counter_ns() - start) / 1_000_000
+    return statistics.median(once() for _ in range(samples))
+
+
+def syscall_counts(server):
+    """Per-init clone/execve counts, and which tmux subcommands were spawned.
+
+    Returns None when strace is unavailable. The counts are structural; the *timing*
+    in this report never comes from a traced run, because ptrace inflates both.
+    """
+    if not shutil.which("strace"):
+        return None
+    # Count a *repeated* init, matching the operation the attribution times. A first
+    # init does more work and would overstate both the calls and their share.
+    server.airline("session", "init")
+    trace = Path(server.tmp) / "trace.txt"
+    result = server.run(["strace", "-f", "-s", "300", "-e", "trace=clone,clone3,execve",
+                         "-o", str(trace), server.cli, "session", "init"], check=False)
+    if result.returncode != 0 or not trace.exists():
+        return None
+    text = trace.read_text(errors="replace")
+    clones = len(re.findall(r"\bclone3?\(", text))
+    executions = re.findall(r'execve\("([^"]*)"', text)
+    tmux_executions = [path for path in executions if path.endswith("/tmux")]
+    subcommands = {}
+    for line in text.splitlines():
+        match = re.match(r'.*execve\("([^"]*)", \[(.*?)\], ', line)
+        if not match or not match.group(1).endswith("/tmux"):
+            continue
+        words = re.findall(r'"([^"]*)"', match.group(2))[1:]   # drop argv[0]
+        while words and words[0].startswith("-"):
+            # "-S <socket>" and any other leading global flag with its value.
+            words = words[2:] if words[0] in ("-S", "-f", "-L") else words[1:]
+        verb = words[0] if words else "?"
+        subcommands[verb] = subcommands.get(verb, 0) + 1
+    return {
+        "clone_calls": clones,
+        "execve_calls": len(executions),
+        "tmux_executions": len(tmux_executions),
+        # Clones that never exec are pure Bash subshells: command substitution.
+        "bash_forks": max(clones - len(executions), 0),
+        "tmux_subcommands": dict(sorted(subcommands.items(),
+                                        key=lambda item: -item[1])),
+    }
+
+
+def hotspots(server, limit):
+    """Commands executed per function, and invocation counts for the option layer.
+
+    `PS4` carries the running function, so counting trace lines counts *commands
+    executed inside* each function. Call sites are counted separately from the
+    verbatim traced call, which is what gives an invocation count.
+    """
+    trace = Path(server.tmp) / "xtrace.txt"
+    environment = dict(server.env, PS4="+|${FUNCNAME[0]:-main}|")
+    with open(trace, "w") as handle:
+        subprocess.run(["bash", "-x", server.cli, "session", "init"],
+                       cwd=server.root, env=environment, stdout=subprocess.DEVNULL,
+                       stderr=handle, text=True, timeout=server.timeout, check=False)
+    text = trace.read_text(errors="replace")
+    lines = text.splitlines()
+
+    # Each traced line is "<+…>|<running function>|<command being run>". Bash repeats
+    # the leading PS4 character once per subshell level, so the run of '+' is the
+    # nesting depth: anything deeper than one is executing inside a command
+    # substitution. Matching only depth one would drop exactly the reads this
+    # profile is about.
+    executed = {}
+    called = {}
+    subshell_commands = 0
+    for line in lines:
+        match = re.match(r"(\++)\|([A-Za-z_][A-Za-z0-9_]*)\|\s?(.*)", line)
+        if not match:
+            continue
+        if len(match.group(1)) > 1:
+            subshell_commands += 1
+        executed[match.group(2)] = executed.get(match.group(2), 0) + 1
+        command = match.group(3).split(" ", 1)[0]
+        if command:
+            called[command] = called.get(command, 0) + 1
+
+    watched = ("_opt_workspace_begin", "_opt_workspace_flush", "_opt_snapshot",
+               "_opt_snapshot_if_needed", "_opt_snapshot_line", "_opt_decode",
+               "_with_transaction", "coll_get", "coll_members", "coll_reduce")
+    invocations = {name: called.get(name, 0) for name in watched}
+
+    ranked = sorted(executed.items(), key=lambda item: -item[1])
+    total = sum(executed.values())
+    return {
+        "traced_commands": total,
+        "subshell_commands": subshell_commands,
+        "subshell_share": round(subshell_commands / total, 4) if total else 0.0,
+        "commands_by_function": dict(ranked[:limit]),
+        "invocations": invocations,
+        "snapshot_parse_share": (
+            round((executed.get("_opt_snapshot_line", 0)
+                   + executed.get("_opt_decode", 0)) / total, 4) if total else 0.0),
+    }
+
+
+# A stand-in for a collection accessor: an associative-array lookup reached either
+# through a command substitution or through a nameref destination. The body must be
+# a function call — Bash elides the fork for a substitution containing only a
+# builtin, which no real accessor is.
+ACCESSOR_SETUP = (
+    "declare -gA PROFILE_MAP=()\n"
+    "for profile_seed in $(seq 1 100); do "
+    "PROFILE_MAP[key$profile_seed]=$'warn\\tactive\\twarn\\tmessage'; done\n"
+    "profile_read () { printf '%s' \"${PROFILE_MAP[$1]}\"; }\n"
+    "profile_read_into () { local -n profile_destination=\"$1\"; "
+    "profile_destination=\"${PROFILE_MAP[$2]}\"; }\n"
+)
+
+
+def command_substitution_price(server, iterations):
+    return server.price("command_substitution",
+                        'profile_value="$(profile_read key5)"',
+                        iterations, ACCESSOR_SETUP)
+
+
+def tmux_round_trip_price(server):
+    return server.price(
+        "tmux_round_trip",
+        f'profile_value="$(tmux -S {server.socket} show-options -gqv status-left)"',
+        100)
+
+
+def measure_primitives(server, iterations):
+    """Cost of each way to move a value, which is what the design choice turns on."""
+    results = {
+        "bash_command_substitution_us": command_substitution_price(server, iterations),
+        "bash_nameref_return_us": server.price(
+            "nameref", "profile_read_into profile_value key5", iterations,
+            ACCESSOR_SETUP),
+        "tmux_round_trip_us": tmux_round_trip_price(server),
+    }
+    if shutil.which("jq"):
+        document = json.dumps({f"pane:%{index}:runner:key{index}":
+                               {"contributor": "runner", "key": f"key{index}",
+                                "level": "warn", "message": "message"}
+                               for index in range(100)})
+        jq_setup = "profile_document=" + subprocess.list2cmdline([document]) + "\n"
+        results["jq_query_us"] = server.price(
+            "jq",
+            'profile_value="$(printf %s "$profile_document" | jq -r '
+            "'to_entries|map(select(.value.contributor==\"runner\"))|length')\"",
+            max(iterations // 50, 20), jq_setup)
+    else:
+        results["jq_query_us"] = None
+    return results
+
+
+def measure_attribution(server, samples, counts):
+    """Split one repeated `session init` into startup, tmux calls, and Bash forks.
+
+    The subprocess counts come from the traced run; the *prices* come from the
+    untraced primitive measurements, so the attribution never inherits ptrace cost.
+    """
+    server.airline("session", "init")
+    total = median_ms(server, [["session", "init"]], samples)
+    startup = median_ms(server, [["version"]], samples)
+    attribution = {"repeat_init_ms": total, "cli_startup_ms": startup}
+    if counts:
+        tmux_calls = counts["tmux_executions"]
+        forks = counts["bash_forks"]
+        attribution["tmux_calls"] = tmux_calls
+        attribution["bash_forks"] = forks
+        # Price each primitive over a fixed loop and scale by the observed count: a
+        # 33-iteration timing would be dominated by its own noise. These are the same
+        # memoized figures the primitives table reports.
+        tmux_each = tmux_round_trip_price(server)
+        fork_each = command_substitution_price(server, 500)
+        attribution["tmux_call_ms"] = tmux_each / 1000
+        attribution["bash_fork_ms"] = fork_each / 1000
+        attribution["tmux_total_ms"] = tmux_each * tmux_calls / 1000
+        attribution["bash_fork_total_ms"] = fork_each * forks / 1000
+        accounted = (startup + attribution["tmux_total_ms"]
+                     + attribution["bash_fork_total_ms"])
+        attribution["bash_interpretation_ms"] = max(total - accounted, 0.0)
+    return attribution
+
+
+def measure_scaling(server, steps, samples):
+    """Latency of one problem set/clear pair against a growing claim ledger.
+
+    The ledger filter is O(members) because a claim id encodes kind, origin,
+    contributor, and key while the ledger id encodes only contributor and key. This
+    reports the marginal cost that indexing would remove.
+    """
+    server.airline("session", "init")
+    rows = []
+    present = 0
+    for target in steps:
+        while present < target:
+            server.airline("problem", "set", f"contributor{present}",
+                           f"key{present}", "warn", f"noise {present}")
+            present += 1
+        pair = [["problem", "set", "profile", "target", "warn", "message"],
+                ["problem", "set", "profile", "target", "ok"]]
+        rows.append({"other_claims": target,
+                     "set_clear_pair_ms": median_ms(server, pair, samples)})
+    marginal = None
+    if len(rows) >= 2:
+        first, last = rows[0], rows[-1]
+        span = last["other_claims"] - first["other_claims"]
+        if span:
+            marginal = (last["set_clear_pair_ms"] - first["set_clear_pair_ms"]) / span
+    return {"samples": rows, "marginal_ms_per_claim": marginal}
+
+
+def report(measurements, stream):
+    def heading(text):
+        print(f"\n{text}\n{'-' * len(text)}", file=stream)
+
+    primitives = measurements.get("primitives")
+    if primitives:
+        heading("Primitives (cost of moving one value)")
+        labels = {"bash_command_substitution_us": "bash $(function-call)",
+                  "bash_nameref_return_us": "bash nameref return",
+                  "tmux_round_trip_us": "tmux client round trip",
+                  "jq_query_us": "jq invocation"}
+        for key, label in labels.items():
+            value = primitives.get(key)
+            if value is None:
+                print(f"{label:26} not installed", file=stream)
+            else:
+                print(f"{label:26} {value / 1000:8.3f} ms", file=stream)
+
+    counts = measurements.get("syscalls")
+    if counts:
+        heading("Subprocesses per `session init`")
+        print(f"{'tmux executions':26} {counts['tmux_executions']:8d}", file=stream)
+        print(f"{'bash forks (clone, no exec)':26} {counts['bash_forks']:8d}", file=stream)
+        for verb, count in list(counts["tmux_subcommands"].items())[:8]:
+            print(f"  tmux {verb:20} {count:8d}", file=stream)
+
+    attribution = measurements.get("attribution")
+    if attribution:
+        heading("Where one repeated `session init` goes")
+        print(f"{'total':26} {attribution['repeat_init_ms']:8.1f} ms", file=stream)
+        for key, label in (("cli_startup_ms", "startup + dispatch"),
+                           ("tmux_total_ms", "tmux round trips"),
+                           ("bash_fork_total_ms", "bash $() forks"),
+                           ("bash_interpretation_ms", "bash interp. (residual)")):
+            if key in attribution:
+                print(f"{label:26} {attribution[key]:8.1f} ms", file=stream)
+        if "tmux_call_ms" in attribution:
+            print(f"  ({attribution['tmux_calls']} tmux calls at "
+                  f"{attribution['tmux_call_ms']:.2f} ms, "
+                  f"{attribution['bash_forks']} forks at "
+                  f"{attribution['bash_fork_ms']:.2f} ms; the residual is a "
+                  f"remainder, not a measurement)", file=stream)
+
+    spots = measurements.get("hotspots")
+    if spots:
+        heading("Bash commands executed, by function")
+        print(f"traced commands: {spots['traced_commands']}; "
+              f"snapshot parsing share: {spots['snapshot_parse_share'] * 100:.1f}%; "
+              f"run inside a subshell: {spots['subshell_share'] * 100:.1f}%",
+              file=stream)
+        for name, count in spots["commands_by_function"].items():
+            print(f"  {name:34} {count:7d}", file=stream)
+        print("invocations:", file=stream)
+        for name, count in spots["invocations"].items():
+            print(f"  {name:34} {count:7d}", file=stream)
+
+    scaling = measurements.get("scaling")
+    if scaling:
+        heading("Problem ledger latency vs. collection size")
+        for row in scaling["samples"]:
+            print(f"  {row['other_claims']:3d} other claims "
+                  f"{row['set_clear_pair_ms']:9.1f} ms per set/clear pair", file=stream)
+        if scaling["marginal_ms_per_claim"] is not None:
+            print(f"  marginal: {scaling['marginal_ms_per_claim']:.2f} ms per stored claim",
+                  file=stream)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--groups", default="all",
+                        help=f"comma-separated subset of: {', '.join(GROUPS)} (default: all)")
+    parser.add_argument("--samples", type=positive, default=5,
+                        help="timed repetitions per CLI measurement (default: 5)")
+    parser.add_argument("--iterations", type=positive, default=1000,
+                        help="loop repetitions per Bash primitive (default: 1000)")
+    parser.add_argument("--scaling-steps", default="0,20,60",
+                        help="claim-ledger sizes to measure (default: 0,20,60)")
+    parser.add_argument("--functions", type=positive, default=12,
+                        help="functions listed in the hotspot table (default: 12)")
+    parser.add_argument("--timeout", type=positive, default=120,
+                        help="timeout per command in seconds (default: 120)")
+    arguments = parser.parse_args()
+
+    selected = (set(GROUPS) if arguments.groups == "all"
+                else {group.strip() for group in arguments.groups.split(",")})
+    unknown = selected - set(GROUPS)
+    if unknown:
+        parser.error(f"unknown group(s): {', '.join(sorted(unknown))}")
+    try:
+        steps = sorted({int(step) for step in arguments.scaling_steps.split(",")})
+    except ValueError:
+        parser.error("--scaling-steps must be comma-separated integers")
+    if any(step < 0 for step in steps):
+        parser.error("--scaling-steps must be nonnegative")
+
+    for command in ("tmux", "bash"):
+        if not shutil.which(command):
+            parser.error(f"{command} is required")
+
+    root = Path(__file__).resolve().parent.parent
+    measurements = {}
+
+    def git(*command):
+        try:
+            return subprocess.run(["git", *command], cwd=root, check=True,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                  text=True, timeout=arguments.timeout).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+    with Server(root, arguments.timeout) as server:
+        metadata = {
+            "timestamp_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "platform": platform.platform(),
+            "machine": platform.machine(),
+            "python": platform.python_version(),
+            "tmux": server.run(["tmux", "-V"]).stdout.strip(),
+            "bash": server.run(["bash", "--version"]).stdout.splitlines()[0],
+            "jq": shutil.which("jq"),
+            "strace": shutil.which("strace"),
+            "revision": git("rev-parse", "HEAD"),
+            "working_tree_status": git("status", "--porcelain"),
+            "root": str(root),
+            "groups": sorted(selected),
+            "samples": arguments.samples,
+            "iterations": arguments.iterations,
+        }
+
+        if "primitives" in selected:
+            print("Measuring primitives...", file=sys.stderr)
+            measurements["primitives"] = measure_primitives(server, arguments.iterations)
+        if "attribution" in selected:
+            print("Counting subprocesses...", file=sys.stderr)
+            measurements["syscalls"] = syscall_counts(server)
+            if measurements["syscalls"] is None:
+                print("strace unavailable; attribution omits subprocess counts",
+                      file=sys.stderr)
+            print("Attributing repeat init...", file=sys.stderr)
+            measurements["attribution"] = measure_attribution(
+                server, arguments.samples, measurements["syscalls"])
+        if "hotspots" in selected:
+            print("Tracing executed commands...", file=sys.stderr)
+            measurements["hotspots"] = hotspots(server, arguments.functions)
+
+    if "scaling" in selected:
+        # A fresh server: the ledger must start empty and the traced runs above
+        # would otherwise leave option state behind.
+        print("Measuring collection scaling...", file=sys.stderr)
+        with Server(root, arguments.timeout) as server:
+            measurements["scaling"] = measure_scaling(server, steps, arguments.samples)
+
+    report(measurements, sys.stderr)
+    print(json.dumps({"metadata": metadata, "measurements": measurements}, indent=2))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except subprocess.CalledProcessError as error:
+        print(f"Command failed: {error.cmd}\n{error.stderr}", file=sys.stderr)
+        sys.exit(1)
+    except (OSError, subprocess.SubprocessError) as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)

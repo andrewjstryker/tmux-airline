@@ -12,6 +12,12 @@ implementation worklists used to reach them.
   C++ core/Lua catalog proposal as a deferred option pending measurements and
   maintenance experience.
 
+- Added `scripts/profile-latency`, which attributes CLI latency to mechanical
+  primitives, subprocess counts, executed Bash commands, and collection size against
+  a disposable server. Recorded the resulting latency profile and an assessment of
+  the keyed-collection storage design, concluding that command substitution on the
+  read path, not the absence of an external JSON dependency, is the avoidable cost.
+
 ### Public interface and organization
 
 - Focused the README on installation, configuration, and daily use, with help
