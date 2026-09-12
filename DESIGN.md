@@ -170,6 +170,25 @@ The important boundaries are:
   chooses adapters and segment strings. A palette change replays the active adapter
   declarations against the new colors without rerunning the layout program.
 
+## Widget and public-palette design direction
+
+The widget migration changes the adapter-era rules below. Its target contract is
+[documented separately](docs/widget-contract.md); these changes are not implemented
+yet. Palette roles become stable public session-scoped options (`@airline-primary`,
+`@airline-alert`, and the other existing roles), holding effective display colors.
+Widgets return their own tmux formats and reference those options directly; they
+choose their own presentation without a CLI palette lookup or semantic-span protocol.
+
+A segment holds an ordered sequence of literal and widget formats. Repeated
+placements append within a slot, with independent instance identities per fragment.
+Render supplies segment padding, baseline styling, and outer separators, restoring
+that baseline at fragment boundaries. Palette changes and suspension update the
+public effective colors. Private lifecycle/provenance state remains private.
+
+During migration, replace the global-only palette-input/private-palette assertions
+below consistently; they describe the current adapter implementation, not the target
+widget API. Validate the CPU slice before migrating the other widgets.
+
 ## State model
 
 State falls into four kinds:

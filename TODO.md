@@ -27,6 +27,29 @@ only prospective work.
 - Move completed entries to `CHANGELOG.md`; do not accumulate checked-off history
   here.
 
+## Widgets
+
+Adapters do not fit the way TPM status plugins work: a plugin interpolates the global
+status strings once at startup and reads its configuration from global scope, while
+Airline composes session-scoped status strings and recomposes them on every palette
+and layout change. The `bug/layout-rendering` branch makes adapters work and prices
+the mismatch — a post-composition translation collection and a process-level shim
+over plugin option reads.
+
+- Replace the adapter catalog kind with a widget catalog following the existing
+  catalog contracts, per the [widget catalog proposal](docs/widgets-proposal.md).
+  Follow the [widget contract](docs/widget-contract.md): public session palette
+  options, widget-owned tmux formats, and ordered composition of multiple widgets
+  per segment. Prove runtime, availability, and failure handling through CPU.
+  Record the grammar justification in `CHANGELOG.md` when the change ships.
+
+- Implement and validate only the CPU vertical slice against its acceptance gate. Migrate battery, online status, and prefix state only
+  after CPU proves the contract through real tmux rendering.
+
+- Independently of the widget work, fix `_opt_decode` handling of tmux's
+  single-quoted empty values (`''`), which renders an unwanted block after reload in
+  the dependency-free `default` and `minimal` layouts.
+
 ## Grammar coherence
 
 - `transaction clear <global|session|window> <target> <namespace>` takes its scope
