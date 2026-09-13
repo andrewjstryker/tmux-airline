@@ -111,6 +111,14 @@ names, bad arguments, and malformed output remain errors even for optional place
 unavailable, without stdout. Format validation runs first; other failures reject
 even optional placements.
 
+Policy configuration is still an open part of the contract. Widget arguments work
+for one layout placement, and metadata covers runtime interval and timeout, but there
+is not yet a shared convention for persistent policy such as CPU thresholds, an
+online host, battery selection, fallback text, or refresh preferences. Before more
+widgets gain policy, define whether those values live in namespaced public options,
+layout arguments, or a widget-owned configuration file, and make the choice
+consistent for format construction, sampling, validation, and `widget describe`.
+
 ## Multiple widgets per segment
 
 A segment is an ordered list of fragments, each either literal tmux content or the

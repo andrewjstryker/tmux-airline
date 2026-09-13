@@ -33,6 +33,15 @@ only prospective work.
   paths. Apply saved configuration during Airline session initialization rather
   than relying on shell startup files. Discuss this separately from rendering.
 
+## Widget policy
+
+- Define a shared options convention for widget policy. The current contract covers
+  format construction, arguments, availability, sampling intervals, and timeouts,
+  but it does not yet provide a consistent home or naming scheme for user policy
+  such as thresholds, hosts, device selection, fallback behavior, or refresh rules.
+  Decide how policy is declared, scoped, validated, exposed by `describe`, and
+  passed to both format and sample functions before adding more configurable widgets.
+
 ## Runner contract
 
 The runner model is being settled against the native implementation so both versions

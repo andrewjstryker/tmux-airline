@@ -88,6 +88,13 @@ no terminal controls or layout-level alignment/list/range directives. Source-tim
 code must be quiet; format construction must not sample or mutate tmux. Definitions
 are trusted code, so these checks are contract validation, not a security sandbox.
 
+The policy surface is intentionally still open. Today a layout can pass placement
+arguments and metadata can set interval and timeout, but there is no settled shared
+convention for persistent widget policy such as thresholds, hosts, device selection,
+fallbacks, or refresh preferences. Establish the option namespace, scope, validation,
+`describe` output, and handoff to format and sample functions before extending these
+widgets with more policy.
+
 ## Migration
 
 Replace `adapter use` declarations and plugin placeholder strings with `widget
