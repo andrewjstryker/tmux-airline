@@ -9,7 +9,7 @@ _session_bootstrap () {   # <session>
   pub_set "$AIRLINE_KEY_CLI" "$AIRLINE_DIR/airline.sh"
   hook_set "after-new-session[90]" \
     "run-shell -b \"'$AIRLINE_DIR/airline.sh' session init -t '#{session_id}'\""
-  hook_set_airline_window_styles
+  hook_set_airline_window_styles "${AIRLINE_NATIVE_WINDOW_OPTIONS[@]}"
   signal_health_install_hooks
   signal_problem_install_hooks
   widget_install_hooks

@@ -178,6 +178,13 @@ Private state exists at its native owner:
 - palette/layout selections, guards, paths, suspension, committed configuration,
   and widget instances are session-scoped.
 
+Window formats and styles are native window options. A session target sets them
+only on that session's current window; it does not establish session defaults.
+Render installs them on every existing window and saves private session snapshots
+for the new-window hook. The hook copies those snapshots without expanding their
+live selectors. Inactive names inherit tmux's window style when no mode is active,
+so previous-window emphasis and activity/bell colors remain visible.
+
 ### Apply and live updates
 
 The private session snapshot retains restoration colors and composed formats. Apply

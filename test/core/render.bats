@@ -92,10 +92,10 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run sopt window-status-format
+  run wopt window-status-format
   assert_output --partial "#I:#W"               # the name template
   assert_output --partial "window_zoomed_flag"  # the mode expression
-  run sopt window-status-style
+  run wopt window-status-style
   assert_output --partial "fg=colour250"        # primary
   assert_output --partial "bg=colour234"        # inner-bg
 }
@@ -106,27 +106,27 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run sopt window-status-format
+  run wopt window-status-format
   # bg is a mode selector: zoom→81, copy→75, monitor→109, else inner-bg 234
   assert_output --partial "bg=#{?#{window_zoomed_flag},colour81"
   assert_output --partial "monitor-activity,colour109,colour234"   # else flat inner-bg
 }
 
-@test "inactive name knocks out over a filled block, else stays primary" {
+@test "inactive name knocks out over a filled block, else inherits its native style" {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run sopt window-status-format
-  # fg: inner-bg knockout when in any mode, primary (250) when flat
+  run wopt window-status-format
+  # fg: inner-bg knockout when in any mode, native style when flat
   assert_output --partial "#[fg=#{?#{window_zoomed_flag},colour234"
-  assert_output --partial "monitor-activity,colour234,colour250"
+  assert_output --partial "monitor-activity,colour234,default"
 }
 
 @test "active window keeps a constant active-color highlight block" {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run sopt window-status-current-format
+  run wopt window-status-current-format
   assert_output --partial "bg=colour214"          # active highlight, not a mode selector
   refute_output --partial "bg=#{?#{window_zoomed_flag}"  # active bg never varies with mode
 }
@@ -135,7 +135,7 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run sopt window-status-current-format
+  run wopt window-status-current-format
   # name fg is the mode color, falling back to inner-bg knockout
   assert_output --partial "#[fg=#{?#{window_zoomed_flag},colour81"
   assert_output --partial "monitor-activity,colour109,colour234"   # monitor tint, else knockout
@@ -148,7 +148,7 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run sopt window-status-format
+  run wopt window-status-format
   assert_output --partial "@airline--badge-status"   # the projected reduced-level scalar
   assert_output --partial "●"                        # a badge glyph (result level)
 }
@@ -157,7 +157,7 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run sopt window-status-format
+  run wopt window-status-format
   # level→color pairs unique to the status ladder (health has no result/attention)
   assert_output --partial "result},colour114"      # result → ok
   assert_output --partial "attention},colour208"   # attention → alert
@@ -167,7 +167,7 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run sopt window-status-format
+  run wopt window-status-format
   assert_output --partial "active},○"          # a shape per level, redundant with color
   assert_output --partial "result},●"
   assert_output --partial "attention},◆"
@@ -178,7 +178,7 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run sopt window-status-format
+  run wopt window-status-format
   assert_output --partial "warn},△"
   assert_output --partial "fail},▲"
   assert_output --partial "fail},#[blink]"
@@ -188,7 +188,7 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run sopt window-status-format
+  run wopt window-status-format
   [[ "$output" == *"@airline--badge-status"*"#I:#W"*"@airline--badge-health"* ]]
 }
 
@@ -237,7 +237,7 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run sopt window-status-format
+  run wopt window-status-format
   assert_output --partial "@airline--badge-health"   # the projected reduced-level scalar
 }
 
@@ -354,7 +354,7 @@ _seed_palette() {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
-  run sopt window-status-format
+  run wopt window-status-format
   assert_output --partial "#I:#W"
 }
 

@@ -17,7 +17,7 @@ FAST_TESTS := test/widget/cpu.bats test/widget/catalog.bats test/architecture.ba
 	test/signal/behavior.bats test/session/behavior.bats test/layout/behavior.bats test/transaction/behavior.bats
 INTEGRATION_TESTS := test/widget/integration.bats test/session/integration.bats test/layout/integration.bats \
 	test/runner/integration.bats test/signal/integration.bats \
-	test/transaction/integration.bats test/core/tmux.bats test/cli/wrapper.bats
+	test/transaction/integration.bats test/core/render-integration.bats test/core/tmux.bats test/cli/wrapper.bats
 ALL_TESTS := $(FAST_TESTS) $(INTEGRATION_TESTS)
 
 install: check-version check-completions
@@ -54,7 +54,7 @@ test-integration:
 	bats $(INTEGRATION_TESTS)
 
 test-layout:
-	bats test/layout/integration.bats test/core/render.bats
+	bats test/layout/integration.bats test/core/render.bats test/core/render-integration.bats
 
 test-session:
 	bats test/session/behavior.bats test/session/integration.bats

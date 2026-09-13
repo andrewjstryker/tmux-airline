@@ -493,13 +493,19 @@ runner_retain_pane () { tmux set-option -p -t "$1" remain-on-exit on; }
 # name, optionally indexed, e.g. "pane-focus-out[90]".
 hook_set   () { tmux set-hook -g  "$1" "$2"; }
 
-# A new window has no session-specific window-option defaults in tmux. Copy the
-# owning session's committed palette roles into the three palette-derived window
-# options immediately after creation. -F expands the private session options in
-# the hook's native session/window context before storing concrete option values.
-hook_set_airline_window_styles () {
+# Copy committed native window options from the owning session at creation.
+# A single -F expansion substitutes the snapshot without evaluating the live
+# selectors inside its value: those must still run in each window at draw time.
+# Uninitialized sessions have no snapshots and retain their native defaults.
+hook_set_airline_window_styles () {   # <native-option>...
+  local name key hook_commands=""
+  for name in "$@"; do
+    key="$(prv_name "native-$name")"
+    hook_commands+="set-option -qFw $name '#{$key}' ; "
+  done
+  hook_commands="${hook_commands% ; }"
   tmux set-hook -g "after-new-window[90]" \
-    "set-option -qFw pane-border-style 'fg=#{@airline-primary}' ; set-option -qFw pane-active-border-style 'fg=#{@airline-active}' ; set-option -qFw clock-mode-colour '#{@airline-special}'"
+    "if-shell -F '#{$(prv_name native-window-status-format)}' \"$hook_commands\""
 }
 
 # Run one callback while holding a lock scoped to an airline state owner and

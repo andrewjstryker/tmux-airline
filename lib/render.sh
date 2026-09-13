@@ -84,6 +84,16 @@ declare -gA AIRLINE_STATUS_COLOR=([active]=active [result]=ok [attention]=alert)
 # chevron literals are set below where the byte injection is visible.
 AIRLINE_TMPL_WINDOW='#I:#W'   # window-name template (index:name)
 
+# Native window options have no session-local defaults in tmux. Keep committed
+# copies for the new-window hook, and install them explicitly on existing windows.
+# shellcheck disable=SC2034 # consumed by session bootstrap
+declare -ga AIRLINE_NATIVE_WINDOW_OPTIONS=(
+  window-status-separator window-status-format window-status-current-format
+  window-status-style window-status-last-style
+  window-status-activity-style window-status-bell-style
+  pane-border-style pane-active-border-style clock-mode-colour
+)
+
 # Badge glyphs — a distinct SHAPE per state, redundant with the color so the badge is
 # legible without color (color-blind users). Position separates the two lanes, so a
 # shape may repeat across lanes but each lane is internally distinct. The bare
@@ -233,7 +243,7 @@ _mode_expr () {
 # AND the active window's name foreground (the one signal value, used on both sides).
 window_mode_color () { _mode_expr '%s' "${PALETTE[inner-bg]}"; }
 # "<in-mode>" when the window is in any mode, else "<none>" — used to knock the
-# inactive name out to inner-bg over a filled block, but keep primary on a flat one.
+# inactive name out to inner-bg over a filled block, retaining native styling otherwise.
 _window_mode_pick () {   # <in-mode> <none>
   printf '#{?#{window_zoomed_flag},%s,#{?#{pane_in_mode},%s,#{?monitor-activity,%s,%s}}}' \
     "$1" "$1" "$1" "$2"
@@ -388,6 +398,14 @@ _render_setif () {
   [[ -z "$changed" ]] || _AIRLINE_RENDER_CHANGED=1
 }
 
+_render_window_option () {   # <native-option> <value>
+  local name="$1" value="$2" win
+  _render_setif opt_setif_session "$AIRLINE_SESSION" "$(prv_name "native-$name")" "$value" || return
+  for win in $_AIRLINE_RENDER_WINDOWS; do
+    _render_setif opt_setif_window "$win" "$name" "$value" || return
+  done
+}
+
 set_window_formats () {
   local bg="${PALETTE[inner-bg]}" active_bg="${PALETTE[active]}" template
   template="$AIRLINE_TMPL_WINDOW"
@@ -395,7 +413,7 @@ set_window_formats () {
   # Mode signal. inactive: fill the background; active: tint the name foreground.
   local mode_color inactive_fg
   mode_color="$(window_mode_color)"                                       # mode color, else inner-bg
-  inactive_fg="$(_window_mode_pick "$bg" "${PALETTE[primary]}")"           # knock out over a fill, else primary
+  inactive_fg="$(_window_mode_pick "$bg" default)"                         # knock out over a fill, else native window style
 
   # The two badges read their scalar live by NAME inside a #{?…} selector; resolve
   # the bare keys to private option names through the policy builder.
@@ -413,27 +431,23 @@ set_window_formats () {
   local health_expr
   health_expr="#{?$health_opt, #[fg=$(_condition_token_expr "$health_opt" "${PALETTE[primary]}")]$(_blink_when "$health_opt" fail)$(_glyph_expr "$health_opt" "$AIRLINE_GLYPH_HEALTH" AIRLINE_HEALTH_GLYPH)#[noblink],}"
 
-  _render_setif opt_setif_session "$AIRLINE_SESSION" window-status-separator " " || return
+  _render_window_option window-status-separator " " || return
   # inactive: the whole tab fills with the mode color (flat inner-bg when no mode).
-  _render_setif opt_setif_session "$AIRLINE_SESSION" window-status-format \
+  _render_window_option window-status-format \
     "#[bg=${mode_color}]${status_expr}#[fg=${inactive_fg}]${template}${health_expr}" || return
-  _render_setif opt_setif_session "$AIRLINE_SESSION" window-status-style          "fg=${PALETTE[primary]} bg=$bg" || return
-  _render_setif opt_setif_session "$AIRLINE_SESSION" window-status-last-style     "fg=${PALETTE[emphasized]} bg=$bg" || return
-  _render_setif opt_setif_session "$AIRLINE_SESSION" window-status-activity-style "fg=${PALETTE[alert]} bg=$bg" || return
-  _render_setif opt_setif_session "$AIRLINE_SESSION" window-status-bell-style     "fg=${PALETTE[stress]} bg=$bg" || return
+  _render_window_option window-status-style          "fg=${PALETTE[primary]} bg=$bg" || return
+  _render_window_option window-status-last-style     "fg=${PALETTE[emphasized]} bg=$bg" || return
+  _render_window_option window-status-activity-style "fg=${PALETTE[alert]} bg=$bg" || return
+  _render_window_option window-status-bell-style     "fg=${PALETTE[stress]} bg=$bg" || return
   # active: a constant active-color highlight block, name foreground tinted by mode.
-  _render_setif opt_setif_session "$AIRLINE_SESSION" window-status-current-format \
+  _render_window_option window-status-current-format \
     "$(_chev_right "$bg" "$active_bg") ${status_expr}#[fg=${mode_color}]${template}${health_expr} $(_chev_left "$active_bg" "$bg")"
 }
 
 set_window_styles () {
-  local win windows
-  windows="$(list_windows "$AIRLINE_SESSION")" || return
-  for win in $windows; do
-    _render_setif opt_setif_window "$win" pane-border-style "fg=${PALETTE[primary]}" || return
-    _render_setif opt_setif_window "$win" pane-active-border-style "fg=${PALETTE[active]}" || return
-    _render_setif opt_setif_window "$win" clock-mode-colour "${PALETTE[special]}" || return
-  done
+  _render_window_option pane-border-style "fg=${PALETTE[primary]}" || return
+  _render_window_option pane-active-border-style "fg=${PALETTE[active]}" || return
+  _render_window_option clock-mode-colour "${PALETTE[special]}"
 }
 
 #-----------------------------------------------------------------------------#
@@ -448,7 +462,8 @@ set_window_styles () {
 # changed render and a no-op; option read/write failures propagate.
 render () {   # <session>
   local AIRLINE_SESSION="$1"
-  local left right
+  local left right _AIRLINE_RENDER_WINDOWS
+  _AIRLINE_RENDER_WINDOWS="$(list_windows "$AIRLINE_SESSION")" || return
   _AIRLINE_RENDER_CHANGED=""
   render_palette_load || return
   local element
