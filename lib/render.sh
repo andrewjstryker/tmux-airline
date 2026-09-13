@@ -198,6 +198,14 @@ _build_status_right () {
   printf '%s' "$out"
 }
 
+# A fragment gets the segment baseline on both sides, including attribute resets.
+render_fragment () {
+  local slot="$1" content="$2" style
+  [[ -n "$content" ]] || return 0
+  style="#[default]#[fg=#{@airline-emphasized},bg=#{@airline-${AIRLINE_SLOT_TIER[$slot]}-bg}]"
+  printf '%s%s%s' "$style" "$content" "$style"
+}
+
 #-----------------------------------------------------------------------------#
 # Window entry — modes (zoom > copy > monitor).
 #-----------------------------------------------------------------------------#
@@ -443,6 +451,11 @@ render () {   # <session>
   local left right
   _AIRLINE_RENDER_CHANGED=""
   render_palette_load || return
+  local element
+  for element in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
+    _render_setif opt_setif_session "$AIRLINE_SESSION" "$(pub_name "$element")" "${PALETTE[$element]}" || return
+    prv_set_session "$AIRLINE_SESSION" "display-$element" "${PALETTE[$element]}" || return
+  done
   left="$(_build_status_left)" || return
   right="$(_build_status_right)" || return
   _render_setif opt_setif_session "$AIRLINE_SESSION" display-panes-colour        "${PALETTE[primary]}" || return

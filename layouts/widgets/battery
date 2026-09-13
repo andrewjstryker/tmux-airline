@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+#| summary: Linux battery capacity (first system battery)
+#| usage:
+#| interval: 30
+#| timeout: 1
+_battery_device() {
+  local device type
+  for device in "${AIRLINE_POWER_SUPPLY:-/sys/class/power_supply}"/*; do
+    [[ -r "$device/type" && -r "$device/capacity" ]] || continue
+    read -r type < "$device/type"
+    [[ "$type" == Battery ]] || continue
+    printf '%s' "$device"; return 0
+  done
+  return 3
+}
+airline_widget_available() { _battery_device >/dev/null; }
+airline_widget_format() {
+  (( $# == 0 )) || return 2
+  local value; value="$(widget_reading)"
+  printf '%s#[fg=#{?#{<=:%s,10},#{@airline-stress},#{?#{<=:%s,30},#{@airline-alert},#{@airline-primary}}}]BAT #{?#{m/r:^[0-9]+$,%s},%s%%,—}' \
+    "$(widget_job)" "$value" "$value" "$value" "$value"
+}
+airline_widget_sample() {
+  (( $# == 0 )) || return 2
+  local device value
+  device="$(_battery_device)" || return
+  read -r value < "$device/capacity" || return
+  [[ "$value" =~ ^[0-9]{1,3}$ ]] || return 2
+  value=$((10#$value)); (( value <= 100 )) || return 2
+  printf '%s\n' "$value"
+}

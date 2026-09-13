@@ -51,7 +51,7 @@ catalog_list () {   # <session> <kind>
 }
 
 # Element metadata is declared in marked header comments and read without executing
-# the file. Inspection must not run a catalog element: adapters and palettes are
+# the file. Metadata inspection must not run catalog elements: palettes are
 # side-effecting snippets, so sourcing one to read its summary would apply it.
 #
 #   #| summary: Check one or more HTTP endpoints

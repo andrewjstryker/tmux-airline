@@ -8,7 +8,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 _bats_socket="bats-airline-$$-${BATS_TEST_NUMBER}"
 
 setup() {
-  $TMUX -L "$_bats_socket" new-session -d -s bats
+  $TMUX -L "$_bats_socket" -f /dev/null new-session -d -s bats
 }
 
 teardown() {
@@ -68,6 +68,7 @@ load_session() {
   source "$PROJECT_ROOT/lib/catalog.sh"
   source "$PROJECT_ROOT/lib/signal.sh"
   source "$PROJECT_ROOT/lib/runner.sh"
+  source "$PROJECT_ROOT/lib/widget.sh"
   source "$PROJECT_ROOT/lib/layout.sh"
   source "$PROJECT_ROOT/lib/session.sh"
   source "$PROJECT_ROOT/lib/transaction.sh"

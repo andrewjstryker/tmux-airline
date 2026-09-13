@@ -1,33 +1,11 @@
 #!/usr/bin/env bash
-#| summary: Compose only the adapted plugins that are actually installed
-# Adaptive layout (init's default) — probe each adapted plugin via the TPM install
-# convention and compose only what's present, so there are no empty blocks. Degrades to
-# the dependency-free base (session · date) when nothing is installed.
+#| summary: Available native widgets alongside session and date
 airline_layout_configure () {
-  local declare="$1"
-  local right_out="%Y-%m-%d %H:%M"
-  local -a adapters=()
-  source "$AIRLINE_DIR/layouts/helpers/tpm-installed"
-
-  "$declare" segment left-out  "#S"
-
-  installed tmux-cpu && {
-    "$declare" segment right-mid "#{cpu_fg_color}#{cpu_icon}"
-    adapters+=(cpu)
-  }
-  installed tmux-online-status && {
-    "$declare" segment left-mid "#{online_status}"
-    adapters+=(online)
-  }
-  installed tmux-prefix-highlight && {
-    "$declare" segment right-in "#{prefix_highlight}"
-    adapters+=(prefix-highlight)
-  }
-  installed tmux-battery && {
-    right_out="%Y-%m-%d %H:%M #{battery_color_fg}#{battery_icon}"
-    adapters+=(battery)
-  }
-
-  "$declare" segment right-out "$right_out"
-  (( ${#adapters[@]} == 0 )) || "$declare" adapter use "${adapters[@]}"
+  "$1" segment left-out '#S'
+  "$1" widget left-in prefix
+  "$1" widget-optional right-in online
+  "$1" widget-optional right-mid cpu
+  "$1" widget-optional right-out battery
+  "$1" segment right-out ' '
+  "$1" segment right-out '%Y-%m-%d %H:%M'
 }

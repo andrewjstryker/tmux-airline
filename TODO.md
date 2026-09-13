@@ -27,28 +27,65 @@ only prospective work.
 - Move completed entries to `CHANGELOG.md`; do not accumulate checked-off history
   here.
 
-## Widgets
+## Configuration persistence
 
-Adapters do not fit the way TPM status plugins work: a plugin interpolates the global
-status strings once at startup and reads its configuration from global scope, while
-Airline composes session-scoped status strings and recomposes them on every palette
-and layout change. The `bug/layout-rendering` branch makes adapters work and prices
-the mismatch — a post-composition translation collection and a process-level shim
-over plugin option reads.
+- Design a save/load installation story for selected layouts, palettes, and catalog
+  paths. Apply saved configuration during Airline session initialization rather
+  than relying on shell startup files. Discuss this separately from rendering.
 
-- Replace the adapter catalog kind with a widget catalog following the existing
-  catalog contracts, per the [widget catalog proposal](docs/widgets-proposal.md).
-  Follow the [widget contract](docs/widget-contract.md): public session palette
-  options, widget-owned tmux formats, and ordered composition of multiple widgets
-  per segment. Prove runtime, availability, and failure handling through CPU.
-  Record the grammar justification in `CHANGELOG.md` when the change ships.
+## Runner contract
 
-- Implement and validate only the CPU vertical slice against its acceptance gate. Migrate battery, online status, and prefix state only
-  after CPU proves the contract through real tmux rendering.
+The runner model is being settled against the native implementation so both versions
+behave identically; the contract is written up in
+`../tmux-airline-native/docs/runner.md`. Bash already conforms in one respect: `watch`
+ignores a declared classifier or filter and fails without a probe. The rest are
+changes.
 
-- Independently of the widget work, fix `_opt_decode` handling of tmux's
-  single-quoted empty values (`''`), which renders an unwanted block after reload in
-  the dependency-free `default` and `minimal` layouts.
+- Rename the `basic` classifier to `exit-status`. `basic` names nothing; the new name
+  states what the element observes. Public catalog name, so regenerate completions.
+
+- Ship a `none` classifier so a null runner is reachable. Today `run` always injects
+  `basic`, so "Airline manages the lifecycle and nothing else" cannot be expressed.
+  A real catalog entry that obeys the contract and returns no condition beats a CLI
+  sentinel: the default rule stays "`run` uses `exit-status` unless it names a
+  classifier" with no exception, `classifier describe none` explains itself, a
+  composition declares it with no new syntax, and the core keeps exactly one selected
+  classifier instead of growing an absent state. This requires the classifier
+  contract to permit declining a verdict, which is distinct from reporting `ok` and
+  mirrors probes, where reporting nothing is already valid.
+
+  The default applies uniformly: a composition that omits `classify` chooses
+  `exit-status` exactly as a bare invocation does. A declared filter must *not*
+  suppress it, because a filter cannot distinguish an empty stream from a clean silent
+  pass, so the two observations are complementary and land under separate
+  contributors.
+
+  Semantic difference: status without a verdict is a distinct and useful state.
+
+- Stop classifying deliberate termination as failure. `basic` maps any signal to
+  `fail`, so interrupting a long-running command leaves a persistent health claim for
+  a stop the user asked for — the recurring cost of defaulting to a classifier at all.
+  `exit-status` should decline a verdict on `SIGINT` and `SIGTERM` and reserve `fail`
+  for abnormal termination.
+
+- Replace the FIFO-and-`tee` stream split with a spill file. `run` promises to hold
+  the pane's stdout, and `tee` lets a slow filter block the command and stall the
+  user's terminal; dropping bytes instead would let a filter miss a `not ok` and
+  report green. Writing to a file decouples them: no stall, no loss, bounded by disk,
+  with the filter's reports lagging under load.
+
+  Sketch: `cmd > >(tee -a "$spill")` with stderr inherited, and the filter reading
+  `$spill` independently. The filter's stream ends when the command has terminated
+  *and* the reader has reached the final offset — a reader that stops at the first
+  EOF drops the last lines, so this needs its own regression.
+
+- Correct the stderr handling that the current split implies. Without `--merge-stderr`
+  stdout passes through `tee` while stderr goes straight to the pane, so the two can
+  interleave differently than they would natively; with it, stderr is redirected onto
+  the pane's stdout, changing what the pane shows rather than only what the filter
+  sees. Pump each stream to its own pane descriptor and make merging a property of
+  the spill copy alone, as the documentation already describes it. Interleaving
+  within the spill is then at read granularity, which should be stated.
 
 ## Grammar coherence
 
@@ -80,14 +117,6 @@ internal mechanics: no public grammar, option name, or storage format changes.
   `contributor:key` rather than filtering every member. Decided against a `jq`-style
   document store: it would beat the code as written, but loses to the nameref change
   above until well over a hundred members, and costs a runtime dependency.
-
-## Documentation
-
-- Delete the dependency graph in `DESIGN.md`. The file/responsibility table and the
-  layer stack already state the architecture, the layer stack is what the
-  architecture lint enforces, and the graph draws all thirty cross-module edges that
-  the surrounding prose says the design does not prescribe. Keep the render dataflow
-  diagram.
 
 ## Deferred
 

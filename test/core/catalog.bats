@@ -124,7 +124,7 @@ ELEMENT
 
 @test "metadata reads the shipped side-effecting element kinds" {
   # Adapters and palettes cannot be sourced for inspection: doing so applies them.
-  run catalog_metadata "$PROJECT_ROOT/layouts/adapters/cpu" summary
+  run catalog_metadata "$PROJECT_ROOT/layouts/widgets/cpu" summary
   assert_success
   refute_output ""
 
@@ -135,7 +135,7 @@ ELEMENT
 
 @test "all shipped catalog kinds satisfy the same header metadata contract" {
   local directory file
-  for directory in layouts/palettes layouts/adapters layouts/definitions \
+  for directory in layouts/palettes layouts/widgets layouts/definitions \
     runners/classifiers runners/filters runners/probes runners/definitions; do
     for file in "$PROJECT_ROOT/$directory/"*; do
       run catalog_metadata_valid "$file"
@@ -149,7 +149,7 @@ ELEMENT
   for content in '# ordinary comment' '#| summary:' '#| summary:   ' \
     $'#| summary: first\n#| summary: second' '#| bad marker'; do
     printf '%s\n' "$content" > "$BATS_TEST_TMPDIR/user/invalid"
-    for kind in palette adapter layout classifier filter probe runner; do
+    for kind in palette widget layout classifier filter probe runner; do
       catalog_register s1 "$kind" "$BATS_TEST_TMPDIR/user"
       run catalog_describe_resolve s1 "$kind" invalid
       assert_failure

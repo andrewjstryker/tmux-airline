@@ -3,7 +3,7 @@
 # Build-time architecture checks (DESIGN.md §Enforcement).
 #
 # A — only tmux.sh may invoke the tmux command.
-# B — only tmux.sh may construct literal airline option names.
+# B — only tmux.sh may construct literal private airline option names.
 # D — module-private functions stay private and public module calls point to a
 #     lower architectural layer. `command` is the shared boundary helper.
 
@@ -15,7 +15,7 @@ _sources () {
   shopt -s nullglob
   local file
   for file in "$ROOT"/airline.tmux "$ROOT"/*.sh "$ROOT"/lib/*.sh \
-    "$ROOT"/layouts/adapters/* "$ROOT"/layouts/definitions/* \
+    "$ROOT"/layouts/widgets/* "$ROOT"/layouts/definitions/* \
     "$ROOT"/layouts/helpers/* "$ROOT"/runners/classifiers/* \
     "$ROOT"/runners/filters/* "$ROOT"/runners/probes/* \
     "$ROOT"/runners/definitions/*; do
@@ -64,7 +64,7 @@ _check_b () {
   local file hits rc=0
   while IFS= read -r file; do
     [[ "$(basename "$file")" == tmux.sh ]] && continue
-    hits="$(_code_hits '@airline--?[a-z%$]' "$file")"
+    hits="$(_code_hits '@airline--[a-z%$]' "$file")"
     [[ -z "$hits" ]] && continue
     printf '%s\n' "$hits" | while IFS= read -r line; do
       printf 'B: %s:%s\n' "${file#"$ROOT"/}" "$line"
@@ -80,9 +80,10 @@ _module_layer () {   # <module> -> integer; callers must be greater than provide
     collections)         printf 1 ;;
     catalog|render)      printf 2 ;;
     signal)              printf 3 ;;
-    layout|runner)       printf 4 ;;
-    help|session|transaction) printf 5 ;;
-    airline)             printf 6 ;;
+    widget|runner)       printf 4 ;;
+    layout)              printf 5 ;;
+    help|session|transaction) printf 6 ;;
+    airline)             printf 7 ;;
     *)                   return 1 ;;
   esac
 }

@@ -7,11 +7,8 @@ load test_helper/bats-assert/load
 # normal `make test` run. The grep logic lives in test/lint-architecture.sh so
 # `make lint` can call it too; this wraps it with didactic failure messages.
 #
-# The invariants are GREEN. A — every `tmux` call goes through tmux.sh; the plugin
-# adapters (`layouts/adapters/*`) set their options via opt_*, not raw tmux. B — the
-# @airline- option prefix (both tiers) lives only in tmux.sh, behind the pub_* /
-# prv_* accessors and the prv_name builder. These are now regression guards, not a
-# worklist: a red here means a new violation crept in.
+# The guards enforce tmux ownership and private option/module boundaries.
+# Public palette names are intentionally usable by widget format authors.
 
 LINT="$BATS_TEST_DIRNAME/lint-architecture.sh"
 
@@ -30,12 +27,12 @@ LINT="$BATS_TEST_DIRNAME/lint-architecture.sh"
   fi
 }
 
-@test "Invariant B — the @airline- prefix has one source of truth" {
+@test "Invariant B — private @airline-- names have one source of truth" {
   run "$LINT" B
   if [[ "$status" -ne 0 ]]; then
     {
-      echo "An @airline- option name is spelled outside tmux.sh. Address airline"
-      echo "options by BARE key through the tmux.sh accessors — pub_* (public),"
+      echo "A private @airline-- name is spelled outside tmux.sh. Address private"
+      echo "options by BARE key through the tmux.sh accessors:"
       echo "prv_* (private), or prv_name to build a name (DESIGN.md §Enforcement B):"
       echo
       printf '%s\n' "$output" | cut -d: -f2 | sort | uniq -c | sort -rn
@@ -102,4 +99,15 @@ LINT="$BATS_TEST_DIRNAME/lint-architecture.sh"
 
   run env AIRLINE_LINT_ROOT="$fixture" "$LINT" D
   assert_success
+}
+
+@test "Invariant B permits public widget palette references but rejects private names" {
+  local fixture="$BATS_TEST_TMPDIR/b"
+  mkdir -p "$fixture/layouts/widgets"
+  printf "airline_widget_format() { printf '%%s' '#{@airline-primary}'; }\n" > "$fixture/layouts/widgets/sample"
+  run env AIRLINE_LINT_ROOT="$fixture" "$LINT" B
+  assert_success
+  printf "airline_widget_format() { printf '%%s' '#{@airline--config-primary}'; }\n" > "$fixture/layouts/widgets/sample"
+  run env AIRLINE_LINT_ROOT="$fixture" "$LINT" B
+  assert_failure
 }

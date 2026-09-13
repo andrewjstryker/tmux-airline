@@ -5,6 +5,23 @@ implementation worklists used to reach them.
 
 ## Unreleased — 3.0.0
 
+### Widgets and public palette
+
+- Replaced adapter commands and TPM placeholders with a widget catalog. Widgets
+  return native tmux formats; layouts append ordered widget/literal fragments in a
+  segment. This grammar change fixes the mismatch between startup rewriting of
+  global plugin formats and Airline's session-owned rendering.
+- Published effective palette roles as public session options. Palette evaluation
+  uses private staging; global colors seed initialization, while session edits are
+  captured by apply. Palette changes and suspension preserve widget identities.
+- Added Linux CPU counter utilization, battery capacity, ICMP online status, and
+  native prefix/key-table widgets. The optional observation runtime enforces pacing,
+  timeouts, instance locks, guarded publication, and failure/retirement lifecycle.
+- Fixed tmux snapshot decoding of empty single-quoted values and bounded option
+  write batches so empty segments and larger composed formats render correctly.
+- Updated inspection, CLI help, completions, authoring documentation, and tests for
+  the widget contract; removed adapter scripts and TPM capability detection.
+
 ### Development tooling
 
 - Added an isolated performance harness for CLI overhead, fresh/repeated session

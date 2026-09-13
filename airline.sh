@@ -38,6 +38,8 @@ source "$AIRLINE_DIR/lib/catalog.sh"
 source "$AIRLINE_DIR/lib/signal.sh"
 # shellcheck source=lib/runner.sh
 source "$AIRLINE_DIR/lib/runner.sh"
+# shellcheck source=lib/widget.sh
+source "$AIRLINE_DIR/lib/widget.sh"
 # shellcheck source=lib/layout.sh
 source "$AIRLINE_DIR/lib/layout.sh"
 # shellcheck source=lib/session.sh
@@ -48,7 +50,7 @@ source "$AIRLINE_DIR/lib/transaction.sh"
 AIRLINE_HELP_GROUP_NAMES=(Session Layout Runner Signals Diagnostics)
 AIRLINE_HELP_GROUP_NOUNS=(
   'session'
-  'palette segment adapter layout'
+  'palette segment widget layout'
   'classifier filter probe runner'
   'status health problem'
   'transaction'
@@ -142,8 +144,8 @@ cmd_palette () {
   case "$verb" in
     describe)  layout_palette_describe "$@" ;; #| <palette> — describe metadata and evaluated roles without applying
     show)      layout_palette_show "$@" ;;      #| [name|<palette-element>] — show the palette summary or one raw field
-    use)       layout_palette_use "$@" ;;       #| <palette> — load a complete palette and repaint adapters
-    load)      layout_palette_load "$@" ;;      #| <file> — load a complete palette file and repaint adapters
+    use)       layout_palette_use "$@" ;;       #| <palette> — load a complete palette and publish the session palette
+    load)      layout_palette_load "$@" ;;      #| <file> — load a complete palette file and publish the session palette
     list)      layout_palette_list "$@" ;;      #| — list palettes on the search path
     register)  layout_palette_register "$@" ;; #| <dir> — add a palette search directory
     *) command_die "unknown palette command: $verb" ;;
@@ -163,26 +165,25 @@ cmd_segment () {
   # help:end segment
 }
 
-cmd_adapter () {
+cmd_widget () {
   local verb="${1:-}"; shift || true
-  # help:begin adapter
+  # help:begin widget
   case "$verb" in
-    describe)  catalog_describe adapter "$@" ;; #| <adapter> — describe catalog metadata, options, and resolved path
-    use)       layout_adapter_use "$@" ;;       #| <adapter>... — apply palette roles to one or more plugins
-    load)      layout_adapter_load "$@" ;;      #| <file> — apply a one-off adapter script
-    show)      layout_adapter_show "$@" ;;      #| — list applied adapters
-    list)      layout_adapter_list "$@" ;;      #| — list adapters on the search path
-    register)  layout_adapter_register "$@" ;; #| <dir> — add an adapter search directory
-    *) command_die "unknown adapter command: $verb" ;;
+    describe) widget_describe "$@" ;; #| <widget> [<arg>...] — inspect a widget format without observing
+    list) widget_list "$@" ;; #| — list widgets on the search path
+    register) widget_register "$@" ;; #| <dir> — add a widget search directory
+    _cleanup) widget_cleanup "$@" ;;
+    run) widget_run "$@" ;; #| -t <session-target> <instance> — refresh an active widget instance
+    *) command_die "unknown widget command: $verb" ;;
   esac
-  # help:end adapter
+  # help:end widget
 }
 
 cmd_layout () {
   local verb="${1:-}"; shift || true
   # help:begin layout
   case "$verb" in
-    describe)  layout_describe "$@" ;; #| <layout> — describe metadata, evaluated segments, and adapters without applying
+    describe)  layout_describe "$@" ;; #| <layout> — describe metadata, evaluated segments, and widgets without applying
     use)       layout_use "$@" ;;       #| <layout> — apply a named layout definition
     load)      layout_load "$@" ;;      #| <file> — apply and record a one-off layout definition
     show)      layout_show "$@" ;;      #| [name|path] — show active layout provenance
@@ -259,7 +260,8 @@ main () {
     transaction) cmd_transaction "$@" ;;
     palette)  cmd_palette "$@" ;;
     segment)  cmd_segment "$@" ;;
-    adapter)  cmd_adapter "$@" ;;
+    widget)   cmd_widget "$@" ;;
+    adapter) command_die "adapter was removed; place widget catalog entries in layouts" ;;
     layout)   cmd_layout  "$@" ;;
     classifier) cmd_classifier "$@" ;;
     filter)     cmd_filter "$@" ;;

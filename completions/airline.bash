@@ -4,11 +4,11 @@
 # Generated from `airline help`; do not edit.
 _airline_children () {
   case "$1" in
-    '') printf %s version\ help\ session\ palette\ segment\ adapter\ layout\ classifier\ filter\ probe\ runner\ status\ health\ problem\ transaction ;;
+    '') printf %s version\ help\ session\ palette\ segment\ widget\ layout\ classifier\ filter\ probe\ runner\ status\ health\ problem\ transaction ;;
     session) printf %s init\ apply\ show\ suspend\ resume\ toggle ;;
     palette) printf %s describe\ show\ use\ load\ list\ register ;;
     segment) printf %s show ;;
-    adapter) printf %s describe\ use\ load\ show\ list\ register ;;
+    widget) printf %s describe\ list\ register\ run ;;
     layout) printf %s describe\ use\ load\ show\ list\ register ;;
     classifier) printf %s describe\ list\ register ;;
     filter) printf %s describe\ list\ register ;;
@@ -38,12 +38,10 @@ _airline_usage () {
     palette\ list) printf %s '' ;;
     palette\ register) printf %s \<dir\> ;;
     segment\ show) printf %s \[\<segment\>\] ;;
-    adapter\ describe) printf %s \<adapter\> ;;
-    adapter\ use) printf %s \<adapter\>... ;;
-    adapter\ load) printf %s \<file\> ;;
-    adapter\ show) printf %s '' ;;
-    adapter\ list) printf %s '' ;;
-    adapter\ register) printf %s \<dir\> ;;
+    widget\ describe) printf %s \<widget\>\ \[\<arg\>...\] ;;
+    widget\ list) printf %s '' ;;
+    widget\ register) printf %s \<dir\> ;;
+    widget\ run) printf %s -t\ \<session-target\>\ \<instance\> ;;
     layout\ describe) printf %s \<layout\> ;;
     layout\ use) printf %s \<layout\> ;;
     layout\ load) printf %s \<file\> ;;
@@ -82,7 +80,7 @@ _airline_usage () {
     session) printf %s '' ;;
     palette) printf %s '' ;;
     segment) printf %s '' ;;
-    adapter) printf %s '' ;;
+    widget) printf %s '' ;;
     layout) printf %s '' ;;
     classifier) printf %s '' ;;
     filter) printf %s '' ;;
@@ -107,18 +105,16 @@ _airline_description () {
     session\ toggle) printf %s Flip\ active/suspended ;;
     palette\ describe) printf %s Describe\ metadata\ and\ evaluated\ roles\ without\ applying ;;
     palette\ show) printf %s Show\ the\ palette\ summary\ or\ one\ raw\ field ;;
-    palette\ use) printf %s Load\ a\ complete\ palette\ and\ repaint\ adapters ;;
-    palette\ load) printf %s Load\ a\ complete\ palette\ file\ and\ repaint\ adapters ;;
+    palette\ use) printf %s Load\ a\ complete\ palette\ and\ publish\ the\ session\ palette ;;
+    palette\ load) printf %s Load\ a\ complete\ palette\ file\ and\ publish\ the\ session\ palette ;;
     palette\ list) printf %s List\ palettes\ on\ the\ search\ path ;;
     palette\ register) printf %s Add\ a\ palette\ search\ directory ;;
     segment\ show) printf %s Show\ one\ segment\ or\ all\ segments ;;
-    adapter\ describe) printf %s Describe\ catalog\ metadata\,\ options\,\ and\ resolved\ path ;;
-    adapter\ use) printf %s Apply\ palette\ roles\ to\ one\ or\ more\ plugins ;;
-    adapter\ load) printf %s Apply\ a\ one-off\ adapter\ script ;;
-    adapter\ show) printf %s List\ applied\ adapters ;;
-    adapter\ list) printf %s List\ adapters\ on\ the\ search\ path ;;
-    adapter\ register) printf %s Add\ an\ adapter\ search\ directory ;;
-    layout\ describe) printf %s Describe\ metadata\,\ evaluated\ segments\,\ and\ adapters\ without\ applying ;;
+    widget\ describe) printf %s Inspect\ a\ widget\ format\ without\ observing ;;
+    widget\ list) printf %s List\ widgets\ on\ the\ search\ path ;;
+    widget\ register) printf %s Add\ a\ widget\ search\ directory ;;
+    widget\ run) printf %s Refresh\ an\ active\ widget\ instance ;;
+    layout\ describe) printf %s Describe\ metadata\,\ evaluated\ segments\,\ and\ widgets\ without\ applying ;;
     layout\ use) printf %s Apply\ a\ named\ layout\ definition ;;
     layout\ load) printf %s Apply\ and\ record\ a\ one-off\ layout\ definition ;;
     layout\ show) printf %s Show\ active\ layout\ provenance ;;
@@ -156,7 +152,7 @@ _airline_description () {
     session) printf %s session\ commands ;;
     palette) printf %s palette\ commands ;;
     segment) printf %s segment\ commands ;;
-    adapter) printf %s adapter\ commands ;;
+    widget) printf %s widget\ commands ;;
     layout) printf %s layout\ commands ;;
     classifier) printf %s classifier\ commands ;;
     filter) printf %s filter\ commands ;;
@@ -173,7 +169,7 @@ _airline_description () {
 _airline_dynamic () {   # <semantic-type>
   local type="$1" noun line
   case "$type" in
-    palette|adapter|layout|classifier|filter|probe|runner)
+    palette|widget|layout|classifier|filter|probe|runner)
       noun="$type"
       command airline "$noun" list 2>/dev/null || true
       ;;

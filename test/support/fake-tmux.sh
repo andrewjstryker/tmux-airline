@@ -128,9 +128,11 @@ source_file_session () {   # <session> <file>
     eval "t=($trimmed"$'\n'")" 2>/dev/null || continue
     local i=1
     [[ "${t[1]:-}" == -g ]] && i=2
-    name="${t[$i]:-}"; val="${t[$((i+1))]:-}"
+    name="${t[$i]:-}"; name="${name//@airline-/@airline--stage-}"; val="${t[$((i+1))]:-}"
     [[ -n "$name" ]] && _FAKE_OPT["$(_fake_key -t "$session" "$name")"]="$val"
   done < "$file"
 }
 
 # vim: ft=bash
+
+widget_cache_root () { printf '%s/widget-cache' "${BATS_TEST_TMPDIR:-/tmp}"; }

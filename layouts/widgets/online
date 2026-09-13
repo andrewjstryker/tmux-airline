@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+#| summary: Reachability of a chosen host through ICMP
+#| usage: [--host <host>]
+#| interval: 10
+#| timeout: 3
+_online_options() {
+  ONLINE_HOST=1.1.1.1
+  while (( $# )); do
+    # options:begin
+    case "$1" in
+      --host) [[ $# -ge 2 ]] || return 2; ONLINE_HOST="$2"; shift 2 ;; #| <host> — ICMP target, default 1.1.1.1
+      *) return 2 ;;
+    esac
+    # options:end
+  done
+  [[ "$ONLINE_HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.:%_-]*$ ]]
+}
+airline_widget_available() { command -v ping >/dev/null || return 3; }
+airline_widget_format() {
+  _online_options "$@" || return 2
+  local value; value="$(widget_reading)"
+  printf '%s#[fg=#{?#{==:%s,1},#{@airline-primary},#{@airline-stress}}]#{?#{==:%s,1},●,#{?#{==:%s,0},○,—}}' \
+    "$(widget_job)" "$value" "$value" "$value"
+}
+airline_widget_sample() {
+  _online_options "$@" || return 2
+  local rc=0
+  ping -n -c 1 -W 1 "$ONLINE_HOST" >/dev/null 2>&1 || rc=$?
+  case "$rc" in 0) printf '1\n' ;; 1) printf '0\n' ;; *) return "$rc" ;; esac
+}

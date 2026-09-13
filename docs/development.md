@@ -6,7 +6,8 @@ see [DESIGN.md](../DESIGN.md). Focused design documents begin with
 in [CHANGELOG.md](../CHANGELOG.md); prospective consolidation work lives in
 [TODO.md](../TODO.md).
 
-The full suite still exercises real isolated tmux servers:
+The full suite exercises real isolated tmux servers. Tests require Bats, tmux,
+Bash, GNU timeout, flock, and `script` (for the attached-client rendering check):
 
 ```shell
 make test
@@ -14,7 +15,7 @@ make test
 
 For focused development, `make test-fast` runs only static and in-memory behavior
 tests. `make test-layout`, `make test-session`, `make test-signal`,
-`make test-transaction`, and `make test-runner` pair tests
+`make test-transaction`, `make test-widget`, and `make test-runner` pair tests
 with the corresponding `lib/` module; `make test-integration` runs every real-tmux
 suite. Behavior belongs in fast tests; run the real-tmux integration suite before
 merging to main. Run `make lint` for ShellCheck and the architecture guards.

@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-#| summary: Every plugin this project adapts: cpu, battery, online, prefix
-# Assumes the plugins are installed; use `adaptive` to light up only what's present.
+#| summary: Available native widgets alongside session and date
 airline_layout_configure () {
-  local declare="$1"
-  "$declare" adapter use cpu battery online prefix-highlight
-  "$declare" segment left-out  "#S"
-  "$declare" segment left-mid  "#{online_status}"
-  "$declare" segment right-in  "#{prefix_highlight}"
-  "$declare" segment right-mid "#{cpu_fg_color}#{cpu_icon}"
-  "$declare" segment right-out "%Y-%m-%d %H:%M #{battery_color_fg}#{battery_icon}"
+  "$1" segment left-out '#S'
+  "$1" widget left-in prefix
+  "$1" widget-optional right-in online
+  "$1" widget-optional right-mid cpu
+  "$1" widget-optional right-out battery
+  "$1" segment right-out ' '
+  "$1" segment right-out '%Y-%m-%d %H:%M'
 }

@@ -20,9 +20,9 @@ AIRLINE_DIR="$ROOT" "$ROOT/airline.sh" help _grammar > "$WORK/grammar"
 # Every semantic placeholder must be either completable or explicitly opaque.
 while IFS= read -r semantic; do
   case "$semantic" in
-    adapter|classifier|contributor|dir|file|filter|health-key|layout|message|namespace|palette|\
+    widget|classifier|contributor|dir|file|filter|health-key|layout|message|namespace|palette|\
       palette-element|pane-target|probe|problem-key|runner|segment|session-target|target|window-target|\
-      arg|argument|command|noun|verb|seconds) ;;
+      instance|arg|argument|command|noun|verb|seconds) ;;
     *) printf "generate-completions: unknown help placeholder <%s>\n" "$semantic" >&2; exit 1 ;;
   esac
 done < <(grep -oE '<[a-z][a-z-]*>' "$WORK/grammar" | tr -d '<>' | sort -u)
@@ -80,7 +80,7 @@ emit_metadata > "$WORK/metadata"
 _airline_dynamic () {   # <semantic-type>
   local type="$1" noun line
   case "$type" in
-    palette|adapter|layout|classifier|filter|probe|runner)
+    palette|widget|layout|classifier|filter|probe|runner)
       noun="$type"
       command airline "$noun" list 2>/dev/null || true
       ;;
@@ -315,7 +315,7 @@ BASH_COMPLETION
 _airline_zsh_dynamic () {
   local type="$1" noun
   case "$type" in
-    palette|adapter|layout|classifier|filter|probe|runner)
+    palette|widget|layout|classifier|filter|probe|runner)
       command airline "$type" list 2>/dev/null
       ;;
     palette-element) command airline palette show 2>/dev/null | awk '$1 != "name" {print $1}' ;;
@@ -456,7 +456,7 @@ _airline_zsh () {
         return
       fi
       ;;
-    'palette use'|'palette describe') semantic=palette ;; 'adapter use'|'adapter describe') semantic=adapter ;;
+    'palette use'|'palette describe') semantic=palette ;; 'widget describe') semantic=widget ;;
     'layout use'|'layout describe') semantic=layout ;; 'classifier describe') semantic=classifier ;;
     'filter describe') semantic=filter ;; 'probe describe') semantic=probe ;;
     'runner describe') semantic=runner ;;

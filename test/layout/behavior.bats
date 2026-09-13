@@ -31,17 +31,13 @@ teardown() { :; }
   assert_equal "$(cfg_get_session s1 inner-bg)" "$described"
 }
 
-@test "palette load records an absolute path and repaints adapters with evaluated values" {
+@test "palette load records an absolute path and renders evaluated values" {
   local file="$BATS_TEST_TMPDIR/unregistered palette"
   cp "$PROJECT_ROOT/layouts/palettes/default" "$file"
   printf 'set-option @airline-inner-bg colour55\n' >> "$file"
-  coll_set session s1 adapters test load "$BATS_TEST_TMPDIR/adapter"
-  touch "$BATS_TEST_TMPDIR/adapter"
-  _source_adapter() { _ADAPTER_COLOR="$(cfg_get_session "$1" inner-bg)"; }
   layout_palette_load "$file"
   assert_equal "$(prv_get_session s1 palette)" "$file"
   assert_equal "$(cfg_get_session s1 inner-bg)" colour55
-  assert_equal "$_ADAPTER_COLOR" colour55
   assert_equal "$_RENDERED" s1
   run stage_has_session s1 inner-bg
   assert_failure
@@ -85,7 +81,7 @@ teardown() { :; }
 }
 
 @test "palette source failure cleans partial staging without changing the selected palette" {
-  source_file_session() { opt_set_session "$1" @airline-inner-bg colour55; return 1; }
+  source_file_session() { opt_set_session "$1" @airline--stage-inner-bg colour55; return 1; }
   local before rc=0
   before="$(declare -p _FAKE_OPT)"
   layout_palette_describe light > "$BATS_TEST_TMPDIR/description" 2>&1 || rc=$?
@@ -93,39 +89,35 @@ teardown() { :; }
   assert_equal "$(declare -p _FAKE_OPT)" "$before"
 }
 
-@test "layout describe reports segments and ordered adapter declarations without applying" {
+@test "layout describe reports ordered widgets without observing or changing state" {
   mkdir -p "$BATS_TEST_TMPDIR/catalog"
-  printf 'touch "%s"\n' "$BATS_TEST_TMPDIR/adapter-ran" > "$BATS_TEST_TMPDIR/catalog/named"
-  cp "$BATS_TEST_TMPDIR/catalog/named" "$BATS_TEST_TMPDIR/local adapter"
-  catalog_register s1 adapter "$BATS_TEST_TMPDIR/catalog"
+  cat > "$BATS_TEST_TMPDIR/catalog/named" <<'WIDGET'
+#| summary: Fixture
+airline_widget_format() { printf '%s' "$1"; }
+airline_widget_sample() { touch "$BATS_TEST_TMPDIR/observed"; }
+WIDGET
+  catalog_register s1 widget "$BATS_TEST_TMPDIR/catalog"
   catalog_register s1 layout "$BATS_TEST_TMPDIR/catalog"
-  export LAYOUT_TEST_ADAPTER="$BATS_TEST_TMPDIR/local adapter"
   cat > "$BATS_TEST_TMPDIR/catalog/inspect" <<'LAYOUT'
 #| summary: Inspect declarations
 _LAYOUT_TEST_SOURCED=changed
 airline_layout_configure() {
   "$1" segment left-out '#S'
-  "$1" segment right-out ''
-  "$1" adapter use named
-  "$1" adapter load "$LAYOUT_TEST_ADAPTER"
+  "$1" widget left-out named 'one two'
+  "$1" widget left-out named three
 }
 LAYOUT
   cfg_set_session s1 segment-left-out old
   prv_set_session s1 layout old
-  prv_set_session s1 config-error 'retained diagnostic'
   signal_problem_report s1 airline airline-layout fail 'existing failure'
   local before="$(declare -p _FAKE_OPT)" writes="$_FAKE_WRITES"
   layout_describe inspect > "$BATS_TEST_TMPDIR/description"
   assert_equal "$(declare -p _FAKE_OPT)" "$before"
   assert_equal "$_FAKE_WRITES" "$writes"
-  [[ ! -e "$BATS_TEST_TMPDIR/adapter-ran" && -z "${_LAYOUT_TEST_SOURCED:-}" && -z "${_RENDERED:-}" ]]
+  [[ ! -e "$BATS_TEST_TMPDIR/observed" && -z "${_LAYOUT_TEST_SOURCED:-}" && -z "${_RENDERED:-}" ]]
   run cat "$BATS_TEST_TMPDIR/description"
-  assert_success
-  assert_line 'left-out     #S'
-  assert_line 'left-mid     '
-  assert_line 'right-out    '
-  assert_output --partial $'adapters:\nuse          named\nload         '
-  assert_output --partial "$LAYOUT_TEST_ADAPTER"
+  assert_output --partial 'left-out widget named one two'
+  assert_output --partial 'left-out widget named three'
 }
 
 @test "layout describe evaluates current environment and resets previous declarations" {
@@ -142,10 +134,10 @@ LAYOUT
   LAYOUT_TEST_MODE=full layout_describe conditional > "$BATS_TEST_TMPDIR/full"
   LAYOUT_TEST_MODE=empty layout_describe conditional > "$BATS_TEST_TMPDIR/empty"
   run cat "$BATS_TEST_TMPDIR/full"
-  assert_line 'left-out     #S'
+  assert_output --partial '#S'
   run cat "$BATS_TEST_TMPDIR/empty"
   assert_line 'left-out     '
-  assert_output --partial $'adapters:\n  (none)'
+  assert_output --partial 'fragments:'
 }
 
 @test "layout describe rejects invalid declarations and stdout without changing state" {
@@ -156,7 +148,6 @@ LAYOUT
   for body in \
     ':' \
     'airline_layout_configure() { "$1" segment unknown value; }' \
-    'airline_layout_configure() { "$1" segment left-out a; "$1" segment left-out b; }' \
     'airline_layout_configure() { "$1" adapter use missing; }' \
     'airline_layout_configure() { "$1" adapter load /no/such/adapter; }' \
     'airline_layout_configure() { printf unexpected; }' \

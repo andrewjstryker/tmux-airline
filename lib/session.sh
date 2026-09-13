@@ -12,12 +12,13 @@ _session_bootstrap () {   # <session>
   hook_set_airline_window_styles
   signal_health_install_hooks
   signal_problem_install_hooks
+  widget_install_hooks
   # Remove the pre-ledger session projection so it cannot shadow the global
   # badge after upgrading an already initialized tmux server.
   prv_unset_session "$session" "$AIRLINE_KEY_PROBLEM"
 
   catalog_register_builtin "$session" palette "$AIRLINE_DIR/layouts/palettes"
-  catalog_register_builtin "$session" adapter "$AIRLINE_DIR/layouts/adapters"
+  catalog_register_builtin "$session" widget "$AIRLINE_DIR/layouts/widgets"
   catalog_register_builtin "$session" layout  "$AIRLINE_DIR/layouts/definitions"
   catalog_register_builtin "$session" classifier "$AIRLINE_DIR/runners/classifiers"
   catalog_register_builtin "$session" filter "$AIRLINE_DIR/runners/filters"
@@ -54,7 +55,7 @@ _session_configuration_show_unlocked () {   # <session>
   command_show_row cli "$(pub_get cli)"
   command_show_row state "$(_session_state_word "$session")"
   printf '\npaths:\n'
-  for kind in palette adapter layout classifier filter probe runner; do
+  for kind in palette widget layout classifier filter probe runner; do
     command_show_row "$kind" "$(catalog_paths "$session" "$kind")"
   done
   layout_configuration_show "$session"
@@ -79,7 +80,8 @@ session_init () {   # [-t <session-target>]
   else
     session="$(command_current_session)"
   fi
-  _session_bootstrap "$session"
+  _session_bootstrap "$session" || return
+  widget_collect
 }
 
 session_apply () {

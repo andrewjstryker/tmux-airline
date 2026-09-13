@@ -52,70 +52,22 @@ Focused design documents own the detailed semantics of individual domains:
 | `lib/transaction.sh` | Transaction-marker inspection and stale recovery | no |
 | `lib/signal.sh` | Status, health, problems, projection, and observation cleanup | no |
 | `lib/catalog.sh` | Owns registered search paths and bare-name resolution | no |
-| `lib/layout.sh` | Palette, adapter, segment, and executable-layout behavior | no |
+| `lib/layout.sh` | Palette, widget, segment, and executable-layout behavior | no |
 | `lib/runner.sh` | Runner contracts, mechanics, and orchestration | no |
 | `lib/render.sh` | Owns domain vocabulary and composes the bar | no |
 | `lib/collections.sh` | Stores and reduces variable-cardinality state | no |
 | `lib/tmux.sh` | Mechanical operations and airline namespace policy | **yes; sole application caller** |
 | `layouts/palettes/*` | Declarative public color configuration | sourced by `lib/tmux.sh` |
-| `layouts/adapters/*` | Applies palette roles to third-party plugin options | no |
-| `layouts/definitions/*` | Trusted Bash definitions declaring adapters and segments | no |
-| `layouts/helpers/*` | Bash helpers for layout definitions; not public airline API | no |
+| `lib/widget.sh` | Format validation, bounded observation, instance retirement | no |
+| `layouts/widgets/*` | Widget-owned formats and optional observations | no |
+| `layouts/definitions/*` | Trusted Bash definitions declaring widgets and segments | no |
 | `runners/classifiers/*` | Interprets process termination | no |
 | `runners/filters/*` | Interprets a copied command-output stream | no |
 | `runners/probes/*` | Performs one bounded external observation | no |
 | `runners/definitions/*` | Names a run or watch composition | no |
 
-```mermaid
-graph TD
-    TPM([TPM / run-shell]):::ext --> ENTRY[airline.tmux]
-    EXT([users and plugins]):::ext --> SHIM[airline]
-    ENTRY --> CLI[airline.sh]
-    SHIM --> CLI
-    CLI --> CMD[lib/command.sh]
-    CLI --> SESSION[lib/session.sh]
-    CLI --> TX[lib/transaction.sh]
-    CLI --> SIGNAL[lib/signal.sh]
-    CLI --> LAYOUT[lib/layout.sh]
-    CLI --> RUNNER[lib/runner.sh]
-    CLI --> HELP[lib/help.sh]
-    SESSION --> CMD
-    TX --> CMD
-    SIGNAL --> CMD
-    LAYOUT --> CMD
-    RUNNER --> CMD
-    CAT --> CMD
-    HELP --> CMD
-    SESSION --> LAYOUT
-    SESSION --> LOGIC[lib/render.sh]
-    LAYOUT --> LOGIC
-    LAYOUT --> SIGNAL
-    RUNNER --> SIGNAL
-    SESSION --> CAT[lib/catalog.sh]
-    LAYOUT --> CAT
-    RUNNER --> CAT
-    CAT --> COLL
-    COLL[lib/collections.sh]
-    LAYOUT --> COLL
-    RUNNER --> COLL
-    LOGIC --> COLL
-    SIGNAL --> LOGIC
-    SIGNAL --> COLL
-    SESSION --> MECH[lib/tmux.sh]
-    TX --> MECH
-    LAYOUT --> MECH
-    RUNNER --> MECH
-    LOGIC --> MECH
-    SIGNAL --> MECH
-    COLL --> MECH
-    CMD --> MECH
-    CAT -. register/resolve .-> FILES[palettes · adapters · layouts · runner catalogs]
-    MECH ==> TMUX([tmux server]):::ext
 
-    classDef ext fill:#eee,stroke:#999,color:#333,font-style:italic;
-```
-
-The graph describes ordinary in-process calls. A tmux hook or a newly created pane
+A tmux hook or a newly created pane
 starts a fresh Bash process and therefore enters through `airline.sh`, which owns
 library loading, environment setup, argument validation, and dispatch. Most such
 entry points use the public grammar. The result-observation hook instead uses one
@@ -135,7 +87,8 @@ depends only on the mechanical context-resolution boundary.
 ```text
 airline
   session / transaction / help
-  layout / runner
+  layout
+  widget / runner
   signal
   catalog / render
   collections
@@ -145,14 +98,14 @@ airline
 The important boundaries are:
 
 - Within the application layers, only `lib/tmux.sh` invokes the `tmux` binary or spells
-  the `@airline-` and `@airline--` prefixes. The installable PATH shim is an external
+  private `@airline--` names. The installable PATH shim is an external
   consumer: like a plugin, it makes one bootstrap lookup of `@airline-cli`. Higher
   layers address airline options by bare key through `pub_*` and `prv_*` accessors.
 - Layouts are trusted Bash definitions, not loaded application layers. Their required
-  `airline_layout_configure` function declares segments and adapters through a core
+  `airline_layout_configure` function declares segments and widgets through a core
   callback. They never receive a tmux handle, target session, or private-state access.
 - `lib/collections.sh` is an airline abstraction above tmux's flat option store. It is
-  used only for status, health, problem, adapter membership, and search paths.
+  used only for status, health, problem, widget membership, and search paths.
   Fixed segment slots are scalar options, not collections. Its operations take
   `global`, `session`, or `window` as their first argument and the native owner as
   their second; namespace, tuple contents, and reduction order are caller policy.
@@ -167,27 +120,17 @@ The important boundaries are:
   a contributor to provide an advertised capability; it is not window or pane
   attention. Layout and runner report managed problems through that public service.
 - Palette and layout are independent axes: a palette chooses colors; a layout
-  chooses adapters and segment strings. A palette change replays the active adapter
-  declarations against the new colors without rerunning the layout program.
+  chooses ordered widget and literal formats. Palette changes publish live session
+  roles without rerunning layouts or replacing observation baselines.
 
-## Widget and public-palette design direction
+## Widgets and public palette
 
-The widget migration changes the adapter-era rules below. Its target contract is
-[documented separately](docs/widget-contract.md); these changes are not implemented
-yet. Palette roles become stable public session-scoped options (`@airline-primary`,
-`@airline-alert`, and the other existing roles), holding effective display colors.
-Widgets return their own tmux formats and reference those options directly; they
-choose their own presentation without a CLI palette lookup or semantic-span protocol.
-
-A segment holds an ordered sequence of literal and widget formats. Repeated
-placements append within a slot, with independent instance identities per fragment.
-Render supplies segment padding, baseline styling, and outer separators, restoring
-that baseline at fragment boundaries. Palette changes and suspension update the
-public effective colors. Private lifecycle/provenance state remains private.
-
-During migration, replace the global-only palette-input/private-palette assertions
-below consistently; they describe the current adapter implementation, not the target
-widget API. Validate the CPU slice before migrating the other widgets.
+The [widget contract](docs/widget-contract.md) and [runtime guide](docs/widgets.md)
+define the format interface. Palette roles are stable public session options holding
+effective display colors. Widgets choose presentation; render owns geometry and
+restores the segment baseline before and after every fragment. Repeated placements
+append with independent instance identities. Palette changes and suspension update
+the public colors; private lifecycle and provenance state remains private.
 
 ## State model
 
@@ -195,7 +138,7 @@ State falls into four kinds:
 
 | Kind | Written by | Examples |
 |------|------------|----------|
-| **Public options** `@airline-*` | users globally; palette files temporarily per session | configuration input, palette evaluation output, `@airline-cli` |
+| **Public options** `@airline-*` | Airline per session; users for defaults/edits | effective palette, configuration input, `@airline-cli` |
 | **Private options** `@airline--*` | airline at runtime | committed config, signals, badges, selections, paths |
 | **Composed output** | `render` | `status-left/right`, window formats, styles, pane borders, clock color |
 | **Constants** | source code only | glyphs, chevrons, name template, vocabularies, precedence tables |
@@ -205,7 +148,7 @@ The classification is mechanical:
 - A value is an option when something outside `render` writes it. A fixed value
   used only while rendering is a Bash constant.
 - Public versus private is a contract boundary. Users may set `@airline-*` and may
-  read the published `@airline-cli` bootstrap handle; all other airline-managed
+  read the public session palette and `@airline-cli` bootstrap handle; other managed
   state, including the version, is read through the CLI.
 - Private option names, tuple shapes, and other encodings are implementation details
   with no compatibility guarantee. Code that reads or writes `@airline--*` directly
@@ -216,17 +159,16 @@ The classification is mechanical:
 
 ### Scope and inheritance
 
-A user's `set -g @airline-*` supplies durable input. A configuration operation copies
-each explicitly present value over the invoking session's private snapshot. Missing
-global options do not fall back or restore anything: the committed session value stays
-unchanged. Palette files use session-public options only as an evaluation surface;
-airline captures and removes those values before committing them privately. Layout
-declarations are collected in Bash and never enter the public option namespace.
+Global palette options seed new sessions; initialized sessions publish complete local
+palettes. `session apply` captures local edits that differ from the last published
+display colors, preserving the unsuspended restoration values. Global segment inputs
+still patch the invoking session on apply, retiring only the replaced slot's widgets.
+Palette files are evaluated under private staging names; layout declarations are
+collected in Bash before commit.
 
-Named palette and layout operations replace their complete axis and record provenance.
-A manual palette-role patch clears the palette name; a manual segment patch clears the
-layout name. Clearing the global input later does not recover the former named value;
-the user selects that palette or layout again when they want its complete definition.
+Named palette/layout operations replace their complete axis and record provenance.
+Manual role/segment patches clear the corresponding selection. Unsetting a public
+role republishes the saved value on apply; selecting a palette restores its definition.
 
 Private state exists at its native owner:
 
@@ -234,13 +176,13 @@ Private state exists at its native owner:
   both projected badges are window-scoped;
 - the problem ledger, origin claims, and projected problem badge are server-global;
 - palette/layout selections, guards, paths, suspension, committed configuration,
-  and adapter declarations are session-scoped.
+  and widget instances are session-scoped.
 
 ### Apply and live updates
 
-The private session snapshot is the render source of truth. `apply` copies explicit
-global inputs over it, replays active adapters when colors may have changed, and calls
-`render`. It does not rerun a layout script.
+The private session snapshot retains restoration colors and composed formats. Apply
+captures public edits and renders, publishing effective palette values. It does not
+rerun a layout script or sample widgets.
 
 ```mermaid
 graph LR
@@ -282,8 +224,8 @@ runtime contract, repository tag, and release name cannot be supplied independen
 
 The status bar contains three kinds of value:
 
-1. **Baked constants.** Palette colors, chrome, chevrons, styles, and adapter colors
-   change only on `apply`.
+1. **Baked constants.** Palette colors, chrome, chevrons, and styles
+   change when the configuration is rendered. Widgets also read public palette roles live.
 2. **Live selectors.** Tmux `#{?…}` expressions select among baked colors for status,
    health, problem, zoom, copy mode, and activity. The choice is reevaluated by tmux;
    the branch colors were baked by airline.
@@ -308,8 +250,8 @@ There are seven catalog kinds and one plain-option kind:
 | Kind | Representation | Lifecycle |
 |------|----------------|-----------|
 | **palette** | complete targetless tmux config containing public color options | `use` captures one file, replaces colors, records it, then renders |
-| **adapter** | Bash snippet mapping `PALETTE` roles to plugin options | `use` or `load` executes it and records a replayable declaration |
-| **layout** | Bash function declaring adapters and segment slots through a callback | `use` or `load` validates once, replaces that axis, records it, then renders |
+| **widget** | Bash function returning a tmux format | placed through a layout; optional bounded observation job |
+| **layout** | Bash function declaring widget and literal fragments through a callback | `use` or `load` validates once, replaces that axis, records it, then renders |
 | **classifier** | trusted shell mapping process termination to a condition | selected by `runner run` |
 | **filter** | trusted shell interpreting a copied command-output stream | selected by `runner run` |
 | **probe** | trusted shell performing one bounded observation | selected by `runner run` or `watch` |
@@ -319,33 +261,17 @@ There are seven catalog kinds and one plain-option kind:
 All seven catalogs share search paths, marked header metadata, and `describe`.
 See [Catalogs and discovery](docs/catalogs.md) for ownership and the metadata contract.
 
-For palette, adapter, and layout:
+Catalog registration prepends a trusted search path. List reads names and metadata;
+describe performs domain-specific inspection. Palette and layout use/load replace
+an axis, recording the name or absolute path. Widgets activate through layout
+placements, with preserved argument boundaries and per-fragment identities.
 
-- `register <dir>` prepends a trusted search location;
-- `list` lists resolvable bare names, deduplicated in search order;
-- `use <name>` accepts a bare name and resolves it only within registered paths.
-
-`load <path>` is the explicit operation for executable adapter and layout files.
-Both record an absolute path where replay requires one. Adapter declarations are
-replayed on palette changes; layout programs are rerun only by an explicit layout
-operation.
-
-Palette and segment configuration need no `load` verb. A custom palette is registered
-and selected by name; it must define every palette role. One-off manual changes use
-global `@airline-*` options followed by `apply`.
-
-Adapters, layouts, runner primitives, and runner compositions are ordinary trusted
-shell. Registration and explicit adapter/layout loading are the trust boundaries.
-Configuration operations are serialized per session with the `config` transaction
-namespace. A layout must define `airline_layout_configure <declare-function>` and
-remain quiet on stdout. Its callback accepts `segment <slot> <value>`, `adapter use
-<name...>`, and `adapter load <path>`. Unknown and duplicate declarations fail the
-operation; omitted segment slots are empty. Adapters are validated and applied before
-the new private segment, adapter, and provenance state is committed.
-
-A segment may reference a palette foreground role live, but must not set a
-background. Render owns each block background and its matching chevrons; allowing a
-slot to replace the background would break that seam.
+Configuration transactions serialize each session's publication. Layout callbacks
+accept `segment <slot> <format>`, `widget <slot> <name> [arguments...]`, and
+`widget-optional <slot> <name> [arguments...]`. Only optional availability may omit a
+widget; invalid declarations reject the candidate. Repeated slots append. Widgets
+may set local styles; render restores each fragment's baseline before segment padding
+and separators. Format construction does not observe or mutate tmux.
 
 ## CLI contract
 
@@ -384,7 +310,7 @@ airline transaction show
 
 airline palette  describe <palette> | show [name|<palette-element>] | list | use <palette> | register <dir>
 airline segment  show [<segment>]
-airline adapter  describe <adapter> | show | list | use <adapter>... | load <file> | register <dir>
+airline widget   describe <widget> [<arg>...] | list | register <dir> | run -t <session-target> <instance>
 airline layout   describe <layout> | show [name|path] | list | use <layout> | load <file> | register <dir>
 airline classifier describe <classifier> | list | register <dir>
 airline filter     describe <filter> | list | register <dir>
@@ -428,15 +354,14 @@ installs both artifacts with the PATH shim.
 
 - `apply` is whole-system because there is one render over the complete source of
   truth. There are no per-noun apply commands.
-- `set`, `ack`, and `clear` belong to dynamic signal nouns. Static palette elements
-  and segment slots are written with `set -g @airline-*` and removed with `set -gu`.
+- `set`, `ack`, and `clear` belong to dynamic signal nouns. Palette elements are public session options; segment overrides are global inputs.
 - Stateful nouns use bare `show` for a labeled human summary and qualified fields
   for raw scripting reads. Catalog-only classifier, filter, probe, and runner use
   `describe <name>` to describe one resolvable implementation.
 - `palette show name` and `layout show name` expose their active selection. Layout
   also exposes its resolved path.
-- `adapter show` lists the active adapter set, one name per line. `list` is a
-  separate catalog of what could be selected.
+- Widgets appear in `session show`; `widget describe` constructs their formats without
+  observing. `widget list` discovers available definitions.
 - Runner elements compose only for one invocation. A leading bare runner name
   expands a catalogued composition; an option-leading invocation remains ad hoc.
   Named compositions contain monitoring configuration but never the command.
@@ -703,7 +628,7 @@ redraw follows the writes, and the owner lock is released on return or a trapped
 termination. Staged writes are still flushed when a callback returns nonzero: this
 preserves failure diagnostics and cleanup around palette evaluation. In particular,
 `source-file` is an external workspace boundary and trusted executable definitions
-or adapters may have effects that cannot be reversed. Public operations therefore
+or widgets may have effects that cannot be reversed. Public operations therefore
 validate declarations before domain commit and report a failed capability, but do
 not promise to undo every effect of a trusted executable that fails while applying.
 
@@ -728,13 +653,12 @@ origin claims, badge, and transaction marker.
 - **A — tmux ownership:** only `lib/tmux.sh` invokes the `tmux` binary inside the
   application. The external PATH shim, test shims, and inert tmux configuration are
   explicit exclusions.
-- **B — namespace ownership:** only `lib/tmux.sh` constructs literal `@airline-` and
-  `@airline--` names in shell code. Palette and segment configuration spell public
+- **B — namespace ownership:** only `lib/tmux.sh` constructs literal private `@airline--` names in shell code. Palette and segment configuration spell public
   names because those names are the external contract.
 - **D — module boundaries:** a function whose name begins with `_` may be referenced
   only by the module that defines it. Calls to public functions must point to a
   strictly lower architectural layer (apart from shared `command` helpers). The lint
-  derives ownership from function definitions, so palette and adapter helpers may
+  derives ownership from function definitions, so palette and widget helpers may
   retain useful primitive names without filename-prefix ceremony and does not need
   an exact edge allowlist.
 

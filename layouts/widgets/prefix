@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#| summary: Native prefix and key-table state
+#| usage:
+airline_widget_format() {
+  (( $# == 0 )) || return 2
+  printf '%s' '#[fg=#{@airline-active}]#{?client_prefix,PREFIX,#{?#{!=:#{client_key_table},root},#{client_key_table},}}'
+}

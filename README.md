@@ -20,7 +20,7 @@ Features:
 
 ## Installation
 
-This plugin requires **tmux 3.0+** and Bash 4+ (for associative arrays), and
+This plugin requires **tmux 3.0+** and Bash 4.3+ (for associative arrays and namerefs), and
 has no other external dependencies. It is tested on tmux 3.4 and uses tmux
 features available from 3.0 onward.
 
@@ -85,19 +85,19 @@ search path.
 
 ## Core concepts
 
-Choose a palette for colors, a layout for arrangement, and adapters for installed
-plugins. Segments hold the contents of individual blocks:
+Choose a palette for colors, a layout for arrangement, and widgets for live content. Segments hold the contents of individual blocks:
 
 | Concept     | What it is                                                        | You change it with            |
 |-------------|-------------------------------------------------------------------|-------------------------------|
-| **palette** | The colors — a set of named roles (`inner-bg`, `active`, `ok`, …) | `palette use`, or `set -g`    |
+| **palette** | The colors — a set of named roles (`inner-bg`, `active`, `ok`, …) | `palette use`, or session option edits    |
 | **segment** | One powerline block's content, in a fixed slot                    | a layout, or `set -g`         |
-| **layout**  | A composition that fills the slots (and picks adapters)           | `layout use`                  |
-| **adapter** | A bridge that paints a third-party plugin from the palette        | `layout` (or `adapter use`)   |
+| **layout**  | A composition that fills slots with ordered fragments           | `layout use`                  |
+| **widget** | A tmux format with its own presentation and optional observation | a layout |
 
-To change an individual palette role or segment slot, set a global tmux option and run
-`airline session apply`. Airline copies that input into the invoking session's private
-configuration.
+Palette roles are public session options, so widgets can read `#{@airline-primary}`
+directly. Global colors seed new sessions. For an initialized session, edit its
+palette options and run `airline session apply`. Segment overrides remain global
+inputs applied to the invoking session.
 
 The configuration catalogs share a small set of verbs:
 
@@ -105,10 +105,10 @@ The configuration catalogs share a small set of verbs:
 |------|---------|
 | `list` | Discover available names. |
 | `describe <name>` | Inspect an entry before choosing it; palettes and layouts include evaluated contents. |
-| `use <name>` | Apply a named palette, layout, or adapter. |
-| `load <file>` | Apply a palette, layout, or adapter file without registering it. |
+| `use <name>` | Apply a named palette or layout. |
+| `load <file>` | Apply a palette or layout file without registering it. |
 | `register <dir>` | Add a search directory; its names can shadow shipped entries. |
-| `show` | Inspect the active configuration. |
+| `show` | Inspect active palette/layout configuration; widgets appear in `session show`. |
 
 For example:
 
@@ -184,20 +184,18 @@ airline palette use dark
 show` prints the active palette and every role; `airline palette show name`
 prints just the active name (for scripts).
 
-Change individual roles with normal global tmux options, then apply them:
+To override a color, write its session option and apply from that session:
 
-```tmux
-set -g @airline-active "colour214"
-set -g @airline-stress "colour196"
+```shell
+tmux set-option @airline-active colour201
 airline session apply
 ```
 
-`apply` copies each explicitly set global role over the invoking session's private
-snapshot. This is a manual edit, so `palette show name` becomes empty. Unsetting the
-global option later stops it from being copied again; it does not reconstruct an
-older palette value. Use `palette use <name>` again when you want the complete named
-palette back. A named palette selection itself affects only the invoking session and
-does not rewrite the global options.
+This clears the palette name. `palette show` reads the effective public colors,
+including dimmed colors while suspended. Apply manual edits before resuming so
+Airline captures them in its restoration palette. Global colors are initialization
+defaults only; selecting a palette does not change another session or the globals.
+Use `palette use <name>` to restore a complete named palette.
 
 A custom palette is a tmux file containing
 `set-option @airline-<role> <color>` lines; `layouts/palettes/default` is a complete
@@ -252,15 +250,15 @@ airline segment show right-in
 ### Layouts
 
 Usually you don't set slots by hand — a **layout** does. A layout is a script
-that fills the slots (and turns on the matching adapters) as one composition.
-`layout use` runs it once, captures its slots and adapters, and records it. A later
-palette change repaints the recorded adapters without rerunning the layout script;
-plain `apply` copies global edits and renders the committed arrangement:
+that fills slots with literal and widget formats as one composition. `layout use`
+constructs those formats once and records them. Palette changes publish live colors
+without rerunning the layout or replacing widget instances; `apply` captures manual
+edits and renders the committed arrangement:
 
 ```tmux
 airline layout use minimal
 airline layout show          # the active layout + its file
-airline layout describe full # inspect evaluated segments and adapters without applying
+airline layout describe full # inspect evaluated segments and widgets without applying
 airline layout list     # what's on the layout path
 ```
 
@@ -268,27 +266,28 @@ See [layout inspection and application](docs/layouts.md) for evaluation and vali
 
 | Layout     | What it composes                                                    |
 |------------|---------------------------------------------------------------------|
-| `adaptive` | Init's default — probes installed plugins, composes only what's present, degrades to session + date |
+| `adaptive` | Init's default — session, prefix, date, and available CPU/online/battery widgets |
 | `default`  | The standard full arrangement                                       |
-| `full`     | Every slot populated                                                |
+| `full`     | Native widgets with optional hardware/network capabilities                                                |
 | `minimal`  | A pared-down bar                                                    |
 
 Switching layouts starts from a clean slate, so a layout owns exactly the arrangement
 it declares. A layout is trusted Bash with one required function. The function uses
-its callback argument to declare segments and adapters:
+its callback argument to declare segments and widgets:
 
 ```bash
 airline_layout_configure () {
   local declare="$1"
   "$declare" segment left-out '#S'
-  "$declare" segment right-mid '#{cpu_fg_color}#{cpu_icon}'
-  "$declare" adapter use cpu
+  "$declare" widget right-mid cpu
+  "$declare" segment right-mid ' | '
+  "$declare" widget right-mid prefix
 }
 ```
 
 Airline validates the whole declaration before replacing private layout state.
-Unknown or duplicate slots, invalid adapters, nested Airline commands, and stdout
-are errors. Omitted slots are intentionally empty. Put the file in a registered
+Unknown slots, invalid widgets, nested Airline commands, and stdout are errors.
+Repeated declarations append fragments within a slot. Omitted slots are intentionally empty. Put the file in a registered
 layout directory and select it by filename. A failed selection preserves the last
 committed layout and raises the global `airline-layout` problem with that session as
 its origin; a successful layout selection resolves that origin's claim.
@@ -296,33 +295,33 @@ its origin; a successful layout selection resolves that origin's claim.
 The **window-list entry** itself is fixed as `#I:#W` (index:name) and styled by
 the window colors below rather than configured as a segment.
 
-## Plugin adapters
+## Widgets
 
-An **adapter** teaches a third-party plugin to draw in airline's palette. It's a
-small snippet that sets the plugin's own color options from the active palette —
-so tmux-cpu, tmux-battery, and friends match the bar and recolor whenever the
-palette changes. Adapters ship for:
+Widgets return tmux formats and choose their own presentation using public palette
+options. Airline supplies segment geometry and restores baseline styling between
+fragments. No TPM interpolation, color globals, or plugin startup ordering is needed.
 
-| Plugin                 | Adapter          | Slot it usually fills |
-|------------------------|------------------|-----------------------|
-| tmux-online-status     | `online`         | `left-mid`            |
-| tmux-prefix-highlight  | `prefix-highlight` | `right-in`          |
-| tmux-cpu               | `cpu`            | `right-mid`           |
-| tmux-battery           | `battery`        | `right-out`           |
+| Widget | Source |
+|---|---|
+| `cpu` | Linux `/proc/stat` utilization deltas; configurable warning/critical thresholds |
+| `battery` | First Linux system battery's capacity |
+| `online` | ICMP reachability of a chosen host; requires `ping` |
+| `prefix` | Native tmux prefix/key-table state; no subprocess |
 
-The `adaptive` layout detects which of these are installed (by directory name in
-the plugin folder) and wires up only those — an uninstalled plugin leaves its
-slot empty (the block collapses to just its background). airline only sets the
-plugin's colors; the plugin draws its own widget.
+The observation runtime requires `flock` and GNU `timeout`. It bounds execution,
+paces samples, isolates instances, and reports runtime failures through Airline's
+problem service. Palette changes preserve observation baselines.
 
-You rarely call adapters directly — a layout invokes them — but you can:
-`airline adapter use cpu`, `airline adapter show` (what's applied), `airline
-adapter list` (what's on the path).
+Use `airline widget list`, `airline widget describe cpu --warn 60`, and
+`airline widget register <dir>` for discovery. Layout declarations activate widgets.
+The adapter catalog and CLI have been removed; replace adapter/plugin placeholders
+with widget placements. See [widgets](docs/widgets.md) for migration, authoring,
+platform limits, and runtime behavior.
 
 ## Daily use
 
 Inspect the current bar configuration with `airline session show`. After changing
-global color or segment options, run `airline session apply`. Select another palette
+session color or global segment options, run `airline session apply`. Select another palette
 or layout with `use`; each selection applies to the invoking session.
 
 The window name reflects tmux focus and mode state. Zoom, copy, and activity-monitor

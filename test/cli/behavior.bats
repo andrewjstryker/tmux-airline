@@ -27,10 +27,9 @@ palette load /tmp/palette extra
 palette show name extra
 palette list extra
 segment show left-out extra
-adapter load /tmp/adapter extra
-adapter describe cpu extra
-adapter show extra
-adapter list extra
+widget list extra
+widget register /tmp/widget extra
+widget run -t work 1-2-3-4 extra
 layout describe full extra
 layout show name extra
 layout list extra
@@ -70,7 +69,7 @@ CASES
   mkdir -p "$BATS_TEST_TMPDIR/catalog"
   printf '%s\n' '#| summary: Inspection fixture' '#| usage: <target>' \
     '#| interval: 7' 'exit 99' > "$BATS_TEST_TMPDIR/catalog/sample"
-  for noun in adapter classifier filter probe; do
+  for noun in classifier filter probe; do
     main "$noun" register "$BATS_TEST_TMPDIR/catalog"
     run main "$noun" describe sample
     assert_success
@@ -176,7 +175,7 @@ RUNNER
 
 @test "layout catalogs require a bare description name and segment has no catalog" {
   local noun
-  for noun in palette adapter layout; do
+  for noun in palette widget layout; do
     run main "$noun" describe
     assert_failure
     assert_output --partial "$noun describe: need"
@@ -194,12 +193,12 @@ RUNNER
 
 @test "catalog inspection preserves active configuration and performs no writes" {
   main palette register "$PROJECT_ROOT/layouts/palettes"
-  main adapter register "$PROJECT_ROOT/layouts/adapters"
+  main widget register "$PROJECT_ROOT/layouts/widgets"
   main layout register "$PROJECT_ROOT/layouts/definitions"
   prv_set_session s1 palette light
   prv_set_session s1 layout minimal
   local before="$_FAKE_WRITES"
-  main adapter describe cpu >/dev/null
+  main widget describe cpu >/dev/null
   main layout describe full >/dev/null
   assert_equal "$_FAKE_WRITES" "$before"
   assert_equal "$(prv_get_session s1 palette)" light

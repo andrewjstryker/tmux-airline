@@ -1,9 +1,9 @@
-# Widget contract — design for the CPU slice
+# Widget contract
 
-Status: design, not implemented. The agreed boundaries are public session-scoped
-palette options, widget-owned tmux format strings, and ordered composition of multiple
-widgets and literal fragments within a segment. This replaces the earlier semantic-span
-and one-widget-per-slot proposals. Implement CPU first, then validate other widgets.
+Status: implemented. Public session-scoped palette options, widget-owned tmux format
+strings, and ordered composition are the contract. CPU established the runtime slice;
+battery, online, and prefix use it. See [widgets](widgets.md) for authoring, helper
+names, budgets, platform support, and migration examples.
 
 ## Ownership
 
@@ -87,7 +87,8 @@ Airline resolves the definition, sources it in an isolated process, and invokes
 `airline_widget_format [arguments...]`. Arguments retain their boundaries. The
 function receives explicit canonical session and widget-instance identities through
 host-provided context; it must not infer ownership from the current client or pane.
-Exact context variable names are internal until the CPU runtime path is established.
+The context variables are `AIRLINE_WIDGET_SESSION` and `AIRLINE_WIDGET_INSTANCE`.
+Optional observation workers also receive `AIRLINE_WIDGET_STATE_DIR`.
 
 A successful call returns one tmux format string on stdout and status 0. One trailing
 newline is permitted; an empty string is valid. There are no value/pending/unavailable
@@ -106,14 +107,15 @@ it generates. Do not run the format through a shell `eval`.
 A widget may expose a separate cheap availability check. Required unavailability
 rejects a layout; optional unavailability omits only that widget. Unknown catalog
 names, bad arguments, and malformed output remain errors even for optional placement.
-Precise availability function/status conventions should be settled with CPU tests,
-without adding an observation-result protocol to the format interface.
+`airline_widget_available [arguments...]` returns 0 for available and 3 for
+unavailable, without stdout. Format validation runs first; other failures reject
+even optional placements.
 
 ## Multiple widgets per segment
 
 A segment is an ordered list of fragments, each either literal tmux content or the
 format returned by a widget. Repeated declarations append to that slot rather than
-replace it or count as duplicate-slot errors. Proposed layout grammar:
+replace it or count as duplicate-slot errors. Layout grammar:
 
 ```bash
 "$declare" segment left-out '#S'
@@ -146,8 +148,8 @@ identity or measurement baselines.
 
 Tmux evaluates returned formats through its normal rendering path. Native expressions
 need no worker. External observations may use `#()` and Airline CLI/runtime services;
-CLI grammar may evolve to support a widget invocation with explicit session and
-instance context. Do not change tmux syntax or recreate a global startup-interpolation
+`widget run -t <session-target> <instance>` refreshes a registered instance
+with explicit ownership. Do not change tmux syntax or recreate a global startup-interpolation
 pass. Do not add CLI calls for palette lookup.
 
 Use tmux's asynchronous command/output behavior deliberately. A widget interval, if
@@ -155,7 +157,8 @@ supported, must be enforced by its runtime/cache path; a metadata number alone c
 create a per-job timer. Refresh behavior is constrained by status redraw cadence.
 A CPU sampling path must bound work, avoid overlapping observations for one instance,
 and maintain its counter baseline without holding a session configuration lock.
-There is no mandatory host semantic-result cache or host-selected fallback glyph.
+The optional hosted runtime caches a scalar reading; widgets choose their own
+fallback glyphs and keep presentation in the format.
 
 Palette references must be in a format that tmux actually evaluates. Do not assume
 text returned by a `#()` job is recursively expanded as another format. A widget may
@@ -170,9 +173,9 @@ Use Airline's existing CLI/problem services for failed advertised capabilities; 
 not turn stderr into bar content. Core owns failures of runtime mechanisms it hosts,
 such as invocation and timeout enforcement. Widget-owned claims and host-owned claims
 must remain distinct. Removal retires the relevant instance's jobs, state, and claims
-without clearing a neighboring widget's problem. Runtime command spelling, cache
-mechanics, and failure-reporting details are CPU implementation decisions to test
-before extending the widget catalog.
+without clearing a neighboring widget's problem. The optional runtime publishes `?` on failure and reports an instance-specific
+`airline-widget` problem. Its successful next sample recovers that claim; retirement
+closes it after outstanding bounded work ends.
 
 ## Catalog, inspection, and migration
 
@@ -191,9 +194,8 @@ order, source, and arguments instead of flattening them beyond recognition.
 Retire adapter declarations with a clear migration diagnostic. Replace the old
 private-palette/global-input model with the public session palette consistently across
 rendering, palette evaluation, CLI help, and inspection. Update completions and shipped
-layouts when the grammar changes. Keep the existing adapter implementation isolated
-during the CPU experiment; do not import the compatibility machinery from the bug
-branch. The widget/public-palette design is the target, not current released behavior.
+layouts when the grammar changes. The adapter implementation and TPM capability helper are removed. No startup
+compatibility machinery from the bug branch is needed.
 
 ## CPU acceptance gate
 
@@ -219,5 +221,5 @@ Tests must prove:
 6. TPM initialization before or after Airline has no effect on widget resolution;
    Airline leaves unrelated global status/plugin options unchanged.
 
-Only after CPU proves the contract should battery, online status, and prefix state
-migrate. Empty-segment decoding remains an independent rendering fix.
+The CPU gate preceded the other widgets. Empty-segment decoding and bounded tmux
+write batches are mechanical rendering fixes included with this implementation.

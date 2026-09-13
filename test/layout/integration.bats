@@ -85,7 +85,7 @@ write_layout() {   # <path> <configure-body>
   run airline palette show name
   assert_output "$prior_name"
   run sopt @airline-inner-bg
-  assert_output ''
+  assert_output "$prior"
 
   airline palette load "$palette_file"
   run airline palette show name
@@ -93,7 +93,7 @@ write_layout() {   # <path> <configure-body>
   run airline palette show inner-bg
   assert_output colour55
   run sopt @airline-inner-bg
-  assert_output ''
+  assert_output colour55
 
   printf '#| summary: Broken source\nset-option @airline-inner-bg colour99\nnot-a-tmux-command\n' > "$palette_file"
   run airline palette describe 'custom palette'
@@ -101,7 +101,7 @@ write_layout() {   # <path> <configure-body>
   run airline palette show inner-bg
   assert_output colour55
   run sopt @airline-inner-bg
-  assert_output ''
+  assert_output colour55
   run airline problem show airline airline-palette
   assert_output ''
 }
@@ -110,19 +110,19 @@ write_layout() {   # <path> <configure-body>
 
 @test "manual palette and segment inputs preserve clear provenance and show contracts" {
   airline session init
-  $TMUX -L "$_bats_socket" set -g @airline-active colour201
+  $TMUX -L "$_bats_socket" set -t bats @airline-active colour201
   airline session apply
   run sopt window-status-current-format
   assert_output --partial "colour201"   # rendered into the bar (active highlight)
   airline palette use light
-  $TMUX -L "$_bats_socket" set -g @airline-active colour201
+  $TMUX -L "$_bats_socket" set -t bats @airline-active colour201
   airline session apply
   run airline palette show active
   assert_output colour201
   run airline palette show name
   assert_output ""
 
-  $TMUX -L "$_bats_socket" set -gu @airline-active
+  $TMUX -L "$_bats_socket" set -u -t bats @airline-active
   airline session apply
   run airline palette show active
   assert_output colour201
@@ -133,10 +133,10 @@ write_layout() {   # <path> <configure-body>
   run airline palette show name
   assert_output light
   airline palette use light
-  $TMUX -L "$_bats_socket" set -g @airline-active colour201
+  $TMUX -L "$_bats_socket" set -t bats @airline-active colour201
 
   run airline palette show active
-  assert_output colour136             # setting input alone does not mutate the snapshot
+  assert_output colour201             # public reads reflect direct session writes
   run airline palette show name
   assert_output light
 
@@ -159,7 +159,7 @@ write_layout() {   # <path> <configure-body>
   airline session apply
   run airline segment show right-out
   assert_output MANUAL
-  $TMUX -L "$_bats_socket" set -g @airline-active colour201
+  $TMUX -L "$_bats_socket" set -t bats @airline-active colour201
   airline session apply
   run airline palette show active
   assert_output "colour201"
@@ -177,45 +177,27 @@ write_layout() {   # <path> <configure-body>
   assert_failure
 }
 
-# --- adapter (dynamic: apply palette → a plugin's options) ------------------
-
-@test "adapter catalog, application, replay, and layout replacement compose" {
+@test "widget catalog placement and layout replacement compose without plugin configuration" {
   airline session init
-  airline adapter use cpu
-  # behaviour, not content: cpu's low-severity fg == the palette's secondary value
-  run sopt @cpu_low_fg_color
-  assert_output "$(airline palette show secondary)"
-  airline adapter use cpu
-  $TMUX -L "$_bats_socket" set -g @airline-secondary colour99
-  airline adapter use cpu                   # re-run the adapter
-  run sopt @cpu_low_fg_color
-  assert_output "colour99"                   # picked up the new palette value
-  run airline adapter use no-such-adapter
-  assert_failure
-  run airline adapter list
-  assert_line "cpu"                     # one name per line
-  assert_line "battery"
-  assert_line "online"
-  airline adapter use cpu battery       # multi-target
-  run airline adapter show
-  assert_line "cpu"                     # one name per line, script-safe (`for a in $(…)`)
-  assert_line "battery"
-  mkdir -p "$BATS_TMPDIR/adps"
-  write_layout "$BATS_TMPDIR/adps/withcpu" '  "$declare" adapter use cpu'
-  write_layout "$BATS_TMPDIR/adps/bare" '  "$declare" segment left-out "#S"'
-  airline layout register "$BATS_TMPDIR/adps"
+  run airline adapter use cpu
+  assert_failure; assert_output --partial 'adapter was removed'
+  run airline widget list
+  assert_line cpu; assert_line battery; assert_line online; assert_line prefix
+  mkdir -p "$BATS_TEST_TMPDIR/widgets"
+  write_layout "$BATS_TEST_TMPDIR/widgets/withcpu" '  "$declare" widget left-out cpu'
+  write_layout "$BATS_TEST_TMPDIR/widgets/bare" '  "$declare" segment left-out "#S"'
+  airline layout register "$BATS_TEST_TMPDIR/widgets"
   airline layout use withcpu
-  run airline adapter show
-  assert_line "cpu"                     # recorded by the layout
-  airline layout use bare               # applies no adapters → clears the set
-  run airline adapter show
-  assert_output ""                      # nothing active after the switch
+  [[ -n "$(sopt @airline--widgets)" ]]
+  run sopt @cpu_low_fg_color
+  assert_output ''
+  airline layout use bare
+  run sopt @airline--widgets
+  assert_output ''
   run airline palette list
-  assert_line "default"                 # shipped palettes
-  assert_line "dark"
+  assert_line default; assert_line dark
   run airline layout list
-  assert_line "adaptive"                # shipped layouts
-  assert_line "minimal"
+  assert_line adaptive; assert_line minimal
 }
 
 # --- layout (validated Bash declaration, captured into private state) --------
@@ -225,7 +207,7 @@ write_layout() {   # <path> <configure-body>
   $TMUX -L "$_bats_socket" set -t bats @airline-segment-left-out "SCRATCH"
   airline layout use default
   run airline segment show left-out
-  assert_output "#S"                   # composition applied
+  assert_output --partial "#S"                   # composition applied
   run sopt @airline-segment-left-out
   assert_output "SCRATCH"              # layout declarations never use public staging
   run sopt @airline--layout
@@ -234,22 +216,22 @@ write_layout() {   # <path> <configure-body>
   $TMUX -L "$_bats_socket" set -t bats @airline-segment-left-out "SCRATCH"
   airline session apply
   run airline segment show left-out
-  assert_output "#S"                    # private snapshot was not replaced by staging
+  assert_output --partial "#S"                    # private snapshot was not replaced by staging
   mkdir -p "$BATS_TMPDIR/mylayouts"
   write_layout "$BATS_TMPDIR/mylayouts/withcpu" \
-    '  "$declare" adapter use cpu
+    '  "$declare" widget right-mid cpu
   "$declare" segment left-out "#S"'
   airline layout register "$BATS_TMPDIR/mylayouts"
   airline layout use withcpu
-  run sopt @cpu_low_fg_color      # the adapter ran inside the layout
-  assert_output "$(airline palette show secondary)"
+  run airline segment show right-mid
+  assert_output --partial 'CPU'
   mkdir -p "$BATS_TMPDIR/switch"
   write_layout "$BATS_TMPDIR/switch/rich" '  "$declare" segment left-mid "MID"'
   write_layout "$BATS_TMPDIR/switch/lean" '  "$declare" segment left-out "OUT"'
   airline layout register "$BATS_TMPDIR/switch"
   airline layout use rich
   run airline segment show left-mid
-  assert_output "MID"
+  assert_output --partial "MID"
   airline layout use lean                # lean never sets left-mid
   run airline segment show left-mid
   assert_output ""                       # cleared — not stale from rich
@@ -296,8 +278,8 @@ write_layout() {   # <path> <configure-body>
   airline layout register "$BATS_TMPDIR/ambiguous-layout"
 
   run airline layout use duplicate
-  assert_failure
-  assert_output --partial "declared more than once"
+  assert_success
+  [[ "$(airline segment show left-out)" == *ONE*TWO* ]]
   run airline layout use noisy
   assert_failure
   assert_output --partial "wrote to stdout"
@@ -317,41 +299,19 @@ write_layout() {   # <path> <configure-body>
   assert_output ""
 }
 
-@test "one-off layout and adapter loads replay through later palette changes" {
+@test "one-off layouts retain widget formats and identities through palette changes" {
   airline session init
-  write_layout "$BATS_TMPDIR/oneoff" '  "$declare" segment left-out "#S"'
-  airline layout load "$BATS_TMPDIR/oneoff"
-  run sopt @airline--layout
-  assert_output --regexp '^/.*/oneoff$'   # absolute path recorded (not a bare name)
-  # apply consumes globals, not temporary session staging
-  $TMUX -L "$_bats_socket" set -t bats @airline-segment-left-out "SCRATCH"
-  airline session apply
-  run airline segment show left-out
-  assert_output "#S"
+  write_layout "$BATS_TEST_TMPDIR/oneoff" '  "$declare" widget left-out cpu'
+  airline layout load "$BATS_TEST_TMPDIR/oneoff"
+  run airline layout show name
+  assert_output "$BATS_TEST_TMPDIR/oneoff"
+  prior="$(airline segment show left-out)"
+  ids="$(sopt @airline--widgets)"
+  airline palette use light
+  assert_equal "$(airline segment show left-out)" "$prior"
+  assert_equal "$(sopt @airline--widgets)" "$ids"
   run airline layout load /no/such/layout-file
   assert_failure
-  printf 'opt_set_session "$AIRLINE_SESSION" @custom_fg "${PALETTE[active]}"\n' > "$BATS_TMPDIR/oneoff-adapter"
-  airline adapter load "$BATS_TMPDIR/oneoff-adapter"
-  run sopt @custom_fg
-  assert_output "$(airline palette show active)"   # applied the current palette
-  airline palette use light
-  run sopt @custom_fg
-  assert_output "$(airline palette show active)"   # replayed against the new palette
-  mkdir -p "$BATS_TMPDIR/pl"
-  write_layout "$BATS_TMPDIR/pl/withcpu" \
-    '  "$declare" adapter use cpu
-  "$declare" segment left-out "#S"'
-  airline layout register "$BATS_TMPDIR/pl"
-  airline layout use withcpu            # cpu adapter active, coloured by the dark palette
-  airline palette use light             # swap palette → must re-colour cpu
-  run sopt @cpu_low_fg_color
-  assert_output "$(airline palette show secondary)"   # tracks light's secondary now
-  airline adapter use cpu battery       # one call, both applied
-  run sopt @cpu_low_fg_color
-  assert_output "$(airline palette show secondary)"
-  run sopt @batt_color_full_charge
-  assert_success                        # battery adapter ran too (option is set)
-  refute_output ""
 }
 
 # --- session isolation ------------------------------------------------------
@@ -374,13 +334,11 @@ write_layout() {   # <path> <configure-body>
   run airline_session "$one" segment show right-out
   assert_output ""
   run airline_session "$other" segment show right-out
-  assert_output "%Y-%m-%d %H:%M"
+  assert_output --partial "%Y-%m-%d %H:%M"
 
-  airline_session "$one" adapter use cpu
-  airline_session "$other" adapter use cpu
-  run sopt @cpu_low_fg_color -t "$one"
+  run sopt @airline-secondary -t "$one"
   assert_output "colour245"
-  run sopt @cpu_low_fg_color -t "$other"
+  run sopt @airline-secondary -t "$other"
   assert_output "colour246"
 
   airline_session "$other" layout use minimal
@@ -448,36 +406,36 @@ write_layout() {   # <path> <configure-body>
   run airline palette describe dark
   assert_success
   assert_output --partial 'Dark 256-color palette'
-  run airline adapter describe cpu
+  run airline widget describe cpu
   assert_success
-  assert_output --partial "tmux-cpu's colour options"
+  assert_output --partial "CPU utilization from Linux counter deltas"
   run airline layout describe full
   assert_success
-  assert_output --partial 'Every plugin this project adapts'
+  assert_output --partial 'Available native widgets alongside session and date'
 
   run airline session show
   assert_success
   assert_output "$before"
 }
 
-@test "layout describe evaluates native declarations without applying adapters or configuration" {
+@test "layout describe evaluates native declarations without observing widgets or changing configuration" {
   airline session init
   mkdir "$BATS_TEST_TMPDIR/layouts"
-  printf 'touch "%s"\n' "$BATS_TEST_TMPDIR/adapter-ran" > "$BATS_TEST_TMPDIR/layouts/fixture-adapter"
+  printf '#| summary: Fixture widget\nairline_widget_format() { printf fixture; }\nairline_widget_sample() { touch "%s"; }\n' "$BATS_TEST_TMPDIR/adapter-ran" > "$BATS_TEST_TMPDIR/layouts/fixture-adapter"
   cat > "$BATS_TEST_TMPDIR/layouts/inspect" <<'LAYOUT'
 #| summary: Inspect native declarations
 airline_layout_configure() {
   "$1" segment left-out 'candidate #S'
-  "$1" adapter use fixture-adapter
+  "$1" widget left-out fixture-adapter
 }
 LAYOUT
   airline layout register "$BATS_TEST_TMPDIR/layouts"
-  airline adapter register "$BATS_TEST_TMPDIR/layouts"
+  airline widget register "$BATS_TEST_TMPDIR/layouts"
   before="$($TMUX -L "$_bats_socket" show-options -t bats)"
   run airline layout describe inspect
   assert_success
-  assert_line 'left-out     candidate #S'
-  assert_line 'use          fixture-adapter'
+  assert_output --partial 'candidate #S'
+  assert_output --partial 'left-out widget fixture-adapter fixture'
   [[ ! -e "$BATS_TEST_TMPDIR/adapter-ran" ]]
   assert_equal "$($TMUX -L "$_bats_socket" show-options -t bats)" "$before"
   run airline problem show airline airline-layout

@@ -1,8 +1,0 @@
-#| summary: Apply the palette to tmux-online-status's icon options
-# shellcheck shell=bash
-#
-# A bash snippet sourced by `adapter use online` with PALETTE populated.
-# Layout slot content: #{online_status}
-
-opt_set_session "$AIRLINE_SESSION" @online_icon  "#[fg=${PALETTE[primary]}]●"
-opt_set_session "$AIRLINE_SESSION" @offline_icon "#[fg=${PALETTE[stress]}]●"

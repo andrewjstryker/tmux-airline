@@ -25,7 +25,7 @@ setup() {
     transaction_show transaction_clear_stale \
     layout_palette_show layout_palette_list layout_palette_use layout_palette_load layout_palette_describe layout_palette_register \
     layout_segment_show \
-    layout_adapter_show layout_adapter_list layout_adapter_use layout_adapter_load layout_adapter_register \
+    widget_describe widget_list widget_register widget_run \
     layout_show layout_list layout_use layout_load layout_describe layout_register \
     runner_classifier_list runner_classifier_register \
     runner_filter_list runner_filter_register \
@@ -67,7 +67,8 @@ palette load /tmp/palette|layout_palette_load </tmp/palette>
 palette describe light|layout_palette_describe <light>
 layout describe full|layout_describe <full>
 segment show left-out|layout_segment_show <left-out>
-adapter load /tmp/adapter|layout_adapter_load </tmp/adapter>
+widget describe cpu --warn 60|widget_describe <cpu> <--warn> <60>
+widget run -t work 1-2-3-4|widget_run <-t> <work> <1-2-3-4>
 layout register /tmp/layouts|layout_register </tmp/layouts>
 classifier describe basic|catalog_describe <classifier> <basic>
 filter list|runner_filter_list
@@ -128,7 +129,7 @@ CASES
   run main help palette use
   assert_success
   assert_output --partial "Usage: airline palette use <palette>"
-  assert_output --partial "repaint adapters"
+  assert_output --partial "publish the session palette"
 }
 
 @test "help sections are explicit and independent of parser indentation" {

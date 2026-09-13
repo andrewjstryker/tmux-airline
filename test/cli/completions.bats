@@ -26,7 +26,7 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 
   run grep -Fx 'version	@none	Show the Airline release/API version' <<< "$grammar"
   assert_success
-  run grep -Fx 'palette use	<palette>	Load a complete palette and repaint adapters' <<< "$grammar"
+  run grep -Fx 'palette use	<palette>	Load a complete palette and publish the session palette' <<< "$grammar"
   assert_success
   run grep -Fx 'session	@none	session commands' <<< "$grammar"
   assert_success
@@ -77,7 +77,7 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 
 @test "bash completion resolves typed and contextual values through the airline CLI" {
   mkdir -p "$BATS_TEST_TMPDIR/bin"
-  printf '#!/usr/bin/env bash\ncase "$1 $2" in\n  "palette list") printf "dark\\nlight\\n" ;;\n  "adapter list") printf "battery\\ncpu\\n" ;;\n  "problem show") printf "example      build  active  warn\\nexample      deploy  active  fail\\n" ;;\nesac\n' \
+  printf '#!/usr/bin/env bash\ncase "$1 $2" in\n  "palette list") printf "dark\\nlight\\n" ;;\n  "widget list") printf "battery\\ncpu\\n" ;;\n  "problem show") printf "example      build  active  warn\\nexample      deploy  active  fail\\n" ;;\nesac\n' \
     > "$BATS_TEST_TMPDIR/bin/airline"
   printf '#!/usr/bin/env bash\ncase "$1" in\n  list-panes) printf "%%%%2\\n%%%%3\\n" ;;\n  list-sessions) printf "\\$1\\n\\$2\\n" ;;\nesac\n' \
     > "$BATS_TEST_TMPDIR/bin/tmux"
@@ -90,7 +90,7 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   COMP_WORDS=(airline palette use l); COMP_CWORD=3; _airline_completion
   assert_equal "${COMPREPLY[*]}" light
 
-  COMP_WORDS=(airline adapter use battery c); COMP_CWORD=4; _airline_completion
+  COMP_WORDS=(airline widget describe c); COMP_CWORD=3; _airline_completion
   assert_equal "${COMPREPLY[*]}" cpu
 
   COMP_WORDS=(airline problem clear example d); COMP_CWORD=4; _airline_completion
@@ -126,18 +126,18 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 @test "catalog help and bash completions distinguish describe from state show" {
   source "$PROJECT_ROOT/completions/airline.bash"
   local noun
-  for noun in palette adapter layout classifier filter probe runner; do
+  for noun in palette widget layout classifier filter probe runner; do
     run env AIRLINE_DIR="$PROJECT_ROOT" "$PROJECT_ROOT/airline.sh" help "$noun"
     assert_success
     assert_output --partial 'describe'
-    if [[ "$noun" != palette && "$noun" != adapter && "$noun" != layout ]]; then
+    if [[ "$noun" != palette && "$noun" != layout ]]; then
       refute_output --regexp '(^|[[:space:]])show([[:space:]]|$)'
     fi
 
     COMP_WORDS=(airline "$noun" de); COMP_CWORD=2; _airline_completion
     assert_equal "${COMPREPLY[*]}" describe
     COMP_WORDS=(airline "$noun" sh); COMP_CWORD=2; _airline_completion || true
-    if [[ "$noun" == palette || "$noun" == adapter || "$noun" == layout ]]; then
+    if [[ "$noun" == palette || "$noun" == layout ]]; then
       assert_equal "${COMPREPLY[*]}" show
     else
       assert_equal "${COMPREPLY[*]}" ''
@@ -155,7 +155,7 @@ CLI
   PATH="$BATS_TEST_TMPDIR/bin:$PATH"
   source "$PROJECT_ROOT/completions/airline.bash"
   local noun
-  for noun in palette adapter layout classifier filter probe runner; do
+  for noun in palette widget layout classifier filter probe runner; do
     COMP_WORDS=(airline "$noun" describe "$noun-"); COMP_CWORD=3; _airline_completion
     assert_equal "${COMPREPLY[*]}" "$noun-sample"
   done
@@ -170,7 +170,7 @@ CLI
 CLI
   chmod +x "$BATS_TEST_TMPDIR/bin/airline"
   local noun
-  for noun in palette adapter layout classifier filter probe runner; do
+  for noun in palette widget layout classifier filter probe runner; do
     run env PATH="$BATS_TEST_TMPDIR/bin:$PATH" zsh -f -c '
       compdef() { :; }
       compadd() { print -rl -- "$@"; }

@@ -123,7 +123,7 @@ setup() {
 
 @test "apply renders current inputs and show reports the resulting configuration" {
   airline session init
-  $TMUX -L "$_bats_socket" set -g @airline-active "colour201"
+  $TMUX -L "$_bats_socket" set -t bats @airline-active "colour201"
   airline session apply
   run sopt window-status-current-format
   assert_output --partial "colour201"

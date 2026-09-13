@@ -495,3 +495,31 @@ wait_for_file () {
   run tmux show-hooks -g pane-focus-out
   assert_output --partial "pane-focus-out[90]"
 }
+
+@test "snapshot reload preserves an explicitly empty session option" {
+  load_tmux
+  session="$(current_session)"
+  opt_set_global @airline-empty inherited
+  opt_set_session "$session" @airline-empty ''
+  opt_set_session "$session" @airline-quoted-empty "''"
+  read_empty() {
+    opt_has_session "$1" @airline-empty || return 1
+    [[ -z "$(opt_get_session "$1" @airline-empty)" ]] || return
+    [[ "$(opt_get_session "$1" @airline-quoted-empty)" == "''" ]]
+  }
+  with_session_transaction "$session" config read_empty "$session"
+}
+
+@test "large configuration transactions flush bounded batches without losing values" {
+  load_tmux
+  session="$(current_session)"
+  printf -v value '%0500d' 1
+  write_large() {
+    local i
+    for i in {1..60}; do opt_set_session "$1" "@airline-batch-$i" "$2" || return; done
+  }
+  with_session_transaction "$session" config write_large "$session" "$value"
+  for i in 1 30 60; do
+    assert_equal "$(opt_get_session "$session" "@airline-batch-$i")" "$value"
+  done
+}

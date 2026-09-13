@@ -1,14 +1,14 @@
 # Proposal: replace adapters with a widget catalog
 
-Status: a design direction, not an implemented contract. It supersedes the adapter
-catalog kind described in [catalogs and discovery](catalogs.md) and
-[layout inspection and application](layouts.md). Nothing here is released behavior.
+Status: historical rationale for the implemented widget contract. The current API is documented in
+[catalogs and discovery](catalogs.md) and [layout inspection](layouts.md).
+The discussion below records the architectural motivation.
 
 The [widget contract](widget-contract.md) records the current design: public
 session-scoped palette options, widget-owned tmux format strings, and ordered
 composition of multiple widgets within a segment. It replaces the earlier
-semantic-output and one-widget-per-slot drafts. The remaining runtime details are
-to be proven through CPU before migrating other widgets.
+semantic-output and one-widget-per-slot drafts. CPU established the runtime contract; battery, online, and prefix now use it.
+See [widgets](widgets.md) for the implemented API and runtime.
 
 ## The mismatch
 

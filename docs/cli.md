@@ -96,15 +96,15 @@ disappearing. See [runner element contracts](runner-elements.md).
 
 ## Catalog inspection and active state
 
-Every catalog kind accepts `describe <name>`: palette, adapter, layout, classifier,
+Every catalog kind accepts `describe <name>`: palette, widget, layout, classifier,
 filter, probe, and runner. The name is required and must be a bare catalog name.
-`runner describe <name> [<arg>...]` also accepts arguments for resolving composition
-defaults. Segment has no catalog and accepts neither `describe` nor `list`.
+`runner describe <name> [<arg>...]` accepts composition arguments;
+`widget describe <name> [<arg>...]` accepts format arguments. Segment has no catalog and accepts neither `describe` nor `list`.
 
 `show` reports live tmux state, with optional narrowing such as `palette show name`.
 Runner-domain catalogs have no installed state and do not accept `show`.
 
-`layout describe` evaluates segment and adapter declarations without applying them;
+`layout describe` evaluates segment and widget declarations without applying them;
 `layout show` still reports the active selection. See [layouts](layouts.md).
 
 `palette describe` also evaluates the file's roles without selecting it. `palette

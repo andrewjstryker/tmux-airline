@@ -1,6 +1,6 @@
 # Catalogs and discovery
 
-Airline has seven catalog kinds: palette, adapter, layout, classifier, filter, probe,
+Airline has seven catalog kinds: palette, widget, layout, classifier, filter, probe,
 and runner. Each has a session-owned, ordered search path. `register <dir>` prepends
 an existing directory; shipped directories provide the fallback. Bare names resolve
 to the first matching file, and `list` returns each available name once without
@@ -8,7 +8,7 @@ executing files. Segment is active configuration, not a catalog kind.
 
 Every catalog supports `describe <name>`. Catalog owns name resolution, common
 metadata validation, and rendering of name, summary, declared usage, and resolved
-path. Palette, adapter, and layout retain `show` for their active state. Classifiers,
+path. Palette and layout retain `show` for their active state. Classifiers,
 filters, probes, and runners are selected per invocation and have no installed state
 for `show` to inspect.
 
@@ -66,7 +66,7 @@ without a region have no option section.
 
 ## Description and evaluation
 
-Adapter, classifier, and filter descriptions currently read only
+Classifier and filter descriptions currently read only
 metadata. Probe descriptions add the validated interval. These operations never
 execute the inspected file or apply configuration. Metadata describes the entry;
 it does not prove that the entry can execute successfully.
@@ -83,11 +83,13 @@ Palette descriptions evaluate all required roles through the same session stagin
 path as `palette use` and `palette load`, without committing the candidate palette.
 See [palette selection and inspection](palettes.md) for staging and trust boundaries.
 
-Layout descriptions evaluate segment and adapter declarations through the same
-declaration evaluator as `layout use` and `layout load`. They do not apply adapters
-or commit configuration. See [layout inspection and application](layouts.md).
+Layout descriptions evaluate segment and widget declarations through the same
+declaration evaluator as `layout use` and `layout load`. They do not sample widgets or commit configuration. See [layout inspection and application](layouts.md).
 
 Derived fields belong to the owning domain, not in duplicated header declarations.
+Widget descriptions construct formats and check availability without running observations.
+See [widgets](widgets.md) for the format and optional sampling contracts.
+
 Catalog has no evaluator registry
 and does not depend on layout or runner.
 

@@ -75,7 +75,9 @@ _opt_key () {   # <destination-variable> <scope> <owner> <name>
 
 _opt_decode () {   # <tmux-serialized-value> <destination-variable>
   local encoded="$1"; local -n destination="$2"
-  if [[ ${#encoded} -ge 2 && "${encoded:0:1}" == '"' && "${encoded: -1}" == '"' ]]; then
+  if [[ "$encoded" == "''" ]]; then
+    encoded=""
+  elif [[ ${#encoded} -ge 2 && "${encoded:0:1}" == '"' && "${encoded: -1}" == '"' ]]; then
     encoded="${encoded:1:${#encoded}-2}"
   fi
   printf -v destination '%b' "$encoded"
@@ -228,7 +230,8 @@ _opt_escape_sequence_arg () {   # <value> <destination-variable>
 
 _opt_workspace_flush () {
   local key scope owner name value changed="" redraw="$_AIRLINE_OPT_REDRAW"
-  local -a commands=() scope_args=()
+  local -a commands=() scope_args=() change=()
+  local batch_bytes=0 change_bytes arg LC_ALL=C
   [[ -n "$_AIRLINE_OPT_WORKSPACE" ]] || return 0
   for key in "${_AIRLINE_OPT_DIRTY_ORDER[@]}"; do
     if [[ -n "${_AIRLINE_OPT_PRESENT[$key]:-}" ]]; then
@@ -242,13 +245,20 @@ _opt_workspace_flush () {
     scope="${_AIRLINE_OPT_SCOPE[$key]}"; owner="${_AIRLINE_OPT_OWNER[$key]}"
     name="${_AIRLINE_OPT_NAME[$key]}"
     _scope_option_args scope_args "$scope" "$owner" || return
-    [[ ${#commands[@]} -eq 0 ]] || commands+=(';')
     if [[ -n "${_AIRLINE_OPT_PRESENT[$key]:-}" ]]; then
       _opt_escape_sequence_arg "${_AIRLINE_OPT_VALUE[$key]}" value
-      commands+=(set-option -q "${scope_args[@]}" "$name" "$value")
+      change=(set-option -q "${scope_args[@]}" "$name" "$value")
     else
-      commands+=(set-option -qu "${scope_args[@]}" "$name")
+      change=(set-option -qu "${scope_args[@]}" "$name")
     fi
+    change_bytes=0
+    for arg in "${change[@]}"; do ((change_bytes+=${#arg}+1)); done
+    if ((batch_bytes+change_bytes+2>8192 && ${#commands[@]}>0)); then
+      tmux "${commands[@]}" || return 1
+      commands=(); batch_bytes=0
+    fi
+    if ((${#commands[@]}>0)); then commands+=(';'); ((batch_bytes+=2)); fi
+    commands+=("${change[@]}"); ((batch_bytes+=change_bytes))
     changed=1
   done
   if [[ -n "$changed" ]]; then
@@ -341,14 +351,13 @@ pub_set   () { opt_set_global   "@airline-$1" "$2"; }   # <key> <value>
 pub_has   () { opt_has_global   "@airline-$1"; }        # <key>
 
 # Palette files retain their native tmux surface. Airline evaluates one in the
-# target session, captures its public options, then removes them.
+# target session under private staging names, leaving public display roles intact.
 # These exact-scope accessors are staging mechanics, never durable configuration.
-stage_get_session   () { opt_get_session   "$1" "@airline-$2"; }       # <session> <key>
-stage_has_session   () { opt_has_session   "$1" "@airline-$2"; }       # <session> <key>
-stage_unset_session () { opt_unset_session "$1" "@airline-$2"; }       # <session> <key>
+stage_get_session   () { opt_get_session   "$1" "@airline--stage-$2"; } # <session> <key>
+stage_has_session   () { opt_has_session   "$1" "@airline--stage-$2"; } # <session> <key>
+stage_unset_session () { opt_unset_session "$1" "@airline--stage-$2"; } # <session> <key>
 
-# Committed configuration is private and session-owned. Render, adapters, and the
-# CLI read this snapshot; only airline writes it.
+# Restoration colors and composed formats are private session configuration.
 cfg_get_session   () { prv_get_session   "$1" "config-$2"; }       # <session> <key>
 cfg_set_session   () { prv_set_session   "$1" "config-$2" "$3"; } # <session> <key> <value>
 
@@ -405,9 +414,15 @@ redraw_all () {
 
 # Load a palette file into one explicit session evaluation surface.
 source_file_session () {
-  _opt_workspace_flush || return
-  tmux source-file -t "$1" "$2" || return
-  _opt_workspace_reload
+  local file text rc=0
+  file="$(mktemp)" || return
+  text="$(cat "$2")" || { rm -f "$file"; return 1; }
+  printf '%s\n' "${text//@airline-/@airline--stage-}" > "$file"
+  _opt_workspace_flush || { rm -f "$file"; return 1; }
+  tmux source-file -t "$1" "$file" || rc=$?
+  rm -f "$file"
+  _opt_workspace_reload || return
+  return "$rc"
 }
 
 # The id (@n) of the window the caller is acting in — lets window-scoped callers
@@ -484,7 +499,7 @@ hook_set   () { tmux set-hook -g  "$1" "$2"; }
 # the hook's native session/window context before storing concrete option values.
 hook_set_airline_window_styles () {
   tmux set-hook -g "after-new-window[90]" \
-    "set-option -qFw pane-border-style 'fg=#{@airline--config-primary}' ; set-option -qFw pane-active-border-style 'fg=#{@airline--config-active}' ; set-option -qFw clock-mode-colour '#{@airline--config-special}'"
+    "set-option -qFw pane-border-style 'fg=#{@airline-primary}' ; set-option -qFw pane-active-border-style 'fg=#{@airline-active}' ; set-option -qFw clock-mode-colour '#{@airline-special}'"
 }
 
 # Run one callback while holding a lock scoped to an airline state owner and
@@ -641,3 +656,14 @@ transaction_clear () {   # <global|session|window> <owner> <namespace>
 }
 
 # vim: ft=bash
+
+pub_name () { printf '@airline-%s' "$1"; }
+pub_get_session () { opt_get_session "$1" "$(pub_name "$2")"; }
+pub_has_session () { opt_has_session "$1" "$(pub_name "$2")"; }
+pub_set_session () { opt_set_session "$1" "$(pub_name "$2")" "$3"; }
+widget_cache_root () {
+  local socket digest
+  socket="$(tmux display-message -p '#{socket_path}')" || return
+  digest="$(printf '%s' "$socket" | cksum)"; digest="${digest%% *}"
+  printf '%s/airline-widgets-%s' "${socket%/*}" "$digest"
+}
