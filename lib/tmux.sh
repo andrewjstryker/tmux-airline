@@ -10,7 +10,7 @@
 #   * Callers never pass tmux flags. Generic option access takes a scope value;
 #     fixed-policy scalar accessors may encode ownership in names such as
 #     opt_set_window. Arguments are fixed and positional.
-#   * Getters echo to stdout (empty when unset); predicates use exit status;
+#   * Getters echo to stdout or accept a destination (empty when unset); predicates use exit status;
 #     mutators are silent.
 #   * A few private cores (_opt_*) make the actual tmux call; the public
 #     functions are thin wrappers that bake in scope.
@@ -57,6 +57,7 @@ _AIRLINE_OPT_WORKSPACE=""
 _AIRLINE_OPT_OWNER_SCOPE=""
 _AIRLINE_OPT_WORKSPACE_OWNER=""
 _AIRLINE_OPT_REDRAW=""
+declare -gA _AIRLINE_OPT_RAW=()
 declare -gA _AIRLINE_OPT_VALUE=()
 declare -gA _AIRLINE_OPT_PRESENT=()
 declare -gA _AIRLINE_OPT_BASE_VALUE=()
@@ -80,24 +81,35 @@ _opt_decode () {   # <tmux-serialized-value> <destination-variable>
   elif [[ ${#encoded} -ge 2 && "${encoded:0:1}" == '"' && "${encoded: -1}" == '"' ]]; then
     encoded="${encoded:1:${#encoded}-2}"
   fi
+  # tmux quotes embedded double quotes; Bash printf %b leaves that escape intact.
+  encoded="${encoded//\\\"/\"}"
   printf -v destination '%b' "$encoded"
 }
 
 _opt_snapshot_line () {   # <scope> <owner> <serialized-option-line>
-  local scope="$1" owner="$2" line="$3" name encoded value key
+  local scope="$1" owner="$2" line="$3" name encoded key
   [[ -n "$line" ]] || return 0
   name="${line%% *}"
   encoded="${line#"$name"}"
   encoded="${encoded# }"
-  _opt_decode "$encoded" value
   _opt_key key "$scope" "$owner" "$name"
+  _AIRLINE_OPT_RAW["$key"]="$encoded"
+}
+
+# Keep the complete snapshot, but decode and populate diff bookkeeping only for
+# options actually accessed. Native tmux options retain exact-scope semantics.
+_opt_materialize () {   # <key> <scope> <owner> <name>
+  local key="$1" value
+  [[ -n "${_AIRLINE_OPT_RAW[$key]+present}" ]] || return 0
+  _opt_decode "${_AIRLINE_OPT_RAW[$key]}" value
+  unset '_AIRLINE_OPT_RAW[$key]'
   _AIRLINE_OPT_VALUE["$key"]="$value"
   _AIRLINE_OPT_PRESENT["$key"]=1
   _AIRLINE_OPT_BASE_VALUE["$key"]="$value"
   _AIRLINE_OPT_BASE_PRESENT["$key"]=1
-  _AIRLINE_OPT_SCOPE["$key"]="$scope"
-  _AIRLINE_OPT_OWNER["$key"]="$owner"
-  _AIRLINE_OPT_NAME["$key"]="$name"
+  _AIRLINE_OPT_SCOPE["$key"]="$2"
+  _AIRLINE_OPT_OWNER["$key"]="$3"
+  _AIRLINE_OPT_NAME["$key"]="$4"
 }
 
 _opt_snapshot () {   # <global|session|window> <owner>
@@ -127,7 +139,7 @@ _opt_snapshot_if_needed () {   # <global|session|window> <owner>
 _opt_workspace_begin () {   # <global|session|window> <owner>
   local scope="$1" owner="$2"
   [[ -z "$_AIRLINE_OPT_WORKSPACE" ]] || return 2
-  _AIRLINE_OPT_VALUE=(); _AIRLINE_OPT_PRESENT=()
+  _AIRLINE_OPT_RAW=(); _AIRLINE_OPT_VALUE=(); _AIRLINE_OPT_PRESENT=()
   _AIRLINE_OPT_BASE_VALUE=(); _AIRLINE_OPT_BASE_PRESENT=()
   _AIRLINE_OPT_SCOPE=(); _AIRLINE_OPT_OWNER=(); _AIRLINE_OPT_NAME=()
   _AIRLINE_OPT_DIRTY=(); _AIRLINE_OPT_LOADED=(); _AIRLINE_OPT_DIRTY_ORDER=()
@@ -142,7 +154,7 @@ _opt_workspace_begin () {   # <global|session|window> <owner>
 _opt_workspace_end () {
   _AIRLINE_OPT_WORKSPACE=""; _AIRLINE_OPT_REDRAW=""
   _AIRLINE_OPT_OWNER_SCOPE=""; _AIRLINE_OPT_WORKSPACE_OWNER=""
-  _AIRLINE_OPT_VALUE=(); _AIRLINE_OPT_PRESENT=()
+  _AIRLINE_OPT_RAW=(); _AIRLINE_OPT_VALUE=(); _AIRLINE_OPT_PRESENT=()
   _AIRLINE_OPT_BASE_VALUE=(); _AIRLINE_OPT_BASE_PRESENT=()
   _AIRLINE_OPT_SCOPE=(); _AIRLINE_OPT_OWNER=(); _AIRLINE_OPT_NAME=()
   _AIRLINE_OPT_DIRTY=(); _AIRLINE_OPT_LOADED=(); _AIRLINE_OPT_DIRTY_ORDER=()
@@ -155,17 +167,34 @@ _opt_workspace_reload () {
   _opt_workspace_begin "$scope" "$owner"
 }
 
-_opt_read () {   # <global|session|window> <owner> <name>
-  local scope="$1" owner="$2" name="$3" key
-  local -a scope_args
-  _scope_option_args scope_args "$scope" "$owner" || return
+# Destination readers reserve the _airline_read_* local prefix. Keeping scratch
+# names distinct from caller variables (value, key, scope, etc.) avoids nameref
+# shadowing under Bash's dynamic scope.
+_opt_read_into () {   # <destination> <scope> <owner> <name>
+  local -n _airline_read_dest="$1"
+  local _airline_read_key
+  local -a _airline_read_args
+  _scope_option_args _airline_read_args "$2" "$3" || return
   if [[ -n "$_AIRLINE_OPT_WORKSPACE" ]]; then
-    _opt_snapshot_if_needed "$scope" "$owner" || return
-    _opt_key key "$scope" "$owner" "$name"
-    [[ -n "${_AIRLINE_OPT_PRESENT[$key]:-}" ]] && printf '%s' "${_AIRLINE_OPT_VALUE[$key]}"
+    _opt_snapshot_if_needed "$2" "$3" || return
+    _opt_key _airline_read_key "$2" "$3" "$4"
+    _opt_materialize "$_airline_read_key" "$2" "$3" "$4"
+    _airline_read_dest="${_AIRLINE_OPT_VALUE[$_airline_read_key]-}"
     return 0
   fi
-  _opt_show "${scope_args[@]}" "$name"
+  _airline_read_dest="$(_opt_show "${_airline_read_args[@]}" "$4")"
+}
+
+_opt_read () {   # <scope> <owner> <name> -> stdout
+  if [[ -z "$_AIRLINE_OPT_WORKSPACE" ]]; then
+    local -a scope_args
+    _scope_option_args scope_args "$1" "$2" || return
+    _opt_show "${scope_args[@]}" "$3"
+    return
+  fi
+  local _airline_read_output
+  _opt_read_into _airline_read_output "$@" || return
+  printf '%s' "$_airline_read_output"
 }
 
 _opt_present () {   # <global|session|window> <owner> <name>
@@ -175,6 +204,7 @@ _opt_present () {   # <global|session|window> <owner> <name>
   if [[ -n "$_AIRLINE_OPT_WORKSPACE" ]]; then
     _opt_snapshot_if_needed "$scope" "$owner" || return
     _opt_key key "$scope" "$owner" "$name"
+    _opt_materialize "$key" "$scope" "$owner" "$name"
     [[ -n "${_AIRLINE_OPT_PRESENT[$key]:-}" ]]
     return
   fi
@@ -196,6 +226,8 @@ _opt_store () {   # <global|session|window> <owner> <name> <value>
     return
   fi
   _opt_key key "$scope" "$owner" "$name"
+  _opt_snapshot_if_needed "$scope" "$owner" || return
+  _opt_materialize "$key" "$scope" "$owner" "$name"
   _AIRLINE_OPT_VALUE["$key"]="$value"
   _AIRLINE_OPT_PRESENT["$key"]=1
   _AIRLINE_OPT_SCOPE["$key"]="$scope"
@@ -213,6 +245,8 @@ _opt_remove () {   # <global|session|window> <owner> <name>
     return
   fi
   _opt_key key "$scope" "$owner" "$name"
+  _opt_snapshot_if_needed "$scope" "$owner" || return
+  _opt_materialize "$key" "$scope" "$owner" "$name"
   unset '_AIRLINE_OPT_VALUE[$key]' '_AIRLINE_OPT_PRESENT[$key]'
   _AIRLINE_OPT_SCOPE["$key"]="$scope"
   _AIRLINE_OPT_OWNER["$key"]="$owner"
@@ -226,6 +260,7 @@ _opt_escape_sequence_arg () {   # <value> <destination-variable>
   # tmux treats an individual or trailing semicolon as a command separator even
   # after shell argv parsing. One additional backslash makes it data.
   [[ "$destination" == *';' ]] && destination="${destination%;}\\;"
+  return 0
 }
 
 _opt_workspace_flush () {
@@ -278,6 +313,7 @@ _opt_workspace_flush () {
 }
 
 # --- generic scope-first access (used by collections) ---
+opt_get_into     () { _opt_read_into "$@"; } # <destination> <scope> <owner> <name>
 opt_get          () { _opt_read   "$@"; } # <scope> <owner> <name>
 opt_set          () { _opt_store  "$@"; } # <scope> <owner> <name> <value>
 opt_unset        () { _opt_remove "$@"; } # <scope> <owner> <name>
@@ -313,10 +349,7 @@ _opt_setif () {   # <destination> <global|session|window|pane> <owner> <name> <v
   local -n destination="$1"
   local scope="$2" owner="$3" name="$4" value="$5" current
   destination=""
-  # Load a non-owner table in this shell before the getter's command substitution;
-  # otherwise Bash would discard the lazy snapshot with that subshell.
-  _opt_snapshot_if_needed "$scope" "$owner" || return
-  current="$(_opt_read "$scope" "$owner" "$name")" || return
+  _opt_read_into current "$scope" "$owner" "$name" || return
   [[ "$current" != "$value" ]] || return 0
   _opt_store "$scope" "$owner" "$name" "$value" || return
   destination=1
@@ -383,6 +416,18 @@ prv_unset_window () { opt_unset_window "$1" "@airline--$2"; }       # <win> <key
 
 prv_get_pane   () { opt_get_pane   "$1" "@airline--$2"; }       # <pane> <key>
 prv_setif_pane () { opt_setif_pane "$1" "$2" "@airline--$3" "$4"; } # <dest> <pane> <key> <value>
+
+# Destination variants share the same namespace policy as the stdout accessors.
+prv_name_into () { printf -v "$1" '@airline--%s' "$2"; }
+prv_get_into () { opt_get_into "$1" "$2" "$3" "@airline--$4"; }
+prv_get_session_into () { prv_get_into "$1" session "$2" "$3"; }
+prv_get_window_into () { prv_get_into "$1" window "$2" "$3"; }
+prv_get_global_into () { prv_get_into "$1" global server "$2"; }
+prv_get_pane_into () { prv_get_into "$1" pane "$2" "$3"; }
+cfg_get_session_into () { prv_get_session_into "$1" "$2" "config-$3"; }
+stage_get_session_into () { prv_get_session_into "$1" "$2" "stage-$3"; }
+pub_get_into () { opt_get_into "$1" global server "@airline-$2"; }
+pub_get_session_into () { opt_get_into "$1" session "$2" "@airline-$3"; }
 
 #-----------------------------------------------------------------------------#
 # Standalone verbs — distinct tmux subcommands (not option get/set)

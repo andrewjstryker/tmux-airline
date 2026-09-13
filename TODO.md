@@ -102,32 +102,19 @@ changes.
   as a bare positional where the rest of the grammar uses options. Low-traffic
   diagnostics; leave the grammar alone and make the ordering explicit in help.
 
-## Latency
-
-Measured and attributed in the [latency profile](docs/latency-profile.md). These are
-internal mechanics: no public grammar, option name, or storage format changes.
-
-- Add nameref-destination read variants (`coll_get_into`, `coll_members_into`,
-  `opt_get_into`) and convert the loop-resident call sites in `signal.sh`,
-  `render.sh`, and `layout.sh`. Command substitution forks to return a value that a
-  transaction already holds in memory: ~0.87 ms per read against ~0.01 ms for the
-  nameref the write path already uses. This is the one change that takes the ~13 ms
-  marginal cost per stored collection member down to a fraction of a millisecond.
-
-- Preload the session scope before `catalog_paths` resolves the seven
-  `@airline--path-*` options, so they come from the workspace instead of seven
-  separate tmux round trips.
-
-- Narrow or reuse the option snapshot. Snapshot parsing is about half of every Bash
-  command executed during an init, and most parsed options are ones Airline never
-  reads.
-
-- Only if the ledger scan still measures after the above: index problem claims by
-  `contributor:key` rather than filtering every member. Decided against a `jq`-style
-  document store: it would beat the code as written, but loses to the nameref change
-  above until well over a hundred members, and costs a runtime dependency.
-
 ## Deferred
+
+- Reassess a secondary problem-claim index by its marginal performance benefit
+  relative to its code clarity and maintenance cost. A decrease in clarity can be
+  worthwhile when offset by a substantial performance gain; larger clarity costs
+  require larger gains.
+  A persistent index duplicates membership and adds consistency obligations to
+  reporting, recovery, closure, resolution, and clearing. Destination reads
+  reduced the measured marginal set/clear-pair
+  cost from 13.3 ms to 1.7 ms per stored claim; the current single-digit
+  collections have not demonstrated enough remaining lookup cost to justify that
+  additional state. See the follow-up in the
+  [latency profile](docs/latency-profile.md).
 
 - Reassess the [C++ core and Lua catalog proposal](docs/native-core-proposal.md)
   after the implementation settles, using [performance measurements](docs/performance.md)

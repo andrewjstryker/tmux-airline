@@ -129,10 +129,10 @@ declare -gA PALETTE
 render_palette_load () {
   local el value
   for el in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
-    value="$(cfg_get_session "$AIRLINE_SESSION" "$el")" || return
+    cfg_get_session_into value "$AIRLINE_SESSION" "$el" || return
     PALETTE[$el]="$value"
   done
-  value="$(prv_get_session "$AIRLINE_SESSION" "$AIRLINE_KEY_SUSPENDED")" || return
+  prv_get_session_into value "$AIRLINE_SESSION" "$AIRLINE_KEY_SUSPENDED" || return
   if [[ "$value" == 1 ]]; then
     _palette_suspend
   fi
@@ -171,24 +171,26 @@ _chev_left  () { _chevron "$1" "$2" "$AIRLINE_CHEV_LEFT"; }
 
 # The non-empty slots on a side, in render order. <left|right>
 _active_slots () {
-  local slot
+  local slot content
   local -n slots="AIRLINE_SLOTS_${1^^}"
   for slot in "${slots[@]}"; do
-    [[ -n "$(cfg_get_session "$AIRLINE_SESSION" "segment-$slot")" ]] && printf '%s\n' "$slot"
+    cfg_get_session_into content "$AIRLINE_SESSION" "segment-$slot" || return
+    [[ -n "$content" ]] && printf '%s\n' "$slot"
   done
 }
 
 # Compose status-left: blocks outer→inner, each followed by a chevron into the
 # next slot's tier (or the inner-bg window list after the last).
 _build_status_left () {
-  local fg="${PALETTE[emphasized]}" out="" bg next_bg i s
+  local fg="${PALETTE[emphasized]}" out="" bg next_bg i s content
   local -a active=(); while IFS= read -r s; do active+=("$s"); done < <(_active_slots left)
   local n=${#active[@]}
   for (( i=0; i<n; i++ )); do
     bg="${PALETTE[${AIRLINE_SLOT_TIER[${active[i]}]}-bg]}"
     if (( i+1 < n )); then next_bg="${PALETTE[${AIRLINE_SLOT_TIER[${active[i+1]}]}-bg]}"
     else                   next_bg="${PALETTE[inner-bg]}"; fi
-    out+="#[fg=$fg,bg=$bg] $(cfg_get_session "$AIRLINE_SESSION" "segment-${active[i]}") $(_chev_right "$bg" "$next_bg")"
+    cfg_get_session_into content "$AIRLINE_SESSION" "segment-${active[i]}" || return
+    out+="#[fg=$fg,bg=$bg] $content $(_chev_right "$bg" "$next_bg")"
   done
   printf '%s' "$out"
 }
@@ -196,12 +198,13 @@ _build_status_left () {
 # Compose status-right: each block preceded by a chevron from the previous tier
 # (the inner-bg window list before the first).
 _build_status_right () {
-  local fg="${PALETTE[emphasized]}" out="" bg prev_bg="${PALETTE[inner-bg]}" i s
+  local fg="${PALETTE[emphasized]}" out="" bg prev_bg="${PALETTE[inner-bg]}" i s content
   local -a active=(); while IFS= read -r s; do active+=("$s"); done < <(_active_slots right)
   local n=${#active[@]}
   for (( i=0; i<n; i++ )); do
     bg="${PALETTE[${AIRLINE_SLOT_TIER[${active[i]}]}-bg]}"
-    out+="$(_chev_left "$prev_bg" "$bg")#[fg=$fg,bg=$bg] $(cfg_get_session "$AIRLINE_SESSION" "segment-${active[i]}") "
+    cfg_get_session_into content "$AIRLINE_SESSION" "segment-${active[i]}" || return
+    out+="$(_chev_left "$prev_bg" "$bg")#[fg=$fg,bg=$bg] $content "
     prev_bg="$bg"
   done
   out+="$(_problem_expr "$prev_bg")"
@@ -335,8 +338,8 @@ _project () {   # <destination> <window|global> <owner> <ns> <ranking> <badge-ke
     destination="$option_changed"
   else
     case "$scope" in
-      window) current="$(prv_get_window "$owner" "$key")" || return ;;
-      global) current="$(prv_get_global "$key")" || return ;;
+      window) prv_get_window_into current "$owner" "$key" || return ;;
+      global) prv_get_global_into current "$key" || return ;;
     esac
     [[ -n "$current" ]] || return 0
     case "$scope" in
@@ -370,7 +373,7 @@ render_health_project () {   # <destination> <win>
     prv_setif_window option_changed "$win" "$AIRLINE_KEY_HEALTH" "$top" || return
     destination="$option_changed"
   else
-    current="$(prv_get_window "$win" "$AIRLINE_KEY_HEALTH")" || return
+    prv_get_window_into current "$win" "$AIRLINE_KEY_HEALTH" || return
     [[ -n "$current" ]] || return 0
     prv_unset_window "$win" "$AIRLINE_KEY_HEALTH" || return
     # shellcheck disable=SC2034 # assignment is through the caller-selected nameref

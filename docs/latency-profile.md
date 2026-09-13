@@ -1,8 +1,10 @@
 # Latency profile and storage-design assessment
 
-Status: an analysis of the current implementation with prospective recommendations.
-Nothing here is an accepted change. [TODO.md](../TODO.md) records which items are
-candidates for work; [CHANGELOG.md](../CHANGELOG.md) records what has been done.
+Status: the original analysis below describes the implementation before the
+September 2026 read-path optimizations. Recommendations 1–3 are now implemented;
+the follow-up records the results and the decision to defer an index.
+[TODO.md](../TODO.md) records remaining work;
+[CHANGELOG.md](../CHANGELOG.md) records completed changes.
 
 [Performance measurements](performance.md) report what each operation costs. This
 document reports where that cost goes, and assesses a specific design question: has
@@ -19,6 +21,68 @@ tmux server on its own socket under a temporary home, and never contacts the use
 tmux server. `--groups` selects a subset of `primitives`, `attribution`, `hotspots`,
 and `scaling`. `strace` and `jq` are optional; the corresponding measurements are
 skipped when absent. Neither is a runtime dependency.
+
+## Implementation follow-up — September 2026
+
+Implemented the first three recommendations without changing public grammar,
+option names, collection storage, or runtime dependencies:
+
+- Destination reads (`opt_get_into`, `coll_get_into`, `coll_members_into`) keep
+  signal scans, collection internals, palette reads, and rendering loops in the
+  calling shell. Lazy scope loads survive subsequent reads and writes.
+- Shipped catalog registration runs inside the existing session initialization
+  transaction, so all seven path registries share its session snapshot.
+- Snapshots retain serialized values and decode only accessed options. Reads,
+  writes, and removals materialize the original baseline before updating it,
+  preserving native options, explicit emptiness, and no-op diff detection.
+
+Same-checkout measurements before and after the changes, on Linux with Bash
+5.2.21 and tmux 3.4, using five samples and one warmup per CLI case:
+
+| Operation | Before median | After median | Reduction |
+|---|---:|---:|---:|
+| CLI version | 19.3 ms | 19.5 ms | — |
+| Fresh initialization | 1217.2 ms | 897.0 ms | 26% |
+| Repeated initialization | 741.6 ms | 491.3 ms | 34% |
+| Unchanged apply | 509.2 ms | 315.4 ms | 38% |
+| Health set/clear pair | 272.4 ms | 214.5 ms | 21% |
+| Basic runner | 508.4 ms | 416.1 ms | 18% |
+| TAP runner | 755.8 ms | 565.4 ms | 25% |
+
+Ledger scaling, three samples per size, measures a **set/clear pair**, not one
+individual CLI operation:
+
+| Other claims | Before pair latency | After pair latency |
+|---|---:|---:|
+| 0 | 221.7 ms | 164.2 ms |
+| 20 | 503.7 ms | 237.4 ms |
+| 60 | 1018.7 ms | 263.2 ms |
+
+The endpoint marginal cost fell from 13.28 to 1.65 ms per stored claim per pair
+(88%). This includes snapshot loading and badge reduction as well as claim
+matching; it is not solely the cost an index could remove. A secondary claim index
+remains deferred for the single-digit collections described by the design. Revisit
+it by weighing the marginal performance gain against the code clarity and
+maintenance cost. Reduced clarity can be justified by a substantial performance
+gain, with larger clarity costs requiring larger gains. A persistent index duplicates claim membership
+and must stay consistent across reporting, recovery, closure, resolution, and
+clearing. It also does not replace the origin-based scan used during pane/session
+cleanup. Current measurements have not demonstrated a large enough lookup benefit
+for the expected collection sizes to offset those additional consistency rules.
+
+The final after-runs ran without concurrent test suites. Exploratory after-runs
+ranged from 338 to 491 ms for repeated initialization and 0.78 to 1.65 ms for the
+marginal claim cost, so these are local observations, not portable thresholds.
+The complete real-tmux integration suite and fast behavior suite pass, including
+new coverage for destination names, lazy scope reuse, exact values, native no-op
+writes, and unread updates/removals. The new checks also exposed an existing
+escaped-quote decoding bug, now fixed.
+
+Reproduce with `scripts/measure-performance` and
+`scripts/profile-latency --groups scaling --samples 3`; raw before/after JSON was
+kept outside the checkout in `/tmp/airline-performance-{before,after}.json` and
+`/tmp/airline-scaling-{before,after}.json`. Those temporary files are local artifacts,
+not repository fixtures. The remaining sections preserve the original analysis.
 
 ## Summary
 

@@ -17,14 +17,6 @@ _session_bootstrap () {   # <session>
   # badge after upgrading an already initialized tmux server.
   prv_unset_session "$session" "$AIRLINE_KEY_PROBLEM"
 
-  catalog_register_builtin "$session" palette "$AIRLINE_DIR/layouts/palettes"
-  catalog_register_builtin "$session" widget "$AIRLINE_DIR/layouts/widgets"
-  catalog_register_builtin "$session" layout  "$AIRLINE_DIR/layouts/definitions"
-  catalog_register_builtin "$session" classifier "$AIRLINE_DIR/runners/classifiers"
-  catalog_register_builtin "$session" filter "$AIRLINE_DIR/runners/filters"
-  catalog_register_builtin "$session" probe "$AIRLINE_DIR/runners/probes"
-  catalog_register_builtin "$session" runner "$AIRLINE_DIR/runners/definitions"
-
   layout_initialize "$session"
 }
 

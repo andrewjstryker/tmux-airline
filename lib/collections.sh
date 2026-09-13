@@ -47,27 +47,27 @@ _coll_members () {   # <scope> <owner> <ns> → space-delimited keys, registry o
 
 _coll_has () {       # <scope> <owner> <ns> <key> (exit status)
   local members
-  members="$(_coll_members "$1" "$2" "$3")" || return 2
+  coll_members_into members "$1" "$2" "$3" || return 2
   case " $members " in *" $4 "*) return 0 ;; *) return 1 ;; esac
 }
 
 _coll_register () {  # <scope> <owner> <ns> <key> add to registry TAIL
   local scope="$1" owner="$2" ns="$3" key="$4" cur
-  cur="$(_coll_members "$scope" "$owner" "$ns")" || return
+  coll_members_into cur "$scope" "$owner" "$ns" || return
   case " $cur " in *" $key "*) return 0 ;; esac
   opt_set "$scope" "$owner" "$(_coll_reg "$ns")" "${cur:+$cur }$key"
 }
 
 _coll_prepend () {   # <scope> <owner> <ns> <key> add to registry HEAD
   local scope="$1" owner="$2" ns="$3" key="$4" cur
-  cur="$(_coll_members "$scope" "$owner" "$ns")" || return
+  coll_members_into cur "$scope" "$owner" "$ns" || return
   case " $cur " in *" $key "*) return 0 ;; esac
   opt_set "$scope" "$owner" "$(_coll_reg "$ns")" "$key${cur:+ $cur}"
 }
 
 _coll_unregister () {  # <scope> <owner> <ns> <key> drop member + tuple
   local scope="$1" owner="$2" ns="$3" key="$4" cur out="" k
-  cur="$(_coll_members "$scope" "$owner" "$ns")" || return
+  coll_members_into cur "$scope" "$owner" "$ns" || return
   for k in $cur; do [[ "$k" == "$key" ]] || out="${out:+$out }$k"; done
   if [[ -n "$out" ]]; then opt_set "$scope" "$owner" "$(_coll_reg "$ns")" "$out" || return
   else opt_unset "$scope" "$owner" "$(_coll_reg "$ns")" || return; fi
@@ -94,9 +94,9 @@ _coll_set () {       # <scope> <owner> <ns> <key> <field…> register + write tu
 _coll_reduce () {    # <scope> <owner> <ns> <order>
   local scope="$1" owner="$2" ns="$3" order="$4"
   local key tuple val o w rank best=-1 result="" members
-  members="$(_coll_members "$scope" "$owner" "$ns")" || return
+  coll_members_into members "$scope" "$owner" "$ns" || return
   for key in $members; do
-    tuple="$(_coll_get "$scope" "$owner" "$ns" "$key")" || return
+    coll_get_into tuple "$scope" "$owner" "$ns" "$key" || return
     val="${tuple%%$'\t'*}"                 # first field
     rank=-1; w=0
     for o in $order; do [[ "$o" == "$val" ]] && { rank=$w; break; }; ((w++)); done
@@ -106,8 +106,8 @@ _coll_reduce () {    # <scope> <owner> <ns> <order>
 }
 
 #-----------------------------------------------------------------------------#
-# Exported collection interface. Scope is always the first argument and its
-# canonical owner is always second. This layer neither validates nor translates
+# Exported collection interface. Scope and its canonical owner lead the data
+# arguments; destination variants prepend the caller-selected variable. This layer neither validates nor translates
 # that tuple; tmux.sh owns the mechanical boundary.
 #-----------------------------------------------------------------------------#
 
@@ -119,5 +119,18 @@ coll_members    () { _coll_members    "$@"; }
 coll_get        () { _coll_get        "$@"; }
 coll_set        () { _coll_set        "$@"; }
 coll_reduce     () { _coll_reduce     "$@"; }
+
+
+# Destination-first reads avoid both accessor and option-name subprocesses.
+coll_members_into () {   # <destination> <scope> <owner> <namespace>
+  local _airline_coll_name
+  prv_name_into _airline_coll_name "$4"
+  opt_get_into "$1" "$2" "$3" "$_airline_coll_name"
+}
+coll_get_into () {       # <destination> <scope> <owner> <namespace> <key>
+  local _airline_coll_name
+  prv_name_into _airline_coll_name "$4-$5"
+  opt_get_into "$1" "$2" "$3" "$_airline_coll_name"
+}
 
 # vim: ft=bash

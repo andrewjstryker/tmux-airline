@@ -20,6 +20,18 @@ catalog_register_builtin () {   # <session> <kind> <dir>
   coll_register session "$session" "$(_catalog_namespace "$kind")" "$dir"
 }
 
+# Register shipped paths inside the caller's session configuration transaction.
+catalog_register_builtins () {
+  local session="$1"
+  catalog_register_builtin "$session" palette "$AIRLINE_DIR/layouts/palettes"
+  catalog_register_builtin "$session" widget "$AIRLINE_DIR/layouts/widgets"
+  catalog_register_builtin "$session" layout  "$AIRLINE_DIR/layouts/definitions"
+  catalog_register_builtin "$session" classifier "$AIRLINE_DIR/runners/classifiers"
+  catalog_register_builtin "$session" filter "$AIRLINE_DIR/runners/filters"
+  catalog_register_builtin "$session" probe "$AIRLINE_DIR/runners/probes"
+  catalog_register_builtin "$session" runner "$AIRLINE_DIR/runners/definitions"
+}
+
 catalog_paths () {   # <session> <kind> -> space-delimited priority order
   coll_members session "$1" "$(_catalog_namespace "$2")"
 }

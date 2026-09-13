@@ -608,7 +608,10 @@ conventions:
   to tmux flags in one place. In particular, `(global, server)` maps to `-g` without
   inventing an empty owner. Scalar domain accessors may express their fixed owner in
   names such as `prv_set_window`.
-- Getters write to stdout, predicates use exit status, and mutators are silent.
+- Getters write to stdout or take a caller-selected destination as their first
+  argument (`opt_get_into`, `coll_get_into`, `coll_members_into`). Destination reads
+  keep workspace access in the calling shell, avoiding command-substitution forks
+  and retaining lazily loaded scopes. Predicates use exit status; mutators are silent.
 - Session-, window-, and pane-scoped functions take explicit targets. Callers resolve an
   omitted target once and pass the resulting id downward.
 - `opt_*` handles native option mechanics; `pub_*` and `prv_*` add airline namespace
@@ -623,7 +626,11 @@ Owner-scoped transactions execute option work against a mutable in-memory
 workspace. After acquiring the lock, `tmux.sh` bulk-loads the global option tables
 and the transaction owner's session or window table. Additional native owners, such
 as the panes holding status revisions or windows receiving one session's rendered
-styles, are loaded lazily on first access. Existing scalar accessors read and update that desired snapshot with
+styles, are loaded lazily on first access. Snapshot values remain serialized until
+read or mutated; only accessed options need decoding and baseline bookkeeping.
+This retains native and third-party options without eagerly parsing their values.
+Shipped catalog paths are registered inside the initialization configuration
+transaction, sharing its session snapshot. Scalar accessors read and update the desired snapshot with
 read-your-writes behavior; presence is tracked separately so unset and explicitly
 empty remain distinct. At the end, the mechanical layer compares desired state with
 the baseline and submits the ordered final writes as one tmux command sequence.

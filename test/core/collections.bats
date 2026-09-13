@@ -193,3 +193,33 @@ teardown() { :; }
   run coll_reduce window "$win" health "ok warn fail"
   assert_output "warn"
 }
+
+@test "destination collection reads preserve tuples, order, and missing values" {
+  load_collections
+  local tuple members key value scope owner name destination
+  coll_set session s1 example first warn 'message with spaces and \\slashes'
+  coll_set session s1 example second fail 'second message'
+  coll_members_into members session s1 example
+  assert_equal "$members" 'first second'
+  coll_get_into tuple session s1 example first
+  assert_equal "$tuple" $'warn\tmessage with spaces and \\\\slashes'
+  for destination in key value scope owner name; do
+    coll_get_into "$destination" session s1 example second
+    assert_equal "${!destination}" $'fail\tsecond message'
+  done
+  coll_get_into tuple session s1 example missing
+  assert_equal "$tuple" ''
+  coll_members_into members session s1 missing
+  assert_equal "$members" ''
+}
+
+@test "destination reads propagate storage failures and reject invalid scopes" {
+  load_collections
+  _opt_show () { return 7; }
+  run coll_get_into value session s1 example key
+  assert_equal "$status" 7
+  run coll_members_into value session s1 example
+  assert_equal "$status" 7
+  run opt_get_into value global wrong-owner @airline-example
+  assert_equal "$status" 2
+}

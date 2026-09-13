@@ -523,3 +523,67 @@ wait_for_file () {
     assert_equal "$(opt_get_session "$session" "@airline-batch-$i")" "$value"
   done
 }
+
+@test "destination reads retain lazy scope snapshots and see pending mutations" {
+  load_tmux
+  local pane value key scope owner name destination expected
+  pane="$(current_pane)"
+  expected=$'quoted "text"\tback\\slash\nnext line'
+  opt_set pane "$pane" @airline-read "$expected"
+  _opt_workspace_begin global server
+  opt_get_into value pane "$pane" @airline-read
+  assert_equal "$value" "$expected"
+  # Any further snapshot or direct read is a regression: this pane is loaded now.
+  _opt_list () { return 9; }
+  _opt_show () { return 9; }
+  for destination in value key scope owner name; do
+    opt_get_into "$destination" pane "$pane" @airline-read
+    assert_equal "${!destination}" "$expected"
+  done
+  opt_set pane "$pane" @airline-read changed
+  opt_get_into value pane "$pane" @airline-read
+  assert_equal "$value" changed
+  opt_unset pane "$pane" @airline-read
+  opt_get_into value pane "$pane" @airline-read
+  assert_equal "$value" ''
+  _opt_workspace_end
+}
+
+@test "lazy snapshots preserve native options and compare writes with the original value" {
+  load_tmux
+  local session value key
+  session="$(current_session)"
+  opt_set_session "$session" status-left before
+  opt_set_session "$session" @foreign-empty ''
+  _opt_workspace_begin session "$session"
+  opt_get_into value session "$session" status-left
+  assert_equal "$value" before
+  opt_get_into value session "$session" @foreign-empty
+  assert_equal "$value" ''
+  opt_has_session "$session" @foreign-empty
+  # A write to an unread native option must retain its base for no-op detection.
+  opt_set_global status-interval "$(tmux show-options -gv status-interval)"
+  tmux () { return 9; }
+  _opt_workspace_flush
+  _opt_workspace_end
+}
+
+@test "lazy snapshots flush unread updates and removals without reviving old values" {
+  load_tmux
+  local session value
+  session="$(current_session)"
+  opt_set_session "$session" @foreign-update before
+  opt_set_session "$session" @foreign-remove before
+  _opt_workspace_begin session "$session"
+  opt_set_session "$session" @foreign-update after
+  opt_unset_session "$session" @foreign-remove
+  _opt_workspace_flush
+  opt_get_into value session "$session" @foreign-update
+  assert_equal "$value" after
+  opt_get_into value session "$session" @foreign-remove
+  assert_equal "$value" ''
+  _opt_workspace_end
+  assert_equal "$(opt_get_session "$session" @foreign-update)" after
+  run opt_has_session "$session" @foreign-remove
+  assert_failure
+}

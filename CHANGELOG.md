@@ -5,6 +5,19 @@ implementation worklists used to reach them.
 
 ## Unreleased — 3.0.0
 
+### Performance
+
+- Added destination-based option and collection reads and converted signal scans,
+  collection internals, palette reads, and rendering loops to avoid subshells when
+  accessing transaction state. Lazy scope loads now survive those reads.
+- Moved shipped catalog registration into the existing initialization transaction,
+  serving its seven membership reads from the session snapshot.
+- Decode snapshot values and populate diff bookkeeping only when accessed, retaining
+  exact-scope native options, explicit emptiness, and read-your-writes behavior.
+- Added real-tmux regressions for lazy reads, native no-op writes, and unread
+  mutations. These also exposed and fixed escaped quotes in snapshot decoding and
+  a nonzero success return from option argument escaping.
+
 ### Widgets and public palette
 
 - Replaced adapter commands and TPM placeholders with a widget catalog. Widgets

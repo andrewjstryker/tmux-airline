@@ -27,20 +27,22 @@ _palette_stage_clear () {
 }
 
 _apply_public_unlocked () {
-  local session="$1" element slot value current missing=""
+  local session="$1" element slot value current displayed defaults missing=""
   local -A palette=()
   _AIRLINE_PALETTE_PATCHED=""
   _AIRLINE_SEGMENTS_PATCHED=""
 
+  prv_get_session_into defaults "$session" "$AIRLINE_KEY_DEFAULTS" || return
   for element in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
-    value="$(cfg_get_session "$session" "$element")"
-    if [[ -z "$(prv_get_session "$session" "$AIRLINE_KEY_DEFAULTS")" ]] && pub_has "$element"; then
-      value="$(pub_get "$element")"
+    cfg_get_session_into value "$session" "$element"
+    if [[ -z "$defaults" ]] && pub_has "$element"; then
+      pub_get_into value "$element"
       _AIRLINE_PALETTE_PATCHED=1
     fi
     if pub_has_session "$session" "$element"; then
-      current="$(pub_get_session "$session" "$element")"
-      if [[ "$current" != "$(prv_get_session "$session" "display-$element")" ]]; then
+      pub_get_session_into current "$session" "$element"
+      prv_get_session_into displayed "$session" "display-$element" || return
+      if [[ "$current" != "$displayed" ]]; then
         value="$current"; _AIRLINE_PALETTE_PATCHED=1
       fi
     fi
@@ -60,7 +62,8 @@ _apply_public_unlocked () {
   for slot in "${AIRLINE_SEGMENT_SLOTS[@]}"; do
     if pub_has "segment-$slot"; then
       widget_retire_session "$session" "$slot" || return
-      cfg_set_session "$session" "segment-$slot" "$(pub_get "segment-$slot")"
+      pub_get_into value "segment-$slot" || return
+      cfg_set_session "$session" "segment-$slot" "$value"
       _AIRLINE_SEGMENTS_PATCHED=1
     fi
   done
@@ -81,7 +84,7 @@ _palette_evaluate_unlocked () {   # <session> <file> <handle> <destination>; cal
   fi
   for element in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
     if stage_has_session "$session" "$element"; then
-      value="$(stage_get_session "$session" "$element")"
+      stage_get_session_into value "$session" "$element"
       if [[ -n "$value" ]]; then
         # Caller supplies an associative array through the nameref.
         # shellcheck disable=SC2034,SC2004
@@ -296,7 +299,7 @@ _apply_layout_unlocked () {
 #-----------------------------------------------------------------------------#
 
 _layout_show () {
-  local session="$1" x="${2:-}" handle; handle="$(prv_get_session "$session" layout)"
+  local session="$1" x="${2:-}" handle; prv_get_session_into handle "$session" layout
   case "$x" in
     name) printf '%s\n' "$handle" ;;
     path) printf '%s\n' "$(_layout_file "$session" "$handle")" ;;
@@ -312,8 +315,11 @@ _static_show () {
     cfg_get_session "$session" "${keypfx}${x}"
     return 0
   fi
-  local -n all="$listname"; local key
-  for key in "${all[@]}"; do command_show_row "$key" "$(cfg_get_session "$session" "${keypfx}${key}")"; done
+  local -n all="$listname"; local key value
+  for key in "${all[@]}"; do
+    cfg_get_session_into value "$session" "${keypfx}${key}" || return
+    command_show_row "$key" "$value"
+  done
 }
 
 _palette_show () {
@@ -324,8 +330,11 @@ _palette_show () {
     render_palette_element_valid "$x" || command_die "show: unknown target '$x'"
     pub_get_session "$session" "$x"
   else
-    local element
-    for element in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do command_show_row "$element" "$(pub_get_session "$session" "$element")"; done
+    local element value
+    for element in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
+      pub_get_session_into value "$session" "$element" || return
+      command_show_row "$element" "$value"
+    done
   fi
 }
 
@@ -337,12 +346,13 @@ _palette_show () {
 # complete configuration snapshot; session owns only the session command and state.
 _layout_initialize_unlocked () {   # <session>
   local session="$1" selected seeded=""
+  catalog_register_builtins "$session" || return
   if [[ -z "$(cfg_get_session "$session" inner-bg)" ]]; then
     _palette_select_unlocked "$session" default || return $?
     seeded=1
   fi
   if [[ -n "$seeded" || -z "$(prv_get_session "$session" "$AIRLINE_KEY_DEFAULTS")" ]]; then
-    selected="$(prv_get_session "$session" layout)"
+    prv_get_session_into selected "$session" layout
     [[ -n "$selected" ]] || selected=adaptive
     _apply_layout_unlocked "$session" "$selected" || return $?
   fi
@@ -369,7 +379,7 @@ _layout_report_configuration_result () {   # <session> <rc> <operation>
         "$operation could not resolve a complete palette"
       ;;
     *)
-      message="$(prv_get_session "$session" "$AIRLINE_CONFIG_ERROR")"
+      prv_get_session_into message "$session" "$AIRLINE_CONFIG_ERROR"
       [[ -n "$message" ]] || message="$operation could not apply a layout"
       signal_problem_report "$session" airline "$AIRLINE_PROBLEM_LAYOUT" fail "$message"
       ;;
@@ -400,7 +410,7 @@ layout_configuration_show () {   # <session>; caller owns the config transaction
 
 _layout_problem_message () {
   local session="$1" handle="$2" message
-  message="$(prv_get_session "$session" "$AIRLINE_CONFIG_ERROR")"
+  prv_get_session_into message "$session" "$AIRLINE_CONFIG_ERROR"
   if [[ -n "$message" ]]; then printf '%s' "$message"
   else printf "layout '%s' could not be applied" "$handle"; fi
 }

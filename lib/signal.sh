@@ -110,7 +110,7 @@ _signal_health_store_unlocked () {   # <destination> <pane> <contributor> <key> 
   destination=""
   id="$(_signal_claim_id "$contributor" "$key")"
 
-  tuple="$(coll_get pane "$pane" health "$id")" || return
+  coll_get_into tuple pane "$pane" health "$id" || return
   coll_has pane "$pane" health "$id" || has_rc=$?
   (( has_rc <= 1 )) || return "$has_rc"
 
@@ -138,7 +138,7 @@ _signal_health_ack_unlocked () {   # <destination> <pane> <contributor> <key>
   local pane="$2" contributor="$3" key="$4" id tuple badge state level message
   destination=""
   id="$(_signal_claim_id "$contributor" "$key")"
-  tuple="$(coll_get pane "$pane" health "$id")" || return
+  coll_get_into tuple pane "$pane" health "$id" || return
   [[ -n "$tuple" ]] || return 0
   IFS=$'\t' read -r badge state level message <<< "$tuple"
   [[ "$state" != acknowledged ]] || return 0
@@ -151,7 +151,7 @@ _signal_health_show_unlocked () {   # <active-only|all> <pane> [<contributor> [<
   local members member tuple badge state level message member_contributor member_key
   if [[ -n "$key" ]]; then
     id="$(_signal_claim_id "$contributor" "$key")"
-    tuple="$(coll_get pane "$pane" health "$id")" || return
+    coll_get_into tuple pane "$pane" health "$id" || return
     [[ -n "$tuple" ]] || return 0
     IFS=$'\t' read -r badge state level message <<< "$tuple"
     [[ "$visibility" == all || "$state" == active ]] || return 0
@@ -159,11 +159,11 @@ _signal_health_show_unlocked () {   # <active-only|all> <pane> [<contributor> [<
     else printf '%s\t%s\n' "$level" "$message"; fi
     return
   fi
-  members="$(coll_members pane "$pane" health)" || return
+  coll_members_into members pane "$pane" health || return
   for member in $members; do
     member_contributor="${member%%:*}"; member_key="${member#*:}"
     [[ -z "$contributor" || "$member_contributor" == "$contributor" ]] || continue
-    tuple="$(coll_get pane "$pane" health "$member")" || return
+    coll_get_into tuple pane "$pane" health "$member" || return
     IFS=$'\t' read -r badge state level message <<< "$tuple"
     [[ "$visibility" == all || "$state" == active ]] || continue
     if [[ "$visibility" == all ]]; then
@@ -204,7 +204,7 @@ _signal_ensure_result_hook () {
 _signal_status_next_revision () {   # <destination> <pane>
   local -n destination="$1"
   local pane="$2" current changed=""
-  current="$(prv_get_pane "$pane" status-revision)" || return
+  prv_get_pane_into current "$pane" status-revision || return
   [[ -z "$current" || "$current" =~ ^[0-9]+$ ]] || command_die "status: invalid private revision"
   destination="$(( ${current:-0} + 1 ))"
   prv_setif_pane changed "$pane" status-revision "$destination"
@@ -215,7 +215,7 @@ _signal_status_set_unlocked () {   # <destination> <window> <pane> <pane-member>
   local win="$2" pane="$3" member="$4" value="$5"
   local tuple current revision has_rc=0
   destination=""
-  tuple="$(coll_get window "$win" status "$member")" || return
+  coll_get_into tuple window "$win" status "$member" || return
   coll_has window "$win" status "$member" || has_rc=$?
   (( has_rc <= 1 )) || return "$has_rc"
   if (( has_rc == 0 )); then
@@ -276,7 +276,7 @@ _signal_status_clear_unlocked () {   # <destination> <window> <pane> <pane-membe
   local -n destination="$1"
   local win="$2" pane="$3" member="$4" tuple revision has_rc=0
   destination=""
-  tuple="$(coll_get window "$win" status "$member")" || return
+  coll_get_into tuple window "$win" status "$member" || return
   coll_has window "$win" status "$member" || has_rc=$?
   (( has_rc <= 1 )) || return "$has_rc"
   if (( has_rc == 1 )) && [[ -z "$tuple" ]]; then return 0; fi
@@ -291,7 +291,7 @@ _signal_status_clear_observed_unlocked () {   # <destination> <window> <pane> <p
   # shellcheck disable=SC2034 # receives the increment through a nameref; clear needs only the side effect
   local tuple value revision next_revision has_rc=0
   destination=""
-  tuple="$(coll_get window "$win" status "$member")" || return
+  coll_get_into tuple window "$win" status "$member" || return
   coll_has window "$win" status "$member" || has_rc=$?
   (( has_rc <= 1 )) || return "$has_rc"
   (( has_rc == 0 )) || return 0
@@ -334,9 +334,9 @@ signal_status_observed_result () {   # <pane> <revision>
 
 _signal_status_show_unlocked () {   # <window>
   local win="$1" tuple value revision member members
-  members="$(coll_members window "$win" status)" || return
+  coll_members_into members window "$win" status || return
   for member in $members; do
-    tuple="$(coll_get window "$win" status "$member")" || return
+    coll_get_into tuple window "$win" status "$member" || return
     IFS=$'\t' read -r value revision <<< "$tuple"
     command_show_row "%$member" "$value  revision $revision"
   done
@@ -476,7 +476,7 @@ _signal_problem_ledger_set () {   # <destination> <key> <active|acknowledged|clo
   destination=""
   [[ "$state" == active ]] && badge="$level"
   desired="$(printf '%s\t%s\t%s\t%s' "$badge" "$state" "$level" "$message")"
-  current="$(coll_get global server problem "$key")" || return
+  coll_get_into current global server problem "$key" || return
   [[ "$current" != "$desired" ]] || return 0
   coll_set global server problem "$key" "$badge" "$state" "$level" "$message" || return
   destination=1
@@ -490,16 +490,16 @@ _signal_problem_recompute () {   # <destination> <contributor> <key> <close|reso
   local ledger_changed=""
   destination=""
   id="$(_signal_claim_id "$contributor" "$key")"
-  members="$(coll_members global server problem-claim)" || return
+  coll_members_into members global server problem-claim || return
   for member in $members; do
-    tuple="$(coll_get global server problem-claim "$member")" || return
+    coll_get_into tuple global server problem-claim "$member" || return
     IFS=$'\t' read -r claim_contributor claim_key kind origin level message <<< "$tuple"
     [[ "$claim_contributor" == "$contributor" && "$claim_key" == "$key" ]] || continue
     case "$level" in warn) rank=1 ;; fail) rank=2 ;; *) continue ;; esac
     (( rank > best )) && { best=$rank; max="$level"; max_message="$message"; }
   done
 
-  ledger="$(coll_get global server problem "$id")" || return
+  coll_get_into ledger global server problem "$id" || return
   if [[ -n "$max" ]]; then
     state=active
     if [[ -n "$ledger" ]]; then
@@ -527,7 +527,7 @@ _signal_problem_claim_set_unlocked () {   # <destination> <pane|session> <origin
   local claim_changed="" ledger_changed=""
   destination=""
   id="$(_signal_problem_claim_id "$kind" "$origin" "$contributor" "$key")"
-  tuple="$(coll_get global server problem-claim "$id")" || return
+  coll_get_into tuple global server problem-claim "$id" || return
   if [[ "$level" == ok ]]; then
     [[ -n "$tuple" ]] || return 0
     coll_unregister global server problem-claim "$id" || return
@@ -550,9 +550,9 @@ _signal_problem_close_unlocked () {   # <destination> <pane|session> <origin> [<
   local members member tuple claim_contributor claim_key claim_kind claim_origin
   local level message affected=" " affected_id changed="" ledger_changed=""
   destination=""
-  members="$(coll_members global server problem-claim)" || return
+  coll_members_into members global server problem-claim || return
   for member in $members; do
-    tuple="$(coll_get global server problem-claim "$member")" || return
+    coll_get_into tuple global server problem-claim "$member" || return
     IFS=$'\t' read -r claim_contributor claim_key claim_kind claim_origin level message <<< "$tuple"
     [[ "$claim_kind" == "$kind" && "$claim_origin" == "$origin" ]] || continue
     [[ -z "$contributor" || "$claim_contributor" == "$contributor" ]] || continue
@@ -575,7 +575,7 @@ _signal_problem_ack_unlocked () {   # <destination> <contributor> <key>
   local contributor="$2" key="$3" id tuple badge state level message ledger_changed=""
   destination=""
   id="$(_signal_claim_id "$contributor" "$key")"
-  tuple="$(coll_get global server problem "$id")" || return
+  coll_get_into tuple global server problem "$id" || return
   [[ -n "$tuple" ]] || return 0
   IFS=$'\t' read -r badge state level message <<< "$tuple"
   [[ "$state" == active ]] || return 0
@@ -589,15 +589,15 @@ _signal_problem_resolve_unlocked () {   # <destination> <contributor> <key>
   local kind origin badge state level message changed="" ledger_changed=""
   destination=""
   id="$(_signal_claim_id "$contributor" "$key")"
-  members="$(coll_members global server problem-claim)" || return
+  coll_members_into members global server problem-claim || return
   for member in $members; do
-    tuple="$(coll_get global server problem-claim "$member")" || return
+    coll_get_into tuple global server problem-claim "$member" || return
     IFS=$'\t' read -r claim_contributor claim_key kind origin level message <<< "$tuple"
     [[ "$claim_contributor" == "$contributor" && "$claim_key" == "$key" ]] || continue
     coll_unregister global server problem-claim "$member" || return
     changed=1
   done
-  tuple="$(coll_get global server problem "$id")" || return
+  coll_get_into tuple global server problem "$id" || return
   [[ -n "$tuple" ]] || { [[ -z "$changed" ]] || destination=1; return 0; }
   IFS=$'\t' read -r badge state level message <<< "$tuple"
   _signal_problem_ledger_set ledger_changed "$id" resolved "$level" "$message" || return
@@ -609,9 +609,9 @@ _signal_problem_clear_unlocked () {   # <destination> <contributor> <key>
   local contributor="$2" key="$3" id members member tuple claim_contributor claim_key changed=""
   destination=""
   id="$(_signal_claim_id "$contributor" "$key")"
-  members="$(coll_members global server problem-claim)" || return
+  coll_members_into members global server problem-claim || return
   for member in $members; do
-    tuple="$(coll_get global server problem-claim "$member")" || return
+    coll_get_into tuple global server problem-claim "$member" || return
     IFS=$'\t' read -r claim_contributor claim_key _ <<< "$tuple"
     [[ "$claim_contributor" == "$contributor" && "$claim_key" == "$key" ]] || continue
     coll_unregister global server problem-claim "$member" || return
@@ -628,18 +628,18 @@ _signal_problem_show_unlocked () {   # <active-only|all> [<contributor> [<key>]]
   local visibility="$1" wanted_contributor="${2:-}" wanted_key="${3:-}"
   local keys id contributor key ledger badge state level message
   local members member tuple claim_contributor claim_key kind origin claim_level claim_message
-  keys="$(coll_members global server problem)" || return
-  members="$(coll_members global server problem-claim)" || return
+  coll_members_into keys global server problem || return
+  coll_members_into members global server problem-claim || return
   for id in $keys; do
     contributor="${id%%:*}"; key="${id#*:}"
     [[ -z "$wanted_contributor" || "$contributor" == "$wanted_contributor" ]] || continue
     [[ -z "$wanted_key" || "$key" == "$wanted_key" ]] || continue
-    ledger="$(coll_get global server problem "$id")" || return
+    coll_get_into ledger global server problem "$id" || return
     IFS=$'\t' read -r badge state level message <<< "$ledger"
     [[ "$visibility" == all || "$state" == active ]] || continue
     command_show_row "$contributor" "$key  $state  $level${message:+  $message}"
     for member in $members; do
-      tuple="$(coll_get global server problem-claim "$member")" || return
+      coll_get_into tuple global server problem-claim "$member" || return
       IFS=$'\t' read -r claim_contributor claim_key kind origin claim_level claim_message <<< "$tuple"
       [[ "$claim_contributor" == "$contributor" && "$claim_key" == "$key" ]] || continue
       command_show_row "  $kind:$origin" "$claim_level${claim_message:+  $claim_message}"
