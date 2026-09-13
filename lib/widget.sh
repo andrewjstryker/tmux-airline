@@ -13,6 +13,41 @@ widget_job () {
 }
 widget_literal () { local text="$1"; printf '%s' "${text//#/##}"; }
 
+# Resolve declared policy once, before format construction and instance storage.
+widget_arguments () { # <catalog name> <file> <destination array> [placement args...]
+  local name="$1" file="$2" destination="$3" key value options
+  shift 3
+  local -n resolved="$destination"
+  resolved=()
+  options="$(catalog_metadata "$file" options)"
+  [[ -n "$options" ]] || { resolved=("$@"); return; }
+  [[ "$name" =~ ^[a-zA-Z0-9_-]+$ ]] || return 2
+  local -A values=()
+  for key in $options; do
+    [[ "$key" =~ ^[a-z][a-z-]*$ && -z "${values[$key]+present}" ]] || return 2
+    value="$(catalog_metadata "$file" "default-$key")" || {
+      echo "airline: $name: missing default-$key metadata" >&2; return 2;
+    }
+    values[$key]="$value"
+    value="$(pub_get "widget-$name-$key")"
+    [[ -z "$value" ]] || values[$key]="$value"
+  done
+  while (( $# )); do
+    key="${1#--}"
+    [[ "$1" == --* && "$key" =~ ^[a-z][a-z-]*$ && $# -ge 2 && -n "${values[$key]+present}" ]] || {
+      echo "airline: $name: expected a declared option and value" >&2; return 2;
+    }
+    values[$key]="$2"; shift 2
+  done
+  for key in $options; do resolved+=("--$key" "${values[$key]}"); done
+}
+
+# Literal text nested in a tmux conditional, including user-configured icons.
+widget_text () {
+  local text; text="$(widget_literal "$1")"
+  text="${text//,/#,}"; printf '%s' "${text//\}/#\}}"
+}
+
 widget_output_valid () {
   local bytes clean
   bytes="$(wc -c < "$1")"
@@ -63,9 +98,13 @@ widget_describe () (
   local name="$1" session file format rc=0; shift
   session="$(command_current_session)"
   file="$(catalog_describe_resolve "$session" widget "$name")" || return
+  local -a arguments=()
+  widget_arguments "$name" "$file" arguments "$@" || return
+  set -- "${arguments[@]}"
   format="$(widget_format "$session" inspect "$file" "$@")" || rc=$?
   (( rc == 0 || rc == 3 )) || return "$rc"
   catalog_describe_render "$name" "$file" || return
+  command_show_row effective-arguments "$(widget_quote "$@")"
   if (( rc == 3 )); then command_show_row available no
   else command_show_row available yes; command_show_row format "$format"; fi
 )

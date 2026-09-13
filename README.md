@@ -14,20 +14,18 @@ Features:
 - Swappable color **palettes** (dark, light, Solarized) — or your own
 - Composable **layouts** that arrange the bar, plus a CLI to drive segments and
   per-window badges
-- **Adapters** that recolor tmux-cpu, tmux-battery, tmux-online-status, and
-  tmux-prefix-highlight from the active palette
+- Native **widgets** for CPU, battery, reachability, and prefix state, with
+  persistent defaults and colors from the active palette
 - Suspend/resume for nested tmux sessions
 
 ## Installation
 
-This plugin requires **tmux 3.0+** and Bash 4.3+ (for associative arrays and namerefs), and
-has no other external dependencies. It is tested on tmux 3.4 and uses tmux
-features available from 3.0 onward.
+This plugin requires **tmux 3.2+** and Bash 4.3+ (for associative arrays and
+namerefs). The sampled widgets also require `flock` and GNU `timeout`; online
+requires `ping`. CPU and battery observations currently support Linux.
 
-> **tmux 3.0** is needed for the format comparison operators (`#{==:…}`,
-> `#{?…}` over user options) that drive the per-window entry color and the
-> badge/segment rendering. On older tmux the status line will not render
-> correctly.
+Tmux 3.2 supplies the numeric format comparisons used by CPU and battery meters.
+Older versions cannot render those thresholds correctly.
 
 ### With [Tmux Plugin Manager](https://github.com/tmux-plugins/tpm) (recommended)
 
@@ -306,7 +304,7 @@ fragments. No TPM interpolation, color globals, or plugin startup ordering is ne
 | `cpu` | Linux `/proc/stat` utilization deltas; configurable warning/critical thresholds |
 | `battery` | First Linux system battery's capacity |
 | `online` | ICMP reachability of a chosen host; requires `ping` |
-| `prefix` | Native tmux prefix/key-table state; no subprocess |
+| `prefix` | Native prefix, Copy, Sync, and key-table badges; no subprocess |
 
 The observation runtime requires `flock` and GNU `timeout`. It bounds execution,
 paces samples, isolates instances, and reports runtime failures through Airline's
@@ -314,6 +312,8 @@ problem service. Palette changes preserve observation baselines.
 
 Use `airline widget list`, `airline widget describe cpu --warn 60`, and
 `airline widget register <dir>` for discovery. Layout declarations activate widgets.
+Persistent defaults use `@airline-widget-<name>-<option>` global tmux options;
+placement arguments override them. Reload the layout to apply changed defaults.
 The adapter catalog and CLI have been removed; replace adapter/plugin placeholders
 with widget placements. See [widgets](docs/widgets.md) for migration, authoring,
 platform limits, and runtime behavior.

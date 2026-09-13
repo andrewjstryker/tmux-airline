@@ -186,6 +186,11 @@ _layout_declare_widget () {
   file="$(catalog_describe_resolve "$AIRLINE_LAYOUT_CONFIG_SESSION" widget "$name")" || {
     _layout_contract_reject "widget '$name' not found or invalid"; return;
   }
+  local -a arguments=()
+  widget_arguments "$name" "$file" arguments "$@" || {
+    _layout_contract_reject "widget '$name' has invalid policy arguments"; return;
+  }
+  set -- "${arguments[@]}"
   index=${#AIRLINE_LAYOUT_PART_SLOTS[@]}
   id="$AIRLINE_LAYOUT_GENERATION-$index"
   format="$(widget_format "$AIRLINE_LAYOUT_CONFIG_SESSION" "$id" "$file" "$@")" || rc=$?

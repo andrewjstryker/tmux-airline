@@ -111,13 +111,19 @@ names, bad arguments, and malformed output remain errors even for optional place
 unavailable, without stdout. Format validation runs first; other failures reject
 even optional placements.
 
-Policy configuration is still an open part of the contract. Widget arguments work
-for one layout placement, and metadata covers runtime interval and timeout, but there
-is not yet a shared convention for persistent policy such as CPU thresholds, an
-online host, battery selection, fallback text, or refresh preferences. Before more
-widgets gain policy, define whether those values live in namespaced public options,
-layout arguments, or a widget-owned configuration file, and make the choice
-consistent for format construction, sampling, validation, and `widget describe`.
+Widgets may declare `options` and `default-<option>` metadata to opt into persistent
+policy. Precedence is placement arguments, nonempty global
+`@airline-widget-<catalog-name>-<option>` values, then metadata defaults. Each declared
+option takes one value. Session options are not policy input. Widgets without this
+metadata retain their existing argument contract.
+
+The host resolves one argument vector before format evaluation and saves it with
+the instance. Format and availability checks validate that vector; observations
+receive the same captured arguments. Global changes take effect on the next layout
+load, not on palette changes or `session apply`. Invalid effective policy rejects the
+candidate layout. Inspection reports current effective arguments without modifying
+existing instances. See [widget policy](widgets.md#persistent-defaults-and-placement-overrides)
+for supported options, validation, reload semantics, and authoring details.
 
 ## Multiple widgets per segment
 

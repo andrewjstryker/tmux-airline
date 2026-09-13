@@ -165,3 +165,17 @@ LAYOUT
     refute_output --partial 'unexpected'
   done
 }
+
+@test "shipped layouts retain online prefix CPU and date-battery positions" {
+  for name in adaptive full; do
+    source "$PROJECT_ROOT/layouts/definitions/$name"
+    declare_part() { printf '%s\n' "$*"; }
+    run airline_layout_configure declare_part
+    assert_success
+    assert_line 'widget right-in prefix'
+    assert_line 'widget-optional left-mid online'
+    assert_line 'widget-optional right-mid cpu'
+    assert_line --index 4 'segment right-out %Y-%m-%d %H:%M '
+    assert_line --index 5 'widget-optional right-out battery'
+  done
+}

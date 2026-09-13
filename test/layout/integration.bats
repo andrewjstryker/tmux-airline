@@ -224,7 +224,7 @@ write_layout() {   # <path> <configure-body>
   airline layout register "$BATS_TMPDIR/mylayouts"
   airline layout use withcpu
   run airline segment show right-mid
-  assert_output --partial 'CPU'
+  assert_output --partial '≣'
   mkdir -p "$BATS_TMPDIR/switch"
   write_layout "$BATS_TMPDIR/switch/rich" '  "$declare" segment left-mid "MID"'
   write_layout "$BATS_TMPDIR/switch/lean" '  "$declare" segment left-out "OUT"'

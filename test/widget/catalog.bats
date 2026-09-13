@@ -12,7 +12,11 @@ teardown() { :; }
   printf 'Battery\n' > "$AIRLINE_POWER_SUPPLY/BAT0/type"
   printf '42\n' > "$AIRLINE_POWER_SUPPLY/BAT0/capacity"
   run airline_widget_available; assert_success
-  run airline_widget_sample; assert_success; assert_output 42
+  run airline_widget_sample; assert_success; assert_output '42:unknown'
+  for state in 'Charging:charging' 'Discharging:discharging' 'Full:full' 'Not charging:attached' 'Unknown:unknown'; do
+    printf '%s\n' "${state%:*}" > "$AIRLINE_POWER_SUPPLY/BAT0/status"
+    run airline_widget_sample; assert_success; assert_output "42:${state##*:}"
+  done
   printf '101\n' > "$AIRLINE_POWER_SUPPLY/BAT0/capacity"
   run airline_widget_sample; assert_failure
 }
@@ -62,4 +66,38 @@ teardown() { :; }
   printf '#| summary: Unavailable\nairline_widget_format() { :; }\nairline_widget_available() { return 3; }\n' > "$file"
   run widget_format s1 1-2-3-4 "$file"
   assert_failure 3
+}
+
+@test "widget defaults resolve global policy then placement overrides without splitting text" {
+  local -a args=()
+  pub_set widget-cpu-warn 50
+  pub_set widget-cpu-low-icon 'a b'
+  widget_arguments cpu "$PROJECT_ROOT/layouts/widgets/cpu" args --warn 65
+  assert_equal "${args[1]}" 65
+  assert_equal "${args[9]}" 'a b'
+  run widget_format s1 1-2-3-4 "$PROJECT_ROOT/layouts/widgets/cpu" "${args[@]}"
+  assert_success
+  assert_output --partial 'a b'
+  pub_set widget-cpu-warn broken
+  widget_arguments cpu "$PROJECT_ROOT/layouts/widgets/cpu" args
+  run widget_format s1 1-2-3-4 "$PROJECT_ROOT/layouts/widgets/cpu" "${args[@]}"
+  assert_failure 2
+  run widget_arguments cpu "$PROJECT_ROOT/layouts/widgets/cpu" args --unknown value
+  assert_failure 2
+  run widget_arguments cpu "$PROJECT_ROOT/layouts/widgets/cpu" args --warn
+  assert_failure 2
+  run widget_arguments cpu "$PROJECT_ROOT/layouts/widgets/cpu" args -- value
+  assert_failure 2
+}
+
+@test "widget policy validates meter order, display modes, badges, and ping timeouts" {
+  for spec in 'cpu --meter-medium 90 --meter-high 80' 'cpu --meter-high 101' 'battery --display invalid' 'prefix --show-copy yes' 'online --timeout 0' 'online --timeout 9'; do
+    read -r -a args <<< "$spec"
+    run widget_format s1 1-2-3-4 "$PROJECT_ROOT/layouts/widgets/${args[0]}" "${args[@]:1}"
+    assert_failure 2
+  done
+  source "$PROJECT_ROOT/layouts/widgets/online"
+  ping() { [[ "$*" == '-n -c 1 -W 3 example.com' ]]; }
+  run airline_widget_sample --host example.com --timeout 3
+  assert_success; assert_output 1
 }
