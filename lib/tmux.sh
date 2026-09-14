@@ -386,7 +386,6 @@ pub_has   () { opt_has_global   "@airline-$1"; }        # <key>
 # Palette files retain their native tmux surface. Airline evaluates one in the
 # target session under private staging names, leaving public display roles intact.
 # These exact-scope accessors are staging mechanics, never durable configuration.
-stage_get_session   () { opt_get_session   "$1" "@airline--stage-$2"; } # <session> <key>
 stage_has_session   () { opt_has_session   "$1" "@airline--stage-$2"; } # <session> <key>
 stage_unset_session () { opt_unset_session "$1" "@airline--stage-$2"; } # <session> <key>
 
@@ -711,10 +710,3 @@ transaction_clear () {   # <global|session|window> <owner> <namespace>
 pub_name () { printf '@airline-%s' "$1"; }
 pub_get_session () { opt_get_session "$1" "$(pub_name "$2")"; }
 pub_has_session () { opt_has_session "$1" "$(pub_name "$2")"; }
-pub_set_session () { opt_set_session "$1" "$(pub_name "$2")" "$3"; }
-widget_cache_root () {
-  local socket digest
-  socket="$(tmux display-message -p '#{socket_path}')" || return
-  digest="$(printf '%s' "$socket" | cksum)"; digest="${digest%% *}"
-  printf '%s/airline-widgets-%s' "${socket%/*}" "$digest"
-}

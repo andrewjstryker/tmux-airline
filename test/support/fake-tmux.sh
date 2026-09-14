@@ -134,5 +134,3 @@ source_file_session () {   # <session> <file>
 }
 
 # vim: ft=bash
-
-widget_cache_root () { printf '%s/widget-cache' "${BATS_TEST_TMPDIR:-/tmp}"; }

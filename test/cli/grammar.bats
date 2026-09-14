@@ -25,7 +25,7 @@ setup() {
     transaction_show transaction_clear_stale \
     layout_palette_show layout_palette_list layout_palette_use layout_palette_load layout_palette_describe layout_palette_register \
     layout_segment_show \
-    widget_describe widget_list widget_register widget_run \
+    widget_describe widget_list widget_register \
     layout_show layout_list layout_use layout_load layout_describe layout_register \
     runner_classifier_list runner_classifier_register \
     runner_filter_list runner_filter_register \
@@ -68,7 +68,6 @@ palette describe light|layout_palette_describe <light>
 layout describe full|layout_describe <full>
 segment show left-out|layout_segment_show <left-out>
 widget describe cpu --warn 60|widget_describe <cpu> <--warn> <60>
-widget run -t work 1-2-3-4|widget_run <-t> <work> <1-2-3-4>
 layout register /tmp/layouts|layout_register </tmp/layouts>
 classifier describe conventional|catalog_describe <classifier> <conventional>
 filter list|runner_filter_list

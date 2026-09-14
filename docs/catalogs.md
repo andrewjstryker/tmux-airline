@@ -12,7 +12,7 @@ configuration files use `.conf`. The logical name omits the extension:
 ```text
 widgets/battery.sh       # format definition named battery
 widgets/battery          # optional runtime executable named battery
-layouts/adaptive.sh      # layout named adaptive
+layouts/full.sh          # layout named full
 palettes/default.conf    # palette named default
 ```
 

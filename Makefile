@@ -7,12 +7,12 @@ BINDIR ?= $(PREFIX)/bin
 BASH_COMPLETION_DIR ?= $(PREFIX)/share/bash-completion/completions
 ZSH_COMPLETION_DIR ?= $(PREFIX)/share/zsh/site-functions
 
-SHELLCHECK_SOURCES := airline airline.sh airline.tmux scripts/check-version scripts/generate-completions scripts/release scripts/widget-sample \
+SHELLCHECK_SOURCES := airline airline.sh airline.tmux scripts/check-version scripts/generate-completions scripts/release \
 	completions/airline.bash $(wildcard lib/*.sh layouts/widgets/* \
 	layouts/definitions/* layouts/helpers/* runners/classifiers/* runners/filters/* \
 	runners/probes/* runners/definitions/*)
 
-FAST_TESTS := test/widget/cpu.bats test/widget/catalog.bats test/architecture.bats test/cli/grammar.bats test/cli/behavior.bats test/cli/completions.bats \
+FAST_TESTS := test/widget/catalog.bats test/widget/integration.bats test/architecture.bats test/cli/grammar.bats test/cli/behavior.bats test/cli/completions.bats \
 	test/core/collections.bats test/core/catalog.bats test/core/render.bats test/runner/behavior.bats \
 	test/signal/behavior.bats test/session/behavior.bats test/layout/behavior.bats test/transaction/behavior.bats
 INTEGRATION_TESTS := test/widget/integration.bats test/session/integration.bats test/layout/integration.bats \
@@ -66,7 +66,7 @@ test-transaction:
 	bats test/transaction/behavior.bats test/transaction/integration.bats
 
 test-widget:
-	bats test/widget/cpu.bats test/widget/catalog.bats test/widget/integration.bats
+	bats test/widget/catalog.bats test/widget/integration.bats
 
 test-runner:
 	bats test/runner/behavior.bats test/runner/integration.bats

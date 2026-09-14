@@ -28,9 +28,9 @@ setup() {
   run sopt @airline--palette
   assert_output "default"            # recorded
   run sopt status-left
-  assert_output --partial "#S"       # adaptive sets left-out=#S (present with or without plugins)
+  assert_output --partial "#S"       # full sets left-out=#S (present with or without plugins)
   run sopt @airline--layout
-  assert_output "adaptive"           # recorded, so apply re-applies it
+  assert_output "full"               # recorded, so apply re-applies it
 
   run sopt status-style
   assert_output --partial "bg=colour234"
@@ -40,7 +40,7 @@ setup() {
   run airline session show
   assert_success
   assert_output --partial "layout"      # a top-level record
-  assert_output --partial "adaptive"    # active layout remains named
+  assert_output --partial "full"         # active layout remains named
   assert_output --partial "inner-bg"    # recursed into palette show
   assert_output --partial "left-out"    # recursed into segment show
   assert_output --partial "paths:"      # the search paths
@@ -130,7 +130,7 @@ setup() {
   run airline session show
   assert_success
   assert_output --partial "layout"      # a top-level record
-  assert_output --partial "adaptive"    # active layout remains named
+  assert_output --partial "full"         # active layout remains named
   assert_output --partial "inner-bg"    # recursed into palette show
   assert_output --partial "left-out"    # recursed into segment show
   assert_output --partial "paths:"      # the search paths

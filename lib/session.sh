@@ -12,7 +12,6 @@ _session_bootstrap () {   # <session>
   hook_set_airline_window_styles "${AIRLINE_NATIVE_WINDOW_OPTIONS[@]}"
   signal_health_install_hooks
   signal_problem_install_hooks
-  widget_install_hooks
   # Remove the pre-ledger session projection so it cannot shadow the global
   # badge after upgrading an already initialized tmux server.
   prv_unset_session "$session" "$AIRLINE_KEY_PROBLEM"
@@ -73,7 +72,6 @@ session_init () {   # [-t <session-target>]
     session="$(command_current_session)"
   fi
   _session_bootstrap "$session" || return
-  widget_collect
 }
 
 session_apply () {

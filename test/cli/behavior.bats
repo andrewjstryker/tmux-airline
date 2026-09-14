@@ -32,7 +32,6 @@ palette list extra
 segment show left-out extra
 widget list extra
 widget register /tmp/widget extra
-widget run -t work 1-2-3-4 extra
 layout describe full extra
 layout show name extra
 layout list extra
@@ -201,7 +200,7 @@ RUNNER
   prv_set_session s1 palette light
   prv_set_session s1 layout minimal
   local before="$_FAKE_WRITES"
-  main widget describe cpu >/dev/null
+  main widget describe prefix >/dev/null
   main layout describe full >/dev/null
   assert_equal "$_FAKE_WRITES" "$before"
   assert_equal "$(prv_get_session s1 palette)" light

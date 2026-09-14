@@ -216,7 +216,7 @@ render_fragment () {
   local slot="$1" content="$2" style
   [[ -n "$content" ]] || return 0
   style="#[default]#[fg=#{@airline-emphasized},bg=#{@airline-${AIRLINE_SLOT_TIER[$slot]}-bg}]"
-  printf '%s%s%s' "$style" "$content" "$style"
+  printf '%s%s' "$style" "$content"
 }
 
 #-----------------------------------------------------------------------------#

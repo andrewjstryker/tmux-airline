@@ -94,7 +94,6 @@ teardown() { :; }
   cat > "$BATS_TEST_TMPDIR/catalog/named" <<'WIDGET'
 #| summary: Fixture
 airline_widget_format() { printf '%s' "$1"; }
-airline_widget_sample() { touch "$BATS_TEST_TMPDIR/observed"; }
 WIDGET
   catalog_register s1 widget "$BATS_TEST_TMPDIR/catalog"
   catalog_register s1 layout "$BATS_TEST_TMPDIR/catalog"
@@ -167,7 +166,7 @@ LAYOUT
 }
 
 @test "shipped layouts retain online prefix CPU and date-battery positions" {
-  for name in adaptive full; do
+  for name in full; do
     source "$PROJECT_ROOT/layouts/definitions/$name"
     declare_part() { printf '%s\n' "$*"; }
     run airline_layout_configure declare_part

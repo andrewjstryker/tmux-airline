@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+#| summary: Native prefix, copy, sync, and key-table badges
+#| usage: [--show-copy <on|off>] [--show-sync <on|off>]
+#| options: show-copy show-sync
+#| default-show-copy: on
+#| default-show-sync: on
+_prefix_badge() {
+  printf '#[fg=#{@airline-palette-inner-bg}]#[bg=#{@airline-palette-%s}][%s]#[fg=%s,bg=%s]' "$1" "$2" "$3" "$4"
+}
+airline_widget_format() {
+  local fg="$1" bg="$2"; shift 2
+  local show_copy=on show_sync=on fallback
+  while (( $# )); do
+    case "$1" in
+      --show-copy) [[ $# -ge 2 ]] || return 2; show_copy="$2"; shift 2 ;;
+      --show-sync) [[ $# -ge 2 ]] || return 2; show_sync="$2"; shift 2 ;;
+      *) return 2 ;;
+    esac
+  done
+  [[ "$show_copy" == on || "$show_copy" == off ]] || return 2
+  [[ "$show_sync" == on || "$show_sync" == off ]] || return 2
+  fallback="#{?#{&&:#{client_key_table},#{!=:#{client_key_table},root}},$(_prefix_badge active '#{client_key_table}' "$fg" "$bg"),}"
+  [[ "$show_sync" == off ]] || fallback="#{?synchronize-panes,$(_prefix_badge special Sync "$fg" "$bg"),$fallback}"
+  [[ "$show_copy" == off ]] || fallback="#{?pane_in_mode,$(_prefix_badge copy Copy "$fg" "$bg"),$fallback}"
+  printf '#{?client_prefix,%s,%s}#[fg=%s,bg=%s]' "$(_prefix_badge active '#{prefix}' "$fg" "$bg")" "$fallback" "$fg" "$bg"
+}

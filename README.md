@@ -14,7 +14,7 @@ Features:
 - Swappable color **palettes** (dark, light, Solarized) — or your own
 - Composable **layouts** that arrange the bar, plus a CLI to drive segments and
   per-window badges
-- Native **widgets** for battery, reachability, and prefix state, with
+- Native **widgets** for CPU level, battery, reachability, and prefix state, with
   persistent defaults and colors from the active palette
 - Suspend/resume for nested tmux sessions
 
@@ -114,7 +114,7 @@ For example:
 airline palette list
 airline palette describe dark
 airline palette use dark
-airline layout use adaptive
+airline layout use full
 airline session show
 ```
 
@@ -264,9 +264,8 @@ See [layout inspection and application](docs/layouts.md) for evaluation and vali
 
 | Layout     | What it composes                                                    |
 |------------|---------------------------------------------------------------------|
-| `adaptive` | Init's default — session, prefix, date, and available CPU/online/battery widgets |
-| `default`  | The standard full arrangement                                       |
-| `full`     | Native widgets with optional hardware/network capabilities                                                |
+| `default`  | The dependency-free standard arrangement                          |
+| `full`     | Init's default — session, prefix, date, and available CPU/online/battery widgets |
 | `minimal`  | A pared-down bar                                                    |
 
 Switching layouts starts from a clean slate, so a layout owns exactly the arrangement
@@ -303,12 +302,12 @@ normal status refresh; Airline provides no widget scheduler or runtime wrapper.
 
 | Widget | Source |
 |---|---|
-| `cpu` | deferred until a stateless fast implementation exists |
+| `cpu` | current CPU usage reduced to low, medium, or high |
 | `battery` | First Linux system battery's capacity |
 | `online` | ICMP reachability of a chosen host; requires `ping` |
 | `prefix` | Native prefix, Copy, Sync, and key-table badges; no subprocess |
 
-Use `airline widget list`, `airline widget describe cpu --warn 60`, and
+Use `airline widget list`, `airline widget describe cpu --medium 60`, and
 `airline widget register <dir>` for discovery. Layout declarations activate widgets.
 Persistent defaults use `@airline-widget-<name>-<option>` global tmux options;
 placement arguments override them. Reload the layout to apply changed defaults.

@@ -55,7 +55,7 @@ detail; the module-table contract is part of this proposal.
 |---|---|
 | Palette | Export color-role data for validation and application |
 | Adapter | Export a function receiving palette values and a scoped option writer |
-| Layout | Export a function declaring segments and adapters, with helpers for adaptive selection |
+| Layout | Export a function declaring segments and widgets |
 | Classifier | Export a function receiving termination information and returning a condition |
 | Filter | Export stream-consumer behavior that reports observations and retains per-invocation state |
 | Probe | Export a function performing one bounded observation using host services and reporting its findings |

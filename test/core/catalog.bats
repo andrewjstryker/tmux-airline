@@ -124,7 +124,7 @@ ELEMENT
 
 @test "metadata reads the shipped side-effecting element kinds" {
   # Adapters and palettes cannot be sourced for inspection: doing so applies them.
-  run catalog_metadata "$PROJECT_ROOT/layouts/widgets/cpu" summary
+  run catalog_metadata "$PROJECT_ROOT/layouts/widgets/battery.sh" summary
   assert_success
   refute_output ""
 
@@ -138,6 +138,7 @@ ELEMENT
   for directory in layouts/palettes layouts/widgets layouts/definitions \
     runners/classifiers runners/filters runners/probes runners/definitions; do
     for file in "$PROJECT_ROOT/$directory/"*; do
+      [[ "$directory" != layouts/widgets || "$file" == *.sh ]] || continue
       run catalog_metadata_valid "$file"
       assert_success "$file"
     done
@@ -149,6 +150,7 @@ ELEMENT
   for content in '# ordinary comment' '#| summary:' '#| summary:   ' \
     $'#| summary: first\n#| summary: second' '#| bad marker'; do
     printf '%s\n' "$content" > "$BATS_TEST_TMPDIR/user/invalid"
+    printf '%s\n' "$content" > "$BATS_TEST_TMPDIR/user/invalid.sh"
     for kind in palette widget layout classifier filter probe runner; do
       catalog_register s1 "$kind" "$BATS_TEST_TMPDIR/user"
       run catalog_describe_resolve s1 "$kind" invalid

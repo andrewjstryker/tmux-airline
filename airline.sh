@@ -172,8 +172,6 @@ cmd_widget () {
     describe) widget_describe "$@" ;; #| <widget> [<arg>...] — inspect a widget format without observing
     list) widget_list "$@" ;; #| — list widgets on the search path
     register) widget_register "$@" ;; #| <dir> — add a widget search directory
-    _cleanup) widget_cleanup "$@" ;;
-    run) widget_run "$@" ;; #| -t <session-target> <instance> — refresh an active widget instance
     *) command_die "unknown widget command: $verb" ;;
   esac
   # help:end widget

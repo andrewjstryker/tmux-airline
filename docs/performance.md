@@ -40,7 +40,7 @@ caches. This is a detached-session baseline, not an end-to-end measurement of TP
 terminal startup, attached-client redraw, or a user's complete tmux configuration.
 The installable PATH shim is also outside the timed path.
 
-Initialization uses the shipped default palette and adaptive layout. Adaptive
+Initialization uses the shipped default palette and full layout. Full
 layout detection can find sibling plugins beside this checkout, even with a
 temporary home. Keep those installations and the checkout location constant when
 comparing runs, or use equivalent clean checkouts without sibling plugins. Keep

@@ -42,7 +42,11 @@ catalog_resolve () {   # <session> <kind> <bare-name>
   local session="$1" kind="$2" name="$3" dir
   [[ "$name" != */* ]] || return
   for dir in $(catalog_paths "$session" "$kind"); do
-    [[ -f "$dir/$name" ]] && { printf '%s' "$dir/$name"; return; }
+    if [[ "$kind" == widget ]]; then
+      [[ -f "$dir/$name.sh" ]] && { printf '%s' "$dir/$name.sh"; return; }
+    else
+      [[ -f "$dir/$name" ]] && { printf '%s' "$dir/$name"; return; }
+    fi
   done
 }
 
@@ -55,6 +59,10 @@ catalog_list () {   # <session> <kind>
     for f in "$dir"/*; do
       [[ -f "$f" ]] || continue
       name="${f##*/}"
+      if [[ "$kind" == widget ]]; then
+        [[ "$name" == *.sh ]] || continue
+        name="${name%.sh}"
+      fi
       case "$seen" in *" $name "*) continue ;; esac
       seen+="$name "
       printf '%s\n' "$name"

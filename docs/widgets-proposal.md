@@ -35,7 +35,7 @@ lets the plugin decide presentation. Airline is then blind to what the block
 contains, what it costs to refresh, and whether it will honour the rule that render
 owns each block background. The information Airline needs is split across two
 declarations in the layout that must agree by hand: a segment string holding the
-placeholder, and an adapter name. `adaptive` demonstrates the coupling — every
+placeholder, and an adapter name. The former default layout demonstrated the coupling — every
 `installed` branch must remember to add both.
 
 The `battery` adapter shows how far the inversion goes. Forty of its lines push
@@ -114,9 +114,10 @@ The plugin scripts divide cleanly when they can meet that contract:
 - `prefix_highlight` is already pure native tmux conditions, as the branch found. It
   becomes a widget with no `sample` at all.
 
-The CPU slice will prefer a native counter reader and do its own thresholding
-and presentation using public palette references. An optional third-party data source
-is acceptable only if its interface is independent of global formatting settings.
+The CPU slice is a small current-usage indicator with three levels. Its runtime may
+delegate snapshot collection to a system tool that owns any sampling it needs, then
+the format applies thresholds and presentation through public palette references.
+It does not provide a detailed monitor or create Airline health/problem claims.
 That removes the option-scope problem at the root rather than shimming it: the scripts Airline invokes are the ones that report data,
 not the ones that read colour globals. `scripts/plugin-command` and the
 `adapter-formats` translation collection both become unnecessary, and Airline never
@@ -136,15 +137,16 @@ without a process-level shim over a third party's option reads. That justificati
 belongs in `CHANGELOG.md` with the change.
 
 The contract selects replacement of the adapter kind and format-only inspection
-without observations. CPU must now prove the remaining runtime details:
+without Airline-owned observations. The implementation must settle these runtime
+details:
 
 - **Refresh.** Let tmux own redraw cadence through `status-interval`. Airline does
   not promise a widget interval or add a scheduler; runtime commands must finish
   quickly enough for normal status evaluation.
 - **Palette.** Demonstrate live public option references in tmux styles, including
   session isolation and suspension. Do not assume recursive expansion of job output.
-- **Failure.** Keep widget presentation and widget-owned operational claims separate
-  from host invocation failures, using the existing problem lifecycle.
+- **Failure.** Keep widget presentation separate from Airline's problem and health
+  services. A CPU level is display data, not an overload claim.
 - **Composition.** Validate several widget formats in one segment, with ordered
   literals, independent instance state, and style restoration at fragment boundaries.
 

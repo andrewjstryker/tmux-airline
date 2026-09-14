@@ -196,11 +196,18 @@ _layout_declare_widget () {
   set -- "${arguments[@]}"
   index=${#AIRLINE_LAYOUT_PART_SLOTS[@]}
   id="$AIRLINE_LAYOUT_GENERATION-$index"
-  format="$(widget_format "$AIRLINE_LAYOUT_CONFIG_SESSION" "$id" "$file" "$@")" || rc=$?
+  format="$(widget_format "$AIRLINE_LAYOUT_CONFIG_SESSION" "$id" "$file" \
+    '#{@airline-palette-emphasized}' "#{@airline-palette-${AIRLINE_SLOT_TIER[$slot]}-bg}" "$@")" || rc=$?
   AIRLINE_LAYOUT_WIDGET_ARGC[$id]=$#
   index=0
   for arg in "$@"; do AIRLINE_LAYOUT_WIDGET_ARGS["$id-$index"]="$arg"; ((index+=1)); done
   if (( rc == 3 )) && [[ "$optional" == yes ]]; then
+    _layout_add_part "$slot" unavailable "$name" "" "$id" "$file"
+    return
+  fi
+  if (( rc == 3 )); then
+    signal_problem_report "$AIRLINE_LAYOUT_CONFIG_SESSION" airline-widget "$id" warn \
+      "$name widget is unavailable"
     _layout_add_part "$slot" unavailable "$name" "" "$id" "$file"
     return
   fi
@@ -353,7 +360,7 @@ _layout_initialize_unlocked () {   # <session>
   fi
   if [[ -n "$seeded" || -z "$(prv_get_session "$session" "$AIRLINE_KEY_DEFAULTS")" ]]; then
     prv_get_session_into selected "$session" layout
-    [[ -n "$selected" ]] || selected=adaptive
+    [[ -n "$selected" ]] || selected=full
     _apply_layout_unlocked "$session" "$selected" || return $?
   fi
   _apply_public_unlocked "$session" || return $?
@@ -368,7 +375,6 @@ _layout_apply_unlocked () {   # <session>
 
 _layout_report_configuration_result () {   # <session> <rc> <operation>
   local session="$1" rc="$2" operation="$3" message
-  widget_reconcile_session "$session" || return
   case "$rc" in
     0)
       signal_problem_report "$session" airline "$AIRLINE_PROBLEM_PALETTE" ok ""
@@ -440,7 +446,6 @@ layout_palette_load () {
 _palette_apply () {   # <session> <file> <handle>
   local s="$1" file="$2" handle="$3" rc=0
   with_session_transaction "$s" config _palette_apply_unlocked "$s" "$file" "$handle" || rc=$?
-  widget_reconcile_session "$s" || return
   if (( rc == AIRLINE_CONFIG_PALETTE_FAILURE )); then
     signal_problem_report "$s" airline "$AIRLINE_PROBLEM_PALETTE" fail "palette '$handle' is incomplete or could not be evaluated"
   elif (( rc == 0 )); then
@@ -485,7 +490,6 @@ layout_use () {
   s="$(command_current_session)"
   [[ -n "$(catalog_resolve "$s" layout "$name")" ]] || command_die "layout use: '$name' not found"
   with_session_transaction "$s" config _layout_use_render_unlocked "$s" "$name" || rc=$?
-  widget_reconcile_session "$s" || return
   case "$rc" in
     0) signal_problem_report "$s" airline "$AIRLINE_PROBLEM_LAYOUT" ok "" ;;
     "$AIRLINE_CONFIG_PALETTE_FAILURE")
@@ -500,7 +504,6 @@ layout_load () {
   path="$1"; abs="$(_abspath "$path")"; [[ -f "$abs" ]] || command_die "layout load: no such file: $path"
   s="$(command_current_session)"
   with_session_transaction "$s" config _layout_load_render_unlocked "$s" "$abs" || rc=$?
-  widget_reconcile_session "$s" || return
   case "$rc" in
     0) signal_problem_report "$s" airline "$AIRLINE_PROBLEM_LAYOUT" ok "" ;;
     "$AIRLINE_CONFIG_PALETTE_FAILURE")

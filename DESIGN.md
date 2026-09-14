@@ -237,7 +237,7 @@ The status bar contains three kinds of value:
 2. **Live selectors.** Tmux `#{?…}` expressions select among baked colors for status,
    health, problem, zoom, copy mode, and activity. The choice is reevaluated by tmux;
    the branch colors were baked by airline.
-3. **Live readings.** Plugin values such as CPU usage and tmux values such as the
+3. **Live readings.** Plugin values such as external readings and tmux values such as the
    clock remain `#{…}` references and update on the normal status interval.
 
 The rule is: **colors are baked; selectors and readings are live.** `apply` renders

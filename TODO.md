@@ -81,7 +81,11 @@ only prospective work.
   `status-interval` owns refresh; Airline must not add a widget scheduler, cache,
   lock, timeout, or `widget eval/run` runtime path. Add behavior coverage for catalog
   resolution, option scoping, format composition, scalar runtime output, and palette
-  propagation before shipping the widgets.
+  propagation before shipping the widgets. CPU remains in scope as a three-level
+  current-usage indicator; implement it through a snapshot-producing system tool,
+  without Airline history or health/overload claims. A missing required snapshot tool
+  may report a warn problem and emit an empty fragment. Detailed CPU monitoring remains
+  outside the catalog.
 
 ## Runner contract follow-up
 

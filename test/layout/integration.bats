@@ -182,12 +182,12 @@ write_layout() {   # <path> <configure-body>
   run airline adapter use cpu
   assert_failure; assert_output --partial 'adapter was removed'
   run airline widget list
-  assert_line cpu; assert_line battery; assert_line online; assert_line prefix
+  assert_line battery; assert_line online; assert_line prefix
   mkdir -p "$BATS_TEST_TMPDIR/widgets"
-  write_layout "$BATS_TEST_TMPDIR/widgets/withcpu" '  "$declare" widget left-out cpu'
+  write_layout "$BATS_TEST_TMPDIR/widgets/withprefix" '  "$declare" widget left-out prefix'
   write_layout "$BATS_TEST_TMPDIR/widgets/bare" '  "$declare" segment left-out "#S"'
   airline layout register "$BATS_TEST_TMPDIR/widgets"
-  airline layout use withcpu
+  airline layout use withprefix
   [[ -n "$(sopt @airline--widgets)" ]]
   run sopt @cpu_low_fg_color
   assert_output ''
@@ -197,7 +197,7 @@ write_layout() {   # <path> <configure-body>
   run airline palette list
   assert_line default; assert_line dark
   run airline layout list
-  assert_line adaptive; assert_line minimal
+  assert_line full; assert_line minimal
 }
 
 # --- layout (validated Bash declaration, captured into private state) --------
@@ -218,13 +218,13 @@ write_layout() {   # <path> <configure-body>
   run airline segment show left-out
   assert_output --partial "#S"                    # private snapshot was not replaced by staging
   mkdir -p "$BATS_TMPDIR/mylayouts"
-  write_layout "$BATS_TMPDIR/mylayouts/withcpu" \
-    '  "$declare" widget right-mid cpu
+  write_layout "$BATS_TMPDIR/mylayouts/withprefix" \
+    '  "$declare" widget right-mid prefix
   "$declare" segment left-out "#S"'
   airline layout register "$BATS_TMPDIR/mylayouts"
-  airline layout use withcpu
+  airline layout use withprefix
   run airline segment show right-mid
-  assert_output --partial '≣'
+  assert_output --partial 'client_prefix'
   mkdir -p "$BATS_TMPDIR/switch"
   write_layout "$BATS_TMPDIR/switch/rich" '  "$declare" segment left-mid "MID"'
   write_layout "$BATS_TMPDIR/switch/lean" '  "$declare" segment left-out "OUT"'
@@ -259,7 +259,7 @@ write_layout() {   # <path> <configure-body>
   assert_failure
   assert_output --partial "unknown segment slot 'nowhere'"
   run airline layout show name
-  assert_output adaptive
+  assert_output full
   run airline problem show airline airline-layout
   assert_output --partial "layout 'broken' unknown segment slot 'nowhere'"
 
@@ -301,7 +301,7 @@ write_layout() {   # <path> <configure-body>
 
 @test "one-off layouts retain widget formats and identities through palette changes" {
   airline session init
-  write_layout "$BATS_TEST_TMPDIR/oneoff" '  "$declare" widget left-out cpu'
+  write_layout "$BATS_TEST_TMPDIR/oneoff" '  "$declare" widget left-out prefix'
   airline layout load "$BATS_TEST_TMPDIR/oneoff"
   run airline layout show name
   assert_output "$BATS_TEST_TMPDIR/oneoff"
@@ -406,9 +406,9 @@ write_layout() {   # <path> <configure-body>
   run airline palette describe dark
   assert_success
   assert_output --partial 'Dark 256-color palette'
-  run airline widget describe cpu
+  run airline widget describe prefix
   assert_success
-  assert_output --partial "CPU utilization from Linux counter deltas"
+  assert_output --partial "Native prefix, copy, sync, and key-table badges"
   run airline layout describe full
   assert_success
   assert_output --partial 'Available native widgets alongside session and date'
@@ -421,12 +421,12 @@ write_layout() {   # <path> <configure-body>
 @test "layout describe evaluates native declarations without observing widgets or changing configuration" {
   airline session init
   mkdir "$BATS_TEST_TMPDIR/layouts"
-  printf '#| summary: Fixture widget\nairline_widget_format() { printf fixture; }\nairline_widget_sample() { touch "%s"; }\n' "$BATS_TEST_TMPDIR/adapter-ran" > "$BATS_TEST_TMPDIR/layouts/fixture-adapter"
+  printf '#| summary: Fixture widget\nairline_widget_format() { printf "%%s" "$1"; }\n' > "$BATS_TEST_TMPDIR/layouts/fixture.sh"
   cat > "$BATS_TEST_TMPDIR/layouts/inspect" <<'LAYOUT'
 #| summary: Inspect native declarations
 airline_layout_configure() {
   "$1" segment left-out 'candidate #S'
-  "$1" widget left-out fixture-adapter
+  "$1" widget left-out fixture
 }
 LAYOUT
   airline layout register "$BATS_TEST_TMPDIR/layouts"
@@ -435,7 +435,7 @@ LAYOUT
   run airline layout describe inspect
   assert_success
   assert_output --partial 'candidate #S'
-  assert_output --partial 'left-out widget fixture-adapter fixture'
+  assert_output --partial 'left-out widget fixture'
   [[ ! -e "$BATS_TEST_TMPDIR/adapter-ran" ]]
   assert_equal "$($TMUX -L "$_bats_socket" show-options -t bats)" "$before"
   run airline problem show airline airline-layout

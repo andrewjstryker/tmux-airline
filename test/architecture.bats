@@ -104,10 +104,10 @@ LINT="$BATS_TEST_DIRNAME/lint-architecture.sh"
 @test "Invariant B permits public widget palette references but rejects private names" {
   local fixture="$BATS_TEST_TMPDIR/b"
   mkdir -p "$fixture/layouts/widgets"
-  printf "airline_widget_format() { printf '%%s' '#{@airline-primary}'; }\n" > "$fixture/layouts/widgets/sample"
+  printf "airline_widget_format() { printf '%%s' '#{@airline-palette-primary}'; }\n" > "$fixture/layouts/widgets/sample.sh"
   run env AIRLINE_LINT_ROOT="$fixture" "$LINT" B
   assert_success
-  printf "airline_widget_format() { printf '%%s' '#{@airline--config-primary}'; }\n" > "$fixture/layouts/widgets/sample"
+  printf "airline_widget_format() { printf '%%s' '#{@airline--config-primary}'; }\n" > "$fixture/layouts/widgets/sample.sh"
   run env AIRLINE_LINT_ROOT="$fixture" "$LINT" B
   assert_failure
 }

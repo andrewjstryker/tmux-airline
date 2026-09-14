@@ -87,8 +87,15 @@ widget.
 ## Availability and inspection
 
 A widget may expose `airline_widget_available [arguments...]` for a cheap layout-time
-capability check. It must not run the runtime executable. Required unavailability
-rejects a layout; optional unavailability omits only that widget.
+capability check. It must not run the runtime executable. The check assesses whether
+the widget can fill its advertised contract. Optional unavailability omits the widget;
+required unavailability reports a `warn` problem and contributes an empty fragment so
+the rest of the layout remains valid.
+
+An advertised widget dependency that fails during format construction follows the
+same problem contract: report a `warn` claim through the problem service, return an
+empty format fragment, and leave the layout valid. This reports that the widget cannot
+fill its contract without turning display data into a health or overload claim.
 
 `widget describe` evaluates the format definition and reports its literal expression.
 It does not execute `#()` calls, invoke the runtime companion, or change active
@@ -99,7 +106,8 @@ configuration. There is no `airline widget eval` or `airline widget run` runtime
 A layout places ordered literal and widget fragments in fixed segment slots. Render
 establishes the segment baseline before each fragment and adds padding, chevrons, and
 separators at the segment boundary. The widget fragment must preserve the baseline's
-`fg` and `bg` when it completes. Repeated placements receive independent resolved
+`fg` and `bg` when it completes. An empty widget fragment is absent content: Airline
+does not add widget padding, separators, or an empty segment for it. Repeated placements receive independent resolved
 argument vectors, but no widget instance requires Airline-managed runtime state.
 
 The complete path is:

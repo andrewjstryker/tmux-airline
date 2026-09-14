@@ -26,15 +26,16 @@ jobs. Place widgets through a layout:
 ```bash
 airline_layout_configure() {
   "$1" segment left-out '#S'
-  "$1" widget right-mid cpu --warn 70 --critical 90
+  "$1" widget right-mid cpu --medium 60 --high 85
   "$1" segment right-mid ' | '
   "$1" widget right-mid online --host example.com
   "$1" widget-optional right-out battery
 }
 ```
 
-`widget-optional` omits a widget only when its availability check returns 3. Missing
-names, invalid arguments, and malformed formats fail the layout. Repeated placements
+`widget-optional` omits a widget only when its availability check returns 3. A required
+widget that returns unavailable reports a warn problem and contributes no fragment.
+Missing names, invalid arguments, and malformed formats fail the layout. Repeated placements
 are independent instances. Switching layouts retires previous instances and their
 claims. A global segment override applied with `session apply` retires only that
 slot's widgets.
@@ -45,7 +46,7 @@ Tmux 3.2 or newer is required for numeric meter comparisons.
 
 | Name | Observation | Presentation and availability |
 |---|---|---|
-| `cpu` | deferred until a stateless fast implementation exists | the current counter-delta sampler is not part of the widget contract |
+| `cpu` | sibling `cpu` executable reports a current usage snapshot | low, medium, or high level using configurable thresholds |
 | `battery` | sibling `battery` executable reads the first readable Linux system battery | Capacity level `▁`–`█` while discharging, `⚡` when charging/full/attached; `--display both` adds a separate status icon |
 | `online` | sibling `online` executable performs one fast ICMP check | `●` in primary/stress color for reachable/unreachable; requires `ping` |
 | `prefix` | Native client and pane state | Bracketed prefix key, Copy, Sync, or custom key-table badge; no process |
@@ -64,9 +65,12 @@ copy, or special backgrounds. Prefix displays tmux’s configured key (for examp
 `[C-b]`); `--show-copy off` and `--show-sync off` disable those two indicators.
 The idle root key table produces no badge.
 
-The shipped CPU counter implementation is deferred: a counter delta needs historical
-state and therefore does not satisfy the stateless widget contract. It should return
-only after it has a fast, stateless design.
+The CPU widget reports a current snapshot and reduces it to three presentation levels.
+It does not provide a detailed monitor or retain historical state in Airline. If its
+snapshot tool is unavailable, the widget emits an empty fragment and reports a warn
+problem because it cannot fill its advertised contract. CPU level is display data; it
+does not create a health claim or an overload problem. A user who needs detailed CPU
+information should use a dedicated monitor such as `btop`.
 
 ## Runtime executable
 
@@ -93,10 +97,8 @@ are trusted code, so these checks are contract validation, not a security sandbo
 Set global tmux options named `@airline-widget-<name>-<option>` in a tmux `.conf` file:
 
 ```tmux
-set -g @airline-widget-cpu-warn 70
-set -g @airline-widget-cpu-critical 90
-set -g @airline-widget-cpu-meter-medium 30
-set -g @airline-widget-cpu-meter-high 80
+set -g @airline-widget-cpu-medium 60
+set -g @airline-widget-cpu-high 85
 set -g @airline-widget-online-host example.com
 set -g @airline-widget-online-timeout 3
 set -g @airline-widget-battery-display compact
@@ -106,20 +108,20 @@ set -g @airline-widget-prefix-show-sync on
 Precedence is explicit placement argument, nonempty global option, then widget
 built-in default. These are global inputs; session-scoped options with the same
 names are not consulted. An unset or empty global option uses the built-in default.
-For example, `widget right-mid cpu --warn 80` overrides the global warning threshold
+For example, `widget right-mid cpu --medium 70` overrides the global medium threshold
 only for that placement. Repeated placements remain independent.
 
 | Widget | Options and built-in defaults |
 |---|---|
-| `cpu` | `warn=70`, `critical=90`, `meter-medium=30`, `meter-high=80`, `low-icon==`, `medium-icon=≡`, `high-icon=≣` |
+| `cpu` | `medium=60`, `high=85`, `low-icon==`, `medium-icon=≡`, `high-icon=≣` |
 | `battery` | `display=compact` (`compact` or `both`), `charging-icon=⚡`, `discharging-icon=🔋` (used in `both` mode) |
 | `online` | `host=1.1.1.1`, `timeout=1` (integer seconds, 1–8), `online-icon=●`, `offline-icon=●` |
 | `prefix` | `show-copy=on`, `show-sync=on` (each `on` or `off`) |
 
 Every option also has a corresponding `--<option> <value>` placement argument.
-CPU thresholds are integers from 0 to 100; warn must not exceed critical, and
-meter-medium must not exceed meter-high. Meter thresholds choose glyphs; warning
-thresholds choose colors. Icons are literal text, not tmux formats.
+CPU thresholds are integers from 0 to 100; medium must not exceed high. Thresholds
+choose the three display levels; they do not create health or problem claims. Icons
+are literal text, not tmux formats.
 
 Online's timeout is the command's own request timeout. A hostname exercises DNS; an
 IP address does not. The runtime executable owns its failure and unavailable-data
@@ -129,7 +131,7 @@ timeout.
 Defaults are resolved and validated when a layout is loaded. The same resolved
 argument vector goes to format construction and, when present, the runtime companion.
 Changing a global option does not change an already composed format. Reload the layout
-after changing defaults, for example `airline layout use adaptive` (or `airline layout
+after changing defaults, for example `airline layout use full` (or `airline layout
 load <path>` for a file). Invalid effective options reject a candidate layout,
 including optional placements, leaving the previously loaded layout intact.
 
@@ -150,7 +152,7 @@ shared Airline refresh-policy option.
 Replace `adapter use` declarations and plugin placeholder strings with `widget
 <slot> <name> [arguments...]`. The old adapter CLI and catalog are removed; register
 custom formats in the widget catalog. `prefix` replaces `prefix-highlight`.
-The adaptive and full layouts place online at left-mid, prefix at right-in, CPU at
+The full layout places online at left-mid, prefix at right-in, CPU at
 right-mid, and battery after the date at right-out. Optional widgets are selected by
 capability availability, not by TPM installation.
 
