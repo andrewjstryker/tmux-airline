@@ -24,10 +24,11 @@ _palette_public_get_into () { opt_get_into "$1" global server "$(palette_public_
 _palette_public_has_session () { opt_has_session "$1" "$(palette_public_name "$2")"; }
 _palette_public_get_session_into () { opt_get_into "$1" session "$2" "$(palette_public_name "$3")"; }
 _palette_source_file_session () {
-  local session="$1" source="$2" staged text rc=0
+  local session="$1" source="$2" staged text rc=0 stage_prefix
   staged="$(mktemp)" || return
   text="$(cat "$source")" || { rm -f "$staged"; return 1; }
-  printf '%s\n' "${text//@airline-palette-/@airline--stage-}" > "$staged"
+  stage_prefix="$(prv_name 'stage-')"
+  printf '%s\n' "${text//@airline-palette-/$stage_prefix}" > "$staged"
   source_file_session "$session" "$staged" || rc=$?
   rm -f "$staged"
   return "$rc"

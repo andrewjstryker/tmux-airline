@@ -60,3 +60,11 @@ teardown() { :; }
   assert_failure
   assert_output --partial "-t requires <session-target>"
 }
+
+@test "session init sources the startup command file" {
+  printf 'CONFIG_FILE_SOURCED=1\n' > "$BATS_TEST_TMPDIR/airline-config"
+  AIRLINE_CONFIG="$BATS_TEST_TMPDIR/airline-config"
+  layout_initialize() { :; }
+  session_init
+  assert_equal "${CONFIG_FILE_SOURCED:-}" 1
+}

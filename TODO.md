@@ -29,22 +29,6 @@ only prospective work.
 
 ## Code review follow-up
 
-- **Remove unused state and accessors.** Stop persisting `layout-parts` in
-  `lib/layout.sh` and remove its matching retirement bookkeeping in `lib/widget.sh`;
-  the collection is only read during its own removal. Rendering already uses
-  committed segment strings, and inspection evaluates the definition. Delete the
-  unreferenced `stage_get_session` and `pub_set_session` wrappers from
-  `lib/tmux.sh`. Verify layout inspection, slot
-  replacement, instance retirement, and widget runtime behavior through existing tests.
-
-- **Make the no-signal test assert the absence of signals.** The test named
-  "a stop request never signals a supervisor PID from stored state" in
-  `test/runner/behavior.bats` only checks the stored stop request. It still passes
-  if a forbidden signal attempt is added and its error is ignored. Record signal
-  attempts, distinguish permitted `kill -0` liveness checks, and assert that no
-  delivery was attempted. Verify that deliberately adding a forbidden attempt
-  makes the test fail, even when its return status is ignored.
-
 - **Keep unit coverage centered on behavior.** Most fast suites already assert
   outcomes over real modules and a mechanical fake. When revisiting runner parser
   tests, prefer accepted/rejected invocations, preserved element arguments, and
@@ -53,39 +37,9 @@ only prospective work.
   coverage for observable gaps rather than duplicating implementation steps in
   assertions.
 
-- **Close the completion gap in tmux ownership.** Core application calls already
-  route through `lib/tmux.sh`, but Bash and Zsh target completions invoke tmux
-  directly and are outside architecture lint coverage. Route their target
-  enumeration through the mechanical boundary, preserving `AIRLINE_TMUX` server
-  selection. Update `scripts/generate-completions`, regenerate both artifacts, and
-  extend lint coverage to reject direct completion calls. Keep the PATH shim's
-  bootstrap lookup and test/benchmark server management as explicit exclusions in
-  `DESIGN.md`. Test target completion against an isolated server and run
-  `make check-completions` and `make lint`.
-
-## Configuration persistence
-
-- Design a save/load installation story for selected layouts, palettes, and catalog
-  paths. Apply saved configuration during Airline session initialization rather
-  than relying on shell startup files. Discuss this separately from rendering.
-
-## Widget policy
-
-- **Implement the stateless widget contract.** Replace the hosted sampler and its
-  filesystem state with flat catalog entries: `widgets/<name>.sh` for the tmux format
-  definition and an optional extensionless `widgets/<name>` executable for a quick,
-  one-line scalar. Resolve widget options as
-  `@airline-widget-<name>-<option>`, expose palette roles as
-  `@airline-palette-<role>`, pass segment `fg` and `bg` into format construction, and
-  require a fragment that changes either color to restore both before it ends. Tmux's
-  `status-interval` owns refresh; Airline must not add a widget scheduler, cache,
-  lock, timeout, or `widget eval/run` runtime path. Add behavior coverage for catalog
-  resolution, option scoping, format composition, scalar runtime output, and palette
-  propagation before shipping the widgets. CPU remains in scope as a three-level
-  current-usage indicator; implement it through a snapshot-producing system tool,
-  without Airline history or health/overload claims. A missing required snapshot tool
-  may report a warn problem and emit an empty fragment. Detailed CPU monitoring remains
-  outside the catalog.
+Configuration persistence remains deferred. Tmux options and configuration files
+already provide the platform-native source of truth; adding an Airline save/load
+store would introduce filesystem state without a demonstrated need.
 
 ## Runner contract follow-up
 
@@ -125,12 +79,14 @@ exits 130 or 143 remains indistinguishable from a signal at the Bash boundary.
 
 Remaining implementation work:
 
-- Reconcile and report an owned child that cannot be reaped, resolving the core
-  observer problem only after the owned process set is gone. Airline signals the
-  PIDs it supplied and recorded; it does not walk the process table or claim
-  ownership of descendants created privately by an element.
 - Add real-tmux coverage for direct PID signal failures and the explicit-exit
   130/143 limitation in the public classifier contract.
+
+Airline's process obligation ends when each PID it launched has been waited for
+or Bash reports that it is no longer an owned child. Airline does not inspect the process table or
+chase descendants created privately by a command, filter, or probe. A process
+that remains alive is handled by the operating system and the user's system
+tools; Airline reports only failures in the processes and cleanup it owns.
 
 ## Grammar coherence
 
@@ -140,10 +96,9 @@ Remaining implementation work:
 
 ## Deferred
 
-- Reassess a secondary problem-claim index by its marginal performance benefit
-  relative to its code clarity and maintenance cost. A decrease in clarity can be
-  worthwhile when offset by a substantial performance gain; larger clarity costs
-  require larger gains.
+- Do not add a secondary problem-claim index unless measurements show a material
+  benefit that justifies duplicating state and consistency obligations. A decrease
+  in clarity requires a larger performance gain.
   A persistent index duplicates membership and adds consistency obligations to
   reporting, recovery, closure, resolution, and clearing. Destination reads
   reduced the measured marginal set/clear-pair
@@ -152,11 +107,9 @@ Remaining implementation work:
   additional state. See the follow-up in the
   [latency profile](docs/latency-profile.md).
 
-- Reassess the [C++ core and Lua catalog proposal](docs/native-core-proposal.md)
-  after the implementation settles, using [performance measurements](docs/performance.md)
-  and actual maintenance demands. No migration is scheduled.
+- Keep the [C++ core and Lua catalog proposal](docs/native-core-proposal.md)
+  deferred. Revisit only if measured maintenance or performance problems outweigh
+  the cost of leaving Bash and tmux as the implementation platform.
 
-- Grow the runner catalog once the surface settles. `watch` requires `--probe` and
-  one probe ships, so the verb has a single out-of-the-box use; additional probes
-  and definitions are what make the composed-runner path the default in practice
-  rather than only in principle.
+- Grow the runner catalog only when a concrete use case requires another probe or
+  composition; catalog breadth alone is not a project objective.

@@ -72,6 +72,19 @@ session_init () {   # [-t <session-target>]
     session="$(command_current_session)"
   fi
   _session_bootstrap "$session" || return
+  _session_config || return
+}
+
+_session_config () {   # [<file>]
+  local file="${1:-${AIRLINE_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/airline/config}}"
+  (( $# <= 1 )) || command_die 'session config: takes at most one <file>'
+  [[ -f "$file" ]] || return 0
+  [[ -r "$file" ]] || command_die "session config: cannot read '$file'"
+  # The config file is a trusted batch of the existing CLI commands. Keep the
+  # command name available even when the installable PATH shim is not installed.
+  airline() { "$AIRLINE_DIR/airline.sh" "$@"; }
+  # shellcheck disable=SC1090
+  source "$file"
 }
 
 session_apply () {

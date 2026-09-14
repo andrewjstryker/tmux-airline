@@ -31,7 +31,8 @@ airline_widget_format() {
     fi
     return 0
   fi
-  local value="$(widget_runtime)"
+  local value
+  value="$(widget_runtime)"
   printf '#[fg=#{?#{e|>=:%s,%s},#{@airline-palette-stress},#{?#{e|>=:%s,%s},#{@airline-palette-alert},#{@airline-palette-primary}}}]#{?#{e|>=:%s,%s},%s,#{?#{e|>=:%s,%s},%s,%s}}#[fg=%s,bg=%s]' \
     "$value" "$CPU_HIGH" "$value" "$CPU_MEDIUM" "$value" "$CPU_HIGH" "$(widget_text "$CPU_HIGH_ICON")" "$value" "$CPU_MEDIUM" "$(widget_text "$CPU_MEDIUM_ICON")" "$(widget_text "$CPU_LOW_ICON")" "$fg" "$bg"
 }

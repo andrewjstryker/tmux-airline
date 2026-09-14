@@ -23,7 +23,8 @@ airline_widget_available() { command -v ping >/dev/null || return 3; }
 airline_widget_format() {
   local fg="$1" bg="$2"; shift 2
   _online_options "$@" || return 2
-  local value="$(widget_runtime --host "$ONLINE_HOST" --timeout "$ONLINE_TIMEOUT")"
+  local value
+  value="$(widget_runtime --host "$ONLINE_HOST" --timeout "$ONLINE_TIMEOUT")"
   printf '%s#[fg=#{?#{==:%s,1},#{@airline-palette-primary},#{@airline-palette-stress}}]#{?#{==:%s,1},%s,#{?#{==:%s,0},%s,—}}#[fg=%s,bg=%s]' \
     "$value" "$value" "$value" "$(widget_text "$ONLINE_ICON")" "$value" "$(widget_text "$OFFLINE_ICON")" "$fg" "$bg"
 }

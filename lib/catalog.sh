@@ -65,7 +65,7 @@ catalog_list () {   # <session> <kind>
       [[ -f "$f" ]] || continue
       name="${f##*/}"
       [[ "$name" == *"$extension" ]] || continue
-      name="${name%$extension}"
+      name="${name%"$extension"}"
       case "$seen" in *" $name "*) continue ;; esac
       seen+="$name "
       printf '%s\n' "$name"

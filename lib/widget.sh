@@ -56,6 +56,8 @@ widget_output_valid () {
 }
 
 widget_format () (   # <session> <instance> <definition> <fg> <bg> [args...]
+  # These locals are the widget's sourced-file API; definitions read them by name.
+  # shellcheck disable=SC2034
   local AIRLINE_WIDGET_SESSION="$1" AIRLINE_WIDGET_INSTANCE="$2" file="$3"
   local AIRLINE_WIDGET_FG="$4" AIRLINE_WIDGET_BG="$5" output rc=0 unavailable=0
   shift 5
@@ -63,6 +65,7 @@ widget_format () (   # <session> <instance> <definition> <fg> <bg> [args...]
   unset -f airline_widget_format airline_widget_available 2>/dev/null || true
   output="$(mktemp)" || return 1
   trap 'rc=$?; rm -f "$output"; if (( rc == 3 && unavailable == 0 )); then exit 2; fi' EXIT
+  # shellcheck disable=SC1090
   source "$file" > "$output" || return
   [[ ! -s "$output" ]] || { echo 'airline: widget source wrote to stdout' >&2; return 2; }
   declare -F airline_widget_format >/dev/null || { echo 'airline: missing airline_widget_format' >&2; return 2; }
@@ -78,6 +81,7 @@ widget_format () (   # <session> <instance> <definition> <fg> <bg> [args...]
   if declare -F airline_widget_available >/dev/null; then
     airline_widget_available "$@" > "$output" || rc=$?
     [[ ! -s "$output" ]] || return 2
+    # shellcheck disable=SC2034
     case "$rc" in 0) ;; 3) unavailable=1; return 3 ;; *) return 2 ;; esac
   fi
   printf '%s' "$format"

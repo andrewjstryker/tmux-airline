@@ -81,6 +81,15 @@ and Zsh completions under the prefix's standard `share` directories. Your shell
 or completion manager must include those directories in its normal completion
 search path.
 
+Without TPM, add the equivalent bootstrap to `tmux.conf`:
+
+```tmux
+run-shell -b '/path/to/tmux-airline/airline.sh session init'
+```
+
+`session init` also loads the user command file, so the manual and TPM paths are
+identical.
+
 ## Core concepts
 
 Choose a palette for colors, a layout for arrangement, and widgets for live content. Segments hold the contents of individual blocks:
@@ -120,6 +129,18 @@ airline session show
 
 For exact options, use `airline help`, `airline help palette`, or
 `airline help palette use`. Bash and Zsh completions follow the same grammar.
+
+After initialization, Airline loads a user startup command file. The default path
+is `$XDG_CONFIG_HOME/airline/config`, or `$HOME/.config/airline/config` when
+`XDG_CONFIG_HOME` is unset. The file contains existing Airline commands:
+
+```shell
+airline palette use dark
+airline layout use full
+airline widget register "$HOME/.config/airline/widgets"
+```
+
+Set `AIRLINE_CONFIG` to choose another default path.
 
 ## Palettes
 

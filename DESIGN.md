@@ -216,7 +216,8 @@ The two update modes are deliberately different:
 
 `init` publishes `@airline-cli`, installs missing default palette and layout
 selections behind a session sentinel, and renders. Re-running it does not overwrite
-an existing session selection. A global `after-new-session` hook initializes future
+an existing session selection. Initialization then sources the optional user command
+file through `session config`. A global `after-new-session` hook initializes future
 sessions using an explicit session target. Because tmux has global defaults but no
 session defaults for window options, an `after-new-window` hook copies the creating
 session's committed palette roles directly into the new window's pane-border and
@@ -691,8 +692,10 @@ origin claims, badge, and transaction marker.
 `test/architecture.bats` enforces three build-time rules:
 
 - **A — tmux ownership:** only `lib/tmux.sh` invokes the `tmux` binary inside the
-  application. The external PATH shim, test shims, and inert tmux configuration are
-  explicit exclusions.
+  application. The external PATH shim, generated Bash/Zsh completion scripts,
+  test shims, and inert tmux configuration are explicit exclusions. Completions
+  are shell integration artifacts; they may query tmux directly for target
+  suggestions and preserve `AIRLINE_TMUX` when doing so.
 - **B — namespace ownership:** only `lib/tmux.sh` constructs literal private `@airline--` names in shell code. Palette and segment configuration spell public
   names because those names are the external contract.
 - **D — module boundaries:** a function whose name begins with `_` may be referenced
