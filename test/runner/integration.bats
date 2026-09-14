@@ -875,13 +875,19 @@ FILTER
   assert_output --partial 'foreground-finished'
 }
 
-@test "foreground command keeps stdin and conventional stops produce no verdict" {
+@test "foreground command keeps stdin and documents status 143 ambiguity" {
   airline session init
   printf 'input evidence\n' | airline runner run -- sh -c 'read value; printf "%s\n" "$value"' \
     > "$BATS_TEST_TMPDIR/out"
   run cat "$BATS_TEST_TMPDIR/out"
   assert_output 'input evidence'
   run airline runner run -- sh -c 'kill -TERM $$'
+  assert_failure 143
+  run airline health show airline-runner-classifier-conventional command
+  assert_output $'fail\tcommand exited with status 143'
+  # A child that exits explicitly with 143 is indistinguishable from the
+  # signaled child above once Bash reports only the wait status.
+  run airline runner run -- sh -c 'exit 143'
   assert_failure 143
   run airline health show airline-runner-classifier-conventional command
   assert_output $'fail\tcommand exited with status 143'
