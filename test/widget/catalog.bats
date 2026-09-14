@@ -36,3 +36,10 @@ setup() { load_session; catalog_register_builtin s1 widget "$PROJECT_ROOT/layout
   assert_success
   assert_output '42:charging'
 }
+
+@test "widgets expose capability checks without running runtime companions" {
+  source "$PROJECT_ROOT/layouts/widgets/prefix.sh"
+  run airline_widget_available
+  assert_success
+  refute [ -e "$BATS_TEST_TMPDIR/runtime-ran" ]
+}

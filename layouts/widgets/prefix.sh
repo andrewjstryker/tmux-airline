@@ -7,6 +7,7 @@
 _prefix_badge() {
   printf '#[fg=#{@airline-palette-inner-bg}]#[bg=#{@airline-palette-%s}][%s]#[fg=%s,bg=%s]' "$1" "$2" "$3" "$4"
 }
+airline_widget_available() { return 0; }
 airline_widget_format() {
   local fg="$1" bg="$2"; shift 2
   local show_copy=on show_sync=on fallback
