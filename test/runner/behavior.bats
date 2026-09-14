@@ -12,7 +12,7 @@ setup() {
 }
 
 @test "conventional classifier interprets successful and failed termination" {
-  runner_classifier_load "$PROJECT_ROOT/runners/classifiers/conventional"
+  runner_classifier_load "$PROJECT_ROOT/runners/classifiers/conventional.sh"
   run runner_classifier_run 0 ""
   assert_output ok
   run runner_classifier_run 7 ""
@@ -266,7 +266,7 @@ setup() {
 @test "http probe owns per-endpoint health and its curl capability claim" {
   AIRLINE_RUNNER_PANE='%1'
   curl() { if [[ "${*: -1}" == *unhealthy* ]]; then printf 503; else printf 204; fi; }
-  runner_probe_load "$PROJECT_ROOT/runners/probes/http"
+  runner_probe_load "$PROJECT_ROOT/runners/probes/http.sh"
   transcript="$BATS_TEST_TMPDIR/http-transcript"
   airline_runner_probe 4321 _runner_health_report _runner_problem_report \
     http://service/one http://service/unhealthy http://service/two > "$transcript"
@@ -289,12 +289,12 @@ setup() {
   airline_runner_probe 4321 _runner_health_report _runner_problem_report http://service/one > "$transcript"
   run signal_problem_show airline-http curl
   assert_output ''
-  run runner_probe_valid "$PROJECT_ROOT/runners/probes/http"
+  run runner_probe_valid "$PROJECT_ROOT/runners/probes/http.sh"
   assert_failure
 }
 
 @test "http probe validates policy arguments without executing requests or reporting" {
-  runner_probe_load "$PROJECT_ROOT/runners/probes/http"
+  runner_probe_load "$PROJECT_ROOT/runners/probes/http.sh"
   curl() { printf 'unexpected request\n'; return 99; }
   local option value
   for option in --timeout --connect-timeout; do
@@ -330,7 +330,7 @@ setup() {
 }
 
 @test "http probe applies full status matches and timeout budgets to every endpoint" {
-  runner_probe_load "$PROJECT_ROOT/runners/probes/http"
+  runner_probe_load "$PROJECT_ROOT/runners/probes/http.sh"
   local requests="$BATS_TEST_TMPDIR/requests" reports="$BATS_TEST_TMPDIR/reports"
   curl() {
     printf '%s\n' "$@" >> "$requests"
@@ -372,18 +372,18 @@ setup() {
 }
 
 @test "named http composition forwards policy argv and only defaults with no arguments" {
-  runner_definition_load "$PROJECT_ROOT/runners/definitions/http"
+  runner_definition_load "$PROJECT_ROOT/runners/definitions/http.sh"
   runner_definition_configure --expect '204|503' --timeout 0.5 http://service/one http://service/two
   runner_definition_project watch
   run printf '%s\n' "${AIRLINE_RUNNER_DEFINITION_ARGV[@]}"
   assert_output $'--probe\nhttp\n--expect\n204|503\n--timeout\n0.5\nhttp://service/one\nhttp://service/two'
-  run runner_probe_valid "$PROJECT_ROOT/runners/probes/http" "${AIRLINE_RUNNER_CONFIG_PROBE_ARGS[@]}"
+  run runner_probe_valid "$PROJECT_ROOT/runners/probes/http.sh" "${AIRLINE_RUNNER_CONFIG_PROBE_ARGS[@]}"
   assert_success
   runner_definition_configure
   run printf '%s\n' "${AIRLINE_RUNNER_CONFIG_PROBE_ARGS[@]}"
   assert_output $'http://localhost/health/live\nhttp://localhost/health/ready'
   runner_definition_configure --timeout 3
-  run runner_probe_valid "$PROJECT_ROOT/runners/probes/http" "${AIRLINE_RUNNER_CONFIG_PROBE_ARGS[@]}"
+  run runner_probe_valid "$PROJECT_ROOT/runners/probes/http.sh" "${AIRLINE_RUNNER_CONFIG_PROBE_ARGS[@]}"
   assert_failure 2
 }
 
@@ -391,7 +391,7 @@ setup() {
   output_file="$BATS_TEST_TMPDIR/tap-output"
   export output_file
   report_state() { printf '%s\n' "$*" >> "$output_file"; }
-  runner_filter_load "$PROJECT_ROOT/runners/filters/tap"
+  runner_filter_load "$PROJECT_ROOT/runners/filters/tap.sh"
 
   airline_runner_filter 4321 report_state report_state <<'TAP'
 TAP version 13
@@ -408,7 +408,7 @@ TAP
   output_file="$BATS_TEST_TMPDIR/tap-output"
   export output_file
   report_state() { printf '%s\n' "$*" >> "$output_file"; }
-  runner_filter_load "$PROJECT_ROOT/runners/filters/tap"
+  runner_filter_load "$PROJECT_ROOT/runners/filters/tap.sh"
 
   airline_runner_filter 4321 report_state report_state <<'TAP'
 1..2
@@ -424,7 +424,7 @@ TAP
   output_file="$BATS_TEST_TMPDIR/tap-output"
   export output_file
   report_state() { printf '%s\n' "$*" >> "$output_file"; }
-  runner_filter_load "$PROJECT_ROOT/runners/filters/tap"
+  runner_filter_load "$PROJECT_ROOT/runners/filters/tap.sh"
 
   airline_runner_filter 4321 report_state report_state <<'TAP'
 1..2
@@ -683,7 +683,7 @@ ELEMENT
 }
 
 @test "none is a valid classifier and only successful silence declines a verdict" {
-  runner_classifier_load "$PROJECT_ROOT/runners/classifiers/none"
+  runner_classifier_load "$PROJECT_ROOT/runners/classifiers/none.sh"
   run runner_classifier_run 7 ''
   assert_success
   assert_output ''

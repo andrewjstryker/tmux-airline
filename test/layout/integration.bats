@@ -24,8 +24,8 @@ write_layout() {   # <path> <configure-body>
 @test "palette catalog selection, validation, recovery, and provenance compose" {
   airline session init
   mkdir -p "$BATS_TMPDIR/mypalettes"
-  cp "$PROJECT_ROOT/layouts/palettes/default" "$BATS_TMPDIR/mypalettes/custom"
-  printf 'set @airline-inner-bg colour55\n' >> "$BATS_TMPDIR/mypalettes/custom"
+  cp "$PROJECT_ROOT/layouts/palettes/default.conf" "$BATS_TMPDIR/mypalettes/custom.conf"
+  printf 'set @airline-inner-bg colour55\n' >> "$BATS_TMPDIR/mypalettes/custom.conf"
   airline palette register "$BATS_TMPDIR/mypalettes"
   airline palette use custom
   run airline palette show inner-bg
@@ -38,7 +38,7 @@ write_layout() {   # <path> <configure-body>
   assert_failure
   session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
   mkdir -p "$BATS_TMPDIR/incomplete"
-  printf 'set @airline-inner-bg colour55\n' > "$BATS_TMPDIR/incomplete/broken"
+  printf 'set @airline-inner-bg colour55\n' > "$BATS_TMPDIR/incomplete/broken.conf"
   airline palette register "$BATS_TMPDIR/incomplete"
 
   run airline palette use broken
@@ -49,7 +49,7 @@ write_layout() {   # <path> <configure-body>
   run airline problem show airline airline-palette
   assert_output --partial "palette 'broken' is incomplete or could not be evaluated"
 
-  cp "$PROJECT_ROOT/layouts/palettes/default" "$BATS_TMPDIR/incomplete/broken"
+  cp "$PROJECT_ROOT/layouts/palettes/default.conf" "$BATS_TMPDIR/incomplete/broken.conf"
   airline palette use broken
   run airline problem show airline airline-palette
   assert_output ""
@@ -57,8 +57,8 @@ write_layout() {   # <path> <configure-body>
   assert_success
 
   mkdir -p "$BATS_TMPDIR/shadow"
-  cp "$PROJECT_ROOT/layouts/palettes/default" "$BATS_TMPDIR/shadow/dark"
-  printf 'set @airline-inner-bg colour42\n' >> "$BATS_TMPDIR/shadow/dark"   # same name as shipped
+  cp "$PROJECT_ROOT/layouts/palettes/default.conf" "$BATS_TMPDIR/shadow/dark.conf"
+  printf 'set @airline-inner-bg colour42\n' >> "$BATS_TMPDIR/shadow/dark.conf"   # same name as shipped
   airline palette register "$BATS_TMPDIR/shadow"
   airline palette use dark
   run airline palette show inner-bg
@@ -72,7 +72,7 @@ write_layout() {   # <path> <configure-body>
   airline session init
   mkdir -p "$BATS_TEST_TMPDIR/palettes"
   palette_file="$BATS_TEST_TMPDIR/palettes/custom palette"
-  cp "$PROJECT_ROOT/layouts/palettes/default" "$palette_file"
+  cp "$PROJECT_ROOT/layouts/palettes/default.conf" "$palette_file"
   printf 'set-option @airline-inner-bg colour55\n' >> "$palette_file"
   airline palette register "$BATS_TEST_TMPDIR/palettes"
   prior="$(airline palette show inner-bg)"
@@ -184,8 +184,8 @@ write_layout() {   # <path> <configure-body>
   run airline widget list
   assert_line battery; assert_line online; assert_line prefix
   mkdir -p "$BATS_TEST_TMPDIR/widgets"
-  write_layout "$BATS_TEST_TMPDIR/widgets/withprefix" '  "$declare" widget left-out prefix'
-  write_layout "$BATS_TEST_TMPDIR/widgets/bare" '  "$declare" segment left-out "#S"'
+  write_layout "$BATS_TEST_TMPDIR/widgets/withprefix.sh" '  "$declare" widget left-out prefix'
+  write_layout "$BATS_TEST_TMPDIR/widgets/bare.sh" '  "$declare" segment left-out "#S"'
   airline layout register "$BATS_TEST_TMPDIR/widgets"
   airline layout use withprefix
   [[ -n "$(sopt @airline--widgets)" ]]
@@ -218,7 +218,7 @@ write_layout() {   # <path> <configure-body>
   run airline segment show left-out
   assert_output --partial "#S"                    # private snapshot was not replaced by staging
   mkdir -p "$BATS_TMPDIR/mylayouts"
-  write_layout "$BATS_TMPDIR/mylayouts/withprefix" \
+  write_layout "$BATS_TMPDIR/mylayouts/withprefix.sh" \
     '  "$declare" widget right-mid prefix
   "$declare" segment left-out "#S"'
   airline layout register "$BATS_TMPDIR/mylayouts"
@@ -226,8 +226,8 @@ write_layout() {   # <path> <configure-body>
   run airline segment show right-mid
   assert_output --partial 'client_prefix'
   mkdir -p "$BATS_TMPDIR/switch"
-  write_layout "$BATS_TMPDIR/switch/rich" '  "$declare" segment left-mid "MID"'
-  write_layout "$BATS_TMPDIR/switch/lean" '  "$declare" segment left-out "OUT"'
+  write_layout "$BATS_TMPDIR/switch/rich.sh" '  "$declare" segment left-mid "MID"'
+  write_layout "$BATS_TMPDIR/switch/lean.sh" '  "$declare" segment left-out "OUT"'
   airline layout register "$BATS_TMPDIR/switch"
   airline layout use rich
   run airline segment show left-mid
@@ -240,7 +240,7 @@ write_layout() {   # <path> <configure-body>
 @test "invalid layouts are rejected atomically, reported, and recoverable" {
   airline session init
   mkdir -p "$BATS_TMPDIR/loopy"
-  write_layout "$BATS_TMPDIR/loopy/rogue" \
+  write_layout "$BATS_TMPDIR/loopy/rogue.sh" \
     '  airline palette use light
   "$declare" segment left-out "#S"'
   airline layout register "$BATS_TMPDIR/loopy"
@@ -251,7 +251,7 @@ write_layout() {   # <path> <configure-body>
   assert_output "default"
   session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
   mkdir -p "$BATS_TMPDIR/invalid-layout"
-  write_layout "$BATS_TMPDIR/invalid-layout/broken" \
+  write_layout "$BATS_TMPDIR/invalid-layout/broken.sh" \
     '  "$declare" segment nowhere "INVALID"'
   airline layout register "$BATS_TMPDIR/invalid-layout"
 
@@ -263,16 +263,16 @@ write_layout() {   # <path> <configure-body>
   run airline problem show airline airline-layout
   assert_output --partial "layout 'broken' unknown segment slot 'nowhere'"
 
-  write_layout "$BATS_TMPDIR/invalid-layout/broken" \
+  write_layout "$BATS_TMPDIR/invalid-layout/broken.sh" \
     '  "$declare" segment left-out "RECOVERED"'
   airline layout use broken
   run airline problem show airline airline-layout
   assert_output ""
   mkdir -p "$BATS_TMPDIR/ambiguous-layout"
-  write_layout "$BATS_TMPDIR/ambiguous-layout/duplicate" \
+  write_layout "$BATS_TMPDIR/ambiguous-layout/duplicate.sh" \
     '  "$declare" segment left-out "ONE"
   "$declare" segment left-out "TWO"'
-  write_layout "$BATS_TMPDIR/ambiguous-layout/noisy" \
+  write_layout "$BATS_TMPDIR/ambiguous-layout/noisy.sh" \
     '  printf "not a protocol\\n"
   "$declare" segment left-out "ONE"'
   airline layout register "$BATS_TMPDIR/ambiguous-layout"
@@ -285,14 +285,14 @@ write_layout() {   # <path> <configure-body>
   assert_output --partial "wrote to stdout"
   session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
   mkdir -p "$BATS_TMPDIR/failing-layout"
-  write_layout "$BATS_TMPDIR/failing-layout/unstable" '  return 7'
+  write_layout "$BATS_TMPDIR/failing-layout/unstable.sh" '  return 7'
   airline layout register "$BATS_TMPDIR/failing-layout"
   run airline layout use unstable
   assert_failure
   run airline problem show airline airline-layout
   assert_output --partial "layout 'unstable' could not be evaluated"
 
-  write_layout "$BATS_TMPDIR/failing-layout/unstable" \
+  write_layout "$BATS_TMPDIR/failing-layout/unstable.sh" \
     '  "$declare" segment left-out "RECOVERED"'
   airline layout use unstable
   run airline problem show airline airline-layout
@@ -301,8 +301,8 @@ write_layout() {   # <path> <configure-body>
 
 @test "one-off layouts retain widget formats and identities through palette changes" {
   airline session init
-  write_layout "$BATS_TEST_TMPDIR/oneoff" '  "$declare" widget left-out prefix'
-  airline layout load "$BATS_TEST_TMPDIR/oneoff"
+  write_layout "$BATS_TEST_TMPDIR/oneoff.sh" '  "$declare" widget left-out prefix'
+  airline layout load "$BATS_TEST_TMPDIR/oneoff.sh"
   run airline layout show name
   assert_output "$BATS_TEST_TMPDIR/oneoff"
   prior="$(airline segment show left-out)"
@@ -390,7 +390,7 @@ write_layout() {   # <path> <configure-body>
   run airline layout show name
   assert_output "default"
   run airline layout show path
-  assert_output --partial "/layouts/definitions/default"
+  assert_output --partial "/layouts/definitions/default.sh"
   run airline layout show
   assert_output --partial "name"
   assert_output --partial "path"

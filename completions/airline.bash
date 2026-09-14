@@ -8,7 +8,7 @@ _airline_children () {
     session) printf %s init\ apply\ show\ suspend\ resume\ toggle ;;
     palette) printf %s describe\ show\ use\ load\ list\ register ;;
     segment) printf %s show ;;
-    widget) printf %s describe\ list\ register\ run ;;
+    widget) printf %s describe\ list\ register ;;
     layout) printf %s describe\ use\ load\ show\ list\ register ;;
     classifier) printf %s describe\ list\ register ;;
     filter) printf %s describe\ list\ register ;;
@@ -42,7 +42,6 @@ _airline_usage () {
     widget\ describe) printf %s \<widget\>\ \[\<arg\>...\] ;;
     widget\ list) printf %s '' ;;
     widget\ register) printf %s \<dir\> ;;
-    widget\ run) printf %s -t\ \<session-target\>\ \<instance\> ;;
     layout\ describe) printf %s \<layout\> ;;
     layout\ use) printf %s \<layout\> ;;
     layout\ load) printf %s \<file\> ;;
@@ -118,7 +117,6 @@ _airline_description () {
     widget\ describe) printf %s Inspect\ a\ widget\ format\ without\ observing ;;
     widget\ list) printf %s List\ widgets\ on\ the\ search\ path ;;
     widget\ register) printf %s Add\ a\ widget\ search\ directory ;;
-    widget\ run) printf %s Refresh\ an\ active\ widget\ instance ;;
     layout\ describe) printf %s Describe\ metadata\,\ evaluated\ segments\,\ and\ widgets\ without\ applying ;;
     layout\ use) printf %s Apply\ a\ named\ layout\ definition ;;
     layout\ load) printf %s Apply\ and\ record\ a\ one-off\ layout\ definition ;;

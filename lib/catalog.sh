@@ -11,6 +11,13 @@
 
 _catalog_namespace () { printf 'path-%s' "$1"; }   # <kind> -> collection namespace
 _catalog_error () { printf 'airline: %s\n' "$*" >&2; return 2; }
+_catalog_extension () {
+  case "$1" in
+    palette) printf '.conf' ;;
+    widget|layout|classifier|filter|probe|runner) printf '.sh' ;;
+    *) return 2 ;;
+  esac
+}
 
 # Register one shipped directory at the low-priority end of a kind's path. Missing
 # optional directories are ignored; collection registration is idempotent.
@@ -39,30 +46,26 @@ catalog_paths () {   # <session> <kind> -> space-delimited priority order
 # Resolve a bare name to the first file on the kind's path. A slash is rejected:
 # callers must use their explicit load operation for a literal path.
 catalog_resolve () {   # <session> <kind> <bare-name>
-  local session="$1" kind="$2" name="$3" dir
+  local session="$1" kind="$2" name="$3" dir extension
   [[ "$name" != */* ]] || return
+  extension="$(_catalog_extension "$kind")" || return
   for dir in $(catalog_paths "$session" "$kind"); do
-    if [[ "$kind" == widget ]]; then
-      [[ -f "$dir/$name.sh" ]] && { printf '%s' "$dir/$name.sh"; return; }
-    else
-      [[ -f "$dir/$name" ]] && { printf '%s' "$dir/$name"; return; }
-    fi
+    [[ -f "$dir/$name$extension" ]] && { printf '%s' "$dir/$name$extension"; return; }
   done
 }
 
 # List every resolvable bare name once, in path priority order. A name in a
 # higher-priority directory shadows the same name in later directories.
 catalog_list () {   # <session> <kind>
-  local session="$1" kind="$2" dir f name seen=" "
+  local session="$1" kind="$2" dir f name seen=" " extension
+  extension="$(_catalog_extension "$kind")" || return
   for dir in $(catalog_paths "$session" "$kind"); do
     [[ -d "$dir" ]] || continue
     for f in "$dir"/*; do
       [[ -f "$f" ]] || continue
       name="${f##*/}"
-      if [[ "$kind" == widget ]]; then
-        [[ "$name" == *.sh ]] || continue
-        name="${name%.sh}"
-      fi
+      [[ "$name" == *"$extension" ]] || continue
+      name="${name%$extension}"
       case "$seen" in *" $name "*) continue ;; esac
       seen+="$name "
       printf '%s\n' "$name"

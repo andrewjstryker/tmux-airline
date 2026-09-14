@@ -33,7 +33,7 @@ teardown() { :; }
 
 @test "palette load records an absolute path and renders evaluated values" {
   local file="$BATS_TEST_TMPDIR/unregistered palette"
-  cp "$PROJECT_ROOT/layouts/palettes/default" "$file"
+  cp "$PROJECT_ROOT/layouts/palettes/default.conf" "$file"
   printf 'set-option @airline-inner-bg colour55\n' >> "$file"
   layout_palette_load "$file"
   assert_equal "$(prv_get_session s1 palette)" "$file"
@@ -49,7 +49,7 @@ teardown() { :; }
 
 @test "incomplete palette inspection cleans staging and cannot commit or recover a problem" {
   mkdir "$BATS_TEST_TMPDIR/catalog"
-  printf '#| summary: Incomplete\nset-option @airline-inner-bg colour55\n' > "$BATS_TEST_TMPDIR/catalog/broken"
+  printf '#| summary: Incomplete\nset-option @airline-inner-bg colour55\n' > "$BATS_TEST_TMPDIR/catalog/broken.conf"
   catalog_register s1 palette "$BATS_TEST_TMPDIR/catalog"
   local before rc=0
   before="$(declare -p _FAKE_OPT)"
@@ -74,7 +74,7 @@ teardown() { :; }
   assert_failure
   run signal_problem_show airline airline-palette
   assert_output --partial 'incomplete or could not be evaluated'
-  cp "$PROJECT_ROOT/layouts/palettes/light" "$file"
+  cp "$PROJECT_ROOT/layouts/palettes/light.conf" "$file"
   layout_palette_load "$file"
   run signal_problem_show airline airline-palette
   assert_output ''
@@ -91,13 +91,13 @@ teardown() { :; }
 
 @test "layout describe reports ordered widgets without observing or changing state" {
   mkdir -p "$BATS_TEST_TMPDIR/catalog"
-  cat > "$BATS_TEST_TMPDIR/catalog/named" <<'WIDGET'
+  cat > "$BATS_TEST_TMPDIR/catalog/named.sh" <<'WIDGET'
 #| summary: Fixture
 airline_widget_format() { printf '%s' "$1"; }
 WIDGET
   catalog_register s1 widget "$BATS_TEST_TMPDIR/catalog"
   catalog_register s1 layout "$BATS_TEST_TMPDIR/catalog"
-  cat > "$BATS_TEST_TMPDIR/catalog/inspect" <<'LAYOUT'
+  cat > "$BATS_TEST_TMPDIR/catalog/inspect.sh" <<'LAYOUT'
 #| summary: Inspect declarations
 _LAYOUT_TEST_SOURCED=changed
 airline_layout_configure() {
@@ -115,14 +115,15 @@ LAYOUT
   assert_equal "$_FAKE_WRITES" "$writes"
   [[ ! -e "$BATS_TEST_TMPDIR/observed" && -z "${_LAYOUT_TEST_SOURCED:-}" && -z "${_RENDERED:-}" ]]
   run cat "$BATS_TEST_TMPDIR/description"
-  assert_output --partial 'left-out widget named one two'
-  assert_output --partial 'left-out widget named three'
+  assert_output --partial 'left-out widget named #{@airline-palette-emphasized}'
+  assert_output --partial 'args one\\ two'
+  assert_output --partial 'args three'
 }
 
 @test "layout describe evaluates current environment and resets previous declarations" {
   mkdir "$BATS_TEST_TMPDIR/catalog"
   catalog_register s1 layout "$BATS_TEST_TMPDIR/catalog"
-  cat > "$BATS_TEST_TMPDIR/catalog/conditional" <<'LAYOUT'
+  cat > "$BATS_TEST_TMPDIR/catalog/conditional.sh" <<'LAYOUT'
 #| summary: Environment-dependent layout
 airline_layout_configure() {
   if [[ "$LAYOUT_TEST_MODE" == full ]]; then
@@ -153,7 +154,7 @@ LAYOUT
     'printf unexpected; airline_layout_configure() { :; }' \
     'airline_layout_configure() { airline segment show; }' \
     'airline_layout_configure() { return 7; }'; do
-    printf '#| summary: Invalid fixture\n%s\n' "$body" > "$BATS_TEST_TMPDIR/catalog/invalid"
+    printf '#| summary: Invalid fixture\n%s\n' "$body" > "$BATS_TEST_TMPDIR/catalog/invalid.sh"
     rc=0
     layout_describe invalid > "$BATS_TEST_TMPDIR/description" 2>&1 || rc=$?
     assert_equal "$rc" "$AIRLINE_CONFIG_LAYOUT_FAILURE"
@@ -167,7 +168,7 @@ LAYOUT
 
 @test "shipped layouts retain online prefix CPU and date-battery positions" {
   for name in full; do
-    source "$PROJECT_ROOT/layouts/definitions/$name"
+    source "$PROJECT_ROOT/layouts/definitions/$name.sh"
     declare_part() { printf '%s\n' "$*"; }
     run airline_layout_configure declare_part
     assert_success

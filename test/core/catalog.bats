@@ -8,10 +8,10 @@ setup() {
   load_collections
   source "$PROJECT_ROOT/lib/catalog.sh"
   mkdir -p "$BATS_TEST_TMPDIR/builtin" "$BATS_TEST_TMPDIR/user"
-  printf 'builtin\n' > "$BATS_TEST_TMPDIR/builtin/shared"
-  printf 'builtin\n' > "$BATS_TEST_TMPDIR/builtin/z-builtin"
-  printf 'user\n' > "$BATS_TEST_TMPDIR/user/shared"
-  printf 'user\n' > "$BATS_TEST_TMPDIR/user/a-user"
+  printf 'builtin\n' > "$BATS_TEST_TMPDIR/builtin/shared.conf"
+  printf 'builtin\n' > "$BATS_TEST_TMPDIR/builtin/z-builtin.conf"
+  printf 'user\n' > "$BATS_TEST_TMPDIR/user/shared.conf"
+  printf 'user\n' > "$BATS_TEST_TMPDIR/user/a-user.conf"
 }
 
 @test "builtin paths append while user registration prepends" {
@@ -27,7 +27,7 @@ setup() {
   catalog_register s1 palette "$BATS_TEST_TMPDIR/user"
 
   run catalog_resolve s1 palette shared
-  assert_output "$BATS_TEST_TMPDIR/user/shared"
+  assert_output "$BATS_TEST_TMPDIR/user/shared.conf"
   run catalog_resolve s1 palette nested/shared
   assert_output ""
 }
@@ -128,7 +128,7 @@ ELEMENT
   assert_success
   refute_output ""
 
-  run catalog_metadata "$PROJECT_ROOT/layouts/palettes/dark" summary
+  run catalog_metadata "$PROJECT_ROOT/layouts/palettes/dark.conf" summary
   assert_success
   refute_output ""
 }
@@ -151,6 +151,7 @@ ELEMENT
     $'#| summary: first\n#| summary: second' '#| bad marker'; do
     printf '%s\n' "$content" > "$BATS_TEST_TMPDIR/user/invalid"
     printf '%s\n' "$content" > "$BATS_TEST_TMPDIR/user/invalid.sh"
+    printf '%s\n' "$content" > "$BATS_TEST_TMPDIR/user/invalid.conf"
     for kind in palette widget layout classifier filter probe runner; do
       catalog_register s1 "$kind" "$BATS_TEST_TMPDIR/user"
       run catalog_describe_resolve s1 "$kind" invalid
@@ -161,9 +162,9 @@ ELEMENT
 }
 
 @test "description uses the winning catalog file and renders declared usage" {
-  printf '%s\n' '#| summary: builtin summary' > "$BATS_TEST_TMPDIR/builtin/shared"
+  printf '%s\n' '#| summary: builtin summary' > "$BATS_TEST_TMPDIR/builtin/shared.sh"
   printf '%s\n' '#| summary: user summary' '#| usage: <argument>' \
-    'exit 99' > "$BATS_TEST_TMPDIR/user/shared"
+    'exit 99' > "$BATS_TEST_TMPDIR/user/shared.sh"
   catalog_register_builtin s1 classifier "$BATS_TEST_TMPDIR/builtin"
   catalog_register s1 classifier "$BATS_TEST_TMPDIR/user"
   local file
@@ -172,7 +173,7 @@ ELEMENT
   assert_success
   assert_output --partial 'user summary'
   assert_output --partial '<argument>'
-  assert_output --partial "$BATS_TEST_TMPDIR/user/shared"
+  assert_output --partial "$BATS_TEST_TMPDIR/user/shared.sh"
   refute_output --partial 'builtin summary'
 
   printf '%s\n' '#| summary: no arguments' '#| usage:' > "$file"
