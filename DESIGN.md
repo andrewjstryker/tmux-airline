@@ -474,7 +474,10 @@ probe in the background with all terminal streams connected to `/dev/null` and
 returns its process ID. The owning pane remains usable. Closing it cancels its work.
 
 Runner stores server-scoped process records and stop requests through collections
-under the process transaction. Signal stores per-pane invocation membership and
+under the process transaction. PID registration and removal acquire that same lock
+before reading the tuple and hold it through publication, so supervisor and worker
+updates cannot overwrite one another or a stop request. Waiting for processes and
+publishing signals happen outside this lock. Signal stores per-pane invocation membership and
 changes aggregate pane status under one window status transaction, preserving
 `active` until the last invocation ends. Supervisors own cancellation and retire
 their records after cleanup; element-owned health recovery remains separate.

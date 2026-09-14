@@ -938,8 +938,14 @@ _runner_process_record () { # <id> <pane> <mode> <pid> <spec> <session>
 }
 
 _runner_process_add_pid () { # <id> <pid>
-  local tuple pane mode supervisor state spec pids session
   [[ "$2" =~ ^[0-9]+$ ]] || return 2
+  with_global_transaction process _runner_process_add_pid_unlocked "$@"
+}
+
+# Supervisor and worker both update this tuple. Read it only after acquiring the
+# same lock used by stop and retirement, and hold that lock through publication.
+_runner_process_add_pid_unlocked () { # <id> <pid>; caller owns process transaction
+  local tuple pane mode supervisor state spec pids session
   coll_get_into tuple global server process "$1" || return
   [[ -n "$tuple" ]] || return 1
   IFS=$'\t' read -r pane mode supervisor state spec pids session <<< "$tuple"
@@ -948,6 +954,10 @@ _runner_process_add_pid () { # <id> <pid>
 }
 
 _runner_process_remove_pid () { # <id> <pid>
+  with_global_transaction process _runner_process_remove_pid_unlocked "$@"
+}
+
+_runner_process_remove_pid_unlocked () { # <id> <pid>; caller owns process transaction
   local tuple pane mode supervisor state spec pids session kept pid
   coll_get_into tuple global server process "$1" || return
   [[ -n "$tuple" ]] || return 0

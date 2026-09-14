@@ -12,6 +12,11 @@ implementation worklists used to reach them.
 
 ### Runner and process contract
 
+- Serialized PID registration and removal with process creation, stop requests,
+  and retirement. Concurrent supervisor and worker updates preserve the complete
+  recorded PID set and stop state without reviving retired records. Added a
+  forced-overlap regression against real tmux and transaction-failure coverage;
+  the fix uses the existing Bash/tmux transaction boundary without new dependencies.
 - Added probe-only foreground `runner run`; `runner watch` now backgrounds the
   observation with terminal streams disconnected and returns an invocation ID.
 - Added `process list`, `show`, and `stop`. This grammar addition closes the

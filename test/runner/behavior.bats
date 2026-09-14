@@ -712,6 +712,21 @@ ELEMENT
   assert_output --partial 'already finished'
 }
 
+@test "PID update failures leave the ownership record intact" {
+  _runner_process_record p-live %1 run 12345 '-- true' s1
+  _runner_process_add_pid p-live 23456
+  local before add_rc=0 remove_rc=0
+  before="$(coll_get global server process p-live)"
+  with_global_transaction() { return 71; }
+
+  _runner_process_add_pid p-live 34567 || add_rc=$?
+  assert_equal "$add_rc" 71
+  _runner_process_remove_pid p-live 23456 || remove_rc=$?
+  assert_equal "$remove_rc" 71
+  run coll_get global server process p-live
+  assert_output "$before"
+}
+
 @test "run permits a probe subject but a filter still requires a command" {
   _runner_parse run --probe http endpoint
   assert_equal "$AIRLINE_RUNNER_CLASSIFIER" conventional

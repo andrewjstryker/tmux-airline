@@ -721,6 +721,98 @@ PROBE
   wait "$child" 2>/dev/null || true
 }
 
+@test "overlapping PID updates preserve membership, stop state, and retirement" {
+  load_tmux
+  source "$PROJECT_ROOT/lib/collections.sh"
+  source "$PROJECT_ROOT/lib/runner.sh"
+  local pane session supervisor="$BASHPID"
+  pane="$(current_pane)"; session="$(current_session)"
+
+  # Pause the first writer after its tuple read. This forces contenders to arrive
+  # while the read/modify/write is in flight, rather than hoping to hit the race.
+  eval "$(declare -f coll_get_into | sed '1s/coll_get_into/process_original_get/')"
+  coll_get_into() {
+    process_original_get "$@" || return
+    if [[ "${hold_process_read:-}" == 1 && "$4" == process ]]; then
+      hold_process_read=""
+      : > "$ready"
+      tmux wait-for "$release"
+    fi
+  }
+
+  local scenario ready release done_file first second blocked attempt tuple
+  local owner mode pid state spec pids record_session first_rc second_rc
+  for scenario in add remove stop retire; do
+    with_global_transaction process _runner_process_record p-overlap "$pane" run \
+      "$supervisor" '-- true' "$session"
+    _runner_process_add_pid p-overlap 200
+    ready="$BATS_TEST_TMPDIR/ready-$scenario"
+    done_file="$BATS_TEST_TMPDIR/done-$scenario"
+    release="process-release-$scenario-$BATS_TEST_NUMBER"
+    (
+      hold_process_read=1
+      if [[ "$scenario" == remove ]]; then
+        _runner_process_remove_pid p-overlap 200
+      else
+        _runner_process_add_pid p-overlap 300
+      fi
+    ) & first=$!
+    for attempt in {1..500}; do
+      [[ -e "$ready" ]] && break
+      sleep 0.01
+    done
+    # Always release/reap before asserting, including a failed setup or writer.
+    (
+      case "$scenario" in
+        add|remove) _runner_process_add_pid p-overlap 400 ;;
+        stop) with_global_transaction process _runner_process_request_stop p-overlap ;;
+        retire) with_global_transaction process _runner_process_remove p-overlap ;;
+      esac
+      rc=$?
+      : > "$done_file"
+      exit "$rc"
+    ) & second=$!
+    sleep 0.1
+    blocked=1; [[ ! -e "$done_file" ]] || blocked=0
+    tmux wait-for -S "$release"
+    first_rc=0; wait "$first" || first_rc=$?
+    second_rc=0; wait "$second" || second_rc=$?
+    [[ -e "$ready" ]]
+    assert_equal "$first_rc" 0
+    assert_equal "$second_rc" 0
+    assert_equal "$blocked" 1
+
+    tuple="$(coll_get global server process p-overlap)"
+    if [[ "$scenario" == retire ]]; then
+      assert_equal "$tuple" ''
+      run coll_has global server process p-overlap
+      assert_failure 1
+      run _runner_process_add_pid p-overlap 500
+      assert_failure 1
+      run _runner_process_remove_pid p-overlap 200
+      assert_success
+      run coll_has global server process p-overlap
+      assert_failure 1
+      continue
+    fi
+    IFS=$'\t' read -r owner mode pid state spec pids record_session <<< "$tuple"
+    assert_equal "$owner" "$pane"
+    assert_equal "$pid" "$supervisor"
+    assert_equal "$spec" '-- true'
+    assert_equal "$record_session" "$session"
+    case "$scenario" in
+      add) assert_equal "$pids" "$supervisor 200 300 400" ;;
+      remove) assert_equal "$pids" "$supervisor 400" ;;
+      stop)
+        assert_equal "$state" stopping
+        assert_equal "$pids" "$supervisor 200 300"
+        run coll_get global server process-stop p-overlap
+        assert_output stop
+        ;;
+    esac
+  done
+}
+
 @test "merged observation preserves separate visible stdout and stderr destinations" {
   airline session init
   mkdir -p "$BATS_TEST_TMPDIR/filters"

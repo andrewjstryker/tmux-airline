@@ -27,6 +27,50 @@ only prospective work.
 - Move completed entries to `CHANGELOG.md`; do not accumulate checked-off history
   here.
 
+## Code review follow-up
+
+- **Gate widget redraws on visible changes.** `_widget_publish` in `lib/widget.sh`
+  redraws even when the reading is unchanged. Use the mechanical change-detection
+  accessor for the instance value and redraw only when that value changes. Keep
+  sampling cadence and problem reporting independent of this gate. Add behavior
+  coverage proving that an identical reading does not redraw, a changed reading
+  does, and failure/recovery reporting still runs for unchanged readings.
+
+- **Remove unused state and accessors.** Stop persisting `layout-parts` in
+  `lib/layout.sh` and remove its matching retirement bookkeeping in `lib/widget.sh`;
+  the collection is only read during its own removal. Rendering already uses
+  committed segment strings, and inspection evaluates the definition. Remove the
+  unused tmux `widget-<id>-stamp` option while retaining the filesystem stamp that
+  controls sampling. Delete the unreferenced `stage_get_session` and
+  `pub_set_session` wrappers from `lib/tmux.sh`. Verify layout inspection, slot
+  replacement, instance retirement, and sampling behavior through existing tests.
+
+- **Make the no-signal test assert the absence of signals.** The test named
+  "a stop request never signals a supervisor PID from stored state" in
+  `test/runner/behavior.bats` only checks the stored stop request. It still passes
+  if a forbidden signal attempt is added and its error is ignored. Record signal
+  attempts, distinguish permitted `kill -0` liveness checks, and assert that no
+  delivery was attempted. Verify that deliberately adding a forbidden attempt
+  makes the test fail, even when its return status is ignored.
+
+- **Keep unit coverage centered on behavior.** Most fast suites already assert
+  outcomes over real modules and a mechanical fake. When revisiting runner parser
+  tests, prefer accepted/rejected invocations, preserved element arguments, and
+  observable results over private parser globals. Retain focused parser tests
+  where they protect argument boundaries; avoid a blanket test rewrite. Add the
+  missing redraw cases above rather than duplicating implementation steps in
+  assertions.
+
+- **Close the completion gap in tmux ownership.** Core application calls already
+  route through `lib/tmux.sh`, but Bash and Zsh target completions invoke tmux
+  directly and are outside architecture lint coverage. Route their target
+  enumeration through the mechanical boundary, preserving `AIRLINE_TMUX` server
+  selection. Update `scripts/generate-completions`, regenerate both artifacts, and
+  extend lint coverage to reject direct completion calls. Keep the PATH shim's
+  bootstrap lookup and test/benchmark server management as explicit exclusions in
+  `DESIGN.md`. Test target completion against an isolated server and run
+  `make check-completions` and `make lint`.
+
 ## Configuration persistence
 
 - Design a save/load installation story for selected layouts, palettes, and catalog
