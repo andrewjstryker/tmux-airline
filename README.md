@@ -14,15 +14,15 @@ Features:
 - Swappable color **palettes** (dark, light, Solarized) — or your own
 - Composable **layouts** that arrange the bar, plus a CLI to drive segments and
   per-window badges
-- Native **widgets** for CPU, battery, reachability, and prefix state, with
+- Native **widgets** for battery, reachability, and prefix state, with
   persistent defaults and colors from the active palette
 - Suspend/resume for nested tmux sessions
 
 ## Installation
 
 This plugin requires **tmux 3.2+** and Bash 4.3+ (for associative arrays and
-namerefs). The sampled widgets also require `flock` and GNU `timeout`; online
-requires `ping`. CPU and battery observations currently support Linux.
+namerefs). The online runtime requires `ping`; battery data currently supports
+Linux.
 
 Tmux 3.2 supplies the numeric format comparisons used by CPU and battery meters.
 Older versions cannot render those thresholds correctly.
@@ -90,9 +90,9 @@ Choose a palette for colors, a layout for arrangement, and widgets for live cont
 | **palette** | The colors — a set of named roles (`inner-bg`, `active`, `ok`, …) | `palette use`, or session option edits    |
 | **segment** | One powerline block's content, in a fixed slot                    | a layout, or `set -g`         |
 | **layout**  | A composition that fills slots with ordered fragments           | `layout use`                  |
-| **widget** | A tmux format with its own presentation and optional observation | a layout |
+| **widget** | A stateless tmux format fragment with an optional scalar runtime companion | a layout |
 
-Palette roles are public session options, so widgets can read `#{@airline-primary}`
+Palette roles are public session options, so widgets can read `#{@airline-palette-primary}`
 directly. Global colors seed new sessions. For an initialized session, edit its
 palette options and run `airline session apply`. Segment overrides remain global
 inputs applied to the invoking session.
@@ -185,7 +185,7 @@ prints just the active name (for scripts).
 To override a color, write its session option and apply from that session:
 
 ```shell
-tmux set-option @airline-active colour201
+tmux set-option @airline-palette-active colour201
 airline session apply
 ```
 
@@ -196,7 +196,7 @@ defaults only; selecting a palette does not change another session or the global
 Use `palette use <name>` to restore a complete named palette.
 
 A custom palette is a tmux file containing
-`set-option @airline-<role> <color>` lines; `layouts/palettes/default` is a complete
+`set-option @airline-palette-<role> <color>` lines; `layouts/palettes/default.conf` is a complete
 example. Put the file in a directory, register that directory, and select the
 palette by filename. A registered name shadows a shipped one:
 
@@ -295,20 +295,18 @@ the window colors below rather than configured as a segment.
 
 ## Widgets
 
-Widgets return tmux formats and choose their own presentation using public palette
-options. Airline supplies segment geometry and restores baseline styling between
-fragments. No TPM interpolation, color globals, or plugin startup ordering is needed.
+Widgets return tmux format fragments and choose their presentation using public
+palette options. Airline establishes the segment `fg` and `bg` before each fragment;
+if a widget changes either value, the fragment must restore the supplied values before
+it ends. Widget runtime commands are stateless scalar producers evaluated by tmux's
+normal status refresh; Airline provides no widget scheduler or runtime wrapper.
 
 | Widget | Source |
 |---|---|
-| `cpu` | Linux `/proc/stat` utilization deltas; configurable warning/critical thresholds |
+| `cpu` | deferred until a stateless fast implementation exists |
 | `battery` | First Linux system battery's capacity |
 | `online` | ICMP reachability of a chosen host; requires `ping` |
 | `prefix` | Native prefix, Copy, Sync, and key-table badges; no subprocess |
-
-The observation runtime requires `flock` and GNU `timeout`. It bounds execution,
-paces samples, isolates instances, and reports runtime failures through Airline's
-problem service. Palette changes preserve observation baselines.
 
 Use `airline widget list`, `airline widget describe cpu --warn 60`, and
 `airline widget register <dir>` for discovery. Layout declarations activate widgets.

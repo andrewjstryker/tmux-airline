@@ -3,8 +3,23 @@
 Airline has seven catalog kinds: palette, widget, layout, classifier, filter, probe,
 and runner. Each has a session-owned, ordered search path. `register <dir>` prepends
 an existing directory; shipped directories provide the fallback. Bare names resolve
-to the first matching file, and `list` returns each available name once without
+to the first matching entry, and `list` returns each available name once without
 executing files. Segment is active configuration, not a catalog kind.
+
+Catalog entries use role-specific extensions. Shell definitions use `.sh`; tmux
+configuration files use `.conf`. The logical name omits the extension:
+
+```text
+widgets/battery.sh       # format definition named battery
+widgets/battery          # optional runtime executable named battery
+layouts/adaptive.sh      # layout named adaptive
+palettes/default.conf    # palette named default
+```
+
+The extensionless widget executable is a runtime companion, not a catalog definition.
+Widget resolution finds `<name>.sh` and, when the format contains a `#()` command,
+the definition may invoke the sibling `<name>` executable directly. Catalog discovery
+does not execute either file merely to list or describe it.
 
 Every catalog supports `describe <name>`. Catalog owns name resolution, common
 metadata validation, and rendering of name, summary, declared usage, and resolved
@@ -26,8 +41,8 @@ All seven kinds declare discovery metadata in marked header comments:
 - `usage` describes arguments accepted by the entry. An empty value explicitly means
   no arguments; an absent field is omitted from the description. The runner domain
   currently requires this field for probes and named compositions.
-- `interval` is a probe-specific default, in seconds. Runner validates it and renders
-  the effective default (five seconds when unspecified).
+- `interval` is a runner probe field, in seconds. It is not a widget field; tmux owns
+  status refresh cadence for widgets.
 
 Keys are lowercase words with optional hyphens. Each key may occur only once, and
 malformed markers or repeated keys invalidate the header. Values occupy one line.
@@ -37,7 +52,8 @@ Keep explanatory comments when they add information; do not repeat the summary a
 title comment. Unknown well-formed fields are retained by the metadata reader but do
 not automatically become description rows or executable policy.
 
-The same rules apply to palette files written in tmux syntax and to shell elements.
+The same rules apply to palette `.conf` files written in tmux syntax and to shell
+`.sh` elements.
 Registration does not source or validate every entry: validation happens when a
 specific description is requested. Invocation may require additional domain contracts.
 
@@ -87,8 +103,8 @@ Layout descriptions evaluate segment and widget declarations through the same
 declaration evaluator as `layout use` and `layout load`. They do not sample widgets or commit configuration. See [layout inspection and application](layouts.md).
 
 Derived fields belong to the owning domain, not in duplicated header declarations.
-Widget descriptions construct formats and check availability without running observations.
-See [widgets](widgets.md) for the format and optional sampling contracts.
+Widget descriptions construct formats and check cheap availability without running
+runtime executables. See [widgets](widgets.md) for the format and runtime contract.
 
 Catalog has no evaluator registry
 and does not depend on layout or runner.

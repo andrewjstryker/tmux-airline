@@ -4,6 +4,40 @@ load ../test_helper/bats-assert/load
 load ../support/helper
 setup() { load_session; }
 teardown() { :; }
+
+@test "widget publication redraws only when the reading changes" {
+  local id=1-2-3-4
+  coll_register session s1 widgets "$id"
+  _widget_publish s1 "$id" 42
+  assert_equal "$_FAKE_REDRAWS" 1
+  local writes="$_FAKE_WRITES"
+  _widget_publish s1 "$id" 42
+  assert_equal "$_FAKE_REDRAWS" 1
+  assert_equal "$_FAKE_WRITES" "$writes"
+  _widget_publish s1 "$id" 43
+  assert_equal "$_FAKE_REDRAWS" 2
+  assert_equal "$(prv_get_session s1 "widget-$id-value")" 43
+  _widget_publish s1 "$id" ''
+  assert_equal "$_FAKE_REDRAWS" 3
+  _widget_publish s1 "$id" ''
+  assert_equal "$_FAKE_REDRAWS" 3
+  assert_equal "$(prv_get_session s1 "widget-$id-value")" ''
+}
+
+@test "retired widgets and failed publications do not redraw" {
+  local id=1-2-3-4 rc=0
+  _widget_publish s1 "$id" 42 || rc=$?
+  assert_equal "$rc" 3
+  assert_equal "$_FAKE_REDRAWS" 0
+  coll_register session s1 widgets "$id"
+  _opt_write() { return 72; }
+  rc=0
+  _widget_publish s1 "$id" 42 || rc=$?
+  assert_equal "$rc" 72
+  assert_equal "$_FAKE_REDRAWS" 0
+  assert_equal "$(prv_get_session s1 "widget-$id-value")" ''
+}
+
 @test "battery reads validated capacity and detects missing hardware" {
   source "$PROJECT_ROOT/layouts/widgets/battery"
   export AIRLINE_POWER_SUPPLY="$BATS_TEST_TMPDIR/power"

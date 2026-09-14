@@ -72,10 +72,11 @@ layout. Both use trusted catalog discovery, but widgets do not inherit the probe
 reporting protocol or require an observation process. A native widget may consist
 entirely of tmux conditions. A dynamic widget may include `#()` in the same format.
 
-Widgets return their own content and styling. The full palette is exposed as public
-session-scoped options, so a format can use `#[fg=#{@airline-primary}]` without a CLI
-lookup or baking a concrete color. Airline owns segment composition and restores the
-segment baseline around each widget; it does not choose a widget's palette policy.
+Widgets return a tmux format fragment. Airline establishes the segment's `fg` and
+`bg` before evaluating the fragment and passes those values to its format function.
+If a fragment changes either color, it must restore the exact supplied values before
+it ends; Airline does not repair a broken fragment. Palette roles are public session
+options named `@airline-palette-<role>`.
 
 A layout places widgets directly and can append several fragments to a slot:
 
@@ -92,9 +93,14 @@ per fragment rather than assuming one widget per slot.
 
 ## Where TPM plugins end up
 
-A widget stops adapting a plugin and becomes an Airline element that may *source
-data* from an installed one. The plugin scripts divide cleanly, and the split is what
-makes this work:
+A widget stops adapting a plugin and becomes an Airline element with a flat catalog
+shape: `<name>.sh` defines the format and an optional extensionless sibling `<name>`
+emits runtime data. The runtime is a stateless, quick scalar command evaluated by
+tmux's normal status refresh. Airline does not invoke plugin entry points or provide
+a widget scheduler, cache, lock, timeout, or evaluation command. A plugin may remain
+an external data source only when its command can meet that runtime contract.
+
+The plugin scripts divide cleanly when they can meet that contract:
 
 - `battery_percentage.sh` reads no tmux options at all. It is a pure data source.
 - `cpu_percentage.sh` reads one option, `@cpu_percentage_format`, a printf format
@@ -132,8 +138,9 @@ belongs in `CHANGELOG.md` with the change.
 The contract selects replacement of the adapter kind and format-only inspection
 without observations. CPU must now prove the remaining runtime details:
 
-- **Refresh.** Respect tmux's job/output caching and redraw cadence. Any widget
-  interval requires a real runtime mechanism; metadata alone creates no timer.
+- **Refresh.** Let tmux own redraw cadence through `status-interval`. Airline does
+  not promise a widget interval or add a scheduler; runtime commands must finish
+  quickly enough for normal status evaluation.
 - **Palette.** Demonstrate live public option references in tmux styles, including
   session isolation and suspension. Do not assume recursive expansion of job output.
 - **Failure.** Keep widget presentation and widget-owned operational claims separate

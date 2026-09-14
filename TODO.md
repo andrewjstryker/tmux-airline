@@ -29,21 +29,13 @@ only prospective work.
 
 ## Code review follow-up
 
-- **Gate widget redraws on visible changes.** `_widget_publish` in `lib/widget.sh`
-  redraws even when the reading is unchanged. Use the mechanical change-detection
-  accessor for the instance value and redraw only when that value changes. Keep
-  sampling cadence and problem reporting independent of this gate. Add behavior
-  coverage proving that an identical reading does not redraw, a changed reading
-  does, and failure/recovery reporting still runs for unchanged readings.
-
 - **Remove unused state and accessors.** Stop persisting `layout-parts` in
   `lib/layout.sh` and remove its matching retirement bookkeeping in `lib/widget.sh`;
   the collection is only read during its own removal. Rendering already uses
-  committed segment strings, and inspection evaluates the definition. Remove the
-  unused tmux `widget-<id>-stamp` option while retaining the filesystem stamp that
-  controls sampling. Delete the unreferenced `stage_get_session` and
-  `pub_set_session` wrappers from `lib/tmux.sh`. Verify layout inspection, slot
-  replacement, instance retirement, and sampling behavior through existing tests.
+  committed segment strings, and inspection evaluates the definition. Delete the
+  unreferenced `stage_get_session` and `pub_set_session` wrappers from
+  `lib/tmux.sh`. Verify layout inspection, slot
+  replacement, instance retirement, and widget runtime behavior through existing tests.
 
 - **Make the no-signal test assert the absence of signals.** The test named
   "a stop request never signals a supervisor PID from stored state" in
@@ -57,8 +49,8 @@ only prospective work.
   outcomes over real modules and a mechanical fake. When revisiting runner parser
   tests, prefer accepted/rejected invocations, preserved element arguments, and
   observable results over private parser globals. Retain focused parser tests
-  where they protect argument boundaries; avoid a blanket test rewrite. Add the
-  missing redraw cases above rather than duplicating implementation steps in
+  where they protect argument boundaries; avoid a blanket test rewrite. Add
+  coverage for observable gaps rather than duplicating implementation steps in
   assertions.
 
 - **Close the completion gap in tmux ownership.** Core application calls already
@@ -79,12 +71,17 @@ only prospective work.
 
 ## Widget policy
 
-- Define a shared options convention for widget policy. The current contract covers
-  format construction, arguments, availability, sampling intervals, and timeouts,
-  but it does not yet provide a consistent home or naming scheme for user policy
-  such as thresholds, hosts, device selection, fallback behavior, or refresh rules.
-  Decide how policy is declared, scoped, validated, exposed by `describe`, and
-  passed to both format and sample functions before adding more configurable widgets.
+- **Implement the stateless widget contract.** Replace the hosted sampler and its
+  filesystem state with flat catalog entries: `widgets/<name>.sh` for the tmux format
+  definition and an optional extensionless `widgets/<name>` executable for a quick,
+  one-line scalar. Resolve widget options as
+  `@airline-widget-<name>-<option>`, expose palette roles as
+  `@airline-palette-<role>`, pass segment `fg` and `bg` into format construction, and
+  require a fragment that changes either color to restore both before it ends. Tmux's
+  `status-interval` owns refresh; Airline must not add a widget scheduler, cache,
+  lock, timeout, or `widget eval/run` runtime path. Add behavior coverage for catalog
+  resolution, option scoping, format composition, scalar runtime output, and palette
+  propagation before shipping the widgets.
 
 ## Runner contract follow-up
 

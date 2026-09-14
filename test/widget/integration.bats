@@ -124,6 +124,57 @@ LAYOUT
   [[ -z "$(sopt "@airline--widget-$id-value")" ]]
 }
 
+@test "unchanged readings preserve sampling cadence and report failure and recovery" {
+  airline session init
+  mkdir "$BATS_TEST_TMPDIR/catalog"
+  cat > "$BATS_TEST_TMPDIR/catalog/steady" <<'WIDGET'
+#| summary: Same reading on success and failure
+#| interval: 3600
+#| timeout: 1
+airline_widget_format() { widget_reading; }
+airline_widget_sample() {
+  printf x >> "$AIRLINE_WIDGET_STATE_DIR/calls"
+  printf '?'
+  [[ "$(cat "$1")" == ok ]]
+}
+WIDGET
+  airline widget register "$BATS_TEST_TMPDIR/catalog"
+  local policy="$BATS_TEST_TMPDIR/policy" id session root dir
+  printf 'ok\n' > "$policy"
+  printf 'airline_layout_configure() { "$1" widget left-out steady %q; }\n' "$policy" \
+    > "$BATS_TEST_TMPDIR/layout"
+  airline layout load "$BATS_TEST_TMPDIR/layout"
+  id="$(sopt @airline--widgets)"
+  load_tmux
+  session="$(current_session)"
+  root="$(widget_cache_root)"; dir="$root/${session#\$}/$id"
+
+  airline widget run -t bats "$id"
+  assert_equal "$(sopt "@airline--widget-$id-value")" '?'
+  airline widget run -t bats "$id"
+  assert_equal "$(cat "$dir/calls")" x
+
+  # Expire only the sampling cache; keep the published reading unchanged.
+  printf '0\n' > "$dir/stamp"
+  printf 'fail\n' > "$policy"
+  airline widget run -t bats "$id"
+  assert_equal "$(sopt "@airline--widget-$id-value")" '?'
+  run airline problem show airline-widget "$id"
+  assert_success
+  assert_output --partial 'sample failed'
+  airline widget run -t bats "$id"
+  assert_equal "$(cat "$dir/calls")" xx
+
+  printf '0\n' > "$dir/stamp"
+  printf 'ok\n' > "$policy"
+  airline widget run -t bats "$id"
+  assert_equal "$(sopt "@airline--widget-$id-value")" '?'
+  assert_equal "$(cat "$dir/calls")" xxx
+  run airline problem show airline-widget "$id"
+  assert_success
+  assert_output ''
+}
+
 @test "tmux jobs publish to their owning session and repeated requests never overlap" {
   airline session init
   mkdir "$BATS_TEST_TMPDIR/catalog"

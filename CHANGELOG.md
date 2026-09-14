@@ -56,6 +56,11 @@ implementation worklists used to reach them.
 
 ### Widgets and public palette
 
+- Gated widget publication redraws on changes to the reading and removed the
+  unused tmux sampling timestamp. The filesystem cache still controls cadence,
+  and unchanged readings still report sample failures and recovery. Added behavior
+  and real-tmux coverage for redraw gating, publication errors, and recovery when
+  both successful and failed samples display `?`.
 - Replaced adapter commands and TPM placeholders with a widget catalog. Widgets
   return native tmux formats; layouts append ordered widget/literal fragments in a
   segment. This grammar change fixes the mismatch between startup rewriting of

@@ -21,8 +21,9 @@ fail with status `70`, clean staging, and do not commit the candidate palette.
 Failed application reports the session's palette problem; failed inspection only
 returns a diagnostic, because it did not attempt to change the active palette.
 
-Palette files are trusted tmux configuration, not sandboxed data. Use session-local
-`set-option @airline-<role> <value>` assignments in palette files. The staging
+Palette files are trusted tmux configuration, not sandboxed data, and use the `.conf`
+extension. Use session-local `set-option @airline-palette-<role> <value>` assignments
+in palette files. The staging
 mechanism cleans those roles; it cannot undo arbitrary commands or global settings
 placed in the file. Metadata-only `palette list` does not evaluate files.
 
@@ -34,12 +35,13 @@ See [catalogs and discovery](catalogs.md) for metadata and search paths.
 
 ## Public palette options
 
-Every initialized session publishes all effective display roles as `@airline-<role>`
-options. Native formats can read `#{@airline-primary}` directly. Suspend/resume
+Every initialized session publishes all effective display roles as
+`@airline-palette-<role>` options. Native formats can read
+`#{@airline-palette-primary}` directly. Suspend/resume
 publishes dimmed/restored colors while preserving private unsuspended values.
 
 Global palette options seed new sessions only. To change an initialized session,
-write a session option (`tmux set -t work @airline-active colour201`) and run
+write a session option (`tmux set -t work @airline-palette-active colour201`) and run
 `airline session apply` from that session. Apply captures edits that differ from the
 last published display palette and clears the palette selection's provenance.
 Unchanged dimmed colors never become restoration values. When editing while

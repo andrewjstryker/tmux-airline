@@ -128,6 +128,7 @@ widget_retire_session () {
     coll_register session "$session" retired-widgets "$id"
     count="$(prv_get_session "$session" "widget-$id-argc")"
     for ((i=0; i<${count:-0}; i++)); do prv_unset_session "$session" "widget-$id-arg-$i"; done
+    # Include stamp to retire metadata left by versions that published it in tmux.
     for i in file name slot argc value stamp; do prv_unset_session "$session" "widget-$id-$i"; done
     coll_unregister session "$session" widgets "$id"
   done
@@ -183,11 +184,11 @@ widget_install_hooks () {
     "run-shell -b \"'$AIRLINE_DIR/airline.sh' widget _cleanup '#{hook_session}'\""
 }
 
-_widget_publish () {   # <session> <instance> <value> <stamp>
+_widget_publish () {   # <session> <instance> <value>
+  local changed=""
   coll_has session "$1" widgets "$2" || return 3
-  prv_set_session "$1" "widget-$2-value" "$3" || return
-  prv_set_session "$1" "widget-$2-stamp" "$4" || return
-  redraw
+  opt_setif_session changed "$1" "$(prv_name "widget-$2-value")" "$3" || return
+  if [[ -n "$changed" ]]; then redraw; fi
 }
 
 widget_run () (
@@ -226,7 +227,7 @@ widget_run () (
   else rc=2; value=''; fi
   [[ ! "$value" =~ [[:cntrl:]] ]] || rc=2
   if (( rc != 0 )); then value='?'; fi
-  with_session_transaction "$session" config _widget_publish "$session" "$id" "$value" "$now" || return
+  with_session_transaction "$session" config _widget_publish "$session" "$id" "$value" || return
   # The instance id includes its generation; another widget never recovers this claim.
   if coll_has session "$session" widgets "$id"; then
     if (( rc == 0 )); then signal_problem_report "$session" airline-widget "$id" ok ''

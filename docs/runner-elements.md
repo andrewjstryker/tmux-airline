@@ -1,5 +1,9 @@
 # Runner element contracts
 
+A runner follows the [project philosophy](philosophy.md): Bash and ordinary Unix
+streams define process and back-pressure semantics; Airline reports observable
+failures without adding a replacement scheduler or spill buffer.
+
 A classifier, filter, or probe is trusted shell that Airline loads from a registered
 catalog and calls at a defined moment. This document defines what Airline hands each
 kind, what each kind hands back, and which parts of an invocation belong to Airline

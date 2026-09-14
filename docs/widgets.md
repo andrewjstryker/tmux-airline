@@ -1,16 +1,20 @@
 # Widgets
 
-A widget is a trusted Bash catalog file that returns its own tmux format. It chooses
-text, conditions, colors, and any observation job. Airline composes fragments in
-layout order, restores the segment baseline around each fragment, and adds padding
-and separators once per segment. TPM status plugins are not required.
+A widget is a trusted catalog entry with a `.sh` format definition and, when it needs
+external data, an extensionless runtime executable with the same logical name. The
+format definition returns one tmux status-format fragment. It assumes that Airline
+has already established the segment's `fg` and `bg`; it may change those values, but
+must restore them before its expression ends. Airline composes fragments in layout
+order and adds padding and separators once per segment. Tmux owns status refreshes;
+Airline supplies no widget scheduler or stateful runtime.
 
 ```bash
 #| summary: Prefix indicator
 #| usage:
-airline_widget_format() {
-  (( $# == 0 )) || return 2
-  printf '%s' '#[fg=#{@airline-active}]#{?client_prefix,PREFIX,}'
+airline_widget_format() { # <segment-fg> <segment-bg> [<widget-args>...]
+  local fg="$1" bg="$2"
+  shift 2
+  printf '%s' '#{?client_prefix,PREFIX,}'
 }
 ```
 
@@ -41,9 +45,9 @@ Tmux 3.2 or newer is required for numeric meter comparisons.
 
 | Name | Observation | Presentation and availability |
 |---|---|---|
-| `cpu` | Linux `/proc/stat`, minimum 5 seconds between observations | `=`, `≡`, `≣` at 30%/80%; independent warning colors at 70%/90%; `—` until a delta is available |
-| `battery` | First readable Linux system battery in `/sys/class/power_supply`, every 30 seconds | Capacity level `▁`–`█` while discharging, `⚡` when charging/full/attached; `--display both` adds a separate status icon; omitted when hardware is absent |
-| `online` | One ICMP echo to `--host`, default `1.1.1.1`, every 10 seconds | `●` in primary/stress color for reachable/unreachable, `—` before a reading; requires `ping` |
+| `cpu` | deferred until a stateless fast implementation exists | the current counter-delta sampler is not part of the widget contract |
+| `battery` | sibling `battery` executable reads the first readable Linux system battery | Capacity level `▁`–`█` while discharging, `⚡` when charging/full/attached; `--display both` adds a separate status icon |
+| `online` | sibling `online` executable performs one fast ICMP check | `●` in primary/stress color for reachable/unreachable; requires `ping` |
 | `prefix` | Native client and pane state | Bracketed prefix key, Copy, Sync, or custom key-table badge; no process |
 
 Online means the chosen host answered ICMP, not that every Internet service works.
@@ -60,40 +64,23 @@ copy, or special backgrounds. Prefix displays tmux’s configured key (for examp
 `[C-b]`); `--show-copy off` and `--show-sync off` disable those two indicators.
 The idle root key table produces no badge.
 
-CPU sums user, nice, system, idle, iowait, irq, softirq, and steal counters. Guest
-counters are already included in user/nice and are not added again. Idle plus iowait
-is treated as idle time. Counter resets, zero elapsed time, and the first observation
-produce `—`; valid deltas produce a rounded utilization percentage.
+The shipped CPU counter implementation is deferred: a counter delta needs historical
+state and therefore does not satisfy the stateless widget contract. It should return
+only after it has a fast, stateless design.
 
-## Optional observation runtime
+## Runtime executable
 
-Native-only widgets need just `airline_widget_format`. Sampled widgets can implement
-`airline_widget_sample [arguments...]`, emit one scalar, and include `widget_job` in
-their format. `widget_reading` returns the native expression for that instance's
-cached scalar. Put palette references and conditional presentation in the format;
-tmux does not recursively expand job output.
+The optional extensionless executable `<name>` is invoked directly by tmux through a
+`#()` expression emitted by `<name>.sh`. It receives the resolved observation
+arguments and emits one scalar value, text or numeric, on one line. It must be
+stateless, quick, and quiet except for that value. It must not call Airline, write
+tmux options, create Airline-managed files, lock, sleep, or schedule work. Tmux's
+`status-interval` is the only refresh contract.
 
-Format construction receives `AIRLINE_WIDGET_SESSION` (canonical session id) and
-`AIRLINE_WIDGET_INSTANCE`. The worker also receives `AIRLINE_WIDGET_STATE_DIR`, a
-private per-server/session/instance directory for baselines. Arguments retain their
-boundaries. `widget_quote` quotes shell argv; `widget_literal` escapes literal `#`
-characters for tmux. Helpers are available during format construction; sample code
-runs in a separate Bash worker and should be self-contained.
-
-Header `interval` sets a minimum sampling interval (default 5 seconds, at most
-999999); `timeout` sets the execution budget (default 1 second, at most 999 and no
-larger than the interval). Sampling requires `flock` and GNU `timeout`. A per-instance
-lock prevents overlap. Sampling occurs outside the configuration transaction;
-publication verifies the instance still belongs to the owning session. tmux redraw
-cadence can make sampling less frequent than the interval.
-
-Successful samples return status 0 and one line of at most 4096 bytes. Diagnostics
-belong on stderr. The hosted runtime publishes `?` on a failed or timed-out sample
-and reports an instance-specific `airline-widget` problem. Widgets choose how to
-render `?` and initial empty values. The next successful sample recovers that claim.
-Retirement waits for bounded sampling outside the configuration lock before closing
-the claim and removing state. Session closure and subsequent initialization collect
-departed-session caches.
+Airline does not cache, throttle, timeout, retry, supervise, or redraw a runtime
+executable. A third-party widget may implement private optimizations, but those are
+outside the Airline contract. A supplied widget that needs historical state or a
+scheduler is not an Airline catalog widget until it is redesigned.
 
 Formats must be one line, at most 8192 bytes, with at most one trailing newline.
 They may contain native tmux expressions, Unicode, and local style directives, but
@@ -103,7 +90,7 @@ are trusted code, so these checks are contract validation, not a security sandbo
 
 ## Persistent defaults and placement overrides
 
-Set global tmux options named `@airline-widget-<name>-<option>` in `tmux.conf`:
+Set global tmux options named `@airline-widget-<name>-<option>` in a tmux `.conf` file:
 
 ```tmux
 set -g @airline-widget-cpu-warn 70
@@ -134,19 +121,17 @@ CPU thresholds are integers from 0 to 100; warn must not exceed critical, and
 meter-medium must not exceed meter-high. Meter thresholds choose glyphs; warning
 thresholds choose colors. Icons are literal text, not tmux formats.
 
-Online's timeout is the Linux ping reply timeout. The hosted worker has a fixed
-10-second execution budget, including DNS resolution. A hostname exercises DNS;
-an IP address does not. A failed probe reports an Airline problem and displays `—`;
-a completed probe that receives no reply displays the offline icon.
+Online's timeout is the command's own request timeout. A hostname exercises DNS; an
+IP address does not. The runtime executable owns its failure and unavailable-data
+presentation; Airline does not turn runtime stderr into a problem or impose a second
+timeout.
 
 Defaults are resolved and validated when a layout is loaded. The same resolved
-argument vector goes to format construction, availability checks, and every sample
-for that instance. Changing a global option does not change an already loaded
-instance. Reload the layout after changing defaults, for example `airline layout use
-adaptive` (or `airline layout load <path>` for a file). Reloading replaces instances
-and resets CPU baselines. `session apply`, palette changes, and suspend/resume do not
-reload widget policy. Invalid effective options reject a candidate layout, including
-optional placements, leaving the previously loaded layout intact.
+argument vector goes to format construction and, when present, the runtime companion.
+Changing a global option does not change an already composed format. Reload the layout
+after changing defaults, for example `airline layout use adaptive` (or `airline layout
+load <path>` for a file). Invalid effective options reject a candidate layout,
+including optional placements, leaving the previously loaded layout intact.
 
 `widget describe <name> [arguments...]` reports `effective-arguments` using the current
 global defaults and supplied overrides, plus the resulting format. It does not
@@ -156,11 +141,9 @@ Custom widgets opt into this policy with an `options` metadata field containing
 space-separated long option names, and one `default-<option>` field per option.
 All declared options take one value. The host supplies each option once, in metadata
 order, preserving argument boundaries. Widgets validate values in their format
-function; their sampler receives the captured arguments without reading global
-options. Widgets without `options` metadata keep their existing argv contract.
-`widget_text` escapes literal text embedded in a native conditional, including icons.
-Sampling intervals and execution budgets remain definition metadata; there is no
-shared device-selection or refresh-policy option.
+function; their runtime companion receives the captured observation arguments.
+Widgets without `options` metadata keep their existing argv contract. There is no
+shared Airline refresh-policy option.
 
 ## Migration
 
@@ -171,7 +154,9 @@ The adaptive and full layouts place online at left-mid, prefix at right-in, CPU 
 right-mid, and battery after the date at right-out. Optional widgets are selected by
 capability availability, not by TPM installation.
 
-Widgets read the effective palette directly from public session options such as
-`#{@airline-primary}` and `#{@airline-alert}`. Palette changes and suspend/resume
-update these options without replacing widget identities or CPU baselines. See
+Widgets receive the segment `fg` and `bg` from `airline_widget_format`. Airline's
+palette contract is exposed through session options such as
+`#{@airline-palette-primary}` and `#{@airline-palette-alert}`. A widget that changes
+either style must restore the supplied values before its fragment ends. Palette
+changes update the session options and cause Airline to render the segment again. See
 [palette configuration](palettes.md) and the [contract](widget-contract.md).

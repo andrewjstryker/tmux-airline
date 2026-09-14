@@ -4,7 +4,9 @@ This document defines the settled architecture, state model, and public command
 grammar. Implementation details belong in the source and tests unless they protect
 a non-obvious boundary described here.
 
-Focused design documents own the detailed semantics of individual domains:
+The [project philosophy](docs/philosophy.md) defines the platform-first posture
+shared by all domains. Focused design documents own the detailed semantics of
+individual domains:
 
 - [Signal lifecycles](docs/lifecycle-signals.md) defines the meaning, identity, and
   state transitions of status, health, and problem signals.
@@ -58,8 +60,8 @@ Focused design documents own the detailed semantics of individual domains:
 | `lib/collections.sh` | Stores and reduces variable-cardinality state | no |
 | `lib/tmux.sh` | Mechanical operations and airline namespace policy | **yes; sole application caller** |
 | `layouts/palettes/*` | Declarative public color configuration | sourced by `lib/tmux.sh` |
-| `lib/widget.sh` | Format validation, bounded observation, instance retirement | no |
-| `layouts/widgets/*` | Widget-owned formats and optional observations | no |
+| `lib/widget.sh` | Widget format validation, argument resolution, and instance retirement | no |
+| `layouts/widgets/*` | Flat widget `.sh` format definitions and optional scalar executables | no |
 | `layouts/definitions/*` | Trusted Bash definitions declaring widgets and segments | no |
 | `runners/classifiers/*` | Interprets process termination | no |
 | `runners/filters/*` | Interprets a copied command-output stream | no |
@@ -121,16 +123,14 @@ The important boundaries are:
   attention. Layout and runner report managed problems through that public service.
 - Palette and layout are independent axes: a palette chooses colors; a layout
   chooses ordered widget and literal formats. Palette changes publish live session
-  roles without rerunning layouts or replacing observation baselines.
+  roles without rerunning layouts or executing widget runtime commands.
 
 ## Widgets and public palette
 
 The [widget contract](docs/widget-contract.md) and [runtime guide](docs/widgets.md)
-define the format interface. Palette roles are stable public session options holding
-effective display colors. Widgets choose presentation; render owns geometry and
-restores the segment baseline before and after every fragment. Repeated placements
-append with independent instance identities. Palette changes and suspension update
-the public colors; private lifecycle and provenance state remains private.
+define the widget and catalog format. Palette roles are stable public session options
+holding effective display colors. Palette and widget details belong to those focused
+documents; this design retains only their ownership consequences.
 
 ## State model
 
@@ -189,7 +189,8 @@ so previous-window emphasis and activity/bell colors remain visible.
 
 The private session snapshot retains restoration colors and composed formats. Apply
 captures public edits and renders, publishing effective palette values. It does not
-rerun a layout script or sample widgets.
+rerun a layout script or execute widget runtime commands; tmux evaluates those on its
+normal status refresh.
 
 ```mermaid
 graph LR
@@ -257,7 +258,7 @@ There are seven catalog kinds and one plain-option kind:
 | Kind | Representation | Lifecycle |
 |------|----------------|-----------|
 | **palette** | complete targetless tmux config containing public color options | `use` captures one file, replaces colors, records it, then renders |
-| **widget** | Bash function returning a tmux format | placed through a layout; optional bounded observation job |
+| **widget** | Stateless Bash format definition with an optional scalar runtime executable | placed through a layout; evaluated by tmux on status refresh |
 | **layout** | Bash function declaring widget and literal fragments through a callback | `use` or `load` validates once, replaces that axis, records it, then renders |
 | **classifier** | trusted shell mapping process termination to a condition | selected by `runner run` |
 | **filter** | trusted shell interpreting a copied command-output stream | selected by `runner run` |
@@ -277,8 +278,8 @@ Configuration transactions serialize each session's publication. Layout callback
 accept `segment <slot> <format>`, `widget <slot> <name> [arguments...]`, and
 `widget-optional <slot> <name> [arguments...]`. Only optional availability may omit a
 widget; invalid declarations reject the candidate. Repeated slots append. Widgets
-may set local styles; render restores each fragment's baseline before segment padding
-and separators. Format construction does not observe or mutate tmux.
+may set local styles; conforming widget fragments restore the supplied segment `fg`
+and `bg` before they end. Format construction does not observe or mutate tmux.
 
 ## CLI contract
 
