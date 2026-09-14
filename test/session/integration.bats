@@ -49,9 +49,9 @@ setup() {
 }
 
 @test "init preserves user configuration and is idempotent" {
-  $TMUX -L "$_bats_socket" set -g @airline-inner-bg colour99
+  $TMUX -L "$_bats_socket" set -g @airline-palette-inner-bg colour99
   airline session init
-  run get_option @airline-inner-bg
+  run get_option @airline-palette-inner-bg
   assert_output "colour99"           # user value preserved; default not applied
   $TMUX -L "$_bats_socket" set -g @airline-segment-left-out "CUSTOM"
   airline session init
@@ -123,7 +123,7 @@ setup() {
 
 @test "apply renders current inputs and show reports the resulting configuration" {
   airline session init
-  $TMUX -L "$_bats_socket" set -t bats @airline-active "colour201"
+  $TMUX -L "$_bats_socket" set -t bats @airline-palette-active "colour201"
   airline session apply
   run sopt window-status-current-format
   assert_output --partial "colour201"

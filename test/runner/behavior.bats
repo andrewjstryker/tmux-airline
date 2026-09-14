@@ -694,11 +694,20 @@ ELEMENT
 
 @test "a stop request never signals a supervisor PID from stored state" {
   _runner_process_record p-live %1 watch 12345 '--probe fixture' s1
+  local signal_attempts=0 liveness_checks=0
   kill() {
-    [[ "$1" == -0 && "$2" == 12345 ]] || return 99
+    if [[ "$1" == -0 ]]; then
+      liveness_checks=$((liveness_checks + 1))
+      [[ "$2" == 12345 ]]
+      return
+    fi
+    signal_attempts=$((signal_attempts + 1))
+    return 99
   }
-  _runner_process_kill_pid() { return 99; }
+  _runner_process_kill_pid() { signal_attempts=$((signal_attempts + 1)); return 99; }
   _runner_process_request_stop p-live
+  assert_equal "$liveness_checks" 1
+  assert_equal "$signal_attempts" 0
   run coll_get global server process-stop p-live
   assert_output stop
 }

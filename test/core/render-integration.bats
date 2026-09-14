@@ -102,8 +102,8 @@ _assert_name_colors() {
 }
 
 @test "palette changes update every existing window and future windows" {
-  $TMUX -L "$_bats_socket" set -t bats @airline-active colour201
-  $TMUX -L "$_bats_socket" set -t bats @airline-emphasized colour200
+  $TMUX -L "$_bats_socket" set -t bats @airline-palette-active colour201
+  $TMUX -L "$_bats_socket" set -t bats @airline-palette-emphasized colour200
   airline session apply
   $TMUX -L "$_bats_socket" select-window -t bats:0
   _assert_name_colors 0:ordinary 234 201

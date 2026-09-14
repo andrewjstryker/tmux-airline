@@ -362,12 +362,12 @@ opt_setif_pane    () { _opt_setif "$1" pane    "$2" "$3" "$4"; }
 #-----------------------------------------------------------------------------#
 # Airline option namespaces — POLICY (DESIGN.md §State model / §Enforcement)
 #-----------------------------------------------------------------------------#
-# airline owns two option namespaces, and this file is the ONE place their
-# prefixes are written:
-#   public  (@airline-<key>)   user-set static config — palettes, segments
+# This file provides generic transport for Airline's two option namespaces:
+#   public  (@airline-<key>)   user-set static config
 #   private (@airline--<key>)  airline-managed dynamic state — badges, flags
-# Everything above addresses airline options by BARE key through the functions
-# below; it never spells a prefix. (Native tmux options — status-left, prefix,
+# Domain-specific public names (such as palette roles) are assembled by their
+# owning layer. This file only handles generic keys and scopes. (Native tmux
+# options — status-left, prefix,
 # focus-events, … — are not airline's namespace and keep their real names via
 # opt_*.) The lint enforces this: a literal @airline- name outside this file is a
 # violation.
@@ -461,7 +461,7 @@ source_file_session () {
   local file text rc=0
   file="$(mktemp)" || return
   text="$(cat "$2")" || { rm -f "$file"; return 1; }
-  printf '%s\n' "${text//@airline-/@airline--stage-}" > "$file"
+  printf '%s\n' "$text" > "$file"
   _opt_workspace_flush || { rm -f "$file"; return 1; }
   tmux source-file -t "$1" "$file" || rc=$?
   rm -f "$file"

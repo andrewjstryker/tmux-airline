@@ -59,7 +59,7 @@ individual domains:
 | `lib/render.sh` | Owns domain vocabulary and composes the bar | no |
 | `lib/collections.sh` | Stores and reduces variable-cardinality state | no |
 | `lib/tmux.sh` | Mechanical operations and airline namespace policy | **yes; sole application caller** |
-| `layouts/palettes/*` | Declarative public color configuration | sourced by `lib/tmux.sh` |
+| `layouts/palettes/*` | Declarative public color configuration | evaluated by `lib/layout.sh` |
 | `lib/widget.sh` | Widget format validation, argument resolution, and instance retirement | no |
 | `layouts/widgets/*` | Flat widget `.sh` format definitions and optional scalar executables | no |
 | `layouts/definitions/*` | Trusted Bash definitions declaring widgets and segments | no |
@@ -318,7 +318,7 @@ airline transaction show
 
 airline palette  describe <palette> | show [name|<palette-element>] | list | use <palette> | register <dir>
 airline segment  show [<segment>]
-airline widget   describe <widget> [<arg>...] | list | register <dir> | run -t <session-target> <instance>
+airline widget   describe <widget> [<arg>...] | list | register <dir>
 airline layout   describe <layout> | show [name|path] | list | use <layout> | load <file> | register <dir>
 airline classifier describe <classifier> | list | register <dir>
 airline filter     describe <filter> | list | register <dir>

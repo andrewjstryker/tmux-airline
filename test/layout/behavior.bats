@@ -34,7 +34,7 @@ teardown() { :; }
 @test "palette load records an absolute path and renders evaluated values" {
   local file="$BATS_TEST_TMPDIR/unregistered palette"
   cp "$PROJECT_ROOT/layouts/palettes/default.conf" "$file"
-  printf 'set-option @airline-inner-bg colour55\n' >> "$file"
+  printf 'set-option @airline-palette-inner-bg colour55\n' >> "$file"
   layout_palette_load "$file"
   assert_equal "$(prv_get_session s1 palette)" "$file"
   assert_equal "$(cfg_get_session s1 inner-bg)" colour55
@@ -49,7 +49,7 @@ teardown() { :; }
 
 @test "incomplete palette inspection cleans staging and cannot commit or recover a problem" {
   mkdir "$BATS_TEST_TMPDIR/catalog"
-  printf '#| summary: Incomplete\nset-option @airline-inner-bg colour55\n' > "$BATS_TEST_TMPDIR/catalog/broken.conf"
+  printf '#| summary: Incomplete\nset-option @airline-palette-inner-bg colour55\n' > "$BATS_TEST_TMPDIR/catalog/broken.conf"
   catalog_register s1 palette "$BATS_TEST_TMPDIR/catalog"
   local before rc=0
   before="$(declare -p _FAKE_OPT)"
@@ -64,7 +64,7 @@ teardown() { :; }
 @test "palette load failure preserves selected roles and later success recovers its diagnostic" {
   local file="$BATS_TEST_TMPDIR/broken" prior rc=0
   prior="$(cfg_get_session s1 inner-bg)"
-  printf 'set-option @airline-inner-bg colour55\n' > "$file"
+  printf 'set-option @airline-palette-inner-bg colour55\n' > "$file"
   layout_palette_load "$file" || rc=$?
   assert_equal "$rc" "$AIRLINE_CONFIG_PALETTE_FAILURE"
   assert_equal "$(cfg_get_session s1 inner-bg)" "$prior"
@@ -116,7 +116,7 @@ LAYOUT
   [[ ! -e "$BATS_TEST_TMPDIR/observed" && -z "${_LAYOUT_TEST_SOURCED:-}" && -z "${_RENDERED:-}" ]]
   run cat "$BATS_TEST_TMPDIR/description"
   assert_output --partial 'left-out widget named #{@airline-palette-emphasized}'
-  assert_output --partial 'args one\\ two'
+  assert_output --partial 'args one\ two'
   assert_output --partial 'args three'
 }
 

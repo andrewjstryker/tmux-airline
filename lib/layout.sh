@@ -19,6 +19,20 @@ AIRLINE_PROBLEM_LAYOUT='airline-layout'
 # Palette evaluation and effective configuration
 #-----------------------------------------------------------------------------#
 
+_palette_public_has () { opt_has_global "$(palette_public_name "$1")"; }
+_palette_public_get_into () { opt_get_into "$1" global server "$(palette_public_name "$2")"; }
+_palette_public_has_session () { opt_has_session "$1" "$(palette_public_name "$2")"; }
+_palette_public_get_session_into () { opt_get_into "$1" session "$2" "$(palette_public_name "$3")"; }
+_palette_source_file_session () {
+  local session="$1" source="$2" staged text rc=0
+  staged="$(mktemp)" || return
+  text="$(cat "$source")" || { rm -f "$staged"; return 1; }
+  printf '%s\n' "${text//@airline-palette-/@airline--stage-}" > "$staged"
+  source_file_session "$session" "$staged" || rc=$?
+  rm -f "$staged"
+  return "$rc"
+}
+
 _palette_stage_clear () {
   local session="$1" element
   for element in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
@@ -35,12 +49,12 @@ _apply_public_unlocked () {
   prv_get_session_into defaults "$session" "$AIRLINE_KEY_DEFAULTS" || return
   for element in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
     cfg_get_session_into value "$session" "$element"
-    if [[ -z "$defaults" ]] && pub_has "$element"; then
-      pub_get_into value "$element"
+    if [[ -z "$defaults" ]] && _palette_public_has "$element"; then
+      _palette_public_get_into value "$element"
       _AIRLINE_PALETTE_PATCHED=1
     fi
-    if pub_has_session "$session" "$element"; then
-      pub_get_session_into current "$session" "$element"
+    if _palette_public_has_session "$session" "$element"; then
+      _palette_public_get_session_into current "$session" "$element"
       prv_get_session_into displayed "$session" "display-$element" || return
       if [[ "$current" != "$displayed" ]]; then
         value="$current"; _AIRLINE_PALETTE_PATCHED=1
@@ -76,7 +90,7 @@ _palette_evaluate_unlocked () {   # <session> <file> <handle> <destination>; cal
   captured=()
 
   _palette_stage_clear "$session"
-  source_file_session "$session" "$file" || rc=$?
+  _palette_source_file_session "$session" "$file" || rc=$?
   if (( rc != 0 )); then
     _palette_stage_clear "$session"
     printf "airline: palette '%s' could not be evaluated\n" "$name" >&2

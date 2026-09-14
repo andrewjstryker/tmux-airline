@@ -25,7 +25,7 @@ write_layout() {   # <path> <configure-body>
   airline session init
   mkdir -p "$BATS_TMPDIR/mypalettes"
   cp "$PROJECT_ROOT/layouts/palettes/default.conf" "$BATS_TMPDIR/mypalettes/custom.conf"
-  printf 'set @airline-inner-bg colour55\n' >> "$BATS_TMPDIR/mypalettes/custom.conf"
+  printf 'set @airline-palette-inner-bg colour55\n' >> "$BATS_TMPDIR/mypalettes/custom.conf"
   airline palette register "$BATS_TMPDIR/mypalettes"
   airline palette use custom
   run airline palette show inner-bg
@@ -38,7 +38,7 @@ write_layout() {   # <path> <configure-body>
   assert_failure
   session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
   mkdir -p "$BATS_TMPDIR/incomplete"
-  printf 'set @airline-inner-bg colour55\n' > "$BATS_TMPDIR/incomplete/broken.conf"
+  printf 'set @airline-palette-inner-bg colour55\n' > "$BATS_TMPDIR/incomplete/broken.conf"
   airline palette register "$BATS_TMPDIR/incomplete"
 
   run airline palette use broken
@@ -58,7 +58,7 @@ write_layout() {   # <path> <configure-body>
 
   mkdir -p "$BATS_TMPDIR/shadow"
   cp "$PROJECT_ROOT/layouts/palettes/default.conf" "$BATS_TMPDIR/shadow/dark.conf"
-  printf 'set @airline-inner-bg colour42\n' >> "$BATS_TMPDIR/shadow/dark.conf"   # same name as shipped
+  printf 'set @airline-palette-inner-bg colour42\n' >> "$BATS_TMPDIR/shadow/dark.conf"   # same name as shipped
   airline palette register "$BATS_TMPDIR/shadow"
   airline palette use dark
   run airline palette show inner-bg
@@ -73,7 +73,7 @@ write_layout() {   # <path> <configure-body>
   mkdir -p "$BATS_TEST_TMPDIR/palettes"
   palette_file="$BATS_TEST_TMPDIR/palettes/custom palette"
   cp "$PROJECT_ROOT/layouts/palettes/default.conf" "$palette_file"
-  printf 'set-option @airline-inner-bg colour55\n' >> "$palette_file"
+  printf 'set-option @airline-palette-inner-bg colour55\n' >> "$palette_file"
   airline palette register "$BATS_TEST_TMPDIR/palettes"
   prior="$(airline palette show inner-bg)"
   prior_name="$(airline palette show name)"
@@ -84,7 +84,7 @@ write_layout() {   # <path> <configure-body>
   assert_output "$prior"
   run airline palette show name
   assert_output "$prior_name"
-  run sopt @airline-inner-bg
+  run sopt @airline-palette-inner-bg
   assert_output "$prior"
 
   airline palette load "$palette_file"
@@ -92,15 +92,15 @@ write_layout() {   # <path> <configure-body>
   assert_output "$palette_file"
   run airline palette show inner-bg
   assert_output colour55
-  run sopt @airline-inner-bg
+  run sopt @airline-palette-inner-bg
   assert_output colour55
 
-  printf '#| summary: Broken source\nset-option @airline-inner-bg colour99\nnot-a-tmux-command\n' > "$palette_file"
+  printf '#| summary: Broken source\nset-option @airline-palette-inner-bg colour99\nnot-a-tmux-command\n' > "$palette_file"
   run airline palette describe 'custom palette'
   assert_failure 70
   run airline palette show inner-bg
   assert_output colour55
-  run sopt @airline-inner-bg
+  run sopt @airline-palette-inner-bg
   assert_output colour55
   run airline problem show airline airline-palette
   assert_output ''
@@ -110,19 +110,19 @@ write_layout() {   # <path> <configure-body>
 
 @test "manual palette and segment inputs preserve clear provenance and show contracts" {
   airline session init
-  $TMUX -L "$_bats_socket" set -t bats @airline-active colour201
+  $TMUX -L "$_bats_socket" set -t bats @airline-palette-active colour201
   airline session apply
   run sopt window-status-current-format
   assert_output --partial "colour201"   # rendered into the bar (active highlight)
   airline palette use light
-  $TMUX -L "$_bats_socket" set -t bats @airline-active colour201
+  $TMUX -L "$_bats_socket" set -t bats @airline-palette-active colour201
   airline session apply
   run airline palette show active
   assert_output colour201
   run airline palette show name
   assert_output ""
 
-  $TMUX -L "$_bats_socket" set -u -t bats @airline-active
+  $TMUX -L "$_bats_socket" set -u -t bats @airline-palette-active
   airline session apply
   run airline palette show active
   assert_output colour201
@@ -133,7 +133,7 @@ write_layout() {   # <path> <configure-body>
   run airline palette show name
   assert_output light
   airline palette use light
-  $TMUX -L "$_bats_socket" set -t bats @airline-active colour201
+  $TMUX -L "$_bats_socket" set -t bats @airline-palette-active colour201
 
   run airline palette show active
   assert_output colour201             # public reads reflect direct session writes
@@ -159,7 +159,7 @@ write_layout() {   # <path> <configure-body>
   airline session apply
   run airline segment show right-out
   assert_output MANUAL
-  $TMUX -L "$_bats_socket" set -t bats @airline-active colour201
+  $TMUX -L "$_bats_socket" set -t bats @airline-palette-active colour201
   airline session apply
   run airline palette show active
   assert_output "colour201"
@@ -336,9 +336,9 @@ write_layout() {   # <path> <configure-body>
   run airline_session "$other" segment show right-out
   assert_output --partial "%Y-%m-%d %H:%M"
 
-  run sopt @airline-secondary -t "$one"
+  run sopt @airline-palette-secondary -t "$one"
   assert_output "colour245"
-  run sopt @airline-secondary -t "$other"
+  run sopt @airline-palette-secondary -t "$other"
   assert_output "colour246"
 
   airline_session "$other" layout use minimal
@@ -361,7 +361,7 @@ write_layout() {   # <path> <configure-body>
     special ok alert stress zoom copy monitor; do
     $TMUX -L "$_bats_socket" set -g "@airline-$element" colour99
   done
-  $TMUX -L "$_bats_socket" set -g @airline-inner-bg colour99
+  $TMUX -L "$_bats_socket" set -g @airline-palette-inner-bg colour99
   $TMUX -L "$_bats_socket" set -g @airline-segment-left-out GLOBAL
   airline session init
   one="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{session_id}')"
@@ -375,7 +375,7 @@ write_layout() {   # <path> <configure-body>
   assert_output "colour99"
 
   airline_session "$one" palette use light
-  run get_option @airline-inner-bg
+  run get_option @airline-palette-inner-bg
   assert_output "colour99"             # runtime use did not rewrite the default
   run airline_session "$other" palette show inner-bg
   assert_output "colour99"

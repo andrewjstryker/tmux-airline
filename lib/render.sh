@@ -40,6 +40,7 @@ declare -ga AIRLINE_PALETTE_ELEMENTS=(
   secondary primary emphasized
   active special ok alert stress zoom copy monitor
 )
+palette_public_name () { printf '@airline-palette-%s' "$1"; }
 
 # Palette tokens: roles whose NAME is also a valid runtime signal value — currently
 # the window modes. Condition and status levels are semantic, so their selectors
@@ -117,7 +118,7 @@ render_palette_element_valid () {
   return 1
 }
 #-----------------------------------------------------------------------------#
-# Palette — PALETTE, populated from the @airline-<element> options.
+# Palette — PALETTE, populated from the @airline-palette-<element> options.
 #-----------------------------------------------------------------------------#
 
 # -gA so it survives being populated from inside a sourced function (the test
@@ -215,7 +216,7 @@ _build_status_right () {
 render_fragment () {
   local slot="$1" content="$2" style
   [[ -n "$content" ]] || return 0
-  style="#[default]#[fg=#{@airline-emphasized},bg=#{@airline-${AIRLINE_SLOT_TIER[$slot]}-bg}]"
+  style="#[default]#[fg=#{@airline-palette-emphasized},bg=#{@airline-palette-${AIRLINE_SLOT_TIER[$slot]}-bg}]"
   printf '%s%s' "$style" "$content"
 }
 
@@ -471,7 +472,7 @@ render () {   # <session>
   render_palette_load || return
   local element
   for element in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
-    _render_setif opt_setif_session "$AIRLINE_SESSION" "$(pub_name "$element")" "${PALETTE[$element]}" || return
+    _render_setif opt_setif_session "$AIRLINE_SESSION" "$(palette_public_name "$element")" "${PALETTE[$element]}" || return
     prv_set_session "$AIRLINE_SESSION" "display-$element" "${PALETTE[$element]}" || return
   done
   left="$(_build_status_left)" || return
