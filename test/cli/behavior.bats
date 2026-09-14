@@ -10,6 +10,9 @@ setup() {
   export AIRLINE_DIR="$PROJECT_ROOT"
   source "$PROJECT_ROOT/airline.sh"
   source "$PROJECT_ROOT/test/support/fake-tmux.sh"
+  # The in-memory store cannot cross the supervisor boundary. Exercise element
+  # dispatch here; real-tmux integration tests cover process supervision.
+  _runner_process_launch() { _runner_execute "$1"; }
 }
 
 @test "fixed-arity commands reject trailing operands" {
@@ -33,7 +36,7 @@ widget run -t work 1-2-3-4 extra
 layout describe full extra
 layout show name extra
 layout list extra
-classifier describe basic extra
+classifier describe conventional extra
 classifier list extra
 filter describe tap extra
 filter list extra
@@ -118,7 +121,7 @@ CASES
   run main runner describe http
   assert_success
   assert_line 'modes        run watch'
-  assert_output --partial 'classifier   basic'
+  assert_output --partial 'classifier   conventional'
   assert_output --partial 'probe        http'
   assert_output --partial 'http://localhost/health/live'
 
@@ -150,7 +153,7 @@ RUNNER
 airline_runner_configure() {
   local configure="$1"; shift
   case "$1" in
-    command) "$configure" classify basic ;;
+    command) "$configure" classify conventional ;;
     observe) "$configure" probe http http://localhost/health ;;
     *) return 2 ;;
   esac

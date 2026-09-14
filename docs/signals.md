@@ -82,7 +82,7 @@ Airline-owned configuration reports use contributor `airline` with the stable cl
 keys `airline-layout` and `airline-palette`; palette and layout names themselves do
 not gain contributor qualification. Runner extensions report as concrete contributors
 such as `airline-tap` and `airline-http`, with author-owned claim keys. Core
-classifier outcomes use identities such as `airline-runner-classifier-basic`.
+classifier outcomes use identities such as `airline-runner-classifier-conventional`.
 
 The contributor contract is:
 

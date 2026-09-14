@@ -5,6 +5,6 @@
 airline_runner_configure () {   # <configure-function>
   local configure="$1"; shift
   (( $# == 0 )) || return 2
-  "$configure" classify basic
+  "$configure" classify conventional
   "$configure" filter tap
 }

@@ -778,3 +778,30 @@ signal_problem_install_hooks () {
 }
 
 # vim: ft=bash
+
+# Invocation membership and pane status change under the same window transaction.
+# Ending one process cannot clear another process's active lifecycle.
+_signal_process_status_unlocked () { # <changed> <window> <pane> <id> <active|result|clear>
+  local destination_name="$1" win="$2" pane="$3" id="$4" state="$5" members
+  opt_workspace_load pane "$pane" || return
+  if [[ "$state" == active ]]; then
+    coll_set pane "$pane" process-status "$id" active || return
+  else
+    coll_unregister pane "$pane" process-status "$id" || return
+  fi
+  coll_members_into members pane "$pane" process-status || return
+  if [[ -n "$members" ]]; then
+    _signal_status_set_unlocked "$destination_name" "$win" "$pane" "${pane#%}" active
+  elif [[ "$state" == result ]]; then
+    _signal_status_set_unlocked "$destination_name" "$win" "$pane" "${pane#%}" result
+  else
+    _signal_status_clear_unlocked "$destination_name" "$win" "$pane" "${pane#%}"
+  fi
+}
+
+signal_process_status () { # <pane> <invocation-id> <active|result|clear>
+  local pane win
+  _signal_resolve_pane_owner pane win process "$1" || return
+  _signal_apply window "$win" status _signal_process_status_unlocked "$win" "$pane" "$2" "$3" || return
+  [[ "$3" != result ]] || _signal_ensure_result_hook
+}

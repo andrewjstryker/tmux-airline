@@ -130,3 +130,12 @@ when a pane or session disappears, accepting its departed canonical `%N` or `$N`
 Session origins are reserved for core configuration reports. Public `close --session`
 remains available for lifecycle hooks and manual cleanup of those claims. See
 [signal lifecycles](lifecycle-signals.md) for recovery and retained history.
+
+## Active process management
+
+`runner list` discovers definitions. `process list` lists active invocations on the
+connected server; `process show <process-id>` inspects one and `process stop
+<process-id>` cancels its owned work and waits for cleanup. Watch prints this opaque
+ID after startup and releases the pane with standard streams disconnected. Run
+holds the foreground for a command or repeated probe. A placed command run returns
+a pane ID; a placed watch returns a process ID and leaves a usable shell in its pane.

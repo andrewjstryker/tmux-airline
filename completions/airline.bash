@@ -4,7 +4,7 @@
 # Generated from `airline help`; do not edit.
 _airline_children () {
   case "$1" in
-    '') printf %s version\ help\ session\ palette\ segment\ widget\ layout\ classifier\ filter\ probe\ runner\ status\ health\ problem\ transaction ;;
+    '') printf %s version\ help\ session\ palette\ segment\ widget\ layout\ classifier\ filter\ probe\ runner\ process\ status\ health\ problem\ transaction ;;
     session) printf %s init\ apply\ show\ suspend\ resume\ toggle ;;
     palette) printf %s describe\ show\ use\ load\ list\ register ;;
     segment) printf %s show ;;
@@ -14,6 +14,7 @@ _airline_children () {
     filter) printf %s describe\ list\ register ;;
     probe) printf %s describe\ list\ register ;;
     runner) printf %s describe\ list\ register\ run\ watch ;;
+    process) printf %s list\ show\ stop ;;
     status) printf %s set\ clear\ show ;;
     health) printf %s set\ ack\ clear\ show ;;
     problem) printf %s set\ close\ ack\ clear\ resolve\ show ;;
@@ -60,8 +61,11 @@ _airline_usage () {
     runner\ describe) printf %s \<runner\>\ \[\<arg\>...\] ;;
     runner\ list) printf %s '' ;;
     runner\ register) printf %s \<dir\> ;;
-    runner\ run) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ \[--classify\ \<classifier\>\ \[\<arg\>...\]\]\ \[--filter\ \<filter\>\ \[\<arg\>...\]\]\ \[--merge-stderr\]\ \[--interval\ \<seconds\>\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\}\ --\ \<command\>... ;;
+    runner\ run) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ \[--classify\ \<classifier\>\ \[\<arg\>...\]\]\ \[--filter\ \<filter\>\ \[\<arg\>...\]\]\ \[--merge-stderr\]\ \[--interval\ \<seconds\>\]\ \[--probe\ \<probe\>\ \[\<arg\>...\]\]\}\ \[--\ \<command\>...\] ;;
     runner\ watch) printf %s \[--pane\ \[-h\|-v\]\|--window\]\ \{\<runner\>\ \[\<arg\>...\]\ \|\ \[--interval\ \<seconds\>\]\ --probe\ \<probe\>\ \[\<arg\>...\]\} ;;
+    process\ list) printf %s '' ;;
+    process\ show) printf %s \<process-id\> ;;
+    process\ stop) printf %s \<process-id\> ;;
     status\ set) printf %s \[-t\ \<pane-target\>\]\ \<active\|result\|attention\> ;;
     status\ clear) printf %s \[-t\ \<pane-target\>\] ;;
     status\ show) printf %s \[-t\ \<window-target\>\] ;;
@@ -86,6 +90,7 @@ _airline_usage () {
     filter) printf %s '' ;;
     probe) printf %s '' ;;
     runner) printf %s '' ;;
+    process) printf %s '' ;;
     status) printf %s '' ;;
     health) printf %s '' ;;
     problem) printf %s '' ;;
@@ -132,8 +137,11 @@ _airline_description () {
     runner\ describe) printf %s Describe\ one\ named\ composition\ with\ resolved\ defaults ;;
     runner\ list) printf %s List\ named\ runner\ compositions ;;
     runner\ register) printf %s Add\ a\ runner\ search\ directory ;;
-    runner\ run) printf %s Run\ a\ command\ with\ monitoring ;;
-    runner\ watch) printf %s Watch\ probe\ state\ until\ interrupted ;;
+    runner\ run) printf %s Run\ a\ command\ or\ repeated\ probe\ in\ the\ foreground ;;
+    runner\ watch) printf %s Start\ a\ background\ probe\ and\ print\ its\ process\ ID ;;
+    process\ list) printf %s List\ active\ Airline\ invocations\ on\ this\ server ;;
+    process\ show) printf %s Inspect\ an\ active\ invocation ;;
+    process\ stop) printf %s Stop\ an\ invocation\ and\ its\ owned\ work ;;
     status\ set) printf %s Set\ a\ pane\'s\ workflow\ status ;;
     status\ clear) printf %s Delete\ a\ pane\ status ;;
     status\ show) printf %s Show\ a\ window\'s\ pane\ statuses\ and\ revisions ;;
@@ -158,6 +166,7 @@ _airline_description () {
     filter) printf %s filter\ commands ;;
     probe) printf %s probe\ commands ;;
     runner) printf %s runner\ commands ;;
+    process) printf %s process\ commands ;;
     status) printf %s status\ commands ;;
     health) printf %s health\ commands ;;
     problem) printf %s problem\ commands ;;
@@ -173,6 +182,7 @@ _airline_dynamic () {   # <semantic-type>
       noun="$type"
       command airline "$noun" list 2>/dev/null || true
       ;;
+    process-id) command airline process list 2>/dev/null | awk '{print $1}' ;;
     palette-element)
       command airline palette show 2>/dev/null | while read -r line _; do
         [[ "$line" == name ]] || printf '%s\n' "$line"

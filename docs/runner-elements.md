@@ -15,15 +15,121 @@ a warning, or how a log line should be read. Those are the element's domain, whi
 why every kind can receive arguments: policy belongs to the element, so the element
 needs a channel through which a user can supply it.
 
+## Invocation and process contract
+
+`runner` selects and validates work, then starts an invocation. `process` manages
+that live invocation. `runner list` lists catalog definitions; `process list` lists
+active invocations on the connected tmux server. A process ID is an opaque Airline
+identity, not an OS PID. `process show <process-id>` shows its owning pane, mode,
+supervisor and owned PIDs, state, and shell-quoted normalized specification. Never evaluate the
+displayed specification as part of inspection.
+
+| Mode | Subject | Standard streams | Completion |
+|------|---------|------------------|------------|
+| `run` | A command, or a probe with no command | Holds the caller's input and displays output | Command exits, or invocation is cancelled |
+| `watch` | A probe | Background; stdin, stdout, stderr use `/dev/null` | Explicit stop or owner pane closes |
+
+A probe-only `run` repeatedly observes until cancelled; it does not manufacture a
+placeholder command. A command-bearing `run` may also select a filter and a probe.
+A filter requires a command stream. A probe-only invocation has no command
+termination to classify. The selected classifier is inactive in that case.
+
+`watch` returns its process ID after validation, registration, and lifecycle startup.
+The pane remains available for ordinary shell work. `run` stays in the foreground
+and returns the command's original shell status, or a cancellation status for a
+probe-only invocation. Both are listed and can be stopped through `process`.
+
+`process stop <process-id>` requests cancellation of that invocation and waits for
+cleanup. Airline signals the recorded PIDs directly and reports a failure when an
+owned PID cannot be signaled or reaped. It does not walk the process table or claim
+ownership of descendants created privately by an element. These are live records,
+not history. A user-requested stop reports failures directly on the command output;
+it does not create an additional problem claim.
+
+The list is a snapshot. Stopping a syntactically valid ID whose invocation has
+already finished succeeds with an `already finished` message, including repeated
+stops. No completed-process history is retained, so an absent valid ID is treated
+the same way. Malformed IDs remain usage errors.
+
+Stop requests are stored under the invocation ID for the supervisor to consume.
+The CLI does not signal a numeric PID from an old list result. When the supervisor
+is gone, listing, showing, or stopping retires stale bookkeeping without signaling
+recorded child PIDs; those numbers may have been reused. Child membership is
+maintained by the supervisor as children are reaped. A missing child alone is not
+an unexpected-failure verdict. Portable Bash liveness checks are snapshots, not
+durable process-identity handles.
+
+Every invocation belongs to a pane and ends when that pane is removed. Supervisors
+check ownership while work is running, including during a blocked probe call. With
+multiple invocations on a pane, ending one leaves status active while others remain.
+The last command completion produces `result`; ending the last watch or cancelling
+work clears status. These lifecycle changes do not recover element-owned claims.
+If cleanup discovers that the owning pane is already gone, Airline cannot attach the
+diagnostic to that pane and instead raises a server-global `airline-runner` problem
+for the process. That problem remains visible for later inspection.
+Uncatchable supervisor termination cannot guarantee cleanup; process records are
+not a persistent job service or a restart mechanism.
+
+Placement belongs to the invocation. A placed `run` retains its output pane on exit
+and returns that pane ID to its launcher. A placed `watch` creates a normal usable
+shell pane and returns the watch's process ID; `process show` identifies the pane.
+
+## What the Bash host provides
+
+Airline supplies original element argv, lifecycle/process IDs, stream descriptors,
+and the reporting functions documented below. In the current pane, execution inherits
+the invoking environment and working directory. A placed command run is launched
+by tmux in the source pane's current directory and uses tmux's pane environment;
+Airline passes its own executable location and tmux connection configuration across
+that boundary. A placed watch inherits its launcher's environment and working
+directory, and binds its reporting to the newly created pane.
+
+Elements are trusted Bash and use ordinary Unix tools directly. Airline does not
+supply a subprocess API, network client, disk spool, custom buffer, or universal
+request timeout. A probe must bound its own external requests (for example, using
+curl's timeout options). Airline owns cancellation of the invocation and its owned
+children. Command and probe diagnostics retain their normal stdout/stderr meaning;
+watch discards these streams, so operational observations must use the reporters.
+
+Probe observations are sequential and do not overlap. The first starts immediately;
+the interval is a delay after an observation finishes, not a fixed start-to-start
+rate. Precedence is explicit invocation interval, composition interval, probe
+metadata, then five seconds. Filters have invocation-local shell state. Probe calls
+share the observation loop's shell state; validation state is never carried into
+execution. Neither kind may assume state survives a new invocation.
+
+## Stream copying
+
+A filter reads copied command stdout until EOF. `--merge-stderr` includes stderr in
+that copy while preserving the command's separate visible stdout and stderr
+destinations. Separate stream pumps cannot promise the child's exact cross-stream
+ordering. Probe output never enters the command's filter.
+
+Copying uses Unix FIFOs, pipes, and `tee`. OS buffering and backpressure apply: a
+slow filter can slow the command. Airline does not drop bytes to keep up and does
+not spool output to disk. Temporary directories contain control files and FIFOs,
+not stored command output. Pipe copying may affect a program's buffering and TTY
+detection; it is not a transparent pseudo-terminal.
+
+EOF means all selected writers have closed and buffered bytes have been consumed,
+including a final unterminated line. Descendants that inherit output descriptors
+keep the stream open. Normal completion drains the stream before publishing its
+terminal filter result. Cancellation may interrupt observation and does not promise
+a final verdict. An early-returning or failed filter leaves a drain reader behind
+so it cannot truncate terminal output; unread input or nonzero action status causes
+a separate runner problem. Filter failure does not change classifier policy or the
+command's exit status.
+
 ## The three kinds
 
 | Kind | Airline supplies | Element returns | Invoked |
 |------|------------------|-----------------|---------|
-| Classifier | exit status, signal, argv | one condition on stdout | once, when the child exits |
+| Classifier | exit status, signal, argv | one condition on stdout, or no verdict | once, when the child exits |
 | Filter | child pid, health and problem functions, stdin, argv | publishes its own signals through the supplied functions | once; reads until EOF |
 | Probe | lifecycle pid, health and problem functions, argv | publishes its own signals through the supplied functions | repeatedly, paced by core |
 
-A classifier returns a condition for the completed command on stdout. Filters and
+A classifier returns a condition for the completed command on stdout, or returns
+successfully with no output to decline a verdict. Filters and
 probes are contributors: they select their identities and keys, publish observations,
 and report recovery through the supplied health and problem functions. Airline performs the
 lifecycle mutations and reduction over their claims.
@@ -57,9 +163,9 @@ and configure callbacks validate arguments and declare compositions, respectivel
 `run` and `watch` are not separate catalogs or separate element kinds. They differ in
 which inputs exist, and the available kinds follow:
 
-- `run` launches a child command, so an exit status and an output stream exist. All
-  three kinds are meaningful.
-- `watch` launches nothing, so neither exists. Only a probe is meaningful, and
+- A command-bearing `run` supplies an exit status and an output stream. All three
+  kinds are meaningful. A probe-only `run` supplies repeated observations only.
+- `watch` has no subject command or observed stream. Only a probe is meaningful, and
   `--classify` and `--filter` are rejected.
 
 A named composition is therefore usable with `watch` exactly when it declares a probe.
@@ -196,11 +302,21 @@ airline_runner_filter   <child-pid> <health> <problem> [<arg>...]
 airline_runner_probe    <lifecycle-pid> <health> <problem> [<arg>...]
 ```
 
-A classifier returns one condition on stdout. Core validates that result and may
+A classifier returns one condition on stdout, or no verdict. Core validates that result and may
 project it as its own command outcome; this function result does not give core
 ownership of the classifier author's other signal claims. An element that cannot
 load is rejected before execution, and an invalid classifier result is a core
 contract diagnostic.
+
+`conventional` is the default whenever a `run` omits `--classify`, including named
+compositions and runs with a filter. `none` is an ordinary classifier that always
+declines a verdict; it does not disable lifecycle management or other observers.
+`conventional` maps zero to `ok`, other exits to `fail`, and SIGINT/SIGTERM to no
+verdict. Other signals mean `fail`. Bash exposes a shell wait status, so statuses
+above 128 carry the conventional `status - 128` signal interpretation; an explicit
+exit 130/143 cannot be distinguished from those signal outcomes by this interface.
+No verdict is not a successful health observation. At command startup Airline
+retires its previous classifier outcome; silence at completion adds no new claim.
 
 Filters and probes receive two function names, called as follows:
 

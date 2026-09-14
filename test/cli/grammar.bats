@@ -70,7 +70,7 @@ segment show left-out|layout_segment_show <left-out>
 widget describe cpu --warn 60|widget_describe <cpu> <--warn> <60>
 widget run -t work 1-2-3-4|widget_run <-t> <work> <1-2-3-4>
 layout register /tmp/layouts|layout_register </tmp/layouts>
-classifier describe basic|catalog_describe <classifier> <basic>
+classifier describe conventional|catalog_describe <classifier> <conventional>
 filter list|runner_filter_list
 probe register /tmp/probes|runner_probe_register </tmp/probes>
 runner run tap -- true|runner_run <tap> <--> <true>

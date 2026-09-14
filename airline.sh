@@ -51,7 +51,7 @@ AIRLINE_HELP_GROUP_NAMES=(Session Layout Runner Signals Diagnostics)
 AIRLINE_HELP_GROUP_NOUNS=(
   'session'
   'palette segment widget layout'
-  'classifier filter probe runner'
+  'classifier filter probe runner process'
   'status health problem'
   'transaction'
 )
@@ -237,11 +237,23 @@ cmd_runner () {
     describe)  runner_describe "$@" ;;       #| <runner> [<arg>...] — describe one named composition with resolved defaults
     list)      runner_list "$@" ;;       #| — list named runner compositions
     register)  runner_register "$@" ;;  #| <dir> — add a runner search directory
-    run)       runner_run "$@" ;;        #| [--pane [-h|-v]|--window] {<runner> [<arg>...] | [--classify <classifier> [<arg>...]] [--filter <filter> [<arg>...]] [--merge-stderr] [--interval <seconds>] [--probe <probe> [<arg>...]]} -- <command>... — run a command with monitoring
-    watch)     runner_watch "$@" ;;      #| [--pane [-h|-v]|--window] {<runner> [<arg>...] | [--interval <seconds>] --probe <probe> [<arg>...]} — watch probe state until interrupted
+    run)       runner_run "$@" ;;        #| [--pane [-h|-v]|--window] {<runner> [<arg>...] | [--classify <classifier> [<arg>...]] [--filter <filter> [<arg>...]] [--merge-stderr] [--interval <seconds>] [--probe <probe> [<arg>...]]} [-- <command>...] — run a command or repeated probe in the foreground
+    watch)     runner_watch "$@" ;;      #| [--pane [-h|-v]|--window] {<runner> [<arg>...] | [--interval <seconds>] --probe <probe> [<arg>...]} — start a background probe and print its process ID
     *) command_die "unknown runner command: $verb" ;;
   esac
   # help:end runner
+}
+
+cmd_process () {
+  local verb="${1:-}"; shift || true
+  # help:begin process
+  case "$verb" in
+    list) runner_process_list "$@" ;; #| — list active Airline invocations on this server
+    show) runner_process_show "$@" ;; #| <process-id> — inspect an active invocation
+    stop) runner_process_stop "$@" ;; #| <process-id> — stop an invocation and its owned work
+    *) command_die "unknown process command: $verb" ;;
+  esac
+  # help:end process
 }
 
 #-----------------------------------------------------------------------------#
@@ -267,6 +279,7 @@ main () {
     filter)     cmd_filter "$@" ;;
     probe)      cmd_probe "$@" ;;
     runner)   cmd_runner  "$@" ;;
+    process)  cmd_process "$@" ;;
     version)  command_version "$@" ;; #| — show the Airline release/API version
     help)     help_command "$@" ;;      #| [<noun> [<verb>]] — show command help
     ""|-h|--help) help_command ;;

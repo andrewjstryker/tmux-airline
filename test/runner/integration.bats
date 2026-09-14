@@ -38,7 +38,7 @@ wait_for_pane_exit() { # <pane> <status>
   airline session init
 
   run airline classifier list
-  assert_line basic
+  assert_line conventional
   run airline filter list
   assert_line tap
   run airline probe list
@@ -47,12 +47,12 @@ wait_for_pane_exit() { # <pane> <status>
   assert_line tap
   assert_line http
 
-  run airline classifier describe basic
+  run airline classifier describe conventional
   assert_output --partial "Map exit zero"
   run airline probe describe http
   assert_output --partial "<endpoint> [<endpoint>...]"
   run airline runner describe http
-  assert_output --partial "classifier   basic"
+  assert_output --partial "classifier   conventional"
   assert_output --partial "probe        http"
   assert_output --partial "http://localhost/health/live"
   run airline runner describe http http://example.test/health
@@ -103,7 +103,7 @@ wait_for_pane_exit() { # <pane> <status>
   run airline status show -t "$pane"
   assert_output --partial "$pane"
   assert_output --partial result
-  run airline health show airline-runner-classifier-basic command
+  run airline health show airline-runner-classifier-conventional command
   assert_output ""
 }
 
@@ -117,7 +117,7 @@ wait_for_pane_exit() { # <pane> <status>
   run airline status show -t "$pane"
   assert_output --partial "$pane"
   assert_output --partial result
-  run airline health show airline-runner-classifier-basic command
+  run airline health show airline-runner-classifier-conventional command
   assert_output "$(printf 'fail\tcommand exited with status 7')"
 }
 
@@ -225,7 +225,7 @@ wait_for_pane_exit() { # <pane> <status>
     'airline_runner_configure() {' \
     '  local configure="$1"; shift' \
     '  (( $# == 1 )) || return 2' \
-    '  "$configure" classify basic' \
+    '  "$configure" classify conventional' \
     '  "$configure" probe remote "$1"' \
     '}' \
     > "$BATS_TEST_TMPDIR/runners/remote-watch"
@@ -237,9 +237,8 @@ wait_for_pane_exit() { # <pane> <status>
   assert_output --partial 'probe        remote'
   assert_output --partial "$endpoint"
 
-  TMUX_PANE="$pane" AIRLINE_DIR="$PROJECT_ROOT" AIRLINE_TMUX="$TMUX -L $_bats_socket" \
-    "$PROJECT_ROOT/airline.sh" runner watch remote-watch "$endpoint" \
-    > "$watch_output" & watch_pid=$!
+  watch_id="$(airline runner watch remote-watch "$endpoint")"
+  assert_regex "$watch_id" '^p-[a-zA-Z0-9]+$'
 
   observed=""
   for _ in {1..100}; do
@@ -249,11 +248,11 @@ wait_for_pane_exit() { # <pane> <status>
   done
   assert_equal "$observed" "$(printf 'fail\tservice is unavailable')"
   run cat "$observed_pid_file"
-  assert_output "$watch_pid"
+  assert_regex "$output" '^[0-9]+$'
   run cat "$observed_arg_file"
   assert_output "$endpoint"
-  run cat "$watch_output"
-  assert_output --partial "polled $endpoint"
+  run airline process show "$watch_id"
+  assert_output --partial "watch"
   run airline status show -t "$pane"
   assert_output --partial "$pane"
   assert_output --partial active
@@ -267,9 +266,9 @@ wait_for_pane_exit() { # <pane> <status>
   done
   assert_equal "$recovered" ""
 
-  kill -TERM "$watch_pid"
-  wait "$watch_pid" || watch_rc=$?
-  assert_equal "${watch_rc:-0}" 143
+  airline process stop "$watch_id"
+  run airline process list
+  assert_output ""
   run airline status show -t "$pane"
   assert_output ""
   run airline health show test-elements "$probe_key"
@@ -318,7 +317,7 @@ wait_for_pane_exit() { # <pane> <status>
   assert_output --partial "not ok 2 - second"
   run airline health show airline-tap "$filter_key"
   assert_output "$(printf 'fail\tTAP stream completed with unsuccessful assertions')"
-  run airline health show airline-runner-classifier-basic command
+  run airline health show airline-runner-classifier-conventional command
   assert_output "$(printf 'fail\tcommand exited with status 1')"
 }
 
@@ -333,7 +332,7 @@ wait_for_pane_exit() { # <pane> <status>
   run airline status show -t "$pane"
   assert_output --partial "$pane"
   assert_output --partial result
-  run airline health show airline-runner-classifier-basic command
+  run airline health show airline-runner-classifier-conventional command
   assert_output ""
   run airline health show airline-tap "$filter_key"
   assert_output "$(printf 'fail\tTAP stream completed with unsuccessful assertions')"
@@ -358,7 +357,8 @@ wait_for_pane_exit() { # <pane> <status>
   run airline runner run --filter capture --merge-stderr -- bash -c \
     'printf "stdout evidence\n"; printf "stderr evidence\n" >&2'
   run cat "$evidence_file"
-  assert_output $'stdout evidence$\nstderr evidence$'
+  assert_line 'stdout evidence$'
+  assert_line 'stderr evidence$'
 }
 
 @test "probe stdout is visible and remains outside the filter stream" {
@@ -417,7 +417,7 @@ wait_for_pane_exit() { # <pane> <status>
   run airline status show -t "$spawned"
   assert_output --partial "$spawned"
   assert_output --partial result
-  run airline health show -t "$spawned" airline-runner-classifier-basic command
+  run airline health show -t "$spawned" airline-runner-classifier-conventional command
   assert_output "$(printf 'fail\tcommand exited with status 9')"
   run $TMUX -L "$_bats_socket" capture-pane -p -t "$spawned" -S -
   assert_output --partial "pane failure"
@@ -482,7 +482,8 @@ ELEMENT
   run cat "$BATS_TEST_TMPDIR/classifier"
   assert_output 'classifier arguments received'
   run cat "$BATS_TEST_TMPDIR/filter"
-  assert_output $'stdout evidence\nstderr evidence'
+  assert_line 'stdout evidence'
+  assert_line 'stderr evidence'
   run airline health show -t "$spawned" airline-runner-classifier-arguments command
   assert_output $'warn\tconfigured classification'
 }
@@ -558,4 +559,240 @@ FILTER
   assert_output ''
   run airline problem show --all example-filter dependency
   assert_output --partial resolved
+}
+
+make_lifecycle_probe() {
+  mkdir -p "$BATS_TEST_TMPDIR/probes"
+  cat > "$BATS_TEST_TMPDIR/probes/lifecycle" <<'PROBE'
+#| summary: Exercise process lifetime and streams
+#| usage: <evidence>
+#| interval: 0.05
+airline_runner_probe() {
+  printf 'probe stdout\n'
+  printf 'probe stderr\n' >&2
+  printf '%s\n' "$BASHPID" >> "$4"
+  "$2" lifecycle observed fail 'last observation'
+}
+PROBE
+  airline probe register "$BATS_TEST_TMPDIR/probes"
+}
+
+@test "probe-only run holds output until process stop and retains observations" {
+  airline session init
+  make_lifecycle_probe
+  airline runner run --probe lifecycle "$BATS_TEST_TMPDIR/evidence" > "$BATS_TEST_TMPDIR/out" 2>&1 &
+  local launcher=$! id=""
+  for _ in {1..100}; do
+    id="$(airline process list | awk '$3 == "run" {print $1}')"
+    [[ -s "$BATS_TEST_TMPDIR/evidence" ]] && break
+    sleep 0.05
+  done
+  [[ -n "$id" ]]
+  kill -0 "$launcher"
+  run cat "$BATS_TEST_TMPDIR/out"
+  assert_output --partial 'probe stdout'
+  assert_output --partial 'probe stderr'
+  airline process stop "$id"
+  wait "$launcher" || rc=$?
+  assert_equal "${rc:-0}" 143
+  run airline process list
+  assert_output ''
+  run airline health show lifecycle observed
+  assert_output $'fail\tlast observation'
+}
+
+@test "two watches release the pane and stopping one preserves the other's status" {
+  airline session init
+  make_lifecycle_probe
+  local first second pane
+  pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
+  first="$(airline runner watch --probe lifecycle "$BATS_TEST_TMPDIR/first")"
+  second="$(airline runner watch --probe lifecycle "$BATS_TEST_TMPDIR/second")"
+  assert_regex "$first" '^p-[a-zA-Z0-9]+$'
+  assert_regex "$second" '^p-[a-zA-Z0-9]+$'
+  [[ "$first" != "$second" ]]
+  run airline process show "$second"
+  assert_output --partial "$pane"
+  assert_output --partial 'watch'
+  assert_output --partial 'lifecycle'
+  assert_output --partial 'pids'
+  airline process stop "$first"
+  run airline process list
+  refute_output --partial "$first"
+  assert_output --partial "$second"
+  run airline status show -t "$pane"
+  assert_output --partial active
+  airline process stop "$second"
+  run airline status show -t "$pane"
+  assert_output ''
+}
+
+@test "pane closure removes a watch without claiming private element children" {
+  airline session init
+  mkdir -p "$BATS_TEST_TMPDIR/probes"
+  cat > "$BATS_TEST_TMPDIR/probes/blocked" <<'PROBE'
+#| summary: Block inside an observation
+#| usage: <evidence>
+airline_runner_probe() {
+  sleep 120 &
+  printf '%s\n' "$!" > "$4"
+  wait "$!"
+}
+PROBE
+  airline probe register "$BATS_TEST_TMPDIR/probes"
+  local id owner child records
+  id="$(airline runner watch --pane --probe blocked "$BATS_TEST_TMPDIR/child")"
+  owner="$(airline process show "$id" | awk '$1 == "pane" {print $2}')"
+  for _ in {1..100}; do
+    [[ -s "$BATS_TEST_TMPDIR/child" ]] && break
+    sleep 0.05
+  done
+  child="$(cat "$BATS_TEST_TMPDIR/child")"
+  kill -0 "$child"
+  # The new pane contains a usable shell, not a retained dead supervisor.
+  run $TMUX -L "$_bats_socket" display-message -p -t "$owner" '#{pane_dead}'
+  assert_output 0
+  $TMUX -L "$_bats_socket" kill-pane -t "$owner"
+  for _ in {1..100}; do
+    records="$(airline process list)"
+    [[ "$records" != *"$id"* ]] && break
+    sleep 0.05
+  done
+  [[ "$records" != *"$id"* ]]
+  # The probe owns this privately-created child; Airline records and signals its
+  # own supervisor/worker only and does not walk the process table.
+  kill -0 "$child"
+  kill "$child" 2>/dev/null || true
+}
+
+@test "none preserves the command exit status without a health verdict" {
+  airline session init
+  run airline runner run --classify none -- sh -c 'exit 7'
+  assert_failure 7
+  run airline health show airline-runner-classifier-none command
+  assert_output ''
+  run airline problem show airline-runner-classifier-none classify
+  assert_output ''
+}
+
+@test "stop is harmless after completion and accepts repeated stops" {
+  airline session init
+  make_lifecycle_probe
+  local id
+  id="$(airline runner watch --probe lifecycle "$BATS_TEST_TMPDIR/evidence")"
+  airline process stop "$id"
+  run airline process stop "$id"
+  assert_success
+  assert_output --partial 'already finished'
+  run airline process stop "$id"
+  assert_success
+  assert_output --partial 'already finished'
+  run airline problem show airline-runner "process-${id#p-}"
+  assert_output ''
+}
+
+@test "listing and stopping stale invocations never signal recorded child PIDs" {
+  airline session init
+  load_tmux
+  source "$PROJECT_ROOT/lib/collections.sh"
+  local child pane session id
+  pane="$(current_pane)"
+  session="$(current_session)"
+  # A live unrelated process stands in for a numeric PID reused after the original
+  # supervisor exited. Neither list nor stop may signal this stored number.
+  sleep 30 & child=$!
+  for id in p-stalelist p-stalestop; do
+    with_global_transaction process coll_set global server process "$id" \
+      "$pane" watch 999999999 active '--probe fixture' "$child" "$session"
+    if [[ "$id" == p-stalelist ]]; then
+      run airline process list
+      assert_success
+      refute_output --partial "$id"
+    else
+      run airline process stop "$id"
+      assert_success
+      assert_output --partial 'already finished'
+    fi
+    kill -0 "$child"
+    run airline problem show airline-runner "process-${id#p-}"
+    assert_output ''
+  done
+  kill "$child"
+  wait "$child" 2>/dev/null || true
+}
+
+@test "merged observation preserves separate visible stdout and stderr destinations" {
+  airline session init
+  mkdir -p "$BATS_TEST_TMPDIR/filters"
+  cat > "$BATS_TEST_TMPDIR/filters/copy" <<'FILTER'
+#| summary: Copy observation bytes
+#| usage: <file>
+airline_runner_filter() { cat > "$4"; }
+FILTER
+  airline filter register "$BATS_TEST_TMPDIR/filters"
+  airline runner run --filter copy "$BATS_TEST_TMPDIR/copy" --merge-stderr -- \
+    sh -c 'printf out; printf err >&2' > "$BATS_TEST_TMPDIR/out" 2> "$BATS_TEST_TMPDIR/err"
+  run cat "$BATS_TEST_TMPDIR/out"
+  assert_output out
+  run cat "$BATS_TEST_TMPDIR/err"
+  assert_output err
+  run cat "$BATS_TEST_TMPDIR/copy"
+  assert_output --partial out
+  assert_output --partial err
+}
+
+@test "an early filter cannot truncate the command's terminal output" {
+  airline session init
+  mkdir -p "$BATS_TEST_TMPDIR/filters"
+  printf '%s\n' '#| summary: Return before consuming output' \
+    'airline_runner_filter() { return 0; }' > "$BATS_TEST_TMPDIR/filters/early"
+  airline filter register "$BATS_TEST_TMPDIR/filters"
+  airline runner run --filter early -- sh -c 'i=0; while [ "$i" -lt 10000 ]; do echo evidence; i=$((i+1)); done' \
+    > "$BATS_TEST_TMPDIR/output"
+  run wc -l < "$BATS_TEST_TMPDIR/output"
+  assert_equal "${output// /}" 10000
+  run airline problem show airline-runner filter-early
+  assert_output --partial fail
+}
+
+@test "foreground probe run responds to terminal Ctrl-C and releases its pane" {
+  airline session init
+  make_lifecycle_probe
+  local owner records
+  owner="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
+  # Use an actual shell foreground job, so terminal-generated INT exercises Bash's
+  # signal inheritance rather than the different rules of a background test job.
+  local invocation
+  printf -v invocation 'AIRLINE_TMUX=%q AIRLINE_DIR=%q %q runner run --probe lifecycle %q; echo foreground-finished' \
+    "$TMUX -L $_bats_socket" "$PROJECT_ROOT" "$PROJECT_ROOT/airline.sh" "$BATS_TEST_TMPDIR/evidence"
+  $TMUX -L "$_bats_socket" send-keys -t "$owner" "$invocation" Enter
+  for _ in {1..100}; do
+    [[ -s "$BATS_TEST_TMPDIR/evidence" ]] && break
+    sleep 0.05
+  done
+  [[ -s "$BATS_TEST_TMPDIR/evidence" ]]
+  $TMUX -L "$_bats_socket" send-keys -t "$owner" C-c
+  for _ in {1..100}; do
+    records="$(airline process list)"
+    [[ -z "$records" ]] && break
+    sleep 0.05
+  done
+  assert_equal "$records" ''
+  run $TMUX -L "$_bats_socket" capture-pane -p -t "$owner"
+  assert_output --partial 'probe stdout'
+  assert_output --partial 'foreground-finished'
+}
+
+@test "foreground command keeps stdin and conventional stops produce no verdict" {
+  airline session init
+  printf 'input evidence\n' | airline runner run -- sh -c 'read value; printf "%s\n" "$value"' \
+    > "$BATS_TEST_TMPDIR/out"
+  run cat "$BATS_TEST_TMPDIR/out"
+  assert_output 'input evidence'
+  run airline runner run -- sh -c 'kill -TERM $$'
+  assert_failure 143
+  run airline health show airline-runner-classifier-conventional command
+  assert_output $'fail\tcommand exited with status 143'
+  run airline problem show airline-runner-classifier-conventional classify
+  assert_output ''
 }

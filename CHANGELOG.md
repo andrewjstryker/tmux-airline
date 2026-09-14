@@ -5,6 +5,37 @@ implementation worklists used to reach them.
 
 ## Unreleased — 3.0.0
 
+- Made process stop idempotent for finished or absent valid invocation IDs. Stop
+  requests are consumed by the supervisor; stale records are retired without
+  signaling their recorded child PIDs. Added repeated-stop and stale-PID safety
+  regressions with real tmux.
+
+### Runner and process contract
+
+- Added probe-only foreground `runner run`; `runner watch` now backgrounds the
+  observation with terminal streams disconnected and returns an invocation ID.
+- Added `process list`, `show`, and `stop`. This grammar addition closes the
+  inspection/cancellation gap created by releasing the pane for background work.
+  Supervisors cancel owned work when the owning pane closes; overlapping
+  invocations retain independent lifecycle membership.
+- Renamed the shipped `basic` classifier to `conventional` and added `none`.
+  Successful silence is now a valid no-verdict result, distinct from `ok`;
+  conventional SIGINT/SIGTERM outcomes decline a verdict. Filters never suppress
+  the default classifier.
+- Kept stream copying on Unix FIFOs and pipes with OS backpressure; no disk spill.
+  Merged observation preserves visible stdout/stderr destinations, and early filter
+  completion drains remaining output while reporting a separate execution problem.
+- Documented the Bash host, process ownership, reporting, scheduling, cancellation,
+  and stream contracts; updated CLI help and generated completions.
+- Process records now retain every Airline-created supervisor, worker, command,
+  filter, probe, and stream PID and reconcile dead supervisors or vanished panes.
+  The command wrapper records terminal-delivered INT/TERM before Bash reduces the
+  outcome to a wait status; explicit child exits 130/143 remain necessarily
+  ambiguous at the Bash boundary.
+- Cleanup signals only the recorded PIDs. A vanished owning pane produces a
+  server-global runner problem for later inspection; an explicit `process stop`
+  reports signal failures directly to its caller without adding a problem claim.
+
 ### Performance
 
 - Added destination-based option and collection reads and converted signal scans,

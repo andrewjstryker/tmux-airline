@@ -14,7 +14,7 @@
 #   runners/filters/<name>: airline_runner_filter <pid> <health> <problem> [<arg>...]
 #       Read stdout (or merged stdout/stderr when core requests it) from stdin and
 #       Call health/problem with contributor, key, condition, and message.
-#       Emit a definitive report at EOF; that terminal health remains after exit.
+#       Silence is valid; reports remain until the contributor recovers them.
 #
 #   runners/probes/<name>: airline_runner_probe <lifecycle-pid> <health> <problem> [<arg>...]
 #       Perform one bounded observation and report under element-owned keys.
@@ -84,6 +84,7 @@ runner_classifier_run () {   # <exit-status> <signal> [<arg>...]
   local report condition message rc=0
   report="$(airline_runner_classify "$@")" || rc=$?
   (( rc == 0 )) || return 1
+  [[ -n "$report" ]] || return 0
   condition="${report%%$'\t'*}"
   if [[ "$report" == *$'\t'* ]]; then message="${report#*$'\t'}"
   else message=""; fi
@@ -107,9 +108,20 @@ runner_filter_valid () (   # <file> [<arg>...]; validation state never reaches e
 AIRLINE_RUNNER_FILTER_PID=""
 runner_filter_start () {   # <pid> <health> <problem> <input> [<arg>...]
   local child_pid="$1" health="$2" problem="$3" input="$4"; shift 4
-  airline_runner_filter "$child_pid" "$health" "$problem" "$@" < "$input" &
+  (
+    rc=0
+    airline_runner_filter "$child_pid" "$health" "$problem" "$@" || rc=$?
+    # Keep a reader alive after an observer fails so tee can still deliver output.
+    # Any unread byte proves an early return, even if the action returned zero.
+    local unread_count
+    unread_count="$(dd bs=1 count=1 2>/dev/null | wc -c)"
+    (( unread_count == 0 )) || rc=1
+    cat >/dev/null
+    exit "$rc"
+  ) < "$input" &
   # shellcheck disable=SC2034 # consumed by runner orchestration below
   AIRLINE_RUNNER_FILTER_PID=$!
+  [[ -z "${AIRLINE_PROCESS_ID:-}" ]] || _runner_process_add_pid "$AIRLINE_PROCESS_ID" "$AIRLINE_RUNNER_FILTER_PID"
 }
 
 runner_filter_wait () {   # <filter-pid>
@@ -119,24 +131,38 @@ runner_filter_wait () {   # <filter-pid>
   return "$rc"
 }
 
-# One selected command stream is tee'd to one filter while remaining visible. In
-# merge mode stderr joins stdout before the tee, matching ordinary shell `2>&1`.
+# Unix pipes supply buffering and backpressure. Separate pumps preserve visible
+# stdout/stderr destinations; only the observer copy is merged.
 AIRLINE_RUNNER_STREAM_DIR=""
 AIRLINE_RUNNER_STREAM_INPUT=""
 AIRLINE_RUNNER_STREAM_COMMAND=""
 AIRLINE_RUNNER_TEE_PID=""
 
 runner_stream_prepare () {
-  AIRLINE_RUNNER_STREAM_DIR="$(mktemp -d "${TMPDIR:-/tmp}/airline-runner.XXXXXX")" || return 1
+  AIRLINE_RUNNER_STREAM_DIR="${process_dir:-}"
+  [[ -n "$AIRLINE_RUNNER_STREAM_DIR" ]] || AIRLINE_RUNNER_STREAM_DIR="$(mktemp -d "${TMPDIR:-/tmp}/airline-runner.XXXXXX")" || return 1
   AIRLINE_RUNNER_STREAM_INPUT="$AIRLINE_RUNNER_STREAM_DIR/input"
   AIRLINE_RUNNER_STREAM_COMMAND="$AIRLINE_RUNNER_STREAM_DIR/command"
-  mkfifo "$AIRLINE_RUNNER_STREAM_INPUT" "$AIRLINE_RUNNER_STREAM_COMMAND"
+  mkfifo "$AIRLINE_RUNNER_STREAM_INPUT" "$AIRLINE_RUNNER_STREAM_COMMAND" || return
+  [[ -z "$AIRLINE_RUNNER_FILTER_MERGE" ]] || mkfifo "$AIRLINE_RUNNER_STREAM_DIR/stderr"
 }
 
 runner_stream_start () {
-  tee "$AIRLINE_RUNNER_STREAM_INPUT" < "$AIRLINE_RUNNER_STREAM_COMMAND" &
+  (
+    # One open writer spans both pumps, so a gap between streams is not EOF.
+    exec 3> "$AIRLINE_RUNNER_STREAM_INPUT"
+    if [[ -n "$AIRLINE_RUNNER_FILTER_MERGE" ]]; then
+      tee /dev/fd/3 < "$AIRLINE_RUNNER_STREAM_DIR/stderr" >&2 &
+      stderr_pump=$!
+    fi
+    pump_rc=0
+    tee /dev/fd/3 < "$AIRLINE_RUNNER_STREAM_COMMAND" || pump_rc=$?
+    [[ -z "${stderr_pump:-}" ]] || wait "$stderr_pump" || pump_rc=$?
+    exit "$pump_rc"
+  ) &
   # shellcheck disable=SC2034 # consumed by runner orchestration below
   AIRLINE_RUNNER_TEE_PID=$!
+  [[ -z "${AIRLINE_PROCESS_ID:-}" ]] || _runner_process_add_pid "$AIRLINE_PROCESS_ID" "$AIRLINE_RUNNER_TEE_PID"
 }
 
 runner_stream_wait () {
@@ -148,6 +174,7 @@ runner_stream_cleanup () {
   [[ -n "$AIRLINE_RUNNER_STREAM_COMMAND" ]] && rm -f "$AIRLINE_RUNNER_STREAM_COMMAND"
   [[ -n "$AIRLINE_RUNNER_STREAM_INPUT" ]] && rm -f "$AIRLINE_RUNNER_STREAM_INPUT"
   if [[ -n "$AIRLINE_RUNNER_STREAM_DIR" ]]; then
+    rm -f "$AIRLINE_RUNNER_STREAM_DIR/stderr"
     rmdir "$AIRLINE_RUNNER_STREAM_DIR" 2>/dev/null || true
   fi
   AIRLINE_RUNNER_STREAM_DIR=""
@@ -185,8 +212,8 @@ _runner_probe_loop () {   # <pid> <health> <problem> <result> [<arg>...]
   while kill -0 "$lifecycle_pid" 2>/dev/null; do
     rc=0
     airline_runner_probe "$lifecycle_pid" "$health" "$problem" "$@" || rc=$?
-    "$result" "$rc"
     kill -0 "$lifecycle_pid" 2>/dev/null || break
+    "$result" "$rc"
     sleep "$interval"
   done
 }
@@ -196,13 +223,14 @@ runner_probe_start () {   # <pid> <health> <problem> <result> [<arg>...]
   _runner_probe_loop "$@" &
   # shellcheck disable=SC2034 # consumed by runner orchestration below
   AIRLINE_RUNNER_PROBE_PID=$!
+  [[ -z "${AIRLINE_PROCESS_ID:-}" ]] || _runner_process_add_pid "$AIRLINE_PROCESS_ID" "$AIRLINE_RUNNER_PROBE_PID"
 }
 
 runner_probe_stop () {   # <probe-pid>
   local pid="${1:-}"
   [[ -n "$pid" ]] || return 0
   if kill -0 "$pid" 2>/dev/null; then
-    kill -TERM "$pid" 2>/dev/null || true
+    _runner_process_kill_pid "$pid" TERM || true
   fi
   wait "$pid" 2>/dev/null || true
 }
@@ -362,7 +390,7 @@ _runner_definition_describe () {   # <session> <name> [<runner-arg>...]
   local modes=run
   [[ -z "$AIRLINE_RUNNER_CONFIG_PROBE" ]] || modes+=' watch'
   command_show_row modes "$modes"
-  command_show_row classifier "${AIRLINE_RUNNER_CONFIG_CLASSIFIER:-basic}"
+  command_show_row classifier "${AIRLINE_RUNNER_CONFIG_CLASSIFIER:-conventional}"
   [[ -z "$classifier_args" ]] || command_show_row classifier-args "${classifier_args% }"
   command_show_row filter "${AIRLINE_RUNNER_CONFIG_FILTER:-none}"
   [[ -z "$filter_args" ]] || command_show_row filter-args "${filter_args% }"
@@ -431,7 +459,7 @@ _runner_finish () {   # <condition> <message> <pane> <health-contributor> <healt
       ;;
   esac
   # Status describes the workflow phase; health separately describes its outcome.
-  signal_status_set -t "$pane" result
+  [[ -n "${AIRLINE_PROCESS_ID:-}" ]] || signal_status_set -t "$pane" result
 }
 
 # Parsed runner specification. The CLI composes at most one element of each type for
@@ -496,14 +524,17 @@ _runner_expand_named () {   # <session> <run|watch> [invocation...]
       fi
       extra+=("$1"); shift
     done
-    [[ -n "$boundary" && ${#command[@]} -gt 0 ]] || \
+    [[ -z "$boundary" || ${#command[@]} -gt 0 ]] || \
       command_die "runner run: named runner '$name' needs -- <command>"
     runner_definition_configure "${extra[@]}" || \
       command_die "runner run: runner '$name' produced an invalid configuration"
     runner_definition_project run
     AIRLINE_RUNNER_INVOCATION_ARGV=(
-      "${placement[@]}" "${AIRLINE_RUNNER_DEFINITION_ARGV[@]}" -- "${command[@]}"
+      "${placement[@]}" "${AIRLINE_RUNNER_DEFINITION_ARGV[@]}"
     )
+    if [[ -n "$boundary" ]]; then
+      AIRLINE_RUNNER_INVOCATION_ARGV+=(-- "${command[@]}")
+    fi
   else
     runner_definition_configure "$@" || \
       command_die "runner watch: runner '$name' produced an invalid configuration"
@@ -594,7 +625,9 @@ _runner_parse () {   # <run|watch> [spec...]
         ;;
       --)
         [[ "$mode" == run ]] || command_die "runner watch: unexpected -- (watch ends at end of arguments)"
-        shift; AIRLINE_RUNNER_COMMAND=("$@"); break ;;
+        shift
+        (( $# > 0 )) || command_die "runner run: need -- <command>"
+        AIRLINE_RUNNER_COMMAND=("$@"); break ;;
       --merge-stderr)
         [[ -z "$AIRLINE_RUNNER_FILTER_MERGE" ]] || command_die "runner $mode: --merge-stderr already specified"
         AIRLINE_RUNNER_FILTER_MERGE=1; shift ;;
@@ -603,8 +636,9 @@ _runner_parse () {   # <run|watch> [spec...]
   done
 
   if [[ "$mode" == run ]]; then
-    [[ ${#AIRLINE_RUNNER_COMMAND[@]} -gt 0 ]] || command_die "runner run: need -- <command>"
-    [[ -n "$AIRLINE_RUNNER_CLASSIFIER" ]] || AIRLINE_RUNNER_CLASSIFIER=basic
+    [[ ${#AIRLINE_RUNNER_COMMAND[@]} -gt 0 || -n "$AIRLINE_RUNNER_PROBE" ]] || command_die "runner run: need -- <command> or --probe <name>"
+    [[ ${#AIRLINE_RUNNER_COMMAND[@]} -gt 0 || -z "$AIRLINE_RUNNER_FILTER" ]] || command_die "runner run: --filter requires -- <command>"
+    [[ -n "$AIRLINE_RUNNER_CLASSIFIER" ]] || AIRLINE_RUNNER_CLASSIFIER=conventional
   else
     [[ -n "$AIRLINE_RUNNER_PROBE" ]] || command_die "runner watch: need --probe <name> [<arg>...]"
   fi
@@ -652,7 +686,7 @@ _runner_normalize_spec () {   # <run|watch>
   fi
   # An `if` rather than a trailing `&&`: watch normalizes successfully and must not
   # report the mode test's status as failure.
-  if [[ "$mode" == run ]]; then
+  if [[ "$mode" == run && ${#AIRLINE_RUNNER_COMMAND[@]} -gt 0 ]]; then
     AIRLINE_RUNNER_SPEC_ARGV+=(-- "${AIRLINE_RUNNER_COMMAND[@]}")
   fi
 }
@@ -665,6 +699,7 @@ _runner_execute () {   # <session>; uses parsed run specification
   local session="$1" file pane classifier_health_key
   local classifier_contributor streams=""
   local child_pid filter_pid="" probe_pid="" rc=0 signal="" classification condition message
+  local stream_rc=0 filter_rc=0
 
   pane="$(current_pane)"
   classifier_health_key='command'
@@ -681,7 +716,7 @@ _runner_execute () {   # <session>; uses parsed run specification
   fi
 
   signal_health_set -t "$pane" "$classifier_contributor" "$classifier_health_key" ok
-  signal_status_set -t "$pane" active
+  [[ -n "${AIRLINE_PROCESS_ID:-}" ]] || signal_status_set -t "$pane" active
 
   if [[ -n "$AIRLINE_RUNNER_FILTER" ]]; then
     streams=stdout
@@ -696,11 +731,12 @@ _runner_execute () {   # <session>; uses parsed run specification
   # Launch before opening the tee readers: a selected FIFO blocks the child briefly,
   # allowing airline to obtain its PID for the filter contract.
   case "$streams:$AIRLINE_RUNNER_FILTER_MERGE" in
-    stdout:1) "${AIRLINE_RUNNER_COMMAND[@]}" <&0 > "$AIRLINE_RUNNER_STREAM_COMMAND" 2>&1 & ;;
-    stdout:)  "${AIRLINE_RUNNER_COMMAND[@]}" <&0 > "$AIRLINE_RUNNER_STREAM_COMMAND" & ;;
-    :)        "${AIRLINE_RUNNER_COMMAND[@]}" <&0 & ;;
+    stdout:1) _runner_command_start <&0 > "$AIRLINE_RUNNER_STREAM_COMMAND" 2> "$AIRLINE_RUNNER_STREAM_DIR/stderr" & ;;
+    stdout:)  _runner_command_start <&0 > "$AIRLINE_RUNNER_STREAM_COMMAND" & ;;
+    :)        _runner_command_start <&0 & ;;
   esac
   child_pid=$!
+  [[ -z "${AIRLINE_PROCESS_ID:-}" ]] || _runner_process_add_pid "$AIRLINE_PROCESS_ID" "$child_pid"
 
   AIRLINE_RUNNER_PANE="$pane"
   if [[ -n "$AIRLINE_RUNNER_FILTER" ]]; then
@@ -715,11 +751,20 @@ _runner_execute () {   # <session>; uses parsed run specification
   fi
 
   wait "$child_pid" || rc=$?
+  [[ -z "${AIRLINE_PROCESS_ID:-}" ]] || _runner_process_remove_pid "$AIRLINE_PROCESS_ID" "$child_pid" || true
   runner_probe_stop "$probe_pid"
-  if [[ -n "$filter_pid" ]]; then
-    runner_stream_wait || true
+  if [[ -n "$probe_pid" ]]; then
+    [[ -z "${AIRLINE_PROCESS_ID:-}" ]] || _runner_process_remove_pid "$AIRLINE_PROCESS_ID" "$probe_pid" || true
   fi
-  if ! runner_filter_wait "$filter_pid"; then
+  if [[ -n "$filter_pid" ]]; then
+    runner_stream_wait || stream_rc=$?
+    [[ -z "${AIRLINE_PROCESS_ID:-}" ]] || _runner_process_remove_pid "$AIRLINE_PROCESS_ID" "$AIRLINE_RUNNER_TEE_PID" || true
+  fi
+  runner_filter_wait "$filter_pid" || filter_rc=$?
+  if [[ -n "$filter_pid" ]]; then
+    [[ -z "${AIRLINE_PROCESS_ID:-}" ]] || _runner_process_remove_pid "$AIRLINE_PROCESS_ID" "$filter_pid" || true
+  fi
+  if (( filter_rc != 0 || stream_rc != 0 )); then
     signal_problem_set -t "$pane" airline-runner "filter-${AIRLINE_RUNNER_FILTER//[^a-zA-Z0-9_-]/-}" fail "runner filter '$AIRLINE_RUNNER_FILTER' failed"
   elif [[ -n "$filter_pid" ]]; then
     signal_problem_set -t "$pane" airline-runner "filter-${AIRLINE_RUNNER_FILTER//[^a-zA-Z0-9_-]/-}" ok
@@ -728,7 +773,12 @@ _runner_execute () {   # <session>; uses parsed run specification
     runner_stream_cleanup
     trap - EXIT
   fi
-  (( rc > 128 )) && signal="$((rc - 128))"
+  if [[ -n "${AIRLINE_RUNNER_TERMINATION_FILE:-}" && -s "$AIRLINE_RUNNER_TERMINATION_FILE" ]]; then
+    IFS=$'\t' read -r termination_kind termination_signal < "$AIRLINE_RUNNER_TERMINATION_FILE"
+    [[ "$termination_kind" == signal ]] && signal="$termination_signal"
+  elif (( rc > 128 )); then
+    signal="$((rc - 128))"
+  fi
 
   if classification="$(runner_classifier_run "$rc" "$signal" "${AIRLINE_RUNNER_CLASSIFIER_ARGS[@]}")"; then
     condition="${classification%%$'\t'*}"
@@ -741,8 +791,18 @@ _runner_execute () {   # <session>; uses parsed run specification
     signal_problem_set -t "$pane" "$classifier_contributor" classify fail \
       "runner classifier '$AIRLINE_RUNNER_CLASSIFIER' failed or emitted an invalid condition"
     signal_health_set -t "$pane" "$classifier_contributor" "$classifier_health_key" ok
-    signal_status_set -t "$pane" result
+    [[ -n "${AIRLINE_PROCESS_ID:-}" ]] || signal_status_set -t "$pane" result
   fi
+  return "$rc"
+}
+
+_runner_command_start () {
+  local marker="${AIRLINE_RUNNER_TERMINATION_FILE:-}" rc
+  trap '[[ -z "$marker" ]] || printf "signal\tINT\n" > "$marker"; trap - INT; kill -INT $$' INT
+  trap '[[ -z "$marker" ]] || printf "signal\tTERM\n" > "$marker"; trap - TERM; kill -TERM $$' TERM
+  "${AIRLINE_RUNNER_COMMAND[@]}"
+  rc=$?
+  [[ -z "$marker" ]] || printf 'exit\t%s\n' "$rc" > "$marker"
   return "$rc"
 }
 
@@ -755,11 +815,19 @@ _runner_invoke () {   # <session> <run|watch> [spec...]
 
   case "$AIRLINE_RUNNER_PLACEMENT" in
     here)
-      if [[ "$mode" == run ]]; then _runner_execute "$session"
-      else _runner_watch_execute "$session"; fi
+      _runner_process_launch "$session" "$mode"
       ;;
     pane|window)
       pane="$(current_pane)"; cwd="$(current_path)"
+      if [[ "$mode" == watch ]]; then
+        if [[ "$AIRLINE_RUNNER_PLACEMENT" == pane ]]; then
+          spawned="$(runner_open_pane "$pane" "$cwd" "$AIRLINE_RUNNER_PANE_ORIENTATION")" || return
+        else
+          spawned="$(runner_open_window "$session" "$cwd")" || return
+        fi
+        TMUX_PANE="$spawned" _runner_process_launch "$session" watch
+        return
+      fi
       if [[ "$AIRLINE_RUNNER_PLACEMENT" == pane ]]; then
         spawned="$(runner_open_pane "$pane" "$cwd" "$AIRLINE_RUNNER_PANE_ORIENTATION" env \
           "AIRLINE_RUNNER_SPAWNED=1" "AIRLINE_DIR=$AIRLINE_DIR" \
@@ -792,7 +860,7 @@ _runner_watch_execute () {   # <session>; uses parsed watch specification
   AIRLINE_RUNNER_PANE="$pane"
   interval="$(_runner_effective_interval)"
 
-  signal_status_set -t "$pane" active
+  [[ -n "${AIRLINE_PROCESS_ID:-}" ]] || signal_status_set -t "$pane" active
 
   trap 'watch_rc=130; [[ -n "$sleep_pid" ]] && kill "$sleep_pid" 2>/dev/null || true' INT
   trap 'watch_rc=143; [[ -n "$sleep_pid" ]] && kill "$sleep_pid" 2>/dev/null || true' TERM
@@ -809,7 +877,7 @@ _runner_watch_execute () {   # <session>; uses parsed watch specification
   done
   trap - INT TERM HUP
 
-  signal_status_clear -t "$pane"
+  [[ -n "${AIRLINE_PROCESS_ID:-}" ]] || signal_status_clear -t "$pane"
   return "$watch_rc"
 }
 # CLI delegation targets for runner and its primitives.
@@ -862,3 +930,212 @@ runner_run () { _runner_command run "$@"; }
 runner_watch () { _runner_command watch "$@"; }
 
 # vim: ft=bash
+
+# Process records describe live invocations, not catalog definitions. Stop requests
+# are addressed to a unique record; the CLI never signals a PID read from storage.
+_runner_process_record () { # <id> <pane> <mode> <pid> <spec> <session>
+  coll_set global server process "$1" "$2" "$3" "$4" active "$5" "$4" "$6"
+}
+
+_runner_process_add_pid () { # <id> <pid>
+  local tuple pane mode supervisor state spec pids session
+  [[ "$2" =~ ^[0-9]+$ ]] || return 2
+  coll_get_into tuple global server process "$1" || return
+  [[ -n "$tuple" ]] || return 1
+  IFS=$'\t' read -r pane mode supervisor state spec pids session <<< "$tuple"
+  case " ${pids:-} " in *" $2 "*) return 0 ;; esac
+  coll_set global server process "$1" "$pane" "$mode" "$supervisor" "$state" "$spec" "${pids:+$pids }$2" "$session"
+}
+
+_runner_process_remove_pid () { # <id> <pid>
+  local tuple pane mode supervisor state spec pids session kept pid
+  coll_get_into tuple global server process "$1" || return
+  [[ -n "$tuple" ]] || return 0
+  IFS=$'\t' read -r pane mode supervisor state spec pids session <<< "$tuple"
+  kept=""
+  for pid in $pids; do [[ "$pid" == "$2" ]] || kept="${kept:+$kept }$pid"; done
+  coll_set global server process "$1" "$pane" "$mode" "$supervisor" "$state" "$spec" "$kept" "$session"
+}
+
+_runner_process_kill_pid () { # <pid> <signal>
+  local pid="$1" signal="$2"
+  kill -"$signal" "$pid" 2>/dev/null && return 0
+  kill -0 "$pid" 2>/dev/null || return 0
+  printf 'airline: cannot signal owned process %s with %s\n' "$pid" "$signal" >&2
+  return 1
+}
+
+_runner_process_reap_stale () { # <id> <tuple>
+  local id="$1" tuple="$2" pane mode supervisor state spec pids session
+  IFS=$'\t' read -r pane mode supervisor state spec pids session <<< "$tuple"
+  # Once the supervisor is gone, recorded child numbers are no longer evidence
+  # of ownership. Retire bookkeeping without signaling potentially reused PIDs.
+  if ! kill -0 "$supervisor" 2>/dev/null; then
+    if [[ "$(resolve_pane "$pane" 2>/dev/null)" == "$pane" ]]; then
+      signal_process_status "$pane" "$id" clear || return
+    fi
+    with_global_transaction process _runner_process_remove "$id"
+  fi
+}
+
+_runner_process_remove () { # <id>
+  coll_unregister global server process "$1"
+  coll_unregister global server process-stop "$1"
+}
+
+_runner_process_request_stop () { # <id>
+  local tuple pane mode pid state spec pids session
+  coll_get_into tuple global server process "$1" || return
+  if [[ -z "$tuple" ]]; then
+    printf "airline: process '%s' already finished\n" "$1"
+    return 0
+  fi
+  IFS=$'\t' read -r pane mode pid state spec pids session <<< "$tuple"
+  if ! kill -0 "$pid" 2>/dev/null; then
+    # Reconciliation runs outside this transaction so status uses its own lock.
+    return 0
+  fi
+  coll_set global server process "$1" "$pane" "$mode" "$pid" stopping "$spec" "$pids" "$session" || return
+  coll_set global server process-stop "$1" stop || return
+  # The supervisor consumes this request and signals its own children. The CLI
+  # need not race a numeric supervisor PID with reuse between check and kill.
+}
+
+runner_process_list () {
+  (( $# == 0 )) || command_die 'process list: takes no arguments'
+  local members id tuple pane mode pid state spec pids session
+  coll_members_into members global server process || return
+  for id in $members; do
+    coll_get_into tuple global server process "$id" || return
+    [[ -n "$tuple" ]] || continue
+    IFS=$'\t' read -r pane mode pid state spec pids session <<< "$tuple"
+    if [[ "$(resolve_pane "$pane" 2>/dev/null)" != "$pane" ]] || ! kill -0 "$pid" 2>/dev/null; then
+      _runner_process_reap_stale "$id" "$tuple"
+      continue
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$pane" "$mode" "$state" "$spec" "${pids:-}"
+  done
+}
+
+runner_process_show () {
+  [[ $# == 1 && "$1" =~ ^p-[a-zA-Z0-9]+$ ]] || command_die 'process show: need <process-id>'
+  local tuple pane mode pid state spec pids session
+  coll_get_into tuple global server process "$1" || return
+  [[ -n "$tuple" ]] || command_die "process show: unknown process '$1'"
+  IFS=$'\t' read -r pane mode pid state spec pids session <<< "$tuple"
+  if [[ "$(resolve_pane "$pane" 2>/dev/null)" != "$pane" ]] || ! kill -0 "$pid" 2>/dev/null; then
+    _runner_process_reap_stale "$1" "$tuple"
+    command_die "process show: process '$1' is no longer active"
+  fi
+  command_show_row id "$1"
+  command_show_row pane "$pane"
+  command_show_row mode "$mode"
+  command_show_row pid "$pid"
+  command_show_row state "$state"
+  command_show_row specification "$spec"
+  command_show_row pids "${pids:-}"
+}
+
+runner_process_stop () {
+  [[ $# == 1 && "$1" =~ ^p-[a-zA-Z0-9]+$ ]] || command_die 'process stop: need <process-id>'
+  with_global_transaction process _runner_process_request_stop "$1" ||
+    command_die "process stop: could not request stop for '$1'"
+  # A successful stop means the supervisor has cleaned up and retired its record.
+  local attempt tuple pane mode pid state spec pids session
+  for ((attempt=0; attempt<100; attempt++)); do
+    coll_get_into tuple global server process "$1" || return
+    [[ -n "$tuple" ]] || return 0
+    IFS=$'\t' read -r pane mode pid state spec pids session <<< "$tuple"
+    if ! kill -0 "$pid" 2>/dev/null; then
+      _runner_process_reap_stale "$1" "$tuple" || return
+      printf "airline: process '%s' already finished\n" "$1"
+      return 0
+    fi
+    coll_has global server process "$1" || return 0
+    sleep 0.1
+  done
+  command_die "process stop: '$1' has not finished cleanup; inspect with process show"
+}
+
+_runner_process_cleanup () {
+  local record tuple record_pids owned_pid record_session
+  trap - EXIT
+  trap '' HUP INT TERM
+  if record="$(coll_get global server process "$AIRLINE_PROCESS_ID" 2>/dev/null)"; then
+    IFS=$'\t' read -r _ _ _ _ _ record_pids record_session <<< "$record"
+    for owned_pid in $record_pids; do
+      [[ "$owned_pid" == "$BASHPID" ]] || _runner_process_kill_pid "$owned_pid" TERM || true
+    done
+  fi
+  if [[ -n "${process_worker:-}" ]] && kill -0 "$process_worker" 2>/dev/null; then
+    _runner_process_kill_pid "$process_worker" TERM || true
+  fi
+  [[ -z "${process_worker:-}" ]] || wait "$process_worker" 2>/dev/null || true
+  if [[ "$(resolve_pane "$process_pane" 2>/dev/null)" == "$process_pane" ]]; then
+    signal_process_status "$process_pane" "$AIRLINE_PROCESS_ID" "$process_result" || true
+  else
+    signal_problem_report "$record_session" airline-runner "process-${AIRLINE_PROCESS_ID#p-}" fail \
+      "process '$AIRLINE_PROCESS_ID' lost its owning pane before cleanup" || true
+  fi
+  with_global_transaction process _runner_process_remove "$AIRLINE_PROCESS_ID" 2>/dev/null || true
+  # Only invocation-owned control/FIFO files; command output is never spooled.
+  rm -f "$process_dir/ready" "$process_dir/input" "$process_dir/command" "$process_dir/stderr" "$process_dir/termination"
+  rmdir "$process_dir" 2>/dev/null || true
+}
+
+_runner_process_execute () ( # <session> <mode> <control-directory>
+  local session="$1" mode="$2" process_dir="$3" process_pane process_worker=""
+  local process_result=clear process_rc=0 spec stop="" termination_file
+  AIRLINE_PROCESS_ID="p-${process_dir##*.}"
+  termination_file="$process_dir/termination"
+  AIRLINE_RUNNER_TERMINATION_FILE="$termination_file"
+  process_pane="$(current_pane)" || return
+  printf -v spec '%q ' "${AIRLINE_RUNNER_SPEC_ARGV[@]}"
+  trap '_runner_process_cleanup' EXIT
+  trap 'printf "signal\\tHUP\\n" > "$termination_file"; exit 129' HUP
+  trap 'printf "signal\\tINT\\n" > "$termination_file"; exit 130' INT
+  trap 'printf "signal\\tTERM\\n" > "$termination_file"; exit 143' TERM
+  with_global_transaction process _runner_process_record "$AIRLINE_PROCESS_ID" \
+    "$process_pane" "$mode" "$BASHPID" "${spec% }" "$session" || return
+  signal_process_status "$process_pane" "$AIRLINE_PROCESS_ID" active || return
+  printf '%s\n' "$AIRLINE_PROCESS_ID" > "$process_dir/ready"
+  if [[ ${#AIRLINE_RUNNER_COMMAND[@]} -gt 0 ]]; then
+    ( trap - EXIT HUP INT TERM; _runner_execute "$session" ) <&0 &
+  else
+    ( trap - EXIT HUP INT TERM; _runner_watch_execute "$session" ) <&0 &
+  fi
+  process_worker=$!
+  _runner_process_add_pid "$AIRLINE_PROCESS_ID" "$process_worker"
+  while kill -0 "$process_worker" 2>/dev/null; do
+    [[ "$(resolve_pane "$process_pane" 2>/dev/null)" == "$process_pane" ]] || return 143
+    coll_get_into stop global server process-stop "$AIRLINE_PROCESS_ID" || return 2
+    [[ -z "$stop" ]] || return 143
+    sleep 0.1 &
+    wait $! || true
+  done
+  wait "$process_worker" || process_rc=$?
+  _runner_process_remove_pid "$AIRLINE_PROCESS_ID" "$process_worker" || true
+  process_worker=""
+  [[ ${#AIRLINE_RUNNER_COMMAND[@]} == 0 ]] || process_result=result
+  return "$process_rc"
+)
+
+_runner_process_launch () { # <session> <run|watch>
+  local directory watcher id
+  directory="$(mktemp -d "${TMPDIR:-/tmp}/airline-process.XXXXXXXXXX")" || return
+  if [[ "$2" == run ]]; then
+    _runner_process_execute "$1" "$2" "$directory"
+  else
+    _runner_process_execute "$1" "$2" "$directory" </dev/null >/dev/null 2>&1 &
+    watcher=$!
+    while [[ ! -s "$directory/ready" ]]; do
+      if ! kill -0 "$watcher" 2>/dev/null; then
+        wait "$watcher" || true
+        command_die 'runner watch: process failed to start'
+      fi
+      sleep 0.05
+    done
+    IFS= read -r id < "$directory/ready"
+    printf '%s\n' "$id"
+  fi
+}

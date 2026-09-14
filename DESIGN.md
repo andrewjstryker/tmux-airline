@@ -323,18 +323,19 @@ airline classifier describe <classifier> | list | register <dir>
 airline filter     describe <filter> | list | register <dir>
 airline probe      describe <probe> | list | register <dir>
 airline runner   describe <runner> [<arg>...] | list | register <dir>
-                 run [--pane [-h|-v]|--window] <runner> [<arg>...] -- <command>...
+                 run [--pane [-h|-v]|--window] <runner> [<arg>...] [-- <command>...]
                  run [--pane [-h|-v]|--window] [--classify <classifier> [<arg>...]]
-                     [--filter <filter> [<arg>...]] [--merge-stderr] [--probe <probe> [<arg>...]] -- <command>...
+                     [--filter <filter> [<arg>...]] [--merge-stderr] [--probe <probe> [<arg>...]] [-- <command>...]
                  watch [--pane [-h|-v]|--window] <runner> [<arg>...]
                  watch [--pane [-h|-v]|--window] --probe <probe> [<arg>...]
+airline process  list | show <process-id> | stop <process-id>
 ```
 
 All listed commands are public. Tmux hooks use those operations when the event has a
 public meaning. Result observation is the narrow exception: Airline's hook invokes
 the unlisted `status _observed-result <pane> <revision>` entry point because its
 revision is private implementation state rather than caller input. Spawned runner
-panes and windows re-enter through the same public `runner run/watch` commands,
+command panes and windows re-enter through the public `runner run` command,
 whose omitted placement means the current pane; process-local spawn context arms
 pane retention before validation without adding
 public command grammar.
@@ -372,7 +373,7 @@ installs both artifacts with the PATH shim.
 - Runner elements compose only for one invocation. A leading bare runner name
   expands a catalogued composition; an option-leading invocation remains ad hoc.
   Named compositions contain monitoring configuration but never the command.
-  `run` defaults to classifier `basic`; `watch` requires a probe. Omitting placement
+  `run` defaults to classifier `conventional`; `watch` requires a probe. Omitting placement
   uses the current pane, while `--pane` and `--window` create tmux topology
   through the common runner core. Pane placement accepts tmux's native `-h` and
   `-v` orientation modifiers; omitting one preserves tmux's default split.
@@ -431,7 +432,7 @@ A runner catalog entry is syntactic composition over those primitives:
 
 airline_runner_configure() { # <configure-function> [<runner-arg>...]
   local configure="$1"; shift
-  "$configure" classify basic
+  "$configure" classify conventional
   "$configure" filter tap
 }
 ```
@@ -464,13 +465,34 @@ new pane or window is retained after completion so its output and tmux's native 
 pane status remain available until the user dismisses it. Retention is common
 launcher policy, not an implementation hook.
 
+### Active processes
+
+`runner` owns selection, validation, and launch. `process list`, `process show`, and
+`process stop` manage live invocations using opaque IDs distinct from OS PIDs.
+`run` holds foreground streams for a command or repeated probe; `watch` starts the
+probe in the background with all terminal streams connected to `/dev/null` and
+returns its process ID. The owning pane remains usable. Closing it cancels its work.
+
+Runner stores server-scoped process records and stop requests through collections
+under the process transaction. Signal stores per-pane invocation membership and
+changes aggregate pane status under one window status transaction, preserving
+`active` until the last invocation ends. Supervisors own cancellation and retire
+their records after cleanup; element-owned health recovery remains separate.
+No restart service or completed-process history is provided.
+
+Unix pipes/FIFOs and `tee` copy output; OS backpressure applies and no command output
+is spilled to disk. Separate stdout/stderr pumps preserve destinations, with no
+cross-stream ordering guarantee. See the [Bash contract](docs/runner-elements.md).
+
 ### Classification
 
-Every run has one terminal classifier; `basic` is implicit unless another is named.
+Every run has one terminal classifier; `conventional` is implicit unless another is named.
 It receives objective termination
-facts (exit status and terminating signal) once and returns exactly one validated
-condition: `ok`, `warn`, or `fail`. The shipped `basic` classifier maps exit zero to
-`ok` and every nonzero exit or signal to `fail`. A program-specific implementation
+facts (shell wait status and derived signal) once and returns no verdict or one
+validated condition: `ok`, `warn`, or `fail`. The shipped `conventional` classifier maps exit zero to
+`ok`, nonzero exits and abnormal signals to `fail`, and SIGINT/SIGTERM stops to no
+verdict. `none` is the explicit no-verdict classifier. Probe-only invocations have
+no command termination to classify. A program-specific implementation
 exists only where that program assigns richer meaning to termination, such as a
 dedicated exit code for "no tests collected" that should be `warn` rather than
 `fail`.
@@ -503,7 +525,7 @@ airline_runner_classify() { # <exit-status> <signal>
 
 Filters observe a copy of command stdout (or merged stderr); probes perform bounded
 queries sequentially until the command ends or a watch is interrupted. Probe stdout
-bypasses the filter and remains uninterpreted user output. A watch has no child
+bypasses the filter and is visible under `run`, discarded under `watch`. A watch has no child
 command to classify; its status clears on interruption.
 
 Both element kinds receive health and problem function names. Those bind pane context

@@ -22,7 +22,7 @@ while IFS= read -r semantic; do
   case "$semantic" in
     widget|classifier|contributor|dir|file|filter|health-key|layout|message|namespace|palette|\
       palette-element|pane-target|probe|problem-key|runner|segment|session-target|target|window-target|\
-      instance|arg|argument|command|noun|verb|seconds) ;;
+      process-id|instance|arg|argument|command|noun|verb|seconds) ;;
     *) printf "generate-completions: unknown help placeholder <%s>\n" "$semantic" >&2; exit 1 ;;
   esac
 done < <(grep -oE '<[a-z][a-z-]*>' "$WORK/grammar" | tr -d '<>' | sort -u)
@@ -84,6 +84,7 @@ _airline_dynamic () {   # <semantic-type>
       noun="$type"
       command airline "$noun" list 2>/dev/null || true
       ;;
+    process-id) command airline process list 2>/dev/null | awk '{print $1}' ;;
     palette-element)
       command airline palette show 2>/dev/null | while read -r line _; do
         [[ "$line" == name ]] || printf '%s\n' "$line"
@@ -318,6 +319,7 @@ _airline_zsh_dynamic () {
     palette|widget|layout|classifier|filter|probe|runner)
       command airline "$type" list 2>/dev/null
       ;;
+    process-id) command airline process list 2>/dev/null | awk '{print $1}' ;;
     palette-element) command airline palette show 2>/dev/null | awk '$1 != "name" {print $1}' ;;
     segment) command airline segment show 2>/dev/null | awk '{print $1}' ;;
     health-contributor) command airline health show 2>/dev/null | awk '{print $1}' | sort -u ;;

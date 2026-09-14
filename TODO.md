@@ -42,59 +42,50 @@ only prospective work.
   Decide how policy is declared, scoped, validated, exposed by `describe`, and
   passed to both format and sample functions before adding more configurable widgets.
 
-## Runner contract
+## Runner contract follow-up
 
-The runner model is being settled against the native implementation so both versions
-behave identically; the contract is written up in
-`../tmux-airline-native/docs/runner.md`. Bash already conforms in one respect: `watch`
-ignores a declared classifier or filter and fails without a probe. The rest are
-changes.
+The Bash contract is settled around three distinctions:
 
-- Rename the `basic` classifier to `exit-status`. `basic` names nothing; the new name
-  states what the element observes. Public catalog name, so regenerate completions.
+- `run` owns the foreground streams. It may supervise a command, or a probe-only
+  lifecycle with no placeholder command. `watch` starts a probe in the background,
+  disconnects its standard streams, returns an opaque process ID, and releases the
+  pane for other work.
+- `runner` selects and starts an invocation. `process list`, `process show`, and
+  `process stop` inspect and control live invocations. An invocation belongs to its
+  pane and ends when that pane closes. Element health claims remain separate from
+  Airline's lifecycle and supervision problems.
+- `conventional` is the default classifier; `none` is an explicit no-verdict
+  classifier. A Bash wait status alone cannot distinguish an actual SIGINT or
+  SIGTERM from an explicit exit of 130 or 143, so the classifier needs a termination
+  marker supplied by the process wrapper before promising that distinction.
 
-- Ship a `none` classifier so a null runner is reachable. Today `run` always injects
-  `basic`, so "Airline manages the lifecycle and nothing else" cannot be expressed.
-  A real catalog entry that obeys the contract and returns no condition beats a CLI
-  sentinel: the default rule stays "`run` uses `exit-status` unless it names a
-  classifier" with no exception, `classifier describe none` explains itself, a
-  composition declares it with no new syntax, and the core keeps exactly one selected
-  classifier instead of growing an absent state. This requires the classifier
-  contract to permit declining a verdict, which is distinct from reporting `ok` and
-  mirrors probes, where reporting nothing is already valid.
+Output copying uses ordinary Unix pipes/FIFOs and `tee`. Airline provides no disk
+spill or custom buffer, and cannot infer how a filter works. OS buffering and
+backpressure therefore apply. Airline reports a core observer problem only when it
+observes failure or cannot complete cleanup; a slow filter is not itself a portable
+diagnosis. The core problem resolves after the command, filter, and related Airline
+processes have been reaped. Filter-owned health and problem claims have their own
+recovery policy.
 
-  The default applies uniformly: a composition that omits `classify` chooses
-  `exit-status` exactly as a bare invocation does. A declared filter must *not*
-  suppress it, because a filter cannot distinguish an empty stream from a clean silent
-  pass, so the two observations are complementary and land under separate
-  contributors.
+The process record now stores the supervisor, worker, command, filter, probe, and
+stream PIDs as they are created, removes them after reap, and reconciles records whose
+supervisor or owning pane has disappeared. Listing is a liveness snapshot; stopping
+an already-finished invocation succeeds. Once the supervisor is gone, reconciliation
+retires its bookkeeping without signaling recorded child PIDs that may be reused.
+Stop requests go to the live supervisor through the invocation record.
+The process wrapper records INT/TERM
+delivery before Bash collapses it into a wait status. This is sufficient for
+Airline-initiated and terminal-delivered cancellation; a child that independently
+exits 130 or 143 remains indistinguishable from a signal at the Bash boundary.
 
-  Semantic difference: status without a verdict is a distinct and useful state.
+Remaining implementation work:
 
-- Stop classifying deliberate termination as failure. `basic` maps any signal to
-  `fail`, so interrupting a long-running command leaves a persistent health claim for
-  a stop the user asked for — the recurring cost of defaulting to a classifier at all.
-  `exit-status` should decline a verdict on `SIGINT` and `SIGTERM` and reserve `fail`
-  for abnormal termination.
-
-- Replace the FIFO-and-`tee` stream split with a spill file. `run` promises to hold
-  the pane's stdout, and `tee` lets a slow filter block the command and stall the
-  user's terminal; dropping bytes instead would let a filter miss a `not ok` and
-  report green. Writing to a file decouples them: no stall, no loss, bounded by disk,
-  with the filter's reports lagging under load.
-
-  Sketch: `cmd > >(tee -a "$spill")` with stderr inherited, and the filter reading
-  `$spill` independently. The filter's stream ends when the command has terminated
-  *and* the reader has reached the final offset — a reader that stops at the first
-  EOF drops the last lines, so this needs its own regression.
-
-- Correct the stderr handling that the current split implies. Without `--merge-stderr`
-  stdout passes through `tee` while stderr goes straight to the pane, so the two can
-  interleave differently than they would natively; with it, stderr is redirected onto
-  the pane's stdout, changing what the pane shows rather than only what the filter
-  sees. Pump each stream to its own pane descriptor and make merging a property of
-  the spill copy alone, as the documentation already describes it. Interleaving
-  within the spill is then at read granularity, which should be stated.
+- Reconcile and report an owned child that cannot be reaped, resolving the core
+  observer problem only after the owned process set is gone. Airline signals the
+  PIDs it supplied and recorded; it does not walk the process table or claim
+  ownership of descendants created privately by an element.
+- Add real-tmux coverage for direct PID signal failures and the explicit-exit
+  130/143 limitation in the public classifier contract.
 
 ## Grammar coherence
 

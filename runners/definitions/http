@@ -12,6 +12,6 @@ airline_runner_configure () {   # <configure-function> [<http-probe-arg>...]
       http://localhost/health/ready
     )
   fi
-  "$configure" classify basic
+  "$configure" classify conventional
   "$configure" probe http "${probe_args[@]}"
 }

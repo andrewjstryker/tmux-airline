@@ -6,11 +6,11 @@ see the [README](../README.md). Use `airline help runner` or
 
 ## Three ways to run work
 
-1. **A command with defaults:** `airline runner run -- make test` uses the basic
+1. **A command with defaults:** `airline runner run -- make test` uses the conventional
    exit classifier.
 2. **A named composition:** `airline runner run tap -- bats --formatter tap test/`
    selects a reusable combination of elements.
-3. **An explicit specification:** `airline runner run --classify basic --filter tap
+3. **An explicit specification:** `airline runner run --classify conventional --filter tap
    -- bats --formatter tap test/` states that same combination directly.
 
 The explicit specification is the normal form to which named compositions expand.
@@ -21,15 +21,16 @@ reports the evaluated elements and supported modes before you launch work.
 
 Interactive programs with lifecycle hooks should call airline's `status` and
 `health` API directly. Use a runner for non-interactive
-lifecycles: `run` launches a command, while `watch` polls external state without
-requiring a placeholder local job.
+lifecycles: `run` holds the foreground for a command or repeated probe, while
+`watch` runs a probe in the background and releases the pane.
 
-Airline ships `basic` as the implicit classifier, `tap` as a stream filter, and
+Airline ships `conventional` as the default classifier, `none` for no verdict,
+`tap` as a stream filter, and
 `http` as a probe. Each is a first-class catalog with its own discovery commands:
 
 ```sh
 airline classifier list
-airline classifier describe basic
+airline classifier describe conventional
 airline filter describe tap
 airline probe describe http
 ```
@@ -43,7 +44,7 @@ airline runner run --pane -h -- npm test
 airline runner run --window -- cargo test
 ```
 
-With no placement option, a runner executes synchronously in the current pane,
+With no placement option, `run` executes synchronously in the current pane,
 streams terminal I/O, and returns the command's original exit status. `--pane` and
 `--window` launch in new tmux topology and print the new pane id. After `--pane`, the
 native tmux `-h` and `-v` modifiers select the split orientation; bare `--pane` keeps
@@ -51,9 +52,10 @@ tmux's default.
 Spawned panes are retained after exit so their output and native tmux exit status
 remain available until dismissed.
 
-A probe-only implementation can watch a remote service until interrupted:
+Run a probe in the foreground until cancelled, or watch it in the background:
 
 ```sh
+airline runner run --probe http http://localhost/health
 airline runner watch --probe http http://localhost/health
 airline runner watch --window --probe http endpoint1 endpoint2
 ```
@@ -76,8 +78,26 @@ endpoints replace those defaults. HTTP accepts `--expect <regex>`, `--timeout
 <seconds>`, and `--connect-timeout <seconds>` before explicit endpoints; see
 `airline probe describe http` and the [HTTP policy contract](runner-elements.md#shipped-contributor-policies).
 
-While watching, status is `active` and probe reports drive health. Stopping the
-watch clears status; contributors own recovery of their health claims.
+`watch` prints an Airline process ID and returns the prompt. Its stdin, stdout, and
+stderr are connected to `/dev/null`; health and problem reports still reach the pane.
+`run` displays whatever the probe prints (the shipped HTTP probe uses quiet curl
+requests). Manage either kind of active invocation with:
+
+```sh
+airline process list
+airline process show <process-id>
+airline process stop <process-id>
+```
+
+The ID names the invocation, not an OS PID. The list covers the connected tmux
+server. `show` includes the owner pane, mode, supervisor PID, state, and normalized
+specification. `stop` waits for owned work to terminate. A watch also stops when its
+owning pane closes. Multiple invocations may share a pane; ending one leaves status
+active while others remain. Ending the last watch clears status. Contributors own
+recovery of their health claims, so stopping does not erase their observations.
+
+For watch placement, `--pane` and `--window` create a usable shell pane and still
+return a process ID. Use `process show` to find that pane.
 
 `--pane [-h|-v]` and `--window` override the current-pane placement and are mutually
 exclusive. Element arguments continue until the next reserved runner option. Keep each
@@ -99,6 +119,7 @@ runner's normalized result onto its existing channels:
 | `ok` | `result` | clear |
 | `warn` | `result` | `warn` + classifier diagnostic |
 | `fail` | `result` | `fail` + classifier diagnostic |
+| no verdict | `result` | no new classifier claim |
 
 Completion status is cleared after observation because the command output remains in
 its pane.
@@ -112,8 +133,10 @@ clear their observations.
 
 Runner elements are trusted shell files in independently registered classifier,
 filter, and probe catalogs; shipped examples live under `runners/`. `run` uses the
-`basic` classifier unless an explicit `--classify` is supplied. A classifier looks
-like:
+`conventional` classifier unless an explicit `--classify` is supplied. `conventional` reports success for zero and failure for other exits, but declines a
+verdict for SIGINT/SIGTERM stops. `--classify none` explicitly selects no verdict.
+A successful classifier function with empty stdout is valid. Probe-only invocations
+have no command termination to classify. A classifier looks like:
 
 ```bash
 #| summary: Interpret pytest termination
@@ -136,7 +159,9 @@ airline runner run --classify pytest -- make test
 ```
 
 Filters receive copied command stdout; `--merge-stderr` includes stderr in that copy.
-Probes perform bounded observations, with their stdout shown directly in the pane.
+Probes perform bounded observations, with stdout/stderr visible under `run` and
+discarded under `watch`. Ordinary pipe backpressure applies to filters; Airline does
+not buffer command output on disk.
 Both receive health and problem reporting functions that call the same mutations as
 the CLI without launching another Airline process. The author supplies contributor
 and key and decides when to report recovery.
@@ -170,7 +195,7 @@ discovery text and one required function builds a validated composition:
 
 airline_runner_configure() { # <configure-function> [<runner-arg>...]
   local configure="$1"; shift
-  "$configure" classify basic
+  "$configure" classify conventional
   "$configure" filter tap
 }
 ```

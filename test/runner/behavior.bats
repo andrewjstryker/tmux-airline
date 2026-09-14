@@ -11,14 +11,17 @@ setup() {
   source "$PROJECT_ROOT/lib/runner.sh"
 }
 
-@test "basic classifier interprets successful and failed termination" {
-  runner_classifier_load "$PROJECT_ROOT/runners/classifiers/basic"
+@test "conventional classifier interprets successful and failed termination" {
+  runner_classifier_load "$PROJECT_ROOT/runners/classifiers/conventional"
   run runner_classifier_run 0 ""
   assert_output ok
   run runner_classifier_run 7 ""
   assert_output "$(printf 'fail\tcommand exited with status 7')"
   run runner_classifier_run 143 15
-  assert_output "$(printf 'fail\tcommand terminated by signal 15 (status 143)')"
+  assert_success
+  assert_output ""
+  run runner_classifier_run 137 9
+  assert_output "$(printf 'fail\tcommand terminated by signal 9 (status 137)')"
 }
 
 @test "each element loader requires its own function contract" {
@@ -36,7 +39,7 @@ setup() {
     '#| summary: test composition' \
     '#| usage:' \
     'airline_runner_configure() {' \
-    '  "$1" classify basic' \
+    '  "$1" classify conventional' \
     '  "$1" filter tap' \
     '}' > "$BATS_TEST_TMPDIR/runner"
   run _runner_metadata_require runner "$BATS_TEST_TMPDIR/runner"
@@ -61,7 +64,7 @@ setup() {
 
 @test "watch projects only the probe from a complete runner" {
   airline_runner_configure() {
-    "$1" classify basic
+    "$1" classify conventional
     "$1" filter tap --merge-stderr
     "$1" probe http one two
   }
@@ -69,7 +72,7 @@ setup() {
 
   runner_definition_project run
   run printf '%s\n' "${AIRLINE_RUNNER_DEFINITION_ARGV[@]}"
-  assert_output $'--classify\nbasic\n--filter\ntap\n--merge-stderr\n--probe\nhttp\none\ntwo'
+  assert_output $'--classify\nconventional\n--filter\ntap\n--merge-stderr\n--probe\nhttp\none\ntwo'
 
   runner_definition_project watch
   run printf '%s\n' "${AIRLINE_RUNNER_DEFINITION_ARGV[@]}"
@@ -121,7 +124,7 @@ setup() {
   runner_retain_pane() { printf '<retain:%s>' "$1" >> "$evidence"; }
 
   local mode
-  for mode in run watch; do
+  for mode in run; do
     _runner_invoke s1 "$mode" --pane >/dev/null
     run cat "$evidence"
     assert_output --partial '<env><AIRLINE_RUNNER_SPAWNED=1>'
@@ -434,7 +437,7 @@ TAP
 
 @test "a named composition may pace its probe and projects the interval down" {
   airline_runner_configure() {
-    "$1" classify basic
+    "$1" classify conventional
     "$1" probe http one
     "$1" interval 30
   }
@@ -446,7 +449,7 @@ TAP
 
 @test "a paced composition requires a probe and a positive interval" {
   # An interval with no probe paces nothing; that is a mistake, not a no-op.
-  airline_runner_configure() { "$1" classify basic; "$1" interval 30; }
+  airline_runner_configure() { "$1" classify conventional; "$1" interval 30; }
   run runner_definition_configure
   assert_failure
 
@@ -526,7 +529,7 @@ TAP
 }
 
 @test "merge stderr is independent of option order and requires a filter" {
-  local -a spec=(--classify basic --filter tap --probe http endpoint)
+  local -a spec=(--classify conventional --filter tap --probe http endpoint)
   local index
   for index in 0 2 4 7; do
     _runner_parse run "${spec[@]:0:index}" --merge-stderr "${spec[@]:index}" -- true
@@ -583,7 +586,7 @@ TAP
   assert_equal "$AIRLINE_RUNNER_FILTER_MERGE" ''
   assert_equal "${#AIRLINE_RUNNER_CLASSIFIER_ARGS[@]}" 0
 
-  airline_runner_configure() { "$1" classify basic; }
+  airline_runner_configure() { "$1" classify conventional; }
   runner_definition_configure
   assert_equal "${#AIRLINE_RUNNER_CONFIG_CLASSIFIER_ARGS[@]}" 0
   assert_equal "${#AIRLINE_RUNNER_CONFIG_FILTER_ARGS[@]}" 0
@@ -677,4 +680,43 @@ ELEMENT
   assert_output $'fail\tlast observation failed'
   run signal_problem_show custom capability
   assert_output --partial 'dependency unavailable'
+}
+
+@test "none is a valid classifier and only successful silence declines a verdict" {
+  runner_classifier_load "$PROJECT_ROOT/runners/classifiers/none"
+  run runner_classifier_run 7 ''
+  assert_success
+  assert_output ''
+  airline_runner_classify() { return 1; }
+  run runner_classifier_run 0 ''
+  assert_failure
+}
+
+@test "a stop request never signals a supervisor PID from stored state" {
+  _runner_process_record p-live %1 watch 12345 '--probe fixture' s1
+  kill() {
+    [[ "$1" == -0 && "$2" == 12345 ]] || return 99
+  }
+  _runner_process_kill_pid() { return 99; }
+  _runner_process_request_stop p-live
+  run coll_get global server process-stop p-live
+  assert_output stop
+}
+
+@test "a process that disappears during stop reconciliation is already finished" {
+  _runner_process_record p-finished %1 watch 12345 '--probe fixture' s1
+  kill() { return 1; }
+  _runner_process_kill_pid() { return 99; }
+  run runner_process_stop p-finished
+  assert_success
+  assert_output --partial 'already finished'
+}
+
+@test "run permits a probe subject but a filter still requires a command" {
+  _runner_parse run --probe http endpoint
+  assert_equal "$AIRLINE_RUNNER_CLASSIFIER" conventional
+  assert_equal "${#AIRLINE_RUNNER_COMMAND[@]}" 0
+  run _runner_parse run --filter tap --probe http endpoint
+  assert_failure 2
+  assert_output --partial '--filter requires -- <command>'
 }
