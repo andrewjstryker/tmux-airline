@@ -721,6 +721,21 @@ ELEMENT
   assert_output --partial 'already finished'
 }
 
+@test "owned signal failure is reported while an already-gone PID is successful" {
+  kill() {
+    if [[ "$1" == -0 ]]; then return 0; fi
+    return 1
+  }
+  run _runner_process_kill_pid 12345 TERM
+  assert_failure
+  assert_output --partial 'cannot signal owned process 12345 with TERM'
+
+  kill() { return 1; }
+  run _runner_process_kill_pid 12345 TERM
+  assert_success
+  assert_output ''
+}
+
 @test "PID update failures leave the ownership record intact" {
   _runner_process_record p-live %1 run 12345 '-- true' s1
   _runner_process_add_pid p-live 23456
