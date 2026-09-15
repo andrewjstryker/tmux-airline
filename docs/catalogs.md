@@ -18,8 +18,9 @@ palettes/default.conf    # palette named default
 
 The extensionless widget executable is a runtime companion, not a catalog definition.
 Widget resolution finds `<name>.sh` and, when the format contains a `#()` command,
-the definition may invoke the sibling `<name>` executable directly. Catalog discovery
-does not execute either file merely to list or describe it.
+the definition may invoke the sibling `<name>` executable directly. Listing reads
+only filenames and metadata; describing a widget evaluates its trusted format
+definition but never invokes its runtime executable.
 
 Every catalog supports `describe <name>`. Catalog owns name resolution, common
 metadata validation, and rendering of name, summary, declared usage, and resolved

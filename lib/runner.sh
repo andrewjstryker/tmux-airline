@@ -776,8 +776,6 @@ _runner_execute () {   # <session>; uses parsed run specification
   if [[ -n "${AIRLINE_RUNNER_TERMINATION_FILE:-}" && -s "$AIRLINE_RUNNER_TERMINATION_FILE" ]]; then
     IFS=$'\t' read -r termination_kind termination_signal < "$AIRLINE_RUNNER_TERMINATION_FILE"
     [[ "$termination_kind" == signal ]] && signal="$termination_signal"
-  elif (( rc > 128 )); then
-    signal="$((rc - 128))"
   fi
 
   if classification="$(runner_classifier_run "$rc" "$signal" "${AIRLINE_RUNNER_CLASSIFIER_ARGS[@]}")"; then
@@ -800,7 +798,10 @@ _runner_command_start () {
   local marker="${AIRLINE_RUNNER_TERMINATION_FILE:-}" rc
   trap '[[ -z "$marker" ]] || printf "signal\tINT\n" > "$marker"; trap - INT; kill -INT $$' INT
   trap '[[ -z "$marker" ]] || printf "signal\tTERM\n" > "$marker"; trap - TERM; kill -TERM $$' TERM
-  "${AIRLINE_RUNNER_COMMAND[@]}"
+  # Replace this helper with the requested command so the registered child PID is
+  # the command itself and cancellation cannot leave it running behind a shell.
+  # shellcheck disable=SC2093 # exec is intentional: this process is the command.
+  exec "${AIRLINE_RUNNER_COMMAND[@]}"
   rc=$?
   [[ -z "$marker" ]] || printf 'exit\t%s\n' "$rc" > "$marker"
   return "$rc"
@@ -1074,10 +1075,16 @@ _runner_process_cleanup () {
   if record="$(coll_get global server process "$AIRLINE_PROCESS_ID" 2>/dev/null)"; then
     IFS=$'\t' read -r _ _ _ _ _ record_pids record_session <<< "$record"
     for owned_pid in $record_pids; do
-      [[ "$owned_pid" == "$BASHPID" ]] || _runner_process_kill_pid "$owned_pid" TERM || true
+      # Let the worker reap the command it launched.  Killing the worker first
+      # reparents that command and can make `process stop` retire its record
+      # before the command has actually finished.
+      [[ "$owned_pid" == "$BASHPID" || "$owned_pid" == "${process_worker:-}" ]] || \
+        _runner_process_kill_pid "$owned_pid" TERM || true
     done
   fi
-  if [[ -n "${process_worker:-}" ]] && kill -0 "$process_worker" 2>/dev/null; then
+  # Probe-only runs and watches have no command child for the worker to reap.
+  if [[ ${#AIRLINE_RUNNER_COMMAND[@]} == 0 && -n "${process_worker:-}" ]] && \
+      kill -0 "$process_worker" 2>/dev/null; then
     _runner_process_kill_pid "$process_worker" TERM || true
   fi
   [[ -z "${process_worker:-}" ]] || wait "$process_worker" 2>/dev/null || true

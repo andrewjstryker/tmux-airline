@@ -85,6 +85,27 @@ setup() {
   [[ -z "$old_badge" ]]
 }
 
+@test "pane destruction removes its window-owned status entry" {
+  local ready="status-pane-ready-$BATS_TEST_NUMBER" release="status-pane-release-$BATS_TEST_NUMBER"
+  airline session init
+  pane="$($TMUX -L "$_bats_socket" split-window -dP -F '#{pane_id}' -t bats \
+    "tmux wait-for -S '$ready'; tmux wait-for '$release'")"
+  $TMUX -L "$_bats_socket" wait-for "$ready"
+  window="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{window_id}')"
+  airline status set -t "$pane" attention
+  $TMUX -L "$_bats_socket" wait-for -S "$release"
+
+  output="$pane"
+  for _ in {1..100}; do
+    output="$(airline status show -t "$window")"
+    [[ "$output" != *"$pane"* ]] && break
+    sleep 0.01
+  done
+  [[ "$output" != *"$pane"* ]]
+  run wopt @airline--badge-status -t "$window"
+  assert_output ''
+}
+
 @test "health retains a diagnostic while projecting only its severity" {
   airline health set test api fail "connection refused" "after retry"
 

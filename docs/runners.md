@@ -133,8 +133,11 @@ clear their observations.
 
 Runner elements are trusted shell files in independently registered classifier,
 filter, and probe catalogs; shipped examples live under `runners/`. `run` uses the
-`conventional` classifier unless an explicit `--classify` is supplied. `conventional` reports success for zero and failure for other exits, but declines a
-verdict for SIGINT/SIGTERM stops. `--classify none` explicitly selects no verdict.
+`conventional` classifier unless an explicit `--classify` is supplied. `conventional`
+reports success for zero and failure for other command exits. Airline-controlled
+cancellation declines a verdict; shell status alone cannot distinguish signal
+termination from an explicit `exit 130` or `exit 143`. `--classify none` explicitly
+selects no verdict.
 A successful classifier function with empty stdout is valid. Probe-only invocations
 have no command termination to classify. A classifier looks like:
 

@@ -316,10 +316,10 @@ contract diagnostic.
 `conventional` is the default whenever a `run` omits `--classify`, including named
 compositions and runs with a filter. `none` is an ordinary classifier that always
 declines a verdict; it does not disable lifecycle management or other observers.
-`conventional` maps zero to `ok`, other exits to `fail`, and SIGINT/SIGTERM to no
-verdict. Other signals mean `fail`. Bash exposes a shell wait status, so statuses
-above 128 carry the conventional `status - 128` signal interpretation; an explicit
-exit 130/143 cannot be distinguished from those signal outcomes by this interface.
+`conventional` maps zero to `ok` and every other command exit to `fail`.
+Airline-controlled cancellation leaves no verdict. Bash exposes only a shell wait
+status, so `exit 130`/`exit 143` cannot be distinguished from signal termination;
+both are treated as ordinary nonzero command outcomes by this interface.
 No verdict is not a successful health observation. At command startup Airline
 retires its previous classifier outcome; silence at completion adds no new claim.
 

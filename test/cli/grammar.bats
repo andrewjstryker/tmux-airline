@@ -46,6 +46,7 @@ setup() {
     assert_output "$expected"
   done <<'CASES'
 session init -t work|session_init <-t> <work>
+session init /tmp/airline.conf|session_init </tmp/airline.conf>
 session apply|session_apply
 session show state|session_show <state>
 session suspend|session_suspend

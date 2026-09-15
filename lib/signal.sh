@@ -48,7 +48,9 @@ _signal_claim_id () { printf '%s:%s' "$1" "$2"; }
 _signal_validate_condition () {   # <command> <ok|warn|fail> <message>
   local command="$1" level="$2" message="$3"
   signal_condition_valid "$level" || { _signal_error "$command: invalid level '$level'"; return; }
-  [[ "$message" != *$'\t'* ]] || { _signal_error "$command: message must not contain a tab"; return; }
+  [[ "$message" != *$'\t'* && "$message" != *$'\n'* ]] || {
+    _signal_error "$command: message must not contain a tab or newline"; return;
+  }
   case "$level" in
     ok) [[ -z "$message" ]] || { _signal_error "$command: ok takes no <message>"; return; } ;;
     warn|fail) [[ -n "$message" ]] || { _signal_error "$command: need <message>"; return; } ;;
@@ -316,6 +318,31 @@ signal_status_clear () {   # [-t <pane-target>]
   _signal_resolve_pane_owner pane win "status clear" "$target" || return
   member="${pane#%}"
   _signal_apply window "$win" status _signal_status_clear_unlocked "$win" "$pane" "$member"
+}
+
+# A departed pane can no longer be resolved through tmux, but its status tuple is
+# window-owned and must not outlive the pane that explained it.
+_signal_status_clear_departed_unlocked () { # <destination> <window> <pane-member>
+  local -n destination="$1"
+  local win="$2" member="$3" tuple has_rc=0
+  destination=""
+  coll_get_into tuple window "$win" status "$member" || return
+  coll_has window "$win" status "$member" || has_rc=$?
+  (( has_rc <= 1 )) || return "$has_rc"
+  (( has_rc == 1 )) && [[ -z "$tuple" ]] && return 0
+  coll_unregister window "$win" status "$member" || return
+  destination=1
+}
+
+signal_status_pane_closed () { # <departed-pane>
+  local pane="$1" win
+  [[ $# == 1 && "$pane" =~ ^%[0-9]+$ ]] || return 2
+  # A pane-exited hook retains its canonical pane ID but not a dependable window
+  # target. Status collections are small and window-owned, so reconcile the live
+  # windows rather than guessing an owner from a departed object.
+  for win in $(list_all_windows); do
+    _signal_apply window "$win" status _signal_status_clear_departed_unlocked "$win" "${pane#%}" || return
+  done
 }
 
 # Private hook callback. Its pane/revision tuple is Airline-owned state rather than
@@ -769,6 +796,8 @@ signal_problem_report () {   # <session> <contributor> <key> <ok|warn|fail> <mes
 }
 
 signal_problem_install_hooks () {
+  hook_set "pane-exited[89]" \
+    "run-shell -b \"'$AIRLINE_DIR/airline.sh' status _pane-closed '#{hook_pane}'\""
   hook_set "pane-exited[90]" \
     "run-shell -b \"'$AIRLINE_DIR/airline.sh' problem close -t '#{hook_pane}'\""
   hook_set "pane-died[90]" \

@@ -71,7 +71,7 @@ write_layout() {   # <path> <configure-body>
 @test "palette load and describe share native evaluation without committing inspection" {
   airline session init
   mkdir -p "$BATS_TEST_TMPDIR/palettes"
-  palette_file="$BATS_TEST_TMPDIR/palettes/custom palette"
+  palette_file="$BATS_TEST_TMPDIR/palettes/custom palette.conf"
   cp "$PROJECT_ROOT/layouts/palettes/default.conf" "$palette_file"
   printf 'set-option @airline-palette-inner-bg colour55\n' >> "$palette_file"
   airline palette register "$BATS_TEST_TMPDIR/palettes"
@@ -304,7 +304,7 @@ write_layout() {   # <path> <configure-body>
   write_layout "$BATS_TEST_TMPDIR/oneoff.sh" '  "$declare" widget left-out prefix'
   airline layout load "$BATS_TEST_TMPDIR/oneoff.sh"
   run airline layout show name
-  assert_output "$BATS_TEST_TMPDIR/oneoff"
+  assert_output "$BATS_TEST_TMPDIR/oneoff.sh"
   prior="$(airline segment show left-out)"
   ids="$(sopt @airline--widgets)"
   airline palette use light
@@ -422,7 +422,7 @@ write_layout() {   # <path> <configure-body>
   airline session init
   mkdir "$BATS_TEST_TMPDIR/layouts"
   printf '#| summary: Fixture widget\nairline_widget_format() { printf "%%s" "$1"; }\n' > "$BATS_TEST_TMPDIR/layouts/fixture.sh"
-  cat > "$BATS_TEST_TMPDIR/layouts/inspect" <<'LAYOUT'
+  cat > "$BATS_TEST_TMPDIR/layouts/inspect.sh" <<'LAYOUT'
 #| summary: Inspect native declarations
 airline_layout_configure() {
   "$1" segment left-out 'candidate #S'

@@ -502,6 +502,9 @@ list_sessions () { tmux list-sessions -F '#{session_id}'; }
 
 list_windows () { tmux list-windows -t "$1:" -F '#{window_id}'; }
 list_panes () { tmux list-panes -t "$1" -F '#{pane_id}'; }
+# A session bootstrap may need to run a user command file as that session.  Use a
+# native pane context rather than treating an environment variable as Airline state.
+session_pane () { tmux list-panes -t "$1:" -F '#{pane_id}' | head -n 1; }
 list_all_windows () { tmux list-windows -a -F '#{window_id}'; }
 
 # The id ($n) of the session the caller is acting in. A process launched from a

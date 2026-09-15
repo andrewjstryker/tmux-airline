@@ -79,7 +79,7 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   mkdir -p "$BATS_TEST_TMPDIR/bin"
   printf '#!/usr/bin/env bash\ncase "$1 $2" in\n  "palette list") printf "dark\\nlight\\n" ;;\n  "widget list") printf "battery\\ncpu\\n" ;;\n  "problem show") printf "example      build  active  warn\\nexample      deploy  active  fail\\n" ;;\nesac\n' \
     > "$BATS_TEST_TMPDIR/bin/airline"
-  printf '#!/usr/bin/env bash\ncase "$1" in\n  list-panes) printf "%%%%2\\n%%%%3\\n" ;;\n  list-sessions) printf "\\$1\\n\\$2\\n" ;;\nesac\n' \
+  printf '#!/usr/bin/env bash\n[[ "$1" == --fixture ]] && shift\ncase "$1" in\n  list-panes) printf "%%%%2\\n%%%%3\\n" ;;\n  list-sessions) printf "\\$1\\n\\$2\\n" ;;\nesac\n' \
     > "$BATS_TEST_TMPDIR/bin/tmux"
   chmod +x "$BATS_TEST_TMPDIR/bin/airline"
   chmod +x "$BATS_TEST_TMPDIR/bin/tmux"
@@ -112,6 +112,11 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 
   COMP_WORDS=(airline status set -t '%'); COMP_CWORD=4; _airline_completion
   assert_equal "${COMPREPLY[*]}" '%2 %3'
+
+  AIRLINE_TMUX="$BATS_TEST_TMPDIR/bin/tmux --fixture"
+  COMP_WORDS=(airline status set -t '%'); COMP_CWORD=4; _airline_completion
+  assert_equal "${COMPREPLY[*]}" '%2 %3'
+  unset AIRLINE_TMUX
 
   COMP_WORDS=(airline transaction clear global server p); COMP_CWORD=5; _airline_completion
   assert_equal "${COMPREPLY[*]}" problem

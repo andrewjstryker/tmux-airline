@@ -52,8 +52,8 @@ _session_configuration_show_unlocked () {   # <session>
   layout_configuration_show "$session"
 }
 
-session_init () {   # [-t <session-target>]
-  local target="" session
+session_init () {   # [-t <session-target>] [<config-file>]
+  local target="" config_file="" session
   while (( $# )); do
     case "$1" in
       -t)
@@ -62,7 +62,12 @@ session_init () {   # [-t <session-target>]
         target="$2"
         shift 2
         ;;
-      *) command_die "session init: unknown argument '$1'" ;;
+      --*) command_die "session init: unknown option '$1'" ;;
+      *)
+        [[ -z "$config_file" ]] || command_die "session init: takes at most one <config-file>"
+        config_file="$1"
+        shift
+        ;;
     esac
   done
   if [[ -n "$target" ]]; then
@@ -72,17 +77,21 @@ session_init () {   # [-t <session-target>]
     session="$(command_current_session)"
   fi
   _session_bootstrap "$session" || return
-  _session_config || return
+  _session_config "$session" "$config_file" || return
 }
 
-_session_config () {   # [<file>]
-  local file="${1:-${AIRLINE_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/airline/config}}"
+_session_config () {   # <session> [<file>]
+  local session="$1" file pane
+  shift
+  file="${1:-${AIRLINE_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/airline/config}}"
   (( $# <= 1 )) || command_die 'session config: takes at most one <file>'
   [[ -f "$file" ]] || return 0
   [[ -r "$file" ]] || command_die "session config: cannot read '$file'"
+  pane="$(session_pane "$session")" || command_die "session config: cannot resolve a pane for '$session'"
+  [[ -n "$pane" ]] || command_die "session config: cannot resolve a pane for '$session'"
   # The config file is a trusted batch of the existing CLI commands. Keep the
   # command name available even when the installable PATH shim is not installed.
-  airline() { "$AIRLINE_DIR/airline.sh" "$@"; }
+  airline() { TMUX_PANE="$pane" "$AIRLINE_DIR/airline.sh" "$@"; }
   # shellcheck disable=SC1090
   source "$file"
 }

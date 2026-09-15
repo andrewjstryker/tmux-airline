@@ -69,7 +69,7 @@ cmd_session () {
   local verb="${1:-}"; shift || true
   # help:begin session
   case "$verb" in
-    init)  session_init  "$@" ;; #| [-t <session-target>] — seed defaults, register paths, publish the CLI handle, and render
+    init)  session_init  "$@" ;; #| [-t <session-target>] [<file>] — seed defaults, register paths, publish the CLI handle, and render
     apply) session_apply "$@" ;; #| — commit global option edits and render the session
     show)  session_show  "$@" ;; #| [state] — print the active configuration or raw session state
     suspend) session_suspend "$@" ;; #| — mute the palette + trap the prefix (session dormant)
@@ -84,6 +84,7 @@ cmd_status () {
   local verb="${1:-}"; shift || true
   # Private process-boundary callback used by Airline's pane-focus hook.
   [[ "$verb" != _observed-result ]] || { signal_status_observed_result "$@"; return; }
+  [[ "$verb" != _pane-closed ]] || { signal_status_pane_closed "$@"; return; }
   # help:begin status
   case "$verb" in
     set)   signal_status_set "$@" ;;   #| [-t <pane-target>] <active|result|attention> — set a pane's workflow status

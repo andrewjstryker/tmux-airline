@@ -103,6 +103,7 @@ resolve_session_target () { printf '%s' "$1"; }
 list_sessions () { printf '%s\n' "$_FAKE_SESSION"; }
 list_windows  () { printf '%s\n' "${_FAKE_WINDOWS[@]}"; }
 list_panes    () { printf '%s\n' "${_FAKE_PANES[@]}"; }
+session_pane () { printf '%s' "$_FAKE_PANE"; }
 list_all_windows () { printf '%s\n' "${_FAKE_WINDOWS[@]}"; }
 hook_set       () { _FAKE_HOOK["$1"]="$2"; }
 hook_set_airline_window_styles () { _FAKE_HOOK[after-new-window[90]]=airline-window-styles; }

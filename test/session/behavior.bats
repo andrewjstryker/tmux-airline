@@ -68,3 +68,11 @@ teardown() { :; }
   session_init
   assert_equal "${CONFIG_FILE_SOURCED:-}" 1
 }
+
+@test "session init positional config file overrides the standard location" {
+  printf 'CONFIG_FILE_SOURCED=2\n' > "$BATS_TEST_TMPDIR/explicit-config"
+  AIRLINE_CONFIG="$BATS_TEST_TMPDIR/nonexistent-config"
+  layout_initialize() { :; }
+  session_init "$BATS_TEST_TMPDIR/explicit-config"
+  assert_equal "${CONFIG_FILE_SOURCED:-}" 2
+}

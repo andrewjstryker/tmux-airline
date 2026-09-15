@@ -107,7 +107,8 @@ The important boundaries are:
   `airline_layout_configure` function declares segments and widgets through a core
   callback. They never receive a tmux handle, target session, or private-state access.
 - `lib/collections.sh` is an airline abstraction above tmux's flat option store. It is
-  used only for status, health, problem, widget membership, and search paths.
+  used for dynamic signal claims, layout/widget membership, registered search paths,
+  and live runner process records.
   Fixed segment slots are scalar options, not collections. Its operations take
   `global`, `session`, or `window` as their first argument and the native owner as
   their second; namespace, tuple contents, and reduction order are caller policy.
@@ -294,7 +295,7 @@ Argument roles and canonical ordering are defined in
 ### Grammar
 
 ```text
-airline session init [-t <session-target>]
+airline session init [-t <session-target>] [<file>]
 airline session apply
 airline session show [state]
 airline session suspend | resume | toggle
@@ -317,7 +318,7 @@ airline problem  set [-t <pane-target>] <contributor> <problem-key> <ok|warn|fai
 airline transaction show
                     clear <global|session|window> <target> <namespace>
 
-airline palette  describe <palette> | show [name|<palette-element>] | list | use <palette> | register <dir>
+airline palette  describe <palette> | show [name|<palette-element>] | list | use <palette> | load <file> | register <dir>
 airline segment  show [<segment>]
 airline widget   describe <widget> [<arg>...] | list | register <dir>
 airline layout   describe <layout> | show [name|path] | list | use <layout> | load <file> | register <dir>
@@ -327,7 +328,7 @@ airline probe      describe <probe> | list | register <dir>
 airline runner   describe <runner> [<arg>...] | list | register <dir>
                  run [--pane [-h|-v]|--window] <runner> [<arg>...] [-- <command>...]
                  run [--pane [-h|-v]|--window] [--classify <classifier> [<arg>...]]
-                     [--filter <filter> [<arg>...]] [--merge-stderr] [--probe <probe> [<arg>...]] [-- <command>...]
+                     [--filter <filter> [<arg>...]] [--merge-stderr] [--interval <seconds>] [--probe <probe> [<arg>...]] [-- <command>...]
                  watch [--pane [-h|-v]|--window] <runner> [<arg>...]
                  watch [--pane [-h|-v]|--window] --probe <probe> [<arg>...]
 airline process  list | show <process-id> | stop <process-id>
@@ -342,10 +343,9 @@ whose omitted placement means the current pane; process-local spawn context arms
 pane retention before validation without adding
 public command grammar.
 
-The process exit contract is binary: zero means a valid request completed,
-including an idempotent no-op; any nonzero status means validation or operation
-failed. Individual nonzero values are implementation details, not a caller-facing
-error taxonomy.
+The process exit contract is binary for callers that only need success or failure:
+zero means a valid request completed, including an idempotent no-op. The detailed
+command and signal status meanings are owned by [CLI conventions](docs/cli.md).
 
 The parser arms are also the grammar source. Explicit `help:begin` / `help:end`
 markers delimit each noun without depending on function or `case` formatting;
@@ -354,9 +354,9 @@ those annotations directly. Semantic placeholders such as `<palette>`, `<layout>
 `<file>`, and `<window>` are part of that contract: they tell completion generation
 which catalog or shell primitive supplies a value.
 
-Bash and Zsh completions are compiled from the rendered help by
-`scripts/generate-completions`; they do not add a runtime inspection API or parse
-`airline.sh` independently. `make completions` updates the committed artifacts,
+Bash and Zsh completions are compiled from the structured grammar records emitted by
+`airline help _grammar` and sourced from the same parser annotations. They do not add
+a runtime inspection API or parse `airline.sh` independently. `make completions` updates the committed artifacts,
 and `make check-completions` rejects drift. `make install` performs that check and
 installs both artifacts with the PATH shim.
 
@@ -494,11 +494,12 @@ cross-stream ordering guarantee. See the [Bash contract](docs/runner-elements.md
 ### Classification
 
 Every run has one terminal classifier; `conventional` is implicit unless another is named.
-It receives objective termination
-facts (shell wait status and derived signal) once and returns no verdict or one
+It receives the command's shell wait status once and returns no verdict or one
 validated condition: `ok`, `warn`, or `fail`. The shipped `conventional` classifier maps exit zero to
-`ok`, nonzero exits and abnormal signals to `fail`, and SIGINT/SIGTERM stops to no
-verdict. `none` is the explicit no-verdict classifier. Probe-only invocations have
+`ok` and every other command exit to `fail`. Airline-controlled cancellation leaves no
+verdict. A shell status cannot distinguish a signal termination from an explicit
+`exit 130` or `exit 143`, so both are ordinary nonzero command outcomes. `none` is the
+explicit no-verdict classifier. Probe-only invocations have
 no command termination to classify. A program-specific implementation
 exists only where that program assigns richer meaning to termination, such as a
 dedicated exit code for "no tests collected" that should be `warn` rather than
@@ -621,8 +622,9 @@ signal traps do not alter caller traps. `airline transaction show` exposes
 outstanding markers, and `transaction clear` releases only a marker whose recorded
 process is no longer alive. This diagnostic API is deliberately separate from problems, avoiding a
 circular dependency when the problem transaction itself is stuck. Identical problem
-sets and absent clears skip both storage writes and redraws. Widgets may report their
-current capability on every evaluation so stale semantic observations converge.
+sets and absent clears skip both storage writes and redraws. Layout application records
+widget capability outcomes and publishes them after its configuration transaction;
+inspection does not publish claims. Retiring a widget closes its capability claim.
 
 Status and health are distinguished by position around the window name, so sharing
 palette roles is safe.

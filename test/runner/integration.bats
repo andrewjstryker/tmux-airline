@@ -65,11 +65,11 @@ wait_for_pane_exit() { # <pane> <status>
   mkdir -p "$BATS_TEST_TMPDIR/classifiers" "$BATS_TEST_TMPDIR/filters" \
     "$BATS_TEST_TMPDIR/probes"
   printf '%s\n' '#| summary: custom classifier' \
-    'airline_runner_classify() { printf "warn\\tcustom classifier warning\\n"; }' > "$BATS_TEST_TMPDIR/classifiers/custom"
+    'airline_runner_classify() { printf "warn\\tcustom classifier warning\\n"; }' > "$BATS_TEST_TMPDIR/classifiers/custom.sh"
   printf '%s\n' '#| summary: custom filter' \
-    'airline_runner_filter() { :; }' > "$BATS_TEST_TMPDIR/filters/custom"
+    'airline_runner_filter() { :; }' > "$BATS_TEST_TMPDIR/filters/custom.sh"
   printf '%s\n' '#| summary: custom probe' '#| usage:' \
-    'airline_runner_probe() { "$2" test-elements probe ok; }' > "$BATS_TEST_TMPDIR/probes/custom"
+    'airline_runner_probe() { "$2" test-elements probe ok; }' > "$BATS_TEST_TMPDIR/probes/custom.sh"
 
   airline classifier register "$BATS_TEST_TMPDIR/classifiers"
   airline filter register "$BATS_TEST_TMPDIR/filters"
@@ -85,7 +85,7 @@ wait_for_pane_exit() { # <pane> <status>
 @test "runner validates the selected element contract" {
   airline session init
   mkdir -p "$BATS_TEST_TMPDIR/classifiers"
-  printf 'unrelated() { :; }\n' > "$BATS_TEST_TMPDIR/classifiers/broken"
+  printf 'unrelated() { :; }\n' > "$BATS_TEST_TMPDIR/classifiers/broken.sh"
   airline classifier register "$BATS_TEST_TMPDIR/classifiers"
 
   run airline runner run --classify broken -- true
@@ -127,7 +127,7 @@ wait_for_pane_exit() { # <pane> <status>
   mkdir -p "$BATS_TEST_TMPDIR/classifiers"
   printf '%s\n' '#| summary: Interpret pytest exit status' \
     'airline_runner_classify() { [[ "$1" == 5 ]] && printf "warn\\tno tests collected\\n" || printf "fail\\tcommand failed\\n"; }' \
-    > "$BATS_TEST_TMPDIR/classifiers/pytest"
+    > "$BATS_TEST_TMPDIR/classifiers/pytest.sh"
   airline classifier register "$BATS_TEST_TMPDIR/classifiers"
 
   run airline runner run --classify pytest -- bash -c 'exit 5'
@@ -166,7 +166,7 @@ wait_for_pane_exit() { # <pane> <status>
     '#| interval: 0.05' \
     'airline_runner_probe() {' \
     '  [[ -e "$health_file" ]] && "$2" test-elements probe ok || "$2" test-elements probe fail "service is unavailable"' \
-    '}' > "$BATS_TEST_TMPDIR/probes/server"
+    '}' > "$BATS_TEST_TMPDIR/probes/server.sh"
   airline probe register "$BATS_TEST_TMPDIR/probes"
 
   airline runner run --probe server -- bash -c 'sleep 0.15; touch "$health_file"; sleep 0.5' & runner_pid=$!
@@ -218,7 +218,7 @@ wait_for_pane_exit() { # <pane> <status>
     '  [[ -e "$observed_arg_file" ]] || printf "%s\n" "$4" > "$observed_arg_file"' \
     '  printf "polled %s\n" "$4"' \
     '  [[ -e "$health_file" ]] && "$2" test-elements probe ok || "$2" test-elements probe fail "service is unavailable"' \
-    '}' > "$BATS_TEST_TMPDIR/probes/remote"
+    '}' > "$BATS_TEST_TMPDIR/probes/remote.sh"
   printf '%s\n' \
     '#| summary: Watch remote test state' \
     '#| usage: <endpoint>' \
@@ -228,7 +228,7 @@ wait_for_pane_exit() { # <pane> <status>
     '  "$configure" classify conventional' \
     '  "$configure" probe remote "$1"' \
     '}' \
-    > "$BATS_TEST_TMPDIR/runners/remote-watch"
+    > "$BATS_TEST_TMPDIR/runners/remote-watch.sh"
   airline probe register "$BATS_TEST_TMPDIR/probes"
   airline runner register "$BATS_TEST_TMPDIR/runners"
 
@@ -346,7 +346,7 @@ wait_for_pane_exit() { # <pane> <status>
   printf '%s\n' \
     '#| summary: Capture filter input' \
     'airline_runner_filter() { sed -n l > "$evidence_file"; "$2" test-elements probe ok; }' \
-    > "$BATS_TEST_TMPDIR/filters/capture"
+    > "$BATS_TEST_TMPDIR/filters/capture.sh"
   airline filter register "$BATS_TEST_TMPDIR/filters"
 
   run airline runner run --filter capture -- bash -c \
@@ -368,7 +368,7 @@ wait_for_pane_exit() { # <pane> <status>
   export evidence_file
   printf '%s\n' '#| summary: Capture filter input' \
     'airline_runner_filter() { sed -n l > "$evidence_file"; "$2" test-elements probe ok; }' \
-    > "$BATS_TEST_TMPDIR/filters/capture"
+    > "$BATS_TEST_TMPDIR/filters/capture.sh"
   printf '%s\n' \
     '#| summary: Write visible probe evidence' \
     '#| usage:' \
@@ -376,7 +376,7 @@ wait_for_pane_exit() { # <pane> <status>
     'airline_runner_probe() {' \
     '  printf "probe evidence\n"' \
     '  "$2" test-elements probe ok' \
-    '}' > "$BATS_TEST_TMPDIR/probes/visible"
+    '}' > "$BATS_TEST_TMPDIR/probes/visible.sh"
   airline filter register "$BATS_TEST_TMPDIR/filters"
   airline probe register "$BATS_TEST_TMPDIR/probes"
 
@@ -449,7 +449,7 @@ wait_for_pane_exit() { # <pane> <status>
 @test "named runner arguments survive spawned pane reentry and merged filter input" {
   airline session init
   mkdir -p "$BATS_TEST_TMPDIR/catalog"
-  cat > "$BATS_TEST_TMPDIR/catalog/arguments" <<'ELEMENT'
+  cat > "$BATS_TEST_TMPDIR/catalog/arguments.sh" <<'ELEMENT'
 #| summary: Verify element arguments across process boundaries
 #| usage: <evidence-directory>
 airline_runner_classify() {
@@ -491,7 +491,7 @@ ELEMENT
 @test "invalid probe options fail before starting work or creating topology" {
   airline session init
   mkdir -p "$BATS_TEST_TMPDIR/probes"
-  cat > "$BATS_TEST_TMPDIR/probes/validated" <<'PROBE'
+  cat > "$BATS_TEST_TMPDIR/probes/validated.sh" <<'PROBE'
 #| summary: Probe with invocation validation
 #| usage: --target <target>
 airline_runner_probe_parse() {
@@ -525,7 +525,7 @@ PROBE
 @test "background filter reporters share CLI mutations and preserve contributor recovery ownership" {
   airline session init
   mkdir -p "$BATS_TEST_TMPDIR/filters"
-  cat > "$BATS_TEST_TMPDIR/filters/reporting" <<'FILTER'
+  cat > "$BATS_TEST_TMPDIR/filters/reporting.sh" <<'FILTER'
 #| summary: Report health and capability independently
 #| usage: <fail|recover>
 airline_runner_filter() {
@@ -563,7 +563,7 @@ FILTER
 
 make_lifecycle_probe() {
   mkdir -p "$BATS_TEST_TMPDIR/probes"
-  cat > "$BATS_TEST_TMPDIR/probes/lifecycle" <<'PROBE'
+  cat > "$BATS_TEST_TMPDIR/probes/lifecycle.sh" <<'PROBE'
 #| summary: Exercise process lifetime and streams
 #| usage: <evidence>
 #| interval: 0.05
@@ -630,7 +630,7 @@ PROBE
 @test "pane closure removes a watch without claiming private element children" {
   airline session init
   mkdir -p "$BATS_TEST_TMPDIR/probes"
-  cat > "$BATS_TEST_TMPDIR/probes/blocked" <<'PROBE'
+  cat > "$BATS_TEST_TMPDIR/probes/blocked.sh" <<'PROBE'
 #| summary: Block inside an observation
 #| usage: <evidence>
 airline_runner_probe() {
@@ -816,7 +816,7 @@ PROBE
 @test "merged observation preserves separate visible stdout and stderr destinations" {
   airline session init
   mkdir -p "$BATS_TEST_TMPDIR/filters"
-  cat > "$BATS_TEST_TMPDIR/filters/copy" <<'FILTER'
+  cat > "$BATS_TEST_TMPDIR/filters/copy.sh" <<'FILTER'
 #| summary: Copy observation bytes
 #| usage: <file>
 airline_runner_filter() { cat > "$4"; }
@@ -837,7 +837,7 @@ FILTER
   airline session init
   mkdir -p "$BATS_TEST_TMPDIR/filters"
   printf '%s\n' '#| summary: Return before consuming output' \
-    'airline_runner_filter() { return 0; }' > "$BATS_TEST_TMPDIR/filters/early"
+    'airline_runner_filter() { return 0; }' > "$BATS_TEST_TMPDIR/filters/early.sh"
   airline filter register "$BATS_TEST_TMPDIR/filters"
   airline runner run --filter early -- sh -c 'i=0; while [ "$i" -lt 10000 ]; do echo evidence; i=$((i+1)); done' \
     > "$BATS_TEST_TMPDIR/output"

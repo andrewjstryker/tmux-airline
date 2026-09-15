@@ -79,6 +79,20 @@ setup() {
   assert_output "default"
 }
 
+@test "targeted init runs startup configuration in the target session" {
+  $TMUX -L "$_bats_socket" new-session -d -s other
+  airline_session bats session init
+  airline_session bats layout use full
+  printf '%s\n' 'airline layout use minimal' > "$BATS_TEST_TMPDIR/config"
+
+  AIRLINE_CONFIG="$BATS_TEST_TMPDIR/config" airline session init -t other
+
+  run airline_session other layout show name
+  assert_output 'minimal'
+  run airline_session bats layout show name
+  assert_output 'full'
+}
+
 @test "rendered palette output remains owned by each session and its windows" {
   $TMUX -L "$_bats_socket" new-session -d -s other
   airline_session bats session init

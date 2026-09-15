@@ -12,10 +12,10 @@ Airline maps its state onto tmux's normal scopes:
 
 - Options set with `set -g @airline-*` are server-wide input, copied by a later
   configuration operation into that operation's session.
-- The committed palette, segments, layout, and adapters are private to the invoking
-  session and are read through the CLI.
-- Session-public options written while evaluating palette/layout files are cleared;
-  they are not another user configuration scope.
+- The committed palette, segments, and layout are private to the invoking session
+  and are read through the CLI.
+- Palette evaluation uses private staging options. Effective palette roles remain
+  public session options so tmux formats and widgets can read them live.
 - Status and health originate in panes and are projected at their containing window.
   Health claims are stored on their pane, while status uses pane identity in its
   window collection. Their documented `-t` targets resolve the corresponding owner.

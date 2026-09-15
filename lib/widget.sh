@@ -117,12 +117,14 @@ widget_show_session () {
 }
 
 widget_retire_session () {
-  local session="$1" slot="${2:-}" id count i
+  local session="$1" slot="${2:-}" id count i kind
   for id in $(coll_members session "$session" widgets); do
     [[ -z "$slot" || "$(prv_get_session "$session" "widget-$id-slot")" == "$slot" ]] || continue
     count="$(prv_get_session "$session" "widget-$id-argc")"
     for ((i=0; i<${count:-0}; i++)); do prv_unset_session "$session" "widget-$id-arg-$i"; done
-    for i in file name slot argc; do prv_unset_session "$session" "widget-$id-$i"; done
+    prv_get_session_into kind "$session" "widget-$id-kind"
+    [[ "$kind" != unavailable ]] || coll_set session "$session" widget-problem-retire "$id"
+    for i in file name slot argc kind; do prv_unset_session "$session" "widget-$id-$i"; done
     coll_unregister session "$session" widgets "$id"
   done
   for id in $(coll_members session "$session" layout-parts); do

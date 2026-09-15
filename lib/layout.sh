@@ -221,8 +221,6 @@ _layout_declare_widget () {
     return
   fi
   if (( rc == 3 )); then
-    signal_problem_report "$AIRLINE_LAYOUT_CONFIG_SESSION" airline-widget "$id" warn \
-      "$name widget is unavailable"
     _layout_add_part "$slot" unavailable "$name" "" "$id" "$file"
     return
   fi
@@ -280,17 +278,35 @@ _layout_commit_unlocked () {
     id="${AIRLINE_LAYOUT_PART_IDS[i]}"
     coll_set session "$session" layout-parts "$i" "${AIRLINE_LAYOUT_PART_SLOTS[i]}" \
       "${AIRLINE_LAYOUT_PART_KINDS[i]}" "${AIRLINE_LAYOUT_PART_NAMES[i]}" "${AIRLINE_LAYOUT_PART_FORMATS[i]}" || return
-    [[ -n "$id" && "${AIRLINE_LAYOUT_PART_KINDS[i]}" == widget ]] || continue
+    [[ -n "$id" ]] || continue
     coll_register session "$session" widgets "$id"
     prv_set_session "$session" "widget-$id-file" "${AIRLINE_LAYOUT_PART_FILES[i]}"
     prv_set_session "$session" "widget-$id-name" "${AIRLINE_LAYOUT_PART_NAMES[i]}"
     prv_set_session "$session" "widget-$id-slot" "${AIRLINE_LAYOUT_PART_SLOTS[i]}"
+    prv_set_session "$session" "widget-$id-kind" "${AIRLINE_LAYOUT_PART_KINDS[i]}"
     prv_set_session "$session" "widget-$id-argc" "${AIRLINE_LAYOUT_WIDGET_ARGC[$id]}"
     for ((n=0; n<${AIRLINE_LAYOUT_WIDGET_ARGC[$id]}; n++)); do
       prv_set_session "$session" "widget-$id-arg-$n" "${AIRLINE_LAYOUT_WIDGET_ARGS[$id-$n]}"
     done
   done
   prv_set_session "$session" layout "$handle"
+}
+
+# Evaluation is also used by `layout describe`, so it records capability state in
+# the committed layout rather than mutating the global problem ledger directly.
+# Publishing after the configuration transaction avoids nested transactions.
+layout_widget_claims_sync () {   # <session>
+  local session="$1" id kind name
+  for id in $(coll_members session "$session" widget-problem-retire); do
+    signal_problem_close --session "$session" airline-widget "$id" || return
+    with_session_transaction "$session" config coll_unregister session "$session" widget-problem-retire "$id" || return
+  done
+  for id in $(coll_members session "$session" widgets); do
+    prv_get_session_into kind "$session" "widget-$id-kind" || return
+    [[ "$kind" == unavailable ]] || continue
+    prv_get_session_into name "$session" "widget-$id-name" || return
+    signal_problem_report "$session" airline-widget "$id" warn "$name widget is unavailable" || return
+  done
 }
 
 _layout_failure () {   # <session> <handle> <detail>
@@ -350,11 +366,11 @@ _palette_show () {
   [[ -z "$x" ]] && command_show_row name "$(prv_get_session "$session" palette)"
   if [[ -n "$x" ]]; then
     render_palette_element_valid "$x" || command_die "show: unknown target '$x'"
-    pub_get_session "$session" "$x"
+    opt_get_session "$session" "$(palette_public_name "$x")"
   else
     local element value
     for element in "${AIRLINE_PALETTE_ELEMENTS[@]}"; do
-      pub_get_session_into value "$session" "$element" || return
+      opt_get_into value session "$session" "$(palette_public_name "$element")" || return
       command_show_row "$element" "$value"
     done
   fi
@@ -410,6 +426,7 @@ _layout_report_configuration_result () {   # <session> <rc> <operation>
 layout_initialize () {   # <session>
   local session="$1" rc=0
   with_session_transaction "$session" config _layout_initialize_unlocked "$session" || rc=$?
+  (( rc != 0 )) || layout_widget_claims_sync "$session" || rc=$?
   _layout_report_configuration_result "$session" "$rc" init
   return "$rc"
 }
@@ -417,6 +434,7 @@ layout_initialize () {   # <session>
 layout_apply () {   # <session>
   local session="$1" rc=0
   with_session_transaction "$session" config _layout_apply_unlocked "$session" || rc=$?
+  (( rc != 0 )) || layout_widget_claims_sync "$session" || rc=$?
   _layout_report_configuration_result "$session" "$rc" apply
   return "$rc"
 }
@@ -505,6 +523,7 @@ layout_use () {
   s="$(command_current_session)"
   [[ -n "$(catalog_resolve "$s" layout "$name")" ]] || command_die "layout use: '$name' not found"
   with_session_transaction "$s" config _layout_use_render_unlocked "$s" "$name" || rc=$?
+  (( rc != 0 )) || layout_widget_claims_sync "$s" || rc=$?
   case "$rc" in
     0) signal_problem_report "$s" airline "$AIRLINE_PROBLEM_LAYOUT" ok "" ;;
     "$AIRLINE_CONFIG_PALETTE_FAILURE")
@@ -519,6 +538,7 @@ layout_load () {
   path="$1"; abs="$(_abspath "$path")"; [[ -f "$abs" ]] || command_die "layout load: no such file: $path"
   s="$(command_current_session)"
   with_session_transaction "$s" config _layout_load_render_unlocked "$s" "$abs" || rc=$?
+  (( rc != 0 )) || layout_widget_claims_sync "$s" || rc=$?
   case "$rc" in
     0) signal_problem_report "$s" airline "$AIRLINE_PROBLEM_LAYOUT" ok "" ;;
     "$AIRLINE_CONFIG_PALETTE_FAILURE")

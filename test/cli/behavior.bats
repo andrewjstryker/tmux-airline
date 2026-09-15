@@ -70,13 +70,13 @@ CASES
   local noun
   mkdir -p "$BATS_TEST_TMPDIR/catalog"
   printf '%s\n' '#| summary: Inspection fixture' '#| usage: <target>' \
-    '#| interval: 7' 'exit 99' > "$BATS_TEST_TMPDIR/catalog/sample"
+    '#| interval: 7' 'exit 99' > "$BATS_TEST_TMPDIR/catalog/sample.sh"
   for noun in classifier filter probe; do
     main "$noun" register "$BATS_TEST_TMPDIR/catalog"
     run main "$noun" describe sample
     assert_success
     assert_output --partial 'Inspection fixture'
-    assert_output --partial "$BATS_TEST_TMPDIR/catalog/sample"
+    assert_output --partial "$BATS_TEST_TMPDIR/catalog/sample.sh"
     if [[ "$noun" == probe ]]; then
       assert_output --partial '<target>'
       assert_output --partial '7 seconds'
@@ -102,7 +102,7 @@ CASES
 }
 
 @test "element describe rejects invalid metadata" {
-  printf '%s\n' '#| summary: first' '#| summary: duplicate' > "$BATS_TEST_TMPDIR/invalid"
+  printf '%s\n' '#| summary: first' '#| summary: duplicate' > "$BATS_TEST_TMPDIR/invalid.sh"
   main classifier register "$BATS_TEST_TMPDIR"
   run main classifier describe invalid
   assert_failure
@@ -125,7 +125,7 @@ CASES
   assert_output --partial 'http://localhost/health/live'
 
   mkdir -p "$BATS_TEST_TMPDIR/catalog"
-  cat > "$BATS_TEST_TMPDIR/catalog/custom" <<'RUNNER'
+  cat > "$BATS_TEST_TMPDIR/catalog/custom.sh" <<'RUNNER'
 #| summary: Argument fixture
 #| usage: <first> <second>
 airline_runner_configure() {
@@ -146,7 +146,7 @@ RUNNER
 
 @test "runner describe derives modes from the composition evaluated with its arguments" {
   mkdir -p "$BATS_TEST_TMPDIR/catalog"
-  cat > "$BATS_TEST_TMPDIR/catalog/conditional" <<'RUNNER'
+  cat > "$BATS_TEST_TMPDIR/catalog/conditional.sh" <<'RUNNER'
 #| summary: Conditional probe fixture
 #| usage: <command|observe>
 airline_runner_configure() {
@@ -208,7 +208,7 @@ RUNNER
 }
 
 @test "runner run delivers configured arguments through execution and describe" {
-  cat > "$BATS_TEST_TMPDIR/custom" <<'ELEMENT'
+  cat > "$BATS_TEST_TMPDIR/custom.sh" <<'ELEMENT'
 #| summary: Argument-aware elements
 #| usage: <value>
 airline_runner_classify() {
@@ -251,7 +251,7 @@ ELEMENT
 
 @test "element usage failures precede commands, topology, and signal mutations" {
   main classifier register "$PROJECT_ROOT/runners/classifiers"
-  cat > "$BATS_TEST_TMPDIR/validated" <<'ELEMENT'
+  cat > "$BATS_TEST_TMPDIR/validated.sh" <<'ELEMENT'
 #| summary: Validated elements
 #| usage: --value <value>
 _fixture_parse() {
@@ -308,7 +308,7 @@ ELEMENT
 }
 
 @test "successful parsing preserves execution argv and hides validation output" {
-  cat > "$BATS_TEST_TMPDIR/parsed" <<'ELEMENT'
+  cat > "$BATS_TEST_TMPDIR/parsed.sh" <<'ELEMENT'
 #| summary: Parsed classifier
 #| usage: --value <value>
 airline_runner_classify_parse() {
@@ -368,7 +368,7 @@ ELEMENT
 
 @test "runner startup completion and silent observations leave element claims intact" {
   main classifier register "$PROJECT_ROOT/runners/classifiers"
-  cat > "$BATS_TEST_TMPDIR/silent" <<'ELEMENT'
+  cat > "$BATS_TEST_TMPDIR/silent.sh" <<'ELEMENT'
 #| summary: Silent observer
 #| usage:
 airline_runner_filter() { cat >/dev/null; }
@@ -389,7 +389,7 @@ ELEMENT
 
 @test "classifier execution diagnostics belong to the runner pane and close with it" {
   mkdir "$BATS_TEST_TMPDIR/classifiers"
-  cat > "$BATS_TEST_TMPDIR/classifiers/invalid" <<'CLASSIFIER'
+  cat > "$BATS_TEST_TMPDIR/classifiers/invalid.sh" <<'CLASSIFIER'
 #| summary: Invalid result fixture
 airline_runner_classify() { printf 'bogus\n'; }
 CLASSIFIER

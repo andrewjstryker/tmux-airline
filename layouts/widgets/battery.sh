@@ -28,7 +28,7 @@ airline_widget_available() {
 airline_widget_format() {
   local fg="$1" bg="$2"; shift 2
   _battery_options "$@" || return 2
-  local reading value meter='▁' tier power status charging discharging
+  local reading value meter='▁' tier power discharging valid color status charging
   reading="$(widget_runtime)"
   value="#{s/[^0-9].*//:$reading}"
   for tier in '6 ▂' '20 ▃' '35 ▄' '50 ▅' '65 ▆' '80 ▇' '95 █'; do
@@ -36,11 +36,14 @@ airline_widget_format() {
   done
   charging="$(widget_text "$BATTERY_CHARGING_ICON")"
   discharging="$(widget_text "$BATTERY_DISCHARGING_ICON")"
-  power="#{m:*:charging,$reading}"
-  status="#[fg=#{?#{m:*:charging,$reading},#{@airline-palette-active},#{?#{m:*:discharging,$reading},#{@airline-palette-emphasized},#{@airline-palette-primary}}}]#{?#{m:*:discharging,$reading},$discharging,#{?${power},$charging,}}"
+  # A nonempty extracted capacity is the runtime's validated numeric observation.
+  valid="#{!=:$value,}"
+  power="#{?#{m:*:charging,$reading},1,#{?#{m:*:full,$reading},1,#{?#{m:*:attached,$reading},1,}}}"
+  color="#{?#{e|<:$value,20},#{@airline-palette-stress},#{?#{e|<:$value,50},#{@airline-palette-alert},#{?#{e|<:$value,80},#{@airline-palette-emphasized},#{@airline-palette-primary}}}}"
+  status="#[fg=#{?${power},#{@airline-palette-active},#{?#{m:*:discharging,$reading},#{@airline-palette-emphasized},#{@airline-palette-primary}}}]#{?#{m:*:discharging,$reading},$discharging,#{?${power},$charging,}}"
   if [[ "$BATTERY_DISPLAY" == both ]]; then
-    printf '%s%s#[fg=%s,bg=%s]' "#[fg=#{@airline-palette-primary}]$meter" "$status" "$fg" "$bg"
+    printf '%s%s#[fg=%s,bg=%s]' "#{?$valid,#[fg=$color]$meter,#[fg=#{@airline-palette-primary}]—}" "$status" "$fg" "$bg"
   else
-    printf '%s#[fg=%s,bg=%s]' "#{?$power,$status,#[fg=#{@airline-palette-primary}]$meter}" "$fg" "$bg"
+    printf '%s#[fg=%s,bg=%s]' "#{?$valid,#{?$power,$status,#[fg=$color]$meter},#[fg=#{@airline-palette-primary}]—}" "$fg" "$bg"
   fi
 }

@@ -26,7 +26,7 @@ _airline_usage () {
   case "$1" in
     version) printf %s '' ;;
     help) printf %s \[\<noun\>\ \[\<verb\>\]\] ;;
-    session\ init) printf %s \[-t\ \<session-target\>\] ;;
+    session\ init) printf %s \[-t\ \<session-target\>\]\ \[\<file\>\] ;;
     session\ apply) printf %s '' ;;
     session\ show) printf %s \[state\] ;;
     session\ suspend) printf %s '' ;;
@@ -173,6 +173,16 @@ _airline_description () {
   esac
 }
 
+_airline_tmux () {
+  if [[ -n ${AIRLINE_TMUX:-} ]]; then
+    # AIRLINE_TMUX may include connection arguments, just like the CLI seam.
+    # shellcheck disable=SC2086
+    command ${AIRLINE_TMUX} "$@"
+  else
+    command tmux "$@"
+  fi
+}
+
 _airline_dynamic () {   # <semantic-type>
   local type="$1" noun line
   case "$type" in
@@ -191,9 +201,9 @@ _airline_dynamic () {   # <semantic-type>
     health-key) command airline health show 2>/dev/null | awk '{print $2}' | sort -u ;;
     problem-contributor) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $1}' | sort -u ;;
     problem-key) command airline problem show --all 2>/dev/null | awk '$1 !~ /^(pane|session):/ {print $2}' | sort -u ;;
-    session-target) command tmux list-sessions -F '#{session_name}' 2>/dev/null || true ;;
-    pane-target) command tmux list-panes -a -F '#{pane_id}' 2>/dev/null || true ;;
-    window-target) command tmux list-windows -a -F '#{window_id}' 2>/dev/null || true ;;
+    session-target) _airline_tmux list-sessions -F '#{session_name}' 2>/dev/null || true ;;
+    pane-target) _airline_tmux list-panes -a -F '#{pane_id}' 2>/dev/null || true ;;
+    window-target) _airline_tmux list-windows -a -F '#{window_id}' 2>/dev/null || true ;;
   esac
 }
 
