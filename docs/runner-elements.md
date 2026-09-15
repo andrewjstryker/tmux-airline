@@ -41,11 +41,12 @@ termination to classify. The selected classifier is inactive in that case.
 `watch` returns its process ID after validation, registration, and lifecycle startup.
 The pane remains available for ordinary shell work. `run` stays in the foreground
 and returns the command's original shell status, or a cancellation status for a
-probe-only invocation. Both are listed and can be stopped through `process`.
+probe-only invocation. `process` exists primarily to inspect and stop detached
+`watch` invocations; `run` shares the same listing and stop model for symmetry.
 
 `process stop <process-id>` requests cancellation of that invocation and waits for
 cleanup. Airline signals the recorded PIDs directly and reports a failure when an
-owned PID cannot be signaled or reaped. It does not walk the process table or claim
+owned PID cannot be signaled. It does not walk the process table or claim
 ownership of descendants created privately by an element. These are live records,
 not history. A user-requested stop reports failures directly on the command output;
 it does not create an additional problem claim.

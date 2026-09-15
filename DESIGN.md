@@ -471,8 +471,10 @@ launcher policy, not an implementation hook.
 
 `runner` owns selection, validation, and launch. `process list`, `process show`, and
 `process stop` manage live invocations using opaque IDs distinct from OS PIDs.
-`run` holds foreground streams for a command or repeated probe; `watch` starts the
-probe in the background with all terminal streams connected to `/dev/null` and
+This control surface exists for detached `watch` invocations; `run` participates
+for symmetry even though its foreground lifecycle does not require it. `run` holds
+foreground streams for a command or repeated probe; `watch` starts the probe in the
+background with all terminal streams connected to `/dev/null` and
 returns its process ID. The owning pane remains usable. Closing it cancels its work.
 
 Runner stores server-scoped process records and stop requests through collections
