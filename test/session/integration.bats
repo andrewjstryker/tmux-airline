@@ -28,7 +28,7 @@ setup() {
   run sopt @airline--palette
   assert_output "default"            # recorded
   run sopt status-left
-  assert_output --partial "#S"       # full sets left-out=#S (present with or without plugins)
+  assert_output --partial "#h"       # full gives the host the outer-left segment
   run sopt @airline--layout
   assert_output "full"               # recorded, so apply re-applies it
 

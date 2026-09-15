@@ -182,7 +182,7 @@ write_layout() {   # <path> <configure-body>
   run airline adapter use cpu
   assert_failure; assert_output --partial 'adapter was removed'
   run airline widget list
-  assert_line battery; assert_line online; assert_line prefix
+  assert_line battery; assert_line online; assert_line power; assert_line prefix
   mkdir -p "$BATS_TEST_TMPDIR/widgets"
   write_layout "$BATS_TEST_TMPDIR/widgets/withprefix.sh" '  "$declare" widget left-out prefix'
   write_layout "$BATS_TEST_TMPDIR/widgets/bare.sh" '  "$declare" segment left-out "#S"'
@@ -207,7 +207,9 @@ write_layout() {   # <path> <configure-body>
   $TMUX -L "$_bats_socket" set -t bats @airline-segment-left-out "SCRATCH"
   airline layout use default
   run airline segment show left-out
-  assert_output --partial "#S"                   # composition applied
+  assert_output --partial "#h"                   # host owns the outer-left slot
+  run airline segment show left-mid
+  assert_output --partial "#S"                   # session follows in the middle slot
   run sopt @airline-segment-left-out
   assert_output "SCRATCH"              # layout declarations never use public staging
   run sopt @airline--layout
@@ -216,7 +218,7 @@ write_layout() {   # <path> <configure-body>
   $TMUX -L "$_bats_socket" set -t bats @airline-segment-left-out "SCRATCH"
   airline session apply
   run airline segment show left-out
-  assert_output --partial "#S"                    # private snapshot was not replaced by staging
+  assert_output --partial "#h"                    # private snapshot was not replaced by staging
   mkdir -p "$BATS_TMPDIR/mylayouts"
   write_layout "$BATS_TMPDIR/mylayouts/withprefix.sh" \
     '  "$declare" widget right-mid prefix

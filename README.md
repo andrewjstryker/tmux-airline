@@ -14,7 +14,8 @@ Features:
 - Swappable color **palettes** (dark, light, Solarized) — or your own
 - Composable **layouts** that arrange the bar, plus a CLI to drive segments and
   per-window badges
-- Native **widgets** for CPU level, battery, reachability, and prefix state, with
+- Native **widgets** for CPU level, battery capacity, power source, reachability,
+  and prefix state, with
   persistent defaults and colors from the active palette
 - Suspend/resume for nested tmux sessions
 
@@ -286,7 +287,7 @@ See [layout inspection and application](docs/layouts.md) for evaluation and vali
 | Layout     | What it composes                                                    |
 |------------|---------------------------------------------------------------------|
 | `default`  | The dependency-free standard arrangement                          |
-| `full`     | Init's default — session, prefix, date, and available CPU/online/battery widgets |
+| `full`     | Init's default — host, session, prefix, date, and available CPU/online/battery/power widgets |
 | `minimal`  | A pared-down bar                                                    |
 
 Switching layouts starts from a clean slate, so a layout owns exactly the arrangement
@@ -324,7 +325,8 @@ normal status refresh; Airline provides no widget scheduler or runtime wrapper.
 | Widget | Source |
 |---|---|
 | `cpu` | current CPU usage reduced to low, medium, or high |
-| `battery` | First Linux system battery's capacity |
+| `battery` | First Linux system battery's capacity meter |
+| `power` | First Linux system battery's power-source glyph |
 | `online` | ICMP reachability of a chosen host; requires `ping` |
 | `prefix` | Native prefix, Copy, Sync, and key-table badges; no subprocess |
 

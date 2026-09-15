@@ -8,10 +8,4 @@ done
 [[ -n "$device" ]] || exit 3
 read -r value < "$device/capacity" || exit 2
 [[ "$value" =~ ^[0-9]{1,3}$ ]] && (( 10#$value <= 100 )) || exit 2
-status=unknown
-if [[ -r "$device/status" ]]; then read -r status < "$device/status" || status=unknown; fi
-case "$status" in
-  Charging) status=charging ;; Discharging) status=discharging ;; Full) status=full ;;
-  'Not charging') status=attached ;; *) status=unknown ;;
-esac
-printf '%s:%s\n' "$((10#$value))" "$status"
+printf '%s\n' "$((10#$value))"

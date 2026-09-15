@@ -166,16 +166,29 @@ LAYOUT
   done
 }
 
-@test "shipped layouts retain online prefix CPU and date-battery positions" {
+@test "shipped layouts retain host-session, online, prefix, CPU, and power positions" {
   for name in full; do
     source "$PROJECT_ROOT/layouts/definitions/$name.sh"
     declare_part() { printf '%s\n' "$*"; }
     run airline_layout_configure declare_part
     assert_success
-    assert_line 'widget right-in prefix'
-    assert_line 'widget-optional left-mid online'
-    assert_line 'widget-optional right-mid cpu'
-    assert_line --index 4 'segment right-out %Y-%m-%d %H:%M '
-    assert_line --index 5 'widget-optional right-out battery'
+    assert_line --index 0 'segment left-out #h'
+    assert_line --index 1 'segment left-mid #S'
+    assert_line --index 2 'widget right-in prefix'
+    assert_line --index 3 'widget-optional left-mid online'
+    assert_line --index 4 'widget-optional right-mid cpu'
+    assert_line --index 5 'segment right-out %Y-%m-%d %H:%M '
+    assert_line --index 6 'widget-optional right-out battery'
+    assert_line --index 7 'widget-optional right-out power'
   done
+}
+
+@test "dependency-free default gives host the outer-left segment and session the middle" {
+  source "$PROJECT_ROOT/layouts/definitions/default.sh"
+  declare_part() { printf '%s\n' "$*"; }
+  run airline_layout_configure declare_part
+  assert_success
+  assert_line --index 0 'segment left-out #h'
+  assert_line --index 1 'segment left-mid #S'
+  assert_line --index 2 'segment right-out %Y-%m-%d %H:%M'
 }

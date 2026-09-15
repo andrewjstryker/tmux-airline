@@ -23,5 +23,5 @@ airline_widget_format() {
   fallback="#{?#{&&:#{client_key_table},#{!=:#{client_key_table},root}},$(_prefix_badge active '#{client_key_table}' "$fg" "$bg"),}"
   [[ "$show_sync" == off ]] || fallback="#{?synchronize-panes,$(_prefix_badge special Sync "$fg" "$bg"),$fallback}"
   [[ "$show_copy" == off ]] || fallback="#{?pane_in_mode,$(_prefix_badge copy Copy "$fg" "$bg"),$fallback}"
-  printf '#{?client_prefix,%s,%s}#[fg=%s,bg=%s]' "$(_prefix_badge active '#{prefix}' "$fg" "$bg")" "$fallback" "$fg" "$bg"
+  printf '#{?client_prefix,%s,%s}#[fg=%s,bg=%s]' "$(_prefix_badge active Prefix "$fg" "$bg")" "$fallback" "$fg" "$bg"
 }

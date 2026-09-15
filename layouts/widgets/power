@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+device=''
+for candidate in "${AIRLINE_POWER_SUPPLY:-/sys/class/power_supply}"/*; do
+  [[ -r "$candidate/type" ]] || continue
+  read -r type < "$candidate/type"; [[ "$type" == Battery ]] || continue
+  device="$candidate"; break
+done
+[[ -n "$device" ]] || exit 3
+status=unknown
+if [[ -r "$device/status" ]]; then read -r status < "$device/status" || status=unknown; fi
+case "$status" in
+  Discharging) printf 'battery\n' ;;
+  Charging|Full|'Not charging') printf 'connected\n' ;;
+  *) printf 'unknown\n' ;;
+esac
