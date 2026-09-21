@@ -184,7 +184,9 @@ only on that session's current window; it does not establish session defaults.
 Render installs them on every existing window and saves private session snapshots
 for the new-window hook. The hook copies those snapshots without expanding their
 live selectors. Inactive names inherit tmux's window style when no mode is active,
-so previous-window emphasis and activity/bell colors remain visible.
+so previous-window emphasis and activity/bell colors remain visible. Mode colors
+fill inactive window backgrounds; the active window retains its normal foreground
+and highlight background for readability.
 
 ### Apply and live updates
 

@@ -224,9 +224,9 @@ render_fragment () {
 # A window can be in a tmux mode: zoomed, in copy/view mode, or flagged for
 # monitor-activity. The loud signal goes where you're NOT looking (same rule as the
 # badges): an *inactive* window in a mode fills its BACKGROUND with the mode color
-# ("look — window 3 is zoomed"); the *active* window, which you can already see, only
-# tints its name FOREGROUND. The active window keeps its active-color highlight block
-# either way, so "which window is current" stays obvious.
+# ("look — window 3 is zoomed"). The active window keeps its normal foreground and
+# active-color highlight block so its name stays readable. The prefix widget shows
+# copy mode independently through its [Copy] badge.
 
 # zoom > copy > monitor precedence, in one place. `fmt` is a printf template applied
 # to each mode's color; `fallback` is emitted when no mode is active.
@@ -241,8 +241,7 @@ _mode_expr () {
     "$(printf "$fmt" "${PALETTE[monitor]}")" \
     "$fallback"
 }
-# Bare mode color, or inner-bg when no mode — the inactive window's background fill
-# AND the active window's name foreground (the one signal value, used on both sides).
+# Bare mode color, or inner-bg when no mode — the inactive window's background fill.
 window_mode_color () { _mode_expr '%s' "${PALETTE[inner-bg]}"; }
 # "<in-mode>" when the window is in any mode, else "<none>" — used to knock the
 # inactive name out to inner-bg over a filled block, retaining native styling otherwise.
@@ -398,7 +397,7 @@ set_window_formats () {
   local bg="${PALETTE[inner-bg]}" active_bg="${PALETTE[active]}" template
   template="$AIRLINE_TMPL_WINDOW"
 
-  # Mode signal. inactive: fill the background; active: tint the name foreground.
+  # Mode signal: fill the inactive window background.
   local mode_color inactive_fg
   mode_color="$(window_mode_color)"                                       # mode color, else inner-bg
   inactive_fg="$(_window_mode_pick "$bg" default)"                         # knock out over a fill, else native window style
@@ -427,9 +426,9 @@ set_window_formats () {
   _render_window_option window-status-last-style     "fg=${PALETTE[emphasized]} bg=$bg" || return
   _render_window_option window-status-activity-style "fg=${PALETTE[alert]} bg=$bg" || return
   _render_window_option window-status-bell-style     "fg=${PALETTE[stress]} bg=$bg" || return
-  # active: a constant active-color highlight block, name foreground tinted by mode.
+  # active: constant foreground and highlight background, independent of mode.
   _render_window_option window-status-current-format \
-    "$(_chev_right "$bg" "$active_bg") ${status_expr}#[fg=${mode_color}]${template}${health_expr} $(_chev_left "$active_bg" "$bg")"
+    "$(_chev_right "$bg" "$active_bg") ${status_expr}#[fg=${bg}]${template}${health_expr} $(_chev_left "$active_bg" "$bg")"
 }
 
 set_window_styles () {

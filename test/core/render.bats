@@ -100,7 +100,7 @@ _seed_palette() {
   assert_output --partial "bg=colour234"        # inner-bg
 }
 
-# --- modes: inactive fills the background, active tints the foreground -------
+# --- modes: inactive fills the background, active retains contrast ----------
 
 @test "inactive window fills its background with the mode color" {
   load_render
@@ -131,15 +131,15 @@ _seed_palette() {
   refute_output --partial "bg=#{?#{window_zoomed_flag}"  # active bg never varies with mode
 }
 
-@test "active window tints the name foreground by mode (knockout when none)" {
+@test "active window keeps its normal name foreground in every mode" {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
   run wopt window-status-current-format
-  # name fg is the mode color, falling back to inner-bg knockout
-  assert_output --partial "#[fg=#{?#{window_zoomed_flag},colour81"
-  assert_output --partial "monitor-activity,colour109,colour234"   # monitor tint, else knockout
-  assert_output --partial "]#I:#W"                                  # …applied to the name
+  assert_output --partial "#[fg=colour234]#I:#W"
+  refute_output --partial "window_zoomed_flag"
+  refute_output --partial "pane_in_mode"
+  refute_output --partial "monitor-activity"
 }
 
 # --- badges: status (left) + health (right) ---------------------------------

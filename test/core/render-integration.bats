@@ -98,9 +98,13 @@ _assert_name_colors() {
 @test "new window mode selectors stay live and restore previous emphasis" {
   $TMUX -L "$_bats_socket" new-window -t bats:3 -n mode-window
   $TMUX -L "$_bats_socket" copy-mode -t bats:3
-  _assert_name_colors 3:mode-window 75 214
+  _assert_name_colors 3:mode-window 234 214
+  _assert_status_text '[Copy]'
   $TMUX -L "$_bats_socket" select-window -t bats:0
   _assert_name_colors 3:mode-window 234 75
+  $TMUX -L "$_bats_socket" select-window -t bats:3
+  _assert_name_colors 3:mode-window 234 214
+  $TMUX -L "$_bats_socket" select-window -t bats:0
   $TMUX -L "$_bats_socket" send-keys -t bats:3 -X cancel
   _assert_name_colors 3:mode-window 255 234
 }
