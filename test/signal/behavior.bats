@@ -398,21 +398,27 @@ CASES
   assert_equal "$_FAKE_WRITES" "$writes"
 }
 
-@test "identical problem reports and absent lifecycle operations do not redraw" {
+# The global problem projection is consumed by the catalog problem widget, whose
+# refresh cadence belongs to tmux's status-interval, so no problem operation
+# redraws. Idempotence is therefore observable through storage writes alone.
+@test "identical problem reports and absent lifecycle operations do not write or redraw" {
   signal_problem_set test cpu warn "sensors missing"
-  assert_equal "$_FAKE_REDRAWS" 1
+  assert_equal "$_FAKE_REDRAWS" 0
   local writes="$_FAKE_WRITES"
   signal_problem_set test cpu warn "sensors missing"
-  assert_equal "$_FAKE_REDRAWS" 1
   assert_equal "$_FAKE_WRITES" "$writes"
+
   signal_problem_clear test cpu
-  assert_equal "$_FAKE_REDRAWS" 2
+  assert_not_equal "$_FAKE_WRITES" "$writes"
+  writes="$_FAKE_WRITES"
   signal_problem_clear test cpu
-  assert_equal "$_FAKE_REDRAWS" 2
+  assert_equal "$_FAKE_WRITES" "$writes"
   signal_problem_close -t %9
-  assert_equal "$_FAKE_REDRAWS" 2
+  assert_equal "$_FAKE_WRITES" "$writes"
   signal_problem_resolve test missing
-  assert_equal "$_FAKE_REDRAWS" 2
+  assert_equal "$_FAKE_WRITES" "$writes"
+
+  assert_equal "$_FAKE_REDRAWS" 0
 }
 
 @test "identical status and health reports and absent clears do not redraw" {
@@ -432,13 +438,66 @@ CASES
   assert_equal "$_FAKE_WRITES" "$writes"
 }
 
-@test "managed configuration problems use the same redraw-gated service" {
+@test "managed configuration problems use the same write-gated service" {
   signal_problem_report s1 airline airline-layout fail "layout failed"
-  assert_equal "$_FAKE_REDRAWS" 1
+  local writes="$_FAKE_WRITES"
   signal_problem_report s1 airline airline-layout fail "layout failed"
-  assert_equal "$_FAKE_REDRAWS" 1
+  assert_equal "$_FAKE_WRITES" "$writes"
   signal_problem_report s1 airline airline-layout ok ""
-  assert_equal "$_FAKE_REDRAWS" 2
+  assert_not_equal "$_FAKE_WRITES" "$writes"
+  assert_equal "$_FAKE_REDRAWS" 0
+}
+
+@test "problem show --level reduces the active set to one scalar" {
+  run signal_problem_show --level
+  assert_success
+  assert_output ""
+
+  signal_problem_set test cpu warn "sensors missing"
+  run signal_problem_show --level
+  assert_output warn
+  # The worst active level wins, and recovery falls back to the remaining one.
+  signal_problem_set other battery fail "query timed out"
+  run signal_problem_show --level
+  assert_output fail
+  signal_problem_set other battery ok
+  run signal_problem_show --level
+  assert_output warn
+
+  # --level presents the same active set the bare form lists, so acknowledgement
+  # hides it from both without deleting the ledger entry.
+  signal_problem_ack test cpu
+  run signal_problem_show --level
+  assert_output ""
+  run signal_problem_show
+  assert_output ""
+  run signal_problem_show --all test cpu
+  assert_output --partial acknowledged
+}
+
+@test "problem show --level is a read that rejects other options and arguments" {
+  signal_problem_set test cpu warn "sensors missing"
+  local writes="$_FAKE_WRITES"
+  run signal_problem_show --level test
+  assert_failure
+  assert_output --partial "takes no arguments"
+  run signal_problem_show --level --all
+  assert_failure
+  assert_output --partial "conflict"
+  run signal_problem_show --all --level
+  assert_failure
+  assert_output --partial "conflict"
+  run signal_problem_show --level --level
+  assert_failure
+  assert_output --partial "duplicate --level"
+  run signal_problem_show test --level
+  assert_failure
+  assert_output --partial "options must precede arguments"
+
+  run signal_problem_show --level
+  assert_output warn
+  assert_equal "$_FAKE_WRITES" "$writes"
+  assert_equal "$_FAKE_REDRAWS" 0
 }
 
 @test "problem set defaults to the current pane and recovery is origin-specific" {

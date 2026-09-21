@@ -5,4 +5,5 @@ airline_layout_configure () {
   "$declare" segment left-out  "#h"
   "$declare" segment left-mid  "#S"
   "$declare" segment right-out "%Y-%m-%d %H:%M"
+  "$declare" widget right-out problem
 }

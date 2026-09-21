@@ -118,7 +118,7 @@ cmd_problem () {
     ack)     signal_problem_ack "$@" ;;     #| <contributor> <problem-key> — acknowledge and hide the current problem state
     clear)   signal_problem_clear "$@" ;;   #| <contributor> <problem-key> — delete a problem, its history, and all origin claims
     resolve) signal_problem_resolve "$@" ;; #| <contributor> <problem-key> — declare the capability restored globally and retain resolved history
-    show)    signal_problem_show "$@" ;;    #| [--all] [<contributor> [<problem-key>]] — show active problems or the complete lifecycle ledger
+    show)    signal_problem_show "$@" ;;    #| [--all|--level] [<contributor> [<problem-key>]] — show active problems, the complete lifecycle ledger, or the reduced level alone
     *) command_die "unknown problem command: $verb" ;;
   esac
   # help:end problem

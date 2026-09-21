@@ -314,7 +314,7 @@ airline problem  set [-t <pane-target>] <contributor> <problem-key> <ok|warn|fai
                  ack <contributor> <problem-key>
                  clear <contributor> <problem-key>
                  resolve <contributor> <problem-key>
-                 show [--all] [<contributor> [<problem-key>]]
+                 show [--all|--level] [<contributor> [<problem-key>]]
 airline transaction show
                     clear <global|session|window> <target> <namespace>
 

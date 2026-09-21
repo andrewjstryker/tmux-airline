@@ -70,14 +70,19 @@ _signal_resolve_window () {   # <destination> <command> [<target>]
 }
 
 # Every mutation follows one pipeline: transact at the signal's native owner,
-# run its lifecycle policy, then reduce/project and redraw only if the projected
-# scalar changed. Lifecycle callbacks return storage change through a destination
-# variable and never perform presentation work themselves.
+# run its lifecycle policy, then reduce/project. Window-local projections redraw
+# immediately; global problems rely on tmux's status-interval refresh cadence.
+# Lifecycle callbacks return storage change through a destination variable and
+# never perform presentation work themselves.
 _signal_project_and_redraw () {   # <window|global> <owner> <status|health|problem>
   local scope="$1" owner="$2" namespace="$3" changed="" projector="render_${3}_project"
   "$projector" changed "$owner" || return
   [[ -n "$changed" ]] || return 0
-  if [[ "$scope" == global ]]; then redraw_all; else redraw; fi
+  case "$namespace:$scope" in
+    problem:global) : ;;
+    *:global) redraw_all ;;
+    *) redraw ;;
+  esac
 }
 
 _signal_with_transaction () {   # <window|global> <owner> <namespace> <callback> [<arg>...]
@@ -767,19 +772,35 @@ signal_problem_resolve () {   # <contributor> <key>
   _signal_apply global server problem _signal_problem_resolve_unlocked "$1" "$2"
 }
 
-signal_problem_show () {   # [--all] [<contributor> [<key>]]
-  local visibility=active-only contributor="" key="" seen_all=""
+# `--level` presents the same active set the bare form lists, reduced to the one
+# scalar a status bar draws. That reduction already happened at mutation time, so
+# it is a read of the projection and takes no transaction. Empty output means no
+# active problem, which is how the shipped `problem` widget collapses to nothing.
+signal_problem_show () {   # [--all|--level] [<contributor> [<key>]]
+  local visibility=active-only contributor="" key="" seen_all="" seen_level="" level
   while (( $# )) && [[ "$1" == -* ]]; do
     case "$1" in
       --all)
         [[ -z "$seen_all" ]] || command_die "problem show: duplicate --all"
+        [[ -z "$seen_level" ]] || command_die "problem show: --all and --level conflict"
         visibility=all; seen_all=1; shift ;;
-      -*) command_die "problem show: unknown option '$1'" ;;
+      --level)
+        [[ -z "$seen_level" ]] || command_die "problem show: duplicate --level"
+        [[ -z "$seen_all" ]] || command_die "problem show: --all and --level conflict"
+        seen_level=1; shift ;;
       *) command_die "problem show: unknown option '$1'" ;;
     esac
   done
   [[ "${1:-}" != --all && "${2:-}" != --all ]] || \
     command_die "problem show: options must precede arguments"
+  [[ "${1:-}" != --level && "${2:-}" != --level ]] || \
+    command_die "problem show: options must precede arguments"
+  if [[ -n "$seen_level" ]]; then
+    (( $# == 0 )) || command_die "problem show: --level takes no arguments"
+    prv_get_global_into level "$AIRLINE_KEY_PROBLEM" || return
+    [[ -z "$level" ]] || printf '%s\n' "$level"
+    return
+  fi
   (( $# <= 2 )) || command_die "problem show: too many arguments"
   contributor="${1:-}"; key="${2:-}"
   (( $# == 0 )) || _signal_validate_contributor "problem show" "$contributor" || return

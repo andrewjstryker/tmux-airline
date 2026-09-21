@@ -77,7 +77,11 @@ presentation or police trusted widget code.
 The optional extensionless companion is invoked directly by tmux through `#()`. It
 receives the observation arguments selected by the format definition and emits one
 scalar value, text or numeric, on one line. It must be stateless and quick enough for
-the user's `status-interval`. It does not call Airline or write Airline state.
+the user's `status-interval`. It never writes Airline state. It may read Airline
+state only through the public `airline` CLI, the same interface any other caller
+uses: the shipped `problem` widget reports `airline problem show --level`. A widget reads a
+reduced scalar the CLI already maintains rather than parsing a command's presentation
+output. It does not read private `@airline--` options or call tmux directly.
 
 Third-party widgets may choose private optimizations, files, locks, or scheduling;
 those are outside Airline's contract. Airline supplies no equivalent mechanism for

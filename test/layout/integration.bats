@@ -333,10 +333,14 @@ write_layout() {   # <path> <configure-body>
 
   airline_session "$one" layout use minimal
   airline_session "$other" layout use default
+  # Every shipped layout places the problem widget, so right-out is never bare;
+  # minimal contributes the widget alone and default also carries its clock.
   run airline_session "$one" segment show right-out
-  assert_output ""
+  assert_output --partial "widgets/problem"
+  refute_output --partial "%Y-%m-%d %H:%M"
   run airline_session "$other" segment show right-out
   assert_output --partial "%Y-%m-%d %H:%M"
+  assert_output --partial "widgets/problem"
 
   run sopt @airline-palette-secondary -t "$one"
   assert_output "colour245"

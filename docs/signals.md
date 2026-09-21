@@ -179,10 +179,12 @@ color, a health glyph, and a status glyph all at once without contention.
 
 An airline-aware widget can fail gracefully and report why through the global
 `problem` API. A problem means that Airline or one of its contributors cannot
-provide an advertised capability; it is not window or pane attention. Active
-problems are immediately visible in every initialized session. Airline reduces
-their claims with the same `ok < warn < fail` severity ladder as health and shows
-one aggregate glyph at the extreme right.
+provide an advertised capability; it is not window or pane attention. Airline
+reduces their claims with the same `ok < warn < fail` severity ladder as health
+and projects one aggregate level, which the `problem` widget shows as a single
+glyph. Every shipped layout places that widget at the right, so active problems
+are immediately visible in every initialized session; a custom layout that omits
+the widget keeps the ledger and drops only its indicator.
 
 ```shell
 if ! command -v sensors >/dev/null 2>&1; then
@@ -203,7 +205,10 @@ Several panes and sessions may assert the same contributor/key pair independentl
 pane/session close hooks to retire claims when their origins disappear without
 asserting recovery.
 
-`problem show` lists only active problems. `problem ack <contributor> <key>`
+`problem show` lists only active problems, and `problem show --level` reduces that
+same set to one scalar, printing nothing when none are active. `--level` is the
+presentation read: the shipped `problem` widget is exactly this call, and any status
+bar can use it without parsing a ledger. `problem ack <contributor> <key>`
 acknowledges and hides the current level without discarding history or active claims.
 A same-level diagnostic refresh remains acknowledged; a level change makes the
 problem active again. Use `problem show --all [<contributor> [<key>]]` to inspect the

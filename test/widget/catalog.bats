@@ -13,9 +13,19 @@ setup() { load_session; catalog_register_builtin s1 widget "$PROJECT_ROOT/layout
   assert_line online
   assert_line power
   assert_line prefix
+  assert_line problem
   refute_output --partial '.sh'
   run catalog_resolve s1 widget battery
   assert_output "$PROJECT_ROOT/layouts/widgets/battery.sh"
+}
+
+@test "problem format emits a companion job and live palette references" {
+  run widget_format s1 inspect "$PROJECT_ROOT/layouts/widgets/problem.sh" white black
+  assert_success
+  assert_output --partial "#('$PROJECT_ROOT/layouts/widgets/problem' )"
+  assert_output --partial '#{@airline-palette-alert}'
+  assert_output --partial '#{@airline-palette-stress}'
+  refute_output --partial '@airline--badge-problem'
 }
 
 @test "widget format receives segment colors and emits a native fragment" {

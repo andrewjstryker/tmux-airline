@@ -116,6 +116,15 @@ setup() {
   assert_output fail
 }
 
+# The badge is a #() widget placed by every shipped layout. Its job runs only
+# while a client draws the status line, so an unattached test server observes
+# the two halves it can: the session carries the companion, and the companion
+# reduces the ledger. test/widget/integration.bats covers the presentation.
+assert_problem_badge () {   # <session>
+  run sopt status-right -t "$1"
+  assert_output --partial "layouts/widgets/problem"
+}
+
 @test "global problem ledger is visible in every initialized session" {
   airline session init
   session="$($TMUX -L "$_bats_socket" display-message -p '#{session_id}')"
@@ -123,8 +132,10 @@ setup() {
   airline problem set example-battery query fail "battery query timed out"
   run get_option @airline--badge-problem
   assert_output "fail"
-  run $TMUX -L "$_bats_socket" display-message -p -t "$session" '#{E:status-right}'
-  assert_output --partial "▲"
+  assert_problem_badge "$session"
+  run env TMUX_PANE="$($TMUX -L "$_bats_socket" display-message -p '#{pane_id}')" \
+    AIRLINE_TMUX="$TMUX -L $_bats_socket" "$PROJECT_ROOT/layouts/widgets/problem"
+  assert_output fail
 
   $TMUX -L "$_bats_socket" new-session -d -s other
   other="$($TMUX -L "$_bats_socket" display-message -p -t other '#{session_id}')"
@@ -137,8 +148,7 @@ setup() {
   airline problem close -t "$other_pane" example-other capability
   run airline problem show --all example-other capability
   assert_output --partial "closed"
-  run $TMUX -L "$_bats_socket" display-message -p -t "$other" '#{E:status-right}'
-  assert_output --partial "▲"
+  assert_problem_badge "$other"
 
   run airline problem show
   assert_output --partial "example-cpu"

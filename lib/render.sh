@@ -55,9 +55,9 @@ declare -gA AIRLINE_CONDITION_COLOR=([ok]=ok [warn]=alert [fail]=stress)
 # PRIVATE state — BARE keys into the private (@airline--) namespace; the prefix is
 # tmux.sh's (prv_name / prv_*), so render never spells it. Status and health are
 # window-scoped projections of pane-identified and pane-owned state respectively;
-# problem is a server-global projection rendered at
-# the extreme right. Each is reduced from its contributor collection at
-# set/clear time and read live through a token→color selector.
+# problem is a server-global projection consumed by the catalog problem widget.
+# Each is reduced from its contributor collection at set/clear time and read live
+# through a token→color selector.
 AIRLINE_KEY_STATUS='badge-status'        # left badge:  reduced app-status level
 AIRLINE_KEY_HEALTH='badge-health'        # right badge: reduced window condition level
 AIRLINE_KEY_PROBLEM='badge-problem'      # global badge: reduced active problem level
@@ -101,7 +101,6 @@ declare -ga AIRLINE_NATIVE_WINDOW_OPTIONS=(
 # AIRLINE_GLYPH_* are the fallback for an unknown token (never hit in practice).
 AIRLINE_GLYPH_STATUS='●'      # status fallback
 AIRLINE_GLYPH_HEALTH='▲'      # health fallback
-AIRLINE_GLYPH_PROBLEM='▲'     # session problem fallback
 # SC2034: read via nameref in _glyph_expr, which shellcheck can't trace.
 # shellcheck disable=SC2034
 declare -gA AIRLINE_STATUS_GLYPH=([active]='○' [result]='●' [attention]='◆')  # watch → done → needs-you
@@ -208,7 +207,6 @@ _build_status_right () {
     out+="$(_chev_left "$prev_bg" "$bg")#[fg=$fg,bg=$bg] $content "
     prev_bg="$bg"
   done
-  out+="$(_problem_expr "$prev_bg")"
   printf '%s' "$out"
 }
 
@@ -303,20 +301,6 @@ _glyph_expr () {   # <option-name> <fallback-glyph> <map-array-name>
 # cue (status `active`, condition `fail`). Best-effort: tmux emits the attribute but
 # terminals vary in honoring blink. Pair with a trailing `#[noblink]` so it can't leak.
 _blink_when () { printf '#{?#{==:#{%s},%s},#[blink],}' "$1" "$2"; }   # <option> <token>
-
-# Global problem badge: one renderer-owned indicator at the extreme right. It
-# inherits the final right-side background (inner-bg when there are no segments)
-# and collapses to zero width when no open problem has active claims.
-_problem_expr () {
-  local bg="$1" problem_opt
-  problem_opt="$(prv_name "$AIRLINE_KEY_PROBLEM")"
-  printf '#{?%s,#[fg=%s]#[bg=%s]%s%s#[noblink] ,}' \
-    "$problem_opt" \
-    "$(_condition_token_expr "$problem_opt" "${PALETTE[primary]}")" \
-    "$bg" \
-    "$(_blink_when "$problem_opt" fail)" \
-    "$(_glyph_expr "$problem_opt" "$AIRLINE_GLYPH_PROBLEM" AIRLINE_HEALTH_GLYPH)"
-}
 
 # Project a signal's reduced collection value into its native badge scalar. Scope
 # changes storage mechanics, not the reduction/projection algorithm. Mutation

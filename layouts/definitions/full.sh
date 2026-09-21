@@ -9,4 +9,5 @@ airline_layout_configure () {
   "$1" segment right-out '%Y-%m-%d %H:%M '
   "$1" widget-optional right-out battery
   "$1" widget-optional right-out power
+  "$1" widget right-out problem
 }

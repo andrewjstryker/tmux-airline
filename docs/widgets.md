@@ -52,6 +52,7 @@ Tmux 3.2 or newer is required for numeric meter comparisons.
 | `power` | sibling `power` executable reads the first readable Linux system battery | `🔋` while discharging and `⚡` when charging/full/attached |
 | `online` | sibling `online` executable performs one fast ICMP check | `●` in primary/stress color for reachable/unreachable; requires `ping` |
 | `prefix` | Native client and pane state | Prefix, Copy, Sync, or custom key-table badge; no process |
+| `problem` | sibling `problem` executable reports `airline problem show --level` | Alert-colored `△` for warn, blinking stress-colored `▲` for fail; hidden when clear |
 
 Online means the chosen host answered ICMP, not that every Internet service works.
 Battery capacity and power source are independent widgets for one device, not an

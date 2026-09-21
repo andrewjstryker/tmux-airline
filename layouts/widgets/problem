@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Report the reduced problem level through the public CLI. The level is computed
+# when problem state changes, so this is a read; empty output hides the badge.
+exec "${BASH_SOURCE%/*}/../../airline" problem show --level

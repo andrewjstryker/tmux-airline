@@ -77,7 +77,7 @@ _airline_usage () {
     problem\ ack) printf %s \<contributor\>\ \<problem-key\> ;;
     problem\ clear) printf %s \<contributor\>\ \<problem-key\> ;;
     problem\ resolve) printf %s \<contributor\>\ \<problem-key\> ;;
-    problem\ show) printf %s \[--all\]\ \[\<contributor\>\ \[\<problem-key\>\]\] ;;
+    problem\ show) printf %s \[--all\|--level\]\ \[\<contributor\>\ \[\<problem-key\>\]\] ;;
     transaction\ show) printf %s '' ;;
     transaction\ clear) printf %s \<global\|session\|window\>\ \<target\>\ \<namespace\> ;;
     session) printf %s '' ;;
@@ -152,7 +152,7 @@ _airline_description () {
     problem\ ack) printf %s Acknowledge\ and\ hide\ the\ current\ problem\ state ;;
     problem\ clear) printf %s Delete\ a\ problem\,\ its\ history\,\ and\ all\ origin\ claims ;;
     problem\ resolve) printf %s Declare\ the\ capability\ restored\ globally\ and\ retain\ resolved\ history ;;
-    problem\ show) printf %s Show\ active\ problems\ or\ the\ complete\ lifecycle\ ledger ;;
+    problem\ show) printf %s Show\ active\ problems\,\ the\ complete\ lifecycle\ ledger\,\ or\ the\ reduced\ level\ alone ;;
     transaction\ show) printf %s List\ outstanding\ transactions\ and\ owner\ state ;;
     transaction\ clear) printf %s Release\ one\ stale\ transaction ;;
     session) printf %s session\ commands ;;

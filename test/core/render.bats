@@ -285,17 +285,17 @@ _seed_palette() {
 
 # --- global problems: open ledger entries reduce to one overall badge --------
 
-@test "problem badge is renderer-owned at the extreme right" {
+# The badge is a catalog widget placed by a layout, not renderer chrome: render
+# composes only the configured segments and adds no problem expression of its own.
+@test "problem badge is not renderer-owned" {
   load_render
   _seed_palette
   cfg_set_session "$AIRLINE_SESSION" segment-right-out OUT
   render "$AIRLINE_SESSION"
   run sopt status-right
-  [[ "$output" == *" OUT "*"@airline--badge-problem"* ]]
-  assert_output --partial "bg=colour238"   # inherits the final outer block
-  assert_output --partial "warn},△"
-  assert_output --partial "fail},▲"
-  assert_output --partial "fail},#[blink]"
+  assert_output --partial " OUT "
+  refute_output --partial "badge-problem"
+  refute_output --partial "△"
 }
 
 @test "render_problem_project reduces active global ledger entries" {
