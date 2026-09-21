@@ -104,7 +104,7 @@ disappearing. See [runner element contracts](runner-elements.md).
 Every catalog kind accepts `describe <name>`: palette, widget, layout, classifier,
 filter, probe, and runner. The name is required and must be a bare catalog name.
 `runner describe <name> [<arg>...]` accepts composition arguments;
-`widget describe <name> [<arg>...]` accepts format arguments. Segment has no catalog and accepts neither `describe` nor `list`.
+`widget describe <name>` reads configuration from tmux options. Segment has no catalog and accepts neither `describe` nor `list`.
 
 `show` reports live tmux state, with optional narrowing such as `palette show name`.
 Runner-domain catalogs have no installed state and do not accept `show`.

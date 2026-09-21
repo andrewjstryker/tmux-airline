@@ -29,9 +29,10 @@ setup() { load_session; catalog_register_builtin s1 widget "$PROJECT_ROOT/layout
 }
 
 @test "widget format receives segment colors and emits a native fragment" {
+  pub_set widget-prefix-show-copy off
+  pub_set widget-prefix-show-sync off
   run widget_format s1 inspect "$PROJECT_ROOT/layouts/widgets/prefix.sh" \
-    '#{@airline-palette-emphasized}' '#{@airline-palette-inner-bg}' \
-    --show-copy off --show-sync off
+    '#{@airline-palette-emphasized}' '#{@airline-palette-inner-bg}'
   assert_success
   assert_output --partial 'client_prefix'
   assert_output --partial '[Prefix]'
@@ -78,4 +79,77 @@ setup() { load_session; catalog_register_builtin s1 widget "$PROJECT_ROOT/layout
   run airline_widget_available
   assert_success
   refute [ -e "$BATS_TEST_TMPDIR/runtime-ran" ]
+}
+
+@test "CPU owns option defaults validation and literal icons" {
+  pub_set widget-cpu-medium 72
+  pub_set widget-cpu-high 91
+  pub_set widget-cpu-high-icon 'hot $(touch marker)'
+  run widget_describe cpu
+  assert_success
+  assert_output --partial ',91}'
+  assert_output --partial ',72}'
+  assert_output --partial 'hot $(touch marker)'
+  refute_output --partial effective-arguments
+
+  pub_set widget-cpu-medium ''
+  run widget_describe cpu
+  assert_success
+  assert_output --partial ',60}'
+  pub_set widget-cpu-medium 99
+  run widget_describe cpu
+  assert_failure
+}
+
+@test "online embeds its own host and timeout options in its runtime expression" {
+  pub_set widget-online-host example.com
+  pub_set widget-online-timeout 3
+  pub_set widget-online-online-icon UP
+  source "$PROJECT_ROOT/layouts/widgets/online.sh"
+  AIRLINE_WIDGET_RUNTIME="$PROJECT_ROOT/layouts/widgets/online"
+  run airline_widget_format white black
+  assert_success
+  assert_output --partial "'--host' 'example.com' '--timeout' '3'"
+  assert_output --partial UP
+  pub_set widget-online-timeout 0
+  run airline_widget_format white black
+  assert_failure
+}
+
+@test "power and prefix consult their own public namespaces" {
+  pub_set widget-power-connected-icon AC
+  source "$PROJECT_ROOT/layouts/widgets/power.sh"
+  AIRLINE_WIDGET_RUNTIME="$PROJECT_ROOT/layouts/widgets/power"
+  run airline_widget_format white black
+  assert_success
+  assert_output --partial AC
+  assert_output --partial '🔋'
+  refute_output --partial '⚡'
+
+  pub_set widget-prefix-show-copy off
+  pub_set widget-prefix-show-sync off
+  source "$PROJECT_ROOT/layouts/widgets/prefix.sh"
+  run airline_widget_format white black
+  assert_success
+  refute_output --partial '[Copy]'
+  refute_output --partial '[Sync]'
+  pub_set widget-prefix-show-copy ''
+  run airline_widget_format white black
+  assert_success
+  assert_output --partial '[Copy]'
+  pub_set widget-prefix-show-sync invalid
+  run airline_widget_format white black
+  assert_failure
+}
+
+@test "CPU unavailability is returned to the host without publishing a problem" {
+  command() {
+    [[ "$*" != '-v top' ]] || return 1
+    builtin command "$@"
+  }
+  local before="$(declare -p _FAKE_OPT)"
+  run widget_format s1 instance "$PROJECT_ROOT/layouts/widgets/cpu.sh" white black
+  assert_failure 3
+  assert_output ''
+  assert_equal "$(declare -p _FAKE_OPT)" "$before"
 }

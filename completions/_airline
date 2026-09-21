@@ -38,7 +38,7 @@ _airline_usage () {
     palette\ list) printf %s '' ;;
     palette\ register) printf %s \<dir\> ;;
     segment\ show) printf %s \[\<segment\>\] ;;
-    widget\ describe) printf %s \<widget\>\ \[\<arg\>...\] ;;
+    widget\ describe) printf %s \<widget\> ;;
     widget\ list) printf %s '' ;;
     widget\ register) printf %s \<dir\> ;;
     layout\ describe) printf %s \<layout\> ;;

@@ -163,3 +163,36 @@ _assert_status_text() {
   $TMUX -L "$_bats_socket" switch-client -T root
   _assert_status_text bats
 }
+
+@test "native widget options expand live and restore each placement's surrounding style" {
+  mkdir "$BATS_TEST_TMPDIR/native"
+  cat > "$BATS_TEST_TMPDIR/native/tint.sh" <<'WIDGET'
+#| summary: Shared native expression
+airline_widget_format() {
+  printf '#[fg=colour196,bg=colour21]X#[fg=%s,bg=%s]' "$1" "$2"
+}
+WIDGET
+  cat > "$BATS_TEST_TMPDIR/native/shared.sh" <<'LAYOUT'
+#| summary: Shared widget across differently styled segments
+airline_layout_configure() {
+  "$1" segment left-out '#[fg=colour200]L0#{E:@airline--widget-tint}L1'
+  "$1" segment right-mid 'R0#{E:@airline--widget-tint}R1'
+}
+LAYOUT
+  airline widget register "$BATS_TEST_TMPDIR/native"
+  airline layout register "$BATS_TEST_TMPDIR/native"
+  airline layout use shared
+  _assert_name_colors L0 200 238
+  _assert_name_colors L1 200 238
+  _assert_name_colors R0 255 236
+  _assert_name_colors R1 255 236
+  _assert_name_colors X 196 21
+
+  # A direct change to the published expression is evaluated by tmux itself.
+  $TMUX -L "$_bats_socket" set-option -t bats @airline--widget-tint 'LIVE'
+  _assert_name_colors L0LIVEL1 200 238
+  _assert_name_colors R0LIVER1 255 236
+  airline layout use minimal
+  run sopt @airline--widget-tint
+  assert_output ''
+}

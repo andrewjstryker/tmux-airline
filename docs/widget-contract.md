@@ -38,17 +38,19 @@ Global palette values seed sessions. An initialized session publishes its effect
 palette, which widgets read through live tmux format references. Palette changes
 render the layout again, so each placement receives the current segment colors.
 
-Widget policy belongs to `@airline-widget-<name>-<option>`. Airline resolves those
-global defaults and placement overrides, validates them according to the widget's
-declared policy, and passes the resulting arguments to the format definition. Airline
-does not define the meaning of a widget option.
+Widget policy belongs to `@airline-widget-<name>-<option>`. Each widget reads its
+own public options directly with `tmux show-option -gqv` while composing the
+expression, applies defaults, and validates values. Airline passes only foreground
+and background arguments. It does not interpret option metadata, fetch widget
+configuration, or construct configuration argument lists. Public options are user
+inputs; the generated `@airline--widget-<name>` expression remains private output.
 
 ## Format definition
 
 Airline calls the definition during layout evaluation:
 
 ```bash
-airline_widget_format() { # <segment-fg> <segment-bg> [<resolved-args>...]
+airline_widget_format() { # <segment-fg> <segment-bg>
   local fg="$1" bg="$2"
   shift 2
   printf '%s' '#{?client_prefix,PREFIX,}'
@@ -90,15 +92,15 @@ widget.
 
 ## Availability and inspection
 
-A widget may expose `airline_widget_available [arguments...]` for a cheap layout-time
+A widget may expose `airline_widget_available` for a cheap layout-time
 capability check. It must not run the runtime executable. The check assesses whether
-the widget can fill its advertised contract. Optional unavailability omits the widget;
-required unavailability reports a `warn` problem and contributes an empty fragment so
+the widget can fill its advertised contract. Unavailability (status 3) reports a
+`warn` problem and publishes an empty expression so
 the rest of the layout remains valid.
 
 An advertised widget dependency that fails during format construction follows the
-same problem contract: report a `warn` claim through the problem service, return an
-empty format fragment, and leave the layout valid. This reports that the widget cannot
+same problem contract: report a `fail` claim through the problem service, publish an
+empty expression, and leave the layout valid. This reports that the widget cannot
 fill its contract without turning display data into a health or overload claim.
 
 `widget describe` evaluates the format definition and reports its literal expression.
@@ -107,22 +109,32 @@ configuration. There is no `airline widget eval` or `airline widget run` runtime
 
 ## Composition
 
-A layout places ordered literal and widget fragments in fixed segment slots. Render
-establishes the segment baseline before each fragment and adds padding, chevrons, and
-separators at the segment boundary. The widget fragment must preserve the baseline's
-`fg` and `bg` when it completes. An empty widget fragment is absent content: Airline
-does not add widget padding, separators, or an empty segment for it. Repeated placements receive independent resolved
-argument vectors, but no widget instance requires Airline-managed runtime state.
+A layout declares complete segment strings containing native
+`#{E:@airline--widget-<name>}` references. Airline publishes each requested widget's
+expression once in a private session option; tmux owns expansion. The host passes
+`default` foreground/background values to format construction and wraps the result
+in native `push-default`, `default`, and `pop-default` style directives. Those
+capture and restore the surrounding style independently at each placement. Widget
+formats must not manipulate the default-style stack themselves.
+
+Render establishes the segment baseline once and adds padding, chevrons, and
+separators at the segment boundary. Empty widget expressions contribute no content;
+literal spacing and the containing segment's chrome remain. Repeated placements
+share the same expression and widget-owned configuration, with separate lifecycle
+claims for each placement. Parameters come only from tmux options; neither layout
+strings nor `widget describe` accept overrides.
 
 The complete path is:
 
 ```text
 layout use/load
   → source <name>.sh
-  → call airline_widget_format <segment-fg> <segment-bg> <args...>
-  → compose and write the native tmux status format
+  → call airline_widget_format default default
+  → widget reads and validates its own public tmux options
+  → publish @airline--widget-<name> and the unchanged segment reference
 tmux status refresh
-  → evaluate #() in that format
+  → expand #{E:@airline--widget-<name>}
+  → evaluate any #() jobs inside that expression
   → read the runtime scalar
   → apply tmux conditionals and the session palette
 ```

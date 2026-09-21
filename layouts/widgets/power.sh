@@ -1,19 +1,12 @@
 #!/usr/bin/env bash
 #| summary: Linux battery power source (first system battery)
-#| usage: [--battery-icon <text>] [--connected-icon <text>]
-#| options: battery-icon connected-icon
-#| default-battery-icon: 🔋
-#| default-connected-icon: ⚡
 _power_options() {
-  POWER_BATTERY_ICON=🔋 POWER_CONNECTED_ICON=⚡
-  while (( $# )); do
-    case "$1" in
-      --battery-icon) [[ $# -ge 2 ]] || return 2; POWER_BATTERY_ICON="$2"; shift 2 ;;
-      --connected-icon) [[ $# -ge 2 ]] || return 2; POWER_CONNECTED_ICON="$2"; shift 2 ;;
-      *) return 2 ;;
-    esac
-  done
+  POWER_BATTERY_ICON="$(tmux show-option -gqv @airline-widget-power-battery-icon)" || return
+  POWER_BATTERY_ICON="${POWER_BATTERY_ICON:-🔋}"
+  POWER_CONNECTED_ICON="$(tmux show-option -gqv @airline-widget-power-connected-icon)" || return
+  POWER_CONNECTED_ICON="${POWER_CONNECTED_ICON:-⚡}"
 }
+
 airline_widget_available() {
   local device type
   for device in "${AIRLINE_POWER_SUPPLY:-/sys/class/power_supply}"/*; do
@@ -25,7 +18,8 @@ airline_widget_available() {
 airline_widget_format() {
   local fg="$1" bg="$2" value battery connected
   shift 2
-  _power_options "$@" || return 2
+  local POWER_BATTERY_ICON POWER_CONNECTED_ICON
+  _power_options || return 2
   value="$(widget_runtime)"
   battery="$(widget_text "$POWER_BATTERY_ICON")"
   connected="$(widget_text "$POWER_CONNECTED_ICON")"

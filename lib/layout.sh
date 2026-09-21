@@ -153,23 +153,23 @@ _layout_file () {
   else catalog_resolve "$session" layout "$handle"; fi
 }
 
-declare -gA AIRLINE_LAYOUT_CONFIG_SEGMENTS=()
+declare -gA AIRLINE_LAYOUT_CONFIG_SEGMENTS=() AIRLINE_LAYOUT_SEGMENT_SOURCES=()
+declare -ga AIRLINE_LAYOUT_SEGMENT_ORDER=()
 declare -ga AIRLINE_LAYOUT_PART_SLOTS=() AIRLINE_LAYOUT_PART_KINDS=()
 declare -ga AIRLINE_LAYOUT_PART_NAMES=() AIRLINE_LAYOUT_PART_FORMATS=()
 declare -ga AIRLINE_LAYOUT_PART_IDS=() AIRLINE_LAYOUT_PART_FILES=()
-declare -gA AIRLINE_LAYOUT_WIDGET_ARGS=() AIRLINE_LAYOUT_WIDGET_ARGC=()
-AIRLINE_LAYOUT_GENERATION=""
+declare -gA AIRLINE_LAYOUT_WIDGET_MESSAGES=() AIRLINE_LAYOUT_WIDGET_FIRST=()
 AIRLINE_LAYOUT_CONFIG_SESSION=""
 AIRLINE_LAYOUT_CONFIG_INVALID=""
 AIRLINE_LAYOUT_CONFIG_MESSAGE=""
 
 _layout_contract_reset () {
-  AIRLINE_LAYOUT_CONFIG_SEGMENTS=()
+  AIRLINE_LAYOUT_CONFIG_SEGMENTS=(); AIRLINE_LAYOUT_SEGMENT_SOURCES=()
+  AIRLINE_LAYOUT_SEGMENT_ORDER=()
   AIRLINE_LAYOUT_PART_SLOTS=(); AIRLINE_LAYOUT_PART_KINDS=()
   AIRLINE_LAYOUT_PART_NAMES=(); AIRLINE_LAYOUT_PART_FORMATS=()
   AIRLINE_LAYOUT_PART_IDS=(); AIRLINE_LAYOUT_PART_FILES=()
-  AIRLINE_LAYOUT_WIDGET_ARGS=(); AIRLINE_LAYOUT_WIDGET_ARGC=()
-  AIRLINE_LAYOUT_GENERATION="${BASHPID}-${RANDOM}-${RANDOM}"
+  AIRLINE_LAYOUT_WIDGET_MESSAGES=(); AIRLINE_LAYOUT_WIDGET_FIRST=()
   AIRLINE_LAYOUT_CONFIG_INVALID=""
   AIRLINE_LAYOUT_CONFIG_MESSAGE=""
 }
@@ -184,7 +184,36 @@ _layout_declare_segment () {
   local slot="${1:-}" value="${2:-}"
   (( $# == 2 )) || { _layout_contract_reject "segment needs exactly <slot> <value>"; return; }
   render_segment_slot_valid "$slot" || { _layout_contract_reject "unknown segment slot '$slot'"; return; }
-  _layout_add_part "$slot" literal "" "$value" "" ""
+  if [[ ! -v AIRLINE_LAYOUT_SEGMENT_SOURCES[$slot] ]]; then
+    AIRLINE_LAYOUT_SEGMENT_ORDER+=("$slot")
+  fi
+  AIRLINE_LAYOUT_SEGMENT_SOURCES[$slot]="$value"
+}
+
+# Discover native option references for publication and lifecycle bookkeeping.
+# Segment contents are preserved; tmux performs all expansion, including E:.
+# Skip escaped hashes (##), and allow references inside native conditionals.
+_layout_compile_segments () {
+  local slot value i rest name ordinal prefix
+  prefix="#{E:$(prv_name widget-)"
+  local name_re='^([a-zA-Z0-9_-]+)}'
+  for slot in "${AIRLINE_LAYOUT_SEGMENT_ORDER[@]}"; do
+    value="${AIRLINE_LAYOUT_SEGMENT_SOURCES[$slot]}"
+    AIRLINE_LAYOUT_CONFIG_SEGMENTS[$slot]="$(render_fragment "$slot" "$value")"
+    _layout_add_part "$slot" literal "" "$value" "" ""
+    ordinal=0
+    for ((i=0; i<${#value}; i++)); do
+      if [[ "${value:i:2}" == '##' ]]; then ((i+=1)); continue; fi
+      [[ "${value:i:${#prefix}}" == "$prefix" ]] || continue
+      rest="${value:i+${#prefix}}"
+      [[ "$rest" =~ $name_re ]] || continue
+      name="${BASH_REMATCH[1]}"
+      ((ordinal+=1))
+      _layout_declare_widget "$slot" "$ordinal" "$name" || return
+      ((i+=${#prefix}+${#name}))
+    done
+  done
+  return 0
 }
 
 _layout_add_part () {
@@ -192,40 +221,44 @@ _layout_add_part () {
   AIRLINE_LAYOUT_PART_SLOTS+=("$slot"); AIRLINE_LAYOUT_PART_KINDS+=("$kind")
   AIRLINE_LAYOUT_PART_NAMES+=("$name"); AIRLINE_LAYOUT_PART_FORMATS+=("$value")
   AIRLINE_LAYOUT_PART_IDS+=("$id"); AIRLINE_LAYOUT_PART_FILES+=("$file")
-  [[ -n "$value" ]] || return 0
-  AIRLINE_LAYOUT_CONFIG_SEGMENTS[$slot]+="$(render_fragment "$slot" "$value")"
+  return 0
+}
+
+_layout_widget_failure () {   # <slot> <name> <id> <file> <kind> <message>
+  AIRLINE_LAYOUT_WIDGET_MESSAGES[$3]="$6"
+  _layout_add_part "$1" "$5" "$2" "" "$3" "$4"
 }
 
 _layout_declare_widget () {
-  local optional="$1" slot="${2:-}" name="${3:-}" file id format rc=0 index arg
-  (( $# >= 3 )) || { _layout_contract_reject "widget needs <slot> <name> [arguments...]"; return; }
-  shift 3
-  render_segment_slot_valid "$slot" || { _layout_contract_reject "unknown segment slot '$slot'"; return; }
+  local slot="$1" ordinal="$2" name="$3" file="" id format rc=0 first
+  [[ "$name" =~ ^[a-zA-Z0-9_-]+$ ]] || { _layout_contract_reject "invalid widget name '$name'"; return; }
+  # Stable placement identity lets a reload recover the same capability claim.
+  id="$AIRLINE_LAYOUT_CONFIG_SESSION-$slot-$ordinal-$name"
+  if [[ -v AIRLINE_LAYOUT_WIDGET_FIRST[$name] ]]; then
+    first="${AIRLINE_LAYOUT_WIDGET_FIRST[$name]}"
+    local prior="${AIRLINE_LAYOUT_PART_IDS[first]}"
+    AIRLINE_LAYOUT_WIDGET_MESSAGES[$id]="${AIRLINE_LAYOUT_WIDGET_MESSAGES[$prior]:-}"
+    _layout_add_part "$slot" "${AIRLINE_LAYOUT_PART_KINDS[first]}" "$name" \
+      "${AIRLINE_LAYOUT_PART_FORMATS[first]}" "$id" "${AIRLINE_LAYOUT_PART_FILES[first]}"
+    return
+  fi
+  AIRLINE_LAYOUT_WIDGET_FIRST[$name]=${#AIRLINE_LAYOUT_PART_SLOTS[@]}
   file="$(catalog_describe_resolve "$AIRLINE_LAYOUT_CONFIG_SESSION" widget "$name")" || {
-    _layout_contract_reject "widget '$name' not found or invalid"; return;
+    _layout_widget_failure "$slot" "$name" "$id" "" failed "$name widget was not found or has invalid metadata"
+    return
   }
-  local -a arguments=()
-  widget_arguments "$name" "$file" arguments "$@" || {
-    _layout_contract_reject "widget '$name' has invalid policy arguments"; return;
-  }
-  set -- "${arguments[@]}"
-  index=${#AIRLINE_LAYOUT_PART_SLOTS[@]}
-  id="$AIRLINE_LAYOUT_GENERATION-$index"
   format="$(widget_format "$AIRLINE_LAYOUT_CONFIG_SESSION" "$id" "$file" \
-    '#{@airline-palette-emphasized}' "#{@airline-palette-${AIRLINE_SLOT_TIER[$slot]}-bg}" "$@")" || rc=$?
-  AIRLINE_LAYOUT_WIDGET_ARGC[$id]=$#
-  index=0
-  for arg in "$@"; do AIRLINE_LAYOUT_WIDGET_ARGS["$id-$index"]="$arg"; ((index+=1)); done
-  if (( rc == 3 )) && [[ "$optional" == yes ]]; then
-    _layout_add_part "$slot" unavailable "$name" "" "$id" "$file"
-    return
-  fi
+    default default)" || rc=$?
   if (( rc == 3 )); then
-    _layout_add_part "$slot" unavailable "$name" "" "$id" "$file"
-    return
+    _layout_widget_failure "$slot" "$name" "$id" "$file" unavailable "$name widget is unavailable"
+  elif (( rc != 0 )); then
+    _layout_widget_failure "$slot" "$name" "$id" "$file" failed "$name widget could not be evaluated (status $rc)"
+  else
+    # Save the containing segment's live style as the native default. One shared
+    # option can then be placed in any slot without baking in a slot's colours.
+    format="#[push-default]${format}#[default]#[pop-default]"
+    _layout_add_part "$slot" widget "$name" "$format" "$id" "$file"
   fi
-  (( rc == 0 )) || { _layout_contract_reject "widget '$name' could not be evaluated (status $rc)"; return; }
-  _layout_add_part "$slot" widget "$name" "$format" "$id" "$file"
 }
 
 _layout_declare () {
@@ -233,8 +266,7 @@ _layout_declare () {
   [[ -z "$AIRLINE_LAYOUT_CONFIG_INVALID" ]] || return 1
   case "$kind" in
     segment) _layout_declare_segment "$@" ;;
-    widget) _layout_declare_widget no "$@" ;;
-    widget-optional) _layout_declare_widget yes "$@" ;;
+    widget|widget-optional) _layout_contract_reject 'place widgets using native E: references to private widget options' ;;
     adapter) _layout_contract_reject "adapter declarations were removed; place a widget in a segment" ;;
     *) _layout_contract_reject "unknown declaration '$kind'" ;;
   esac
@@ -257,6 +289,9 @@ _layout_definition_evaluate () {   # <session> <file>
     if (( rc == 0 )); then
       airline_layout_configure _layout_declare || rc=$?
     fi
+    if (( rc == 0 )) && [[ -z "$AIRLINE_LAYOUT_CONFIG_INVALID" ]]; then
+      _layout_compile_segments || rc=$?
+    fi
   } > "$output"
   unset -f airline
   if [[ -s "$output" ]]; then
@@ -269,7 +304,7 @@ _layout_definition_evaluate () {   # <session> <file>
 }
 
 _layout_commit_unlocked () {
-  local session="$1" handle="$2" slot i id n
+  local session="$1" handle="$2" slot i id
   widget_retire_session "$session" || return
   for slot in "${AIRLINE_SEGMENT_SLOTS[@]}"; do
     cfg_set_session "$session" "segment-$slot" "${AIRLINE_LAYOUT_CONFIG_SEGMENTS[$slot]:-}" || return
@@ -279,15 +314,14 @@ _layout_commit_unlocked () {
     coll_set session "$session" layout-parts "$i" "${AIRLINE_LAYOUT_PART_SLOTS[i]}" \
       "${AIRLINE_LAYOUT_PART_KINDS[i]}" "${AIRLINE_LAYOUT_PART_NAMES[i]}" "${AIRLINE_LAYOUT_PART_FORMATS[i]}" || return
     [[ -n "$id" ]] || continue
+    prv_set_session "$session" "widget-${AIRLINE_LAYOUT_PART_NAMES[i]}" "${AIRLINE_LAYOUT_PART_FORMATS[i]}" || return
     coll_register session "$session" widgets "$id"
     prv_set_session "$session" "widget-$id-file" "${AIRLINE_LAYOUT_PART_FILES[i]}"
     prv_set_session "$session" "widget-$id-name" "${AIRLINE_LAYOUT_PART_NAMES[i]}"
     prv_set_session "$session" "widget-$id-slot" "${AIRLINE_LAYOUT_PART_SLOTS[i]}"
     prv_set_session "$session" "widget-$id-kind" "${AIRLINE_LAYOUT_PART_KINDS[i]}"
-    prv_set_session "$session" "widget-$id-argc" "${AIRLINE_LAYOUT_WIDGET_ARGC[$id]}"
-    for ((n=0; n<${AIRLINE_LAYOUT_WIDGET_ARGC[$id]}; n++)); do
-      prv_set_session "$session" "widget-$id-arg-$n" "${AIRLINE_LAYOUT_WIDGET_ARGS[$id-$n]}"
-    done
+    prv_set_session "$session" "widget-$id-message" "${AIRLINE_LAYOUT_WIDGET_MESSAGES[$id]:-}"
+
   done
   prv_set_session "$session" layout "$handle"
 }
@@ -296,16 +330,18 @@ _layout_commit_unlocked () {
 # the committed layout rather than mutating the global problem ledger directly.
 # Publishing after the configuration transaction avoids nested transactions.
 layout_widget_claims_sync () {   # <session>
-  local session="$1" id kind name
+  local session="$1" id kind message level
   for id in $(coll_members session "$session" widget-problem-retire); do
-    signal_problem_close --session "$session" airline-widget "$id" || return
+    if ! coll_has session "$session" widgets "$id"; then
+      signal_problem_close --session "$session" airline-widget "$id" || return
+    fi
     with_session_transaction "$session" config coll_unregister session "$session" widget-problem-retire "$id" || return
   done
   for id in $(coll_members session "$session" widgets); do
     prv_get_session_into kind "$session" "widget-$id-kind" || return
-    [[ "$kind" == unavailable ]] || continue
-    prv_get_session_into name "$session" "widget-$id-name" || return
-    signal_problem_report "$session" airline-widget "$id" warn "$name widget is unavailable" || return
+    prv_get_session_into message "$session" "widget-$id-message" || return
+    case "$kind" in unavailable) level=warn ;; failed) level=fail ;; *) level=ok ;; esac
+    signal_problem_report "$session" airline-widget "$id" "$level" "$message" || return
   done
 }
 
@@ -548,7 +584,7 @@ layout_load () {
   (( rc == 0 )) || return "$rc"
 }
 layout_describe () (
-  local session file slot i id n
+  local session file slot i id
   (( $# == 1 )) || command_die "layout describe: need exactly one <layout>"
   session="$(command_current_session)"
   file="$(catalog_describe_resolve "$session" layout "$1")" || return
@@ -565,14 +601,13 @@ layout_describe () (
   for ((i=0; i<${#AIRLINE_LAYOUT_PART_SLOTS[@]}; i++)); do
     printf '  %s %s %s %s\n' "${AIRLINE_LAYOUT_PART_SLOTS[i]}" "${AIRLINE_LAYOUT_PART_KINDS[i]}" \
       "${AIRLINE_LAYOUT_PART_NAMES[i]}" "${AIRLINE_LAYOUT_PART_FORMATS[i]}"
+    id="${AIRLINE_LAYOUT_PART_IDS[i]}"
+    if [[ -n "$id" && -n "${AIRLINE_LAYOUT_WIDGET_MESSAGES[$id]:-}" ]]; then
+      printf '    problem %s\n' "${AIRLINE_LAYOUT_WIDGET_MESSAGES[$id]}"
+    fi
     if [[ -n "${AIRLINE_LAYOUT_PART_FILES[i]}" ]]; then
       printf '    source %s\n' "${AIRLINE_LAYOUT_PART_FILES[i]}"
       id="${AIRLINE_LAYOUT_PART_IDS[i]}"
-      printf '    args'
-      for ((n=0; n<${AIRLINE_LAYOUT_WIDGET_ARGC[$id]:-0}; n++)); do
-        printf ' %q' "${AIRLINE_LAYOUT_WIDGET_ARGS[$id-$n]}"
-      done
-      printf '\n'
     fi
   done
 )

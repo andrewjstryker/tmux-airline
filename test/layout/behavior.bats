@@ -101,9 +101,7 @@ WIDGET
 #| summary: Inspect declarations
 _LAYOUT_TEST_SOURCED=changed
 airline_layout_configure() {
-  "$1" segment left-out '#S'
-  "$1" widget left-out named 'one two'
-  "$1" widget left-out named three
+  "$1" segment left-out '#S#{E:@airline--widget-named}#{E:@airline--widget-named}'
 }
 LAYOUT
   cfg_set_session s1 segment-left-out old
@@ -115,9 +113,8 @@ LAYOUT
   assert_equal "$_FAKE_WRITES" "$writes"
   [[ ! -e "$BATS_TEST_TMPDIR/observed" && -z "${_LAYOUT_TEST_SOURCED:-}" && -z "${_RENDERED:-}" ]]
   run cat "$BATS_TEST_TMPDIR/description"
-  assert_output --partial 'left-out widget named #{@airline-palette-emphasized}'
-  assert_output --partial 'args one\ two'
-  assert_output --partial 'args three'
+  assert_output --partial 'left-out widget named #[push-default]default'
+  assert_output --partial '#S#{E:@airline--widget-named}#{E:@airline--widget-named}'
 }
 
 @test "layout describe evaluates current environment and resets previous declarations" {
@@ -172,14 +169,11 @@ LAYOUT
     declare_part() { printf '%s\n' "$*"; }
     run airline_layout_configure declare_part
     assert_success
-    assert_line --index 0 'segment left-out #h'
-    assert_line --index 1 'segment left-mid #S'
-    assert_line --index 2 'widget right-in prefix'
-    assert_line --index 3 'widget-optional left-mid online'
-    assert_line --index 4 'widget-optional right-mid cpu'
-    assert_line --index 5 'segment right-out %Y-%m-%d %H:%M '
-    assert_line --index 6 'widget-optional right-out battery'
-    assert_line --index 7 'widget-optional right-out power'
+    assert_line --index 0 'segment left-out #h:#S'
+    assert_line --index 1 'segment left-mid #{E:@airline--widget-online}'
+    assert_line --index 2 'segment right-in #{E:@airline--widget-prefix}'
+    assert_line --index 3 'segment right-mid #{E:@airline--widget-cpu}'
+    assert_line --index 4 'segment right-out %Y-%m-%d %H:%M #{E:@airline--widget-battery}#{E:@airline--widget-power} #{E:@airline--widget-problem}'
   done
 }
 
@@ -190,5 +184,117 @@ LAYOUT
   assert_success
   assert_line --index 0 'segment left-out #h'
   assert_line --index 1 'segment left-mid #S'
-  assert_line --index 2 'segment right-out %Y-%m-%d %H:%M'
+  assert_line --index 2 'segment right-out %Y-%m-%d %H:%M #{E:@airline--widget-problem}'
+}
+
+@test "segment replacements compile only final content and widgets" {
+  mkdir "$BATS_TEST_TMPDIR/catalog"
+  catalog_register s1 layout "$BATS_TEST_TMPDIR/catalog"
+  cat > "$BATS_TEST_TMPDIR/catalog/replaced.sh" <<'LAYOUT'
+#| summary: Replacement fixture
+airline_layout_configure() {
+  "$1" segment left-out '#{E:@airline--widget-does-not-exist}'
+  "$1" segment right-out '#{E:@airline--widget-also-missing}'
+  "$1" segment left-out 'final #S #{?client_prefix,yes,no} ##{E:@airline--widget-literal}'
+  "$1" segment right-out ''
+}
+LAYOUT
+  run layout_describe replaced
+  assert_success
+  assert_output --partial 'final #S #{?client_prefix,yes,no} ##{E:@airline--widget-literal}'
+  assert_line 'right-out    '
+  refute_output --partial 'does-not-exist'
+  refute_output --partial 'also-missing'
+}
+
+@test "native widget references remain intact and configuration comes from tmux options" {
+  mkdir "$BATS_TEST_TMPDIR/catalog"
+  catalog_register s1 layout "$BATS_TEST_TMPDIR/catalog"
+  catalog_register s1 widget "$BATS_TEST_TMPDIR/catalog"
+  cat > "$BATS_TEST_TMPDIR/catalog/echo.sh" <<'WIDGET'
+#| summary: Option fixture
+airline_widget_format() {
+  local text
+  text="$(tmux show-option -gqv @airline-widget-echo-text)" || return
+  printf '%s' "${text:-fallback}"
+}
+WIDGET
+  cat > "$BATS_TEST_TMPDIR/catalog/native.sh" <<'LAYOUT'
+#| summary: Native format fixture
+airline_layout_configure() {
+  "$1" segment left-out 'before #S #{?client_prefix,#{E:@airline--widget-echo},idle} ##{E:@airline--widget-absent} after'
+  "$1" segment right-out '#{E:@airline--widget-echo}'
+}
+LAYOUT
+  pub_set widget-echo-text 'two words $HOME $(touch sentinel)'
+  cd "$BATS_TEST_TMPDIR"
+  layout_use native
+  run cfg_get_session s1 segment-left-out
+  assert_output --partial 'before #S #{?client_prefix,#{E:@airline--widget-echo},idle} ##{E:@airline--widget-absent} after'
+  run prv_get_session s1 widget-echo
+  assert_output '#[push-default]two words $HOME $(touch sentinel)#[default]#[pop-default]'
+  run signal_problem_show airline-widget
+  assert_output ''
+  [[ ! -e sentinel ]]
+
+  # Removing one placement preserves the shared expression for the other slot.
+  widget_retire_session s1 left-out
+  run prv_get_session s1 widget-echo
+  assert_output --partial 'two words'
+  widget_retire_session s1 right-out
+  run prv_get_session s1 widget-echo
+  assert_output ''
+}
+
+@test "widget describe rejects argument overrides" {
+  run widget_describe prefix --show-copy off
+  assert_failure
+  assert_output --partial 'need exactly one <widget>'
+}
+
+@test "broken embedded widgets report problems while neighboring content renders and recover on reload" {
+  mkdir "$BATS_TEST_TMPDIR/catalog"
+  catalog_register s1 layout "$BATS_TEST_TMPDIR/catalog"
+  catalog_register s1 widget "$BATS_TEST_TMPDIR/catalog"
+  cat > "$BATS_TEST_TMPDIR/catalog/degraded.sh" <<'LAYOUT'
+#| summary: Recoverable widget failure
+airline_layout_configure() {
+  "$1" segment left-out 'before #{E:@airline--widget-fixture} after'
+}
+LAYOUT
+  run layout_describe degraded
+  assert_success
+  assert_output --partial 'before #{E:@airline--widget-fixture} after'
+  assert_output --partial 'fixture widget was not found'
+  run signal_problem_show airline-widget
+  assert_output ''
+
+  layout_use degraded
+  run signal_problem_show airline-widget
+  assert_output --partial fail
+  assert_output --partial 'fixture widget was not found'
+
+  cat > "$BATS_TEST_TMPDIR/catalog/fixture.sh" <<'WIDGET'
+#| summary: Broken format
+airline_widget_format() { printf '\n\n'; }
+WIDGET
+  layout_use degraded
+  run signal_problem_show airline-widget
+  assert_output --partial 'could not be evaluated'
+  run cfg_get_session s1 segment-left-out
+  assert_output --partial 'before #{E:@airline--widget-fixture} after'
+
+  cat > "$BATS_TEST_TMPDIR/catalog/fixture.sh" <<'WIDGET'
+#| summary: Recovered widget
+airline_widget_format() { printf 'working'; }
+WIDGET
+  layout_use degraded
+  run cfg_get_session s1 segment-left-out
+  assert_output --partial 'before #{E:@airline--widget-fixture} after'
+  run prv_get_session s1 widget-fixture
+  assert_output '#[push-default]working#[default]#[pop-default]'
+  run signal_problem_show airline-widget
+  assert_output ''
+  run signal_problem_show --all airline-widget s1-left-out-1-fixture
+  assert_output --partial resolved
 }

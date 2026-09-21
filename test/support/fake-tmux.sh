@@ -2,7 +2,7 @@
 #
 # support/fake-tmux.sh — an in-memory stand-in for the tmux binary, for unit tests.
 #
-# tmux.sh is the ONE place airline talks to tmux (Invariant A), and it bottoms out
+# tmux.sh owns the core tmux calls (Invariant A), and it bottoms out
 # in three private cores (_opt_show/_opt_write/_opt_clear) plus a few standalone
 # verbs. This file sources the REAL tmux.sh — so every composed function above the
 # leaves (opt_setif_*, the scalar accessors, and all of collections.sh /
@@ -135,3 +135,10 @@ source_file_session () {   # <session> <file>
 }
 
 # vim: ft=bash
+
+# Widget definitions read their public configuration directly from tmux. Keep
+# that read-only seam on the same fake store as the core option accessors.
+tmux() {
+  [[ $# == 3 && "$1" == show-option && "$2" == -gqv && "$3" == @airline-widget-* ]] || return 2
+  opt_get_global "$3"
+}

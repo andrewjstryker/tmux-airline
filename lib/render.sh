@@ -210,7 +210,7 @@ _build_status_right () {
   printf '%s' "$out"
 }
 
-# A fragment gets the segment baseline on both sides, including attribute resets.
+# Establish the baseline once before a complete compiled segment, resetting attributes.
 render_fragment () {
   local slot="$1" content="$2" style
   [[ -n "$content" ]] || return 0

@@ -184,7 +184,7 @@ write_layout() {   # <path> <configure-body>
   run airline widget list
   assert_line battery; assert_line online; assert_line power; assert_line prefix
   mkdir -p "$BATS_TEST_TMPDIR/widgets"
-  write_layout "$BATS_TEST_TMPDIR/widgets/withprefix.sh" '  "$declare" widget left-out prefix'
+  write_layout "$BATS_TEST_TMPDIR/widgets/withprefix.sh" '  "$declare" segment left-out "#{E:@airline--widget-prefix}"'
   write_layout "$BATS_TEST_TMPDIR/widgets/bare.sh" '  "$declare" segment left-out "#S"'
   airline layout register "$BATS_TEST_TMPDIR/widgets"
   airline layout use withprefix
@@ -221,11 +221,13 @@ write_layout() {   # <path> <configure-body>
   assert_output --partial "#h"                    # private snapshot was not replaced by staging
   mkdir -p "$BATS_TMPDIR/mylayouts"
   write_layout "$BATS_TMPDIR/mylayouts/withprefix.sh" \
-    '  "$declare" widget right-mid prefix
+    '  "$declare" segment right-mid "#{E:@airline--widget-prefix}"
   "$declare" segment left-out "#S"'
   airline layout register "$BATS_TMPDIR/mylayouts"
   airline layout use withprefix
   run airline segment show right-mid
+  assert_output --partial '#{E:@airline--widget-prefix}'
+  run sopt @airline--widget-prefix
   assert_output --partial 'client_prefix'
   mkdir -p "$BATS_TMPDIR/switch"
   write_layout "$BATS_TMPDIR/switch/rich.sh" '  "$declare" segment left-mid "MID"'
@@ -281,7 +283,9 @@ write_layout() {   # <path> <configure-body>
 
   run airline layout use duplicate
   assert_success
-  [[ "$(airline segment show left-out)" == *ONE*TWO* ]]
+  run airline segment show left-out
+  assert_output --partial TWO
+  refute_output --partial ONE
   run airline layout use noisy
   assert_failure
   assert_output --partial "wrote to stdout"
@@ -303,7 +307,7 @@ write_layout() {   # <path> <configure-body>
 
 @test "one-off layouts retain widget formats and identities through palette changes" {
   airline session init
-  write_layout "$BATS_TEST_TMPDIR/oneoff.sh" '  "$declare" widget left-out prefix'
+  write_layout "$BATS_TEST_TMPDIR/oneoff.sh" '  "$declare" segment left-out "#{E:@airline--widget-prefix}"'
   airline layout load "$BATS_TEST_TMPDIR/oneoff.sh"
   run airline layout show name
   assert_output "$BATS_TEST_TMPDIR/oneoff.sh"
@@ -336,11 +340,11 @@ write_layout() {   # <path> <configure-body>
   # Every shipped layout places the problem widget, so right-out is never bare;
   # minimal contributes the widget alone and default also carries its clock.
   run airline_session "$one" segment show right-out
-  assert_output --partial "widgets/problem"
+  assert_output --partial '#{E:@airline--widget-problem}'
   refute_output --partial "%Y-%m-%d %H:%M"
   run airline_session "$other" segment show right-out
   assert_output --partial "%Y-%m-%d %H:%M"
-  assert_output --partial "widgets/problem"
+  assert_output --partial '#{E:@airline--widget-problem}'
 
   run sopt @airline-palette-secondary -t "$one"
   assert_output "colour245"
@@ -431,8 +435,7 @@ write_layout() {   # <path> <configure-body>
   cat > "$BATS_TEST_TMPDIR/layouts/inspect.sh" <<'LAYOUT'
 #| summary: Inspect native declarations
 airline_layout_configure() {
-  "$1" segment left-out 'candidate #S'
-  "$1" widget left-out fixture
+  "$1" segment left-out 'candidate #S #{E:@airline--widget-fixture}'
 }
 LAYOUT
   airline layout register "$BATS_TEST_TMPDIR/layouts"

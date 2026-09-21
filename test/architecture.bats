@@ -12,11 +12,11 @@ load test_helper/bats-assert/load
 
 LINT="$BATS_TEST_DIRNAME/lint-architecture.sh"
 
-@test "Invariant A — only tmux.sh invokes the tmux binary" {
+@test "Invariant A — core owns tmux mutations and widgets read their own public options" {
   run "$LINT" A
   if [[ "$status" -ne 0 ]]; then
     {
-      echo "Direct \`tmux\` calls outside tmux.sh violate its mechanical ownership."
+      echo "Direct \`tmux\` calls must belong to the core mechanical layer or read a widget’s own public options."
       echo "Each must move onto a tmux.sh function (opt_*, redraw, hook_*, key_*, …):"
       echo
       printf '%s\n' "$output" | cut -d: -f2 | sort | uniq -c | sort -rn
@@ -110,4 +110,36 @@ LINT="$BATS_TEST_DIRNAME/lint-architecture.sh"
   printf "airline_widget_format() { printf '%%s' '#{@airline--config-primary}'; }\n" > "$fixture/layouts/widgets/sample.sh"
   run env AIRLINE_LINT_ROOT="$fixture" "$LINT" B
   assert_failure
+}
+
+@test "Invariant B allows native widget references in layouts but no other private state" {
+  local fixture="$BATS_TEST_TMPDIR/b-layout"
+  mkdir -p "$fixture/layouts/definitions"
+  cat > "$fixture/layouts/definitions/sample.sh" <<'LAYOUT'
+airline_layout_configure() { "$1" segment right-in '#{E:@airline--widget-prefix}'; }
+LAYOUT
+  run env AIRLINE_LINT_ROOT="$fixture" "$LINT" B
+  assert_success
+  cat >> "$fixture/layouts/definitions/sample.sh" <<'LAYOUT'
+read_private() { printf '%s' '#{E:@airline--widget-prefix} #{@airline--config-primary}'; }
+LAYOUT
+  run env AIRLINE_LINT_ROOT="$fixture" "$LINT" B
+  assert_failure
+}
+
+@test "Invariant A permits only widget-owned public option reads" {
+  local fixture="$BATS_TEST_TMPDIR/a-widget"
+  mkdir -p "$fixture/layouts/widgets"
+  printf 'read_option() { tmux show-option -gqv @airline-widget-cpu-medium; }\n' > "$fixture/layouts/widgets/cpu.sh"
+  run env AIRLINE_LINT_ROOT="$fixture" "$LINT" A
+  assert_success
+  for command in \
+    'tmux show-option -gqv @airline-widget-prefix-show-copy' \
+    'tmux show-option -gqv @airline--widget-cpu' \
+    'tmux set-option -g @airline-widget-cpu-medium 60' \
+    'tmux show-option -gqv @airline-widget-cpu-medium; tmux kill-server'; do
+    printf 'bad() { %s; }\n' "$command" > "$fixture/layouts/widgets/cpu.sh"
+    run env AIRLINE_LINT_ROOT="$fixture" "$LINT" A
+    assert_failure
+  done
 }

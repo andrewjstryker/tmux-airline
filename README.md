@@ -293,22 +293,24 @@ See [layout inspection and application](docs/layouts.md) for evaluation and vali
 
 Switching layouts starts from a clean slate, so a layout owns exactly the arrangement
 it declares. A layout is trusted Bash with one required function. The function uses
-its callback argument to declare segments and widgets:
+its callback argument to define complete segments:
 
 ```bash
 airline_layout_configure () {
   local declare="$1"
   "$declare" segment left-out '#S'
-  "$declare" widget right-mid cpu
-  "$declare" segment right-mid ' | '
-  "$declare" widget right-mid prefix
+  "$declare" segment right-mid '#{E:@airline--widget-cpu} | #{E:@airline--widget-prefix}'
 }
 ```
 
 Airline validates the whole declaration before replacing private layout state.
-Unknown slots, invalid widgets, nested Airline commands, and stdout are errors.
-Repeated declarations append fragments within a slot. Omitted slots are intentionally empty. Put the file in a registered
-layout directory and select it by filename. A failed selection preserves the last
+Unknown slots, nested Airline commands, and layout stdout
+reject the candidate. A later declaration replaces the slot's entire definition;
+omitted slots are empty. Widget failures leave their position empty and report
+through the problem service. Reloading the layout after recovery resolves that claim.
+Widget expressions are private session options expanded by tmux; parameters come
+from global `@airline-widget-<name>-<option>` options.
+Put the file in a registered layout directory and select it by filename. A failed selection preserves the last
 committed layout and raises the global `airline-layout` problem with that session as
 its origin; a successful layout selection resolves that origin's claim.
 
@@ -318,7 +320,7 @@ the window colors below rather than configured as a segment.
 ## Widgets
 
 Widgets return tmux format fragments and choose their presentation using public
-palette options. Airline establishes the segment `fg` and `bg` before each fragment;
+palette options. Native style wrappers capture each placement’s surrounding `fg` and `bg`;
 if a widget changes either value, the fragment must restore the supplied values before
 it ends. Widget runtime commands are stateless scalar producers evaluated by tmux's
 normal status refresh; Airline provides no widget scheduler or runtime wrapper.
@@ -331,10 +333,11 @@ normal status refresh; Airline provides no widget scheduler or runtime wrapper.
 | `online` | ICMP reachability of a chosen host; requires `ping` |
 | `prefix` | Native prefix, Copy, Sync, and key-table badges; no subprocess |
 
-Use `airline widget list`, `airline widget describe cpu --medium 60`, and
+Use `airline widget list`, `airline widget describe cpu`, and
 `airline widget register <dir>` for discovery. Layout declarations activate widgets.
 Persistent defaults use `@airline-widget-<name>-<option>` global tmux options;
-placement arguments override them. Reload the layout to apply changed defaults.
+each widget reads and validates its own options. Airline publishes the resulting
+private expression. Reload the layout to apply changed defaults.
 The adapter catalog and CLI have been removed; replace adapter/plugin placeholders
 with widget placements. See [widgets](docs/widgets.md) for migration, authoring,
 platform limits, and runtime behavior.

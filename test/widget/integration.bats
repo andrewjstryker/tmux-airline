@@ -78,7 +78,7 @@ WIDGET
   mkdir "$BATS_TEST_TMPDIR/layouts"
   cat > "$BATS_TEST_TMPDIR/layouts/missing.sh" <<'LAYOUT'
 #| summary: Layout with an unavailable required widget
-airline_layout_configure() { "$1" widget left-out missing; }
+airline_layout_configure() { "$1" segment left-out "#{E:@airline--widget-missing}"; }
 LAYOUT
   airline widget register "$BATS_TEST_TMPDIR/widgets"
   airline layout register "$BATS_TEST_TMPDIR/layouts"
@@ -94,11 +94,28 @@ LAYOUT
   assert_success
   assert_output ''
   run airline segment show left-out
+  assert_output --partial '#{E:@airline--widget-missing}'
+  run sopt @airline--widget-missing
   assert_output ''
   run airline problem show airline-widget
   assert_output --partial 'warn'
   widget_id="$(awk '$1 == "airline-widget" { print $2; exit }' <<< "$output")"
   [[ -n "$widget_id" ]]
+
+  # Availability is checked again on reload; the same placement recovers its claim.
+  sed -i 's/return 3/return 0/' "$BATS_TEST_TMPDIR/widgets/missing.sh"
+  airline layout use missing
+  run airline problem show airline-widget
+  assert_output ''
+  run airline problem show --all airline-widget "$widget_id"
+  assert_output --partial 'resolved'
+
+  # A repeated failure reopens that claim instead of accumulating new problems.
+  sed -i 's/return 0/return 3/' "$BATS_TEST_TMPDIR/widgets/missing.sh"
+  airline layout use missing
+  run airline problem show airline-widget
+  assert_output --partial "$widget_id"
+  assert_output --partial 'warn'
 
   # Replacing the layout retires both the widget and its active capability claim.
   airline layout use minimal
@@ -106,4 +123,37 @@ LAYOUT
   assert_output ''
   run airline problem show --all airline-widget "$widget_id"
   assert_output --partial 'closed'
+}
+
+@test "widget-owned public options determine private expressions and recover invalid configuration" {
+  airline session init
+  $TMUX -L "$_bats_socket" set-option -g @airline-widget-cpu-medium 72
+  $TMUX -L "$_bats_socket" set-option -g @airline-widget-cpu-high 91
+  $TMUX -L "$_bats_socket" set-option -g @airline-widget-prefix-show-copy off
+  airline layout use full
+  run sopt @airline--widget-cpu
+  assert_output --partial ',72}'
+  assert_output --partial ',91}'
+  run sopt @airline--widget-prefix
+  refute_output --partial '[Copy]'
+  assert_output --partial '[Sync]'
+
+  # Invalid options belong to the widget; the host only publishes its failure.
+  $TMUX -L "$_bats_socket" set-option -g @airline-widget-cpu-medium 99
+  airline layout use full
+  run sopt @airline--widget-cpu
+  assert_output ''
+  run airline problem show airline-widget
+  assert_output --partial 'cpu widget could not be evaluated'
+  widget_id="$(awk '$1 == "airline-widget" && /cpu widget/ { print $2; exit }' <<< "$output")"
+  [[ -n "$widget_id" ]]
+
+  $TMUX -L "$_bats_socket" set-option -g @airline-widget-cpu-medium 72
+  airline layout use full
+  run airline problem show airline-widget "$widget_id"
+  assert_output ''
+  run airline problem show --all airline-widget "$widget_id"
+  assert_output --partial resolved
+  run sopt @airline-widget-cpu-medium -g
+  assert_output 72
 }

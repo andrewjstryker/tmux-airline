@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
 #| summary: Available native widgets alongside session and date
 airline_layout_configure () {
-  "$1" segment left-out '#h'
-  "$1" segment left-mid '#S'
-  "$1" widget right-in prefix
-  "$1" widget-optional left-mid online
-  "$1" widget-optional right-mid cpu
-  "$1" segment right-out '%Y-%m-%d %H:%M '
-  "$1" widget-optional right-out battery
-  "$1" widget-optional right-out power
-  "$1" widget right-out problem
+  local declare="$1"
+  "$declare" segment left-out '#h:#S'
+  "$declare" segment left-mid '#{E:@airline--widget-online}'
+  "$declare" segment right-in '#{E:@airline--widget-prefix}'
+  "$declare" segment right-mid '#{E:@airline--widget-cpu}'
+  "$declare" segment right-out '%Y-%m-%d %H:%M #{E:@airline--widget-battery}#{E:@airline--widget-power} #{E:@airline--widget-problem}'
 }

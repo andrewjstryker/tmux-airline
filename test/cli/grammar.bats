@@ -68,7 +68,7 @@ palette load /tmp/palette|layout_palette_load </tmp/palette>
 palette describe light|layout_palette_describe <light>
 layout describe full|layout_describe <full>
 segment show left-out|layout_segment_show <left-out>
-widget describe cpu --warn 60|widget_describe <cpu> <--warn> <60>
+widget describe cpu|widget_describe <cpu>
 layout register /tmp/layouts|layout_register </tmp/layouts>
 classifier describe conventional|catalog_describe <classifier> <conventional>
 filter list|runner_filter_list

@@ -279,9 +279,13 @@ an axis, recording the name or absolute path. Widgets activate through layout
 placements, with preserved argument boundaries and per-fragment identities.
 
 Configuration transactions serialize each session's publication. Layout callbacks
-accept `segment <slot> <format>`, `widget <slot> <name> [arguments...]`, and
-`widget-optional <slot> <name> [arguments...]`. Only optional availability may omit a
-widget; invalid declarations reject the candidate. Repeated slots append. Widgets
+accept `segment <slot> <format>` with native `#{E:@airline--widget-<name>}`
+references. Widget expressions are published as private session options, and tmux
+expands them. Global tmux options are the only widget parameter interface; widgets read and
+validate their own namespace, and Airline does not translate configuration into arguments. Later declarations replace the complete slot; only final definitions
+are compiled. Unavailable or broken widgets contribute no content and report a problem;
+reloading a recovered placement resolves its claim. Invalid declarations reject
+the candidate. Layout composition treats compiled segments as opaque formats. Widgets
 may set local styles; conforming widget fragments restore the supplied segment `fg`
 and `bg` before they end. Format construction does not observe or mutate tmux.
 
@@ -701,8 +705,12 @@ origin claims, badge, and transaction marker.
   application. The external PATH shim, generated Bash/Zsh completion scripts,
   test shims, and inert tmux configuration are explicit exclusions. Completions
   are shell integration artifacts; they may query tmux directly for target
-  suggestions and preserve `AIRLINE_TMUX` when doing so.
-- **B — namespace ownership:** only `lib/tmux.sh` constructs literal private `@airline--` names in shell code. Palette and segment configuration spell public
+  suggestions and preserve `AIRLINE_TMUX` when doing so. Widget format definitions
+  may read their own public `@airline-widget-<name>-...` options directly with
+  `tmux show-option -gqv`; they may not mutate tmux or read private state.
+- **B — namespace ownership:** only `lib/tmux.sh` constructs literal private `@airline--` names in shell code.
+  Layout definitions may reference published widget expressions using the exact
+  native `#{E:@airline--widget-<name>}` form; other private names remain forbidden. Palette and segment configuration spell public
   names because those names are the external contract.
 - **D — module boundaries:** a function whose name begins with `_` may be referenced
   only by the module that defines it. Calls to public functions must point to a

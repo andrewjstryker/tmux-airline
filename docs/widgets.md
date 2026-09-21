@@ -4,14 +4,15 @@ A widget is a trusted catalog entry with a `.sh` format definition and, when it 
 external data, an extensionless runtime executable with the same logical name. The
 format definition returns one tmux status-format fragment. It assumes that Airline
 has already established the segment's `fg` and `bg`; it may change those values, but
-must restore them before its expression ends. Airline composes fragments in layout
-order and adds padding and separators once per segment. Tmux owns status refreshes;
+must restore them before its expression ends. Airline publishes each requested
+widget expression in a private session option; tmux expands it through native `E:`
+references. Airline adds padding and separators once per segment. Tmux owns status refreshes;
 Airline supplies no widget scheduler or stateful runtime.
 
 ```bash
 #| summary: Prefix indicator
 #| usage:
-airline_widget_format() { # <segment-fg> <segment-bg> [<widget-args>...]
+airline_widget_format() { # <segment-fg> <segment-bg>
   local fg="$1" bg="$2"
   shift 2
   printf '%s' '#{?client_prefix,PREFIX,}'
@@ -19,27 +20,26 @@ airline_widget_format() { # <segment-fg> <segment-bg> [<widget-args>...]
 ```
 
 Register the containing directory with `airline widget register <dir>`. Use
-`widget list` for discovery and `widget describe <name> [arguments...]` to inspect
+`widget list` for discovery and `widget describe <name>` to inspect
 metadata, availability, and the literal returned format. Inspection never starts
 jobs. Place widgets through a layout:
 
 ```bash
 airline_layout_configure() {
   "$1" segment left-out '#S'
-  "$1" widget right-mid cpu --medium 60 --high 85
-  "$1" segment right-mid ' | '
-  "$1" widget right-mid online --host example.com
-  "$1" widget-optional right-out battery
-  "$1" widget-optional right-out power
+  "$1" segment right-mid '#{E:@airline--widget-cpu} | #{E:@airline--widget-online}'
+  "$1" segment right-out '#{E:@airline--widget-battery}#{E:@airline--widget-power}'
 }
 ```
 
-`widget-optional` omits a widget only when its availability check returns 3. A required
-widget that returns unavailable reports a warn problem and contributes no fragment.
-Missing names, invalid arguments, and malformed formats fail the layout. Repeated placements
-are independent instances. Switching layouts retires previous instances and their
-claims. A global segment override applied with `session apply` retires only that
-slot's widgets.
+A requested widget that returns unavailable (status 3) reports a warn problem and
+contributes no content. Reloading the layout rechecks availability and recovers the
+same placement's problem when it becomes available.
+Missing names, invalid arguments, and malformed formats report a failure through
+the problem service and leave that widget position empty. Other segment content
+continues to render. Repeated placements share one expression and configuration, with placement-specific claims. Replacing a
+layout retires removed placements and their claims. A global segment override
+applied with `session apply` retires only that slot's widgets.
 
 ## Shipped widgets
 
@@ -94,7 +94,7 @@ no terminal controls or layout-level alignment/list/range directives. Source-tim
 code must be quiet; format construction must not sample or mutate tmux. Definitions
 are trusted code, so these checks are contract validation, not a security sandbox.
 
-## Persistent defaults and placement overrides
+## Configuration through tmux options
 
 Set global tmux options named `@airline-widget-<name>-<option>` in a tmux `.conf` file:
 
@@ -107,11 +107,10 @@ set -g @airline-widget-power-connected-icon 'AC'
 set -g @airline-widget-prefix-show-sync on
 ```
 
-Precedence is explicit placement argument, nonempty global option, then widget
-built-in default. These are global inputs; session-scoped options with the same
-names are not consulted. An unset or empty global option uses the built-in default.
-For example, `widget right-mid cpu --medium 70` overrides the global medium threshold
-only for that placement. Repeated placements remain independent.
+A nonempty global option overrides the widget's built-in default. Session-scoped
+options with the same names are not consulted. An unset or empty global option
+uses the built-in default. These options are the only parameter interface;
+placements and `widget describe` do not accept argument overrides.
 
 | Widget | Options and built-in defaults |
 |---|---|
@@ -121,7 +120,6 @@ only for that placement. Repeated placements remain independent.
 | `online` | `host=1.1.1.1`, `timeout=1` (integer seconds, 1–8), `online-icon=●`, `offline-icon=●` |
 | `prefix` | `show-copy=on`, `show-sync=on` (each `on` or `off`) |
 
-Every option also has a corresponding `--<option> <value>` placement argument.
 CPU thresholds are integers from 0 to 100; medium must not exceed high. Thresholds
 choose the three display levels; they do not create health or problem claims. Icons
 are literal text, not tmux formats.
@@ -131,35 +129,49 @@ IP address does not. The runtime executable owns its failure and unavailable-dat
 presentation; Airline does not turn runtime stderr into a problem or impose a second
 timeout.
 
-Defaults are resolved and validated when a layout is loaded. The same resolved
-argument vector goes to format construction and, when present, the runtime companion.
-Changing a global option does not change an already composed format. Reload the layout
-after changing defaults, for example `airline layout use full` (or `airline layout
-load <path>` for a file). Invalid effective options reject a candidate layout,
-including optional placements, leaving the previously loaded layout intact.
+Each widget reads and validates its own public options while constructing its
+expression. It supplies any arguments needed by its runtime companion through
+`widget_runtime`. Airline neither interprets widget option metadata nor translates
+options into arguments. Changing an option requires reloading the layout, for
+example `airline layout use full`. Invalid values leave that widget's expression
+empty and report a problem; other segment content continues to render.
 
-`widget describe <name> [arguments...]` reports `effective-arguments` using the current
-global defaults and supplied overrides, plus the resulting format. It does not
-sample or modify existing instances. Layout inspection uses the same resolution.
+`widget describe <name>` invokes the same format function and reports availability
+and the generated expression. Inspection reads public options but does not sample
+or change configuration or problem claims.
 
-Custom widgets opt into this policy with an `options` metadata field containing
-space-separated long option names, and one `default-<option>` field per option.
-All declared options take one value. The host supplies each option once, in metadata
-order, preserving argument boundaries. Widgets validate values in their format
-function; their runtime companion receives the captured observation arguments.
-Widgets without `options` metadata keep their existing argv contract. There is no
-shared Airline refresh-policy option.
+A custom widget owns its `@airline-widget-<name>-...` namespace, defaults, and
+validation. Read options directly with `tmux show-option -gqv` inside the format
+function, not at source time. For example:
+
+```bash
+airline_widget_format() {
+  local fg="$1" bg="$2" icon
+  icon="$(tmux show-option -gqv @airline-widget-example-icon)" || return
+  icon="${icon:-READY}"
+  printf '%s' "$(widget_text "$icon")"
+}
+```
+
+Unset or empty options use defaults chosen by the widget. Treat values as data;
+quote them and escape literal text inserted into tmux formats. Widgets may read
+only their own public configuration; mutation and private-state access remain
+Airline's responsibility. No `options` or `default-*` metadata is needed.
 
 ## Migration
 
-Replace `adapter use` declarations and plugin placeholder strings with `widget
-<slot> <name> [arguments...]`. The old adapter CLI and catalog are removed; register
-custom formats in the widget catalog. `prefix` replaces `prefix-highlight`.
+Replace standalone `widget` / `widget-optional` declarations, `adapter use`, and
+the earlier `{{widget ...}}` placeholders with native
+`#{E:@airline--widget-<name>}` references inside segment strings. Move inline
+arguments to `@airline-widget-<name>-<option>` tmux options.
+Combine formerly appended fragments into one string per segment. The old adapter
+CLI and catalog are removed; register custom formats in the widget catalog. `prefix` replaces `prefix-highlight`.
 The full layout places online at left-mid, prefix at right-in, CPU at right-mid,
-and battery followed by power after the date at right-out. Optional widgets are
-selected by capability availability, not by TPM installation.
+and battery followed by power after the date at right-out. Unavailable requested
+widgets report through the problem service.
 
-Widgets receive the segment `fg` and `bg` from `airline_widget_format`. Airline's
+Published widgets receive `default` for `fg` and `bg`; a native style wrapper
+captures and restores each placement’s surrounding colors and attributes. Airline's
 palette contract is exposed through session options such as
 `#{@airline-palette-primary}` and `#{@airline-palette-alert}`. A widget that changes
 either style must restore the supplied values before its fragment ends. Palette

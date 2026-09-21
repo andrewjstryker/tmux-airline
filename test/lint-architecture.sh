@@ -2,7 +2,7 @@
 #
 # Build-time architecture checks (DESIGN.md §Enforcement).
 #
-# A — only tmux.sh may invoke the tmux command.
+# A — core tmux calls belong to tmux.sh; widgets may read their public options.
 # B — only tmux.sh may construct literal private airline option names.
 # D — module-private functions stay private and public module calls point to a
 #     lower architectural layer. `command` is the shared boundary helper.
@@ -44,7 +44,7 @@ _code_hits () {   # <extended-regex> <file>
 }
 
 _check_a () {
-  local file hits line rc=0
+  local file hits line checked widget_name rc=0
   while IFS= read -r file; do
     [[ "$(basename "$file")" == tmux.sh ]] && continue
     hits="$(_code_hits '(^|[^[:alnum:]_])tmux([[:space:]]|$)' "$file")"
@@ -53,6 +53,11 @@ _check_a () {
       # airline.sh may define the test/advanced tmux seam; a function definition
       # is not an invocation of the binary.
       [[ "${line#*:}" =~ ^[[:space:]]*tmux[[:space:]]*\(\) ]] && continue
+      if [[ "$file" == "$ROOT"/layouts/widgets/*.sh ]]; then
+        widget_name="${file##*/}"; widget_name="${widget_name%.sh}"
+        checked="$(printf '%s' "${line#*:}" | sed -E "s/tmux show-option -gqv @airline-widget-${widget_name}-[a-z][a-z-]*//g")"
+        if ! printf '%s' "$checked" | grep -qE '(^|[^[:alnum:]_])tmux([[:space:]]|$)'; then continue; fi
+      fi
       printf 'A: %s:%s\n' "${file#"$ROOT"/}" "$line"
       rc=1
     done <<< "$hits"
@@ -61,15 +66,20 @@ _check_a () {
 }
 
 _check_b () {
-  local file hits rc=0
+  local file hits line checked rc=0
   while IFS= read -r file; do
     [[ "$(basename "$file")" == tmux.sh ]] && continue
     hits="$(_code_hits '@airline--[a-z%$]' "$file")"
     [[ -z "$hits" ]] && continue
-    printf '%s\n' "$hits" | while IFS= read -r line; do
+    while IFS= read -r line; do
+      checked="$line"
+      if [[ "$file" == "$ROOT"/layouts/definitions/* ]]; then
+        checked="$(printf '%s' "$line" | sed -E 's/#\{E:@airline--widget-[a-zA-Z0-9_-]+\}//g')"
+      fi
+      [[ "$checked" == *'@airline--'* ]] || continue
       printf 'B: %s:%s\n' "${file#"$ROOT"/}" "$line"
-    done
-    rc=1
+      rc=1
+    done <<< "$hits"
   done < <(_sources)
   return "$rc"
 }

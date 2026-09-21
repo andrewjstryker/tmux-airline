@@ -169,7 +169,7 @@ cmd_widget () {
   local verb="${1:-}"; shift || true
   # help:begin widget
   case "$verb" in
-    describe) widget_describe "$@" ;; #| <widget> [<arg>...] — inspect a widget format without observing
+    describe) widget_describe "$@" ;; #| <widget> — inspect a widget format without observing
     list) widget_list "$@" ;; #| — list widgets on the search path
     register) widget_register "$@" ;; #| <dir> — add a widget search directory
     *) command_die "unknown widget command: $verb" ;;

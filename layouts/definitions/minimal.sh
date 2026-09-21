@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-#| summary: Window list and session name, nothing else
+#| summary: Window list, session name, and problem indicator
 airline_layout_configure () {
   local declare="$1"
   "$declare" segment left-out "#S"
-  "$declare" widget right-out problem
+  "$declare" segment right-out '#{E:@airline--widget-problem}'
 }

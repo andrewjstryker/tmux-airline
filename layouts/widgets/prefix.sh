@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 #| summary: Native prefix, copy, sync, and key-table badges
-#| usage: [--show-copy <on|off>] [--show-sync <on|off>]
-#| options: show-copy show-sync
-#| default-show-copy: on
-#| default-show-sync: on
 _prefix_badge() {
   # Conditional branches cannot contain unescaped style commas.
   printf '#[fg=#{@airline-palette-inner-bg}]#[bg=#{@airline-palette-%s}][%s]#[fg=%s]#[bg=%s]' "$1" "$2" "$3" "$4"
@@ -11,14 +7,10 @@ _prefix_badge() {
 airline_widget_available() { return 0; }
 airline_widget_format() {
   local fg="$1" bg="$2"; shift 2
-  local show_copy=on show_sync=on fallback
-  while (( $# )); do
-    case "$1" in
-      --show-copy) [[ $# -ge 2 ]] || return 2; show_copy="$2"; shift 2 ;;
-      --show-sync) [[ $# -ge 2 ]] || return 2; show_sync="$2"; shift 2 ;;
-      *) return 2 ;;
-    esac
-  done
+  local show_copy show_sync fallback
+  show_copy="$(tmux show-option -gqv @airline-widget-prefix-show-copy)" || return
+  show_sync="$(tmux show-option -gqv @airline-widget-prefix-show-sync)" || return
+  show_copy="${show_copy:-on}"; show_sync="${show_sync:-on}"
   [[ "$show_copy" == on || "$show_copy" == off ]] || return 2
   [[ "$show_sync" == on || "$show_sync" == off ]] || return 2
   fallback="#{?#{&&:#{!=:#{client_key_table},},#{!=:#{client_key_table},root}},$(_prefix_badge active '#{client_key_table}' "$fg" "$bg"),}"
