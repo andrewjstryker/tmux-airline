@@ -98,25 +98,48 @@ CASES
   assert_output --partial "unknown status command: unknown"
 }
 
-@test "help is generated from the grammar without tmux" {
+@test "root help is a compact index without tmux" {
   run main help
   assert_success
-  assert_output --partial "palette"
-  assert_output --partial "runner"
-  assert_output --partial "version"
-  assert_output --partial "list"
-  assert_output --partial "Observed status results clear"
+  local noun
+  for noun in $AIRLINE_NOUNS version help; do
+    assert_line --regexp "^  $noun +[^ ]"
+  done
+  (( ${#lines[@]} <= 24 ))
+  assert_output --partial "airline help session"
+  refute_output --partial "<pane-target>"
+  refute_output --partial "Observed status results clear"
   refute_output --partial "_observed-result"
-  refute_output --partial "list        — list"
+}
 
-  local session_line layout_line runner_line signals_line diagnostics_line
-  session_line="$(printf '%s\n' "$output" | grep -n '^Session commands:$' | cut -d: -f1)"
-  layout_line="$(printf '%s\n' "$output" | grep -n '^Layout commands:$' | cut -d: -f1)"
-  runner_line="$(printf '%s\n' "$output" | grep -n '^Runner commands:$' | cut -d: -f1)"
-  signals_line="$(printf '%s\n' "$output" | grep -n '^Signals commands:$' | cut -d: -f1)"
-  diagnostics_line="$(printf '%s\n' "$output" | grep -n '^Diagnostics commands:$' | cut -d: -f1)"
-  (( session_line < layout_line && layout_line < runner_line && \
-     runner_line < signals_line && signals_line < diagnostics_line ))
+@test "session help drills down to exact command syntax" {
+  run main help session
+  assert_success
+  assert_output --partial "init [-t <session-target>] [<file>]"
+  assert_output --partial "airline help session <verb>"
+
+  run main help session init
+  assert_success
+  assert_line "Usage: airline session init [-t <session-target>] [<file>]"
+  assert_output --partial "Seed defaults"
+}
+
+@test "help notes appear in the relevant command families" {
+  run main help status
+  assert_success
+  assert_output --partial "Observed status results clear"
+
+  run main help health
+  assert_success
+  assert_output --partial "separate contributor and claim identifiers"
+
+  run main help problem
+  assert_success
+  assert_output --partial "separate contributor and claim identifiers"
+
+  run main help layout
+  assert_success
+  assert_output --partial "use loads a bare name"
 }
 
 @test "canonical help inspects a noun or leaf command" {

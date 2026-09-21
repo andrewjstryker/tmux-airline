@@ -128,8 +128,9 @@ airline layout use full
 airline session show
 ```
 
-For exact options, use `airline help`, `airline help palette`, or
-`airline help palette use`. Bash and Zsh completions follow the same grammar.
+Use `airline help` for the command index, `airline help palette` for subcommands,
+and `airline help palette use` for exact options. Bash and Zsh completions follow
+the same grammar.
 
 After initialization, Airline loads a user startup command file. The default path
 is `$XDG_CONFIG_HOME/airline/config`, or `$HOME/.config/airline/config` when

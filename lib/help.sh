@@ -107,7 +107,18 @@ _help_arms () {   # <section>
 
 _help_noun () {   # <noun>
   printf '%s:\n' "$1"
-  _help_arms "$1"
+  _help_arms "$1" || return
+  case "$1" in
+    palette|layout)
+      printf '\nNotes:\n  use loads a bare name from a registered dir; register adds a search directory.\n'
+      ;;
+    status)
+      printf '\nNotes:\n  Observed status results clear when you focus away from their pane.\n'
+      ;;
+    health|problem)
+      printf '\nNotes:\n  Reporters supply separate contributor and claim identifiers.\n'
+      ;;
+  esac
 }
 
 _help_annotation () {   # <noun-or-empty> <command>
@@ -123,7 +134,7 @@ _help_annotation () {   # <noun-or-empty> <command>
 
 # One machine-readable record per command path: path<TAB>usage<TAB>description,
 # with `@none` standing in for an absent usage. Noun records follow the leaves, in
-# rendered-help order. This is the compilation target for the completion scripts;
+# command-family order. This is the compilation target for the completion scripts;
 # they never read rendered help, so prose formatting is free to change.
 _help_grammar_arms () {   # <section> [<path-prefix>]
   local records command annotation usage description
@@ -153,24 +164,42 @@ help_grammar () {
   done
 }
 
+# Short descriptions for command families; leaf descriptions come from annotations.
+_help_summary () {   # <noun>
+  case "$1" in
+    session) printf '%s' 'Initialize, apply, and suspend session configuration' ;;
+    palette) printf '%s' 'Choose and inspect colour palettes' ;;
+    segment) printf '%s' 'Inspect status-line segments' ;;
+    widget) printf '%s' 'Discover and inspect status-line widgets' ;;
+    layout) printf '%s' 'Choose and inspect status-line layouts' ;;
+    classifier) printf '%s' 'Discover and inspect result classifiers' ;;
+    filter) printf '%s' 'Discover and inspect output filters' ;;
+    probe) printf '%s' 'Discover and inspect condition probes' ;;
+    runner) printf '%s' 'Discover and launch commands and probes' ;;
+    process) printf '%s' 'Inspect and stop active invocations' ;;
+    status) printf '%s' 'Manage pane workflow status' ;;
+    health) printf '%s' 'Report and inspect pane health' ;;
+    problem) printf '%s' 'Track and resolve problem claims' ;;
+    transaction) printf '%s' 'Inspect and recover configuration transactions' ;;
+  esac
+}
+
 _help_usage () {
   printf 'airline — tmux-airline CLI\n\n'
-  printf 'Usage: airline <noun> <verb> [<argument>...]\n'
-  printf '       airline version\n'
-  printf '       airline help [<noun> [<verb>]]\n\n'
+  printf 'Usage: airline <command> [<argument>...]\n\n'
   printf 'Commands:\n'
-  _help_arms root || return
 
-  local i n
-  for (( i=0; i<${#AIRLINE_HELP_GROUP_NAMES[@]}; i++ )); do
-    printf '\n%s commands:\n' "${AIRLINE_HELP_GROUP_NAMES[$i]}"
-    for n in ${AIRLINE_HELP_GROUP_NOUNS[$i]}; do
-      printf '\n'; _help_noun "$n" || return
-    done
+  local n records command annotation
+  for n in $AIRLINE_NOUNS; do
+    printf '  %-12s %s\n' "$n" "$(_help_summary "$n")"
   done
-  printf '\nNotes:\n  use loads a bare name from a registered dir; register blesses a location.\n'
-  printf '  Observed status results clear when you focus away from their pane.\n'
-  printf '  Health/problem reporters supply separate contributor and claim identifiers.\n'
+  records="$(_help_records root)" || return
+  while IFS=$'\t' read -r command annotation; do
+    [[ -n "$command" ]] || continue
+    _help_split "$annotation"
+    printf '  %-12s %s\n' "$command" "${_HELP_DESCRIPTION^}"
+  done <<< "$records"
+  printf '\nRun airline help <command> for details; for example: airline help session.\n'
 }
 
 help_command () {   # [<help|noun> [<verb>]]
@@ -187,8 +216,9 @@ help_command () {   # [<help|noun> [<verb>]]
   case " $AIRLINE_NOUNS " in
     *" $first "*)
       if [[ -z "$second" ]]; then
-        printf 'Usage: airline %s <verb>\n\n' "$first"
-        _help_noun "$first"
+        printf 'Usage: airline %s <verb> [<argument>...]\n\n' "$first"
+        _help_noun "$first" || return
+        printf '\nRun airline help %s <verb> for details.\n' "$first"
         return
       fi
       annotation="$(_help_annotation "$first" "$second")" || \

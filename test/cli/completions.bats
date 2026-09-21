@@ -34,14 +34,14 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 
 @test "compiled grammar is independent of human help formatting" {
   # The completion compiler reads the `#| …` annotations, never rendered prose.
-  # Perturbing wrap width, group headings, and indentation must not move it.
+  # Perturbing wrap width and the index heading must not move it.
   work="$BATS_TEST_TMPDIR/reformatted"
   cp -R "$PROJECT_ROOT" "$work"
-  sed -i 's/> 80 ))/> 48 ))/; s/%s commands:\\n/== %s ==\\n/' "$work/lib/help.sh"
+  sed -i 's/> 80 ))/> 48 ))/; s/Commands:\\n/Command index:\\n/' "$work/lib/help.sh"
 
   run env AIRLINE_DIR="$work" "$work/airline.sh" help
   assert_success
-  refute_line --partial 'Session commands:'   # formatting really did change
+  assert_line 'Command index:'   # formatting really did change
 
   baseline="$(env AIRLINE_DIR="$PROJECT_ROOT" "$PROJECT_ROOT/airline.sh" help _grammar)"
   run env AIRLINE_DIR="$work" "$work/airline.sh" help _grammar

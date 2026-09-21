@@ -47,7 +47,6 @@ source "$AIRLINE_DIR/lib/session.sh"
 # shellcheck source=lib/transaction.sh
 source "$AIRLINE_DIR/lib/transaction.sh"
 
-AIRLINE_HELP_GROUP_NAMES=(Session Layout Runner Signals Diagnostics)
 AIRLINE_HELP_GROUP_NOUNS=(
   'session'
   'palette segment widget layout'

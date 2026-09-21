@@ -1,5 +1,10 @@
 # CLI conventions
 
+`airline help` lists top-level commands with short descriptions. Drill down with
+`airline help session` to see its subcommands, then `airline help session init`
+for exact syntax and an explanation. The same pattern applies to every command
+family.
+
 Airline commands use a noun and verb followed by options and positional arguments:
 
 ```text
