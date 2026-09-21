@@ -12,7 +12,11 @@ setup() {
   # exposes actual terminal colors, including tmux's native last-window styling.
   $TMUX -L "$_bats_socket" new-session -d -s screen -x 160 -y 24 \
     "env -u TMUX TERM=xterm-256color $TMUX -L $_bats_socket attach-session -t bats"
-  airline session init
+  # Exercise the fresh-install TPM entry point, not just the CLI helper.
+  pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
+  AIRLINE_CONFIG="$BATS_TEST_TMPDIR/no-config" AIRLINE_DIR="$PROJECT_ROOT" \
+    TMUX_PANE="$pane" AIRLINE_TMUX="$TMUX -L $_bats_socket" \
+    "$PROJECT_ROOT/airline.tmux"
 }
 
 # Normalize capture-pane's SGR runs to foreground:background text. Keep the
@@ -111,4 +115,47 @@ _assert_name_colors() {
   $TMUX -L "$_bats_socket" new-window -t bats:3 -n new-palette
   _assert_name_colors 3:new-palette 234 201
   _assert_name_colors 0:ordinary 200 234
+}
+
+# Inspect the entire terminal status row: checking only window names misses
+# malformed conditionals that leak style syntax into another segment.
+_assert_status_text() {
+  local expected="$1" captured=""
+  for _ in {1..40}; do
+    $TMUX -L "$_bats_socket" refresh-client -S
+    captured="$($TMUX -L "$_bats_socket" capture-pane -p -t screen:0 -S 23 -E 23)"
+    if [[ "$captured" == *"2:current"* && "$captured" == *"$(date +%Y-%m-%d)"* &&
+          "$captured" == *"$expected"* && "$captured" != *'bg='* &&
+          "$captured" != *'fg='* && "$captured" != *'#['* && "$captured" != *'#{'* ]]; then
+      # Idle must actually return, rather than accepting a stale badge frame.
+      if [[ "$expected" != bats || ! "$captured" =~ \[(Prefix|Copy|Sync|review)\] ]]; then
+        return 0
+      fi
+    fi
+    sleep 0.05
+  done
+  printf 'Expected clean status containing %s; terminal row:\n%s\n' "$expected" "$captured" >&2
+  return 1
+}
+
+@test "fresh TPM install renders a complete status without literal style syntax" {
+  _assert_status_text bats
+}
+
+@test "default layout renders prefix copy sync and custom key-table badges cleanly" {
+  _assert_status_text bats
+  $TMUX -L "$_bats_socket" set-window-option -t bats:2 synchronize-panes on
+  _assert_status_text '[Sync]'
+  $TMUX -L "$_bats_socket" copy-mode -t bats:2
+  _assert_status_text '[Copy]'
+  $TMUX -L "$_bats_socket" switch-client -T prefix
+  _assert_status_text '[Prefix]'
+  $TMUX -L "$_bats_socket" switch-client -T root
+  $TMUX -L "$_bats_socket" send-keys -t bats:2 -X cancel
+  $TMUX -L "$_bats_socket" set-window-option -t bats:2 synchronize-panes off
+  $TMUX -L "$_bats_socket" bind-key -T review x display-message review
+  $TMUX -L "$_bats_socket" switch-client -T review
+  _assert_status_text '[review]'
+  $TMUX -L "$_bats_socket" switch-client -T root
+  _assert_status_text bats
 }

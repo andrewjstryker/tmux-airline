@@ -5,6 +5,11 @@ implementation worklists used to reach them.
 
 ## Unreleased — 3.0.0
 
+- Fixed literal style text in the default status bar and custom key-table badges.
+  Set segment length limits to fit the shipped layout on a fresh tmux server.
+  Added full status-row checks through the TPM entry point in an attached terminal;
+  the local release command now runs the suite before creating a tag.
+
 - Made process stop idempotent for finished or absent valid invocation IDs. Stop
   requests are consumed by the supervisor; stale records are retired without
   signaling their recorded child PIDs. Added repeated-stop and stale-PID safety

@@ -469,6 +469,9 @@ render () {   # <session>
     "fg=${PALETTE[primary]} bg=${PALETTE[outer-bg]}" || return
   _render_setif opt_setif_session "$AIRLINE_SESSION" status-right-style \
     "fg=${PALETTE[primary]} bg=${PALETTE[outer-bg]}" || return
+  # Native defaults (10/40 cells) truncate the shipped multi-segment layout.
+  _render_setif opt_setif_session "$AIRLINE_SESSION" status-left-length 100 || return
+  _render_setif opt_setif_session "$AIRLINE_SESSION" status-right-length 100 || return
   _render_setif opt_setif_session "$AIRLINE_SESSION" status-left "$left" || return
   _render_setif opt_setif_session "$AIRLINE_SESSION" status-right "$right" || return
   set_window_styles || return

@@ -20,6 +20,13 @@ with the corresponding `lib/` module; `make test-integration` runs every real-tm
 suite. Behavior belongs in fast tests; run the real-tmux integration suite before
 merging to main. Run `make lint` for ShellCheck and the architecture guards.
 
+The rendering integration tests start the TPM entry point on a fresh server and
+capture an attached terminal. They check window colors and the complete default
+status row, including idle and native badge transitions, for leaked format syntax.
+Assertions on stored format strings alone cannot establish that a layout renders.
+`make release` runs the full suite before creating its local tag; the tag workflow
+runs it again before publishing the GitHub release.
+
 ## Performance and deferred architecture
 
 See [performance measurements](performance.md) for the isolated CLI benchmark

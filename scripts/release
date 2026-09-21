@@ -17,5 +17,9 @@ if git -C "$ROOT" rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
   exit 1
 fi
 
+# A tag must pass the same checks as the publishing workflow, including the
+# attached-terminal fresh-install regression tests.
+make -C "$ROOT" test
+
 git -C "$ROOT" tag -a "$tag" -m "tmux-airline $version"
 printf 'created %s; publish with: git push origin %s\n' "$tag" "$tag"
