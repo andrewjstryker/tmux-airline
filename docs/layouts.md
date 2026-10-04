@@ -47,7 +47,8 @@ through `airline-widget`. Missing widgets, invalid options, and broken widget
 formats publish an empty expression and report a failure. Neighboring segment text
 continues to render. Reloading rechecks widgets and resolves a placement's claim
 when it recovers. Removing a placement closes its claim. There is no background
-retry service. A nonempty segment definition retains its spacing and chrome even
+retry service. Empty segment slots retain their chevrons without content padding.
+A nonempty segment definition retains its spacing and chrome even
 when a referenced widget is empty.
 
 `layout describe <name>` reports metadata, segment strings, and widget expressions,

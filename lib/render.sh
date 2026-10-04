@@ -28,10 +28,7 @@ declare -gA AIRLINE_SLOT_TIER=(
   [left-out]=outer  [left-mid]=middle  [left-in]=inner
   [right-in]=inner  [right-mid]=middle [right-out]=outer
 )
-# SC2034: read via nameref (`local -n`) in _active_slots, which shellcheck can't trace.
-# shellcheck disable=SC2034
 declare -ga AIRLINE_SLOTS_LEFT=(left-out left-mid left-in)
-# shellcheck disable=SC2034
 declare -ga AIRLINE_SLOTS_RIGHT=(right-in right-mid right-out)
 
 # Palette elements: the palette roles.
@@ -155,7 +152,7 @@ _palette_suspend () {
 # Segment bar — compose status-left / status-right from the fixed slots.
 #-----------------------------------------------------------------------------#
 # A slot's tier (outer/middle/inner) is its background; the powerline chevrons
-# step between consecutive non-empty slots. Empty slots are skipped entirely.
+# step through every tier. An empty slot contributes only its chevron.
 
 # Powerline chevron between two backgrounds. The glyph is structural — its fg is the
 # left block's bg, its bg the right block's, so the separator carries the color
@@ -169,42 +166,32 @@ _chevron () { printf '#[fg=%s,bg=%s]%s' "$2" "$1" "$3"; }   # left_bg right_bg g
 _chev_right () { _chevron "$2" "$1" "$AIRLINE_CHEV_RIGHT"; }
 _chev_left  () { _chevron "$1" "$2" "$AIRLINE_CHEV_LEFT"; }
 
-# The non-empty slots on a side, in render order. <left|right>
-_active_slots () {
-  local slot content
-  local -n slots="AIRLINE_SLOTS_${1^^}"
-  for slot in "${slots[@]}"; do
-    cfg_get_session_into content "$AIRLINE_SESSION" "segment-$slot" || return
-    [[ -n "$content" ]] && printf '%s\n' "$slot"
-  done
-}
-
 # Compose status-left: blocks outer→inner, each followed by a chevron into the
 # next slot's tier (or the inner-bg window list after the last).
 _build_status_left () {
-  local fg="${PALETTE[emphasized]}" out="" bg next_bg i s content
-  local -a active=(); while IFS= read -r s; do active+=("$s"); done < <(_active_slots left)
-  local n=${#active[@]}
+  local fg="${PALETTE[emphasized]}" out="" bg next_bg i content
+  local n=${#AIRLINE_SLOTS_LEFT[@]}
   for (( i=0; i<n; i++ )); do
-    bg="${PALETTE[${AIRLINE_SLOT_TIER[${active[i]}]}-bg]}"
-    if (( i+1 < n )); then next_bg="${PALETTE[${AIRLINE_SLOT_TIER[${active[i+1]}]}-bg]}"
+    bg="${PALETTE[${AIRLINE_SLOT_TIER[${AIRLINE_SLOTS_LEFT[i]}]}-bg]}"
+    if (( i+1 < n )); then next_bg="${PALETTE[${AIRLINE_SLOT_TIER[${AIRLINE_SLOTS_LEFT[i+1]}]}-bg]}"
     else                   next_bg="${PALETTE[inner-bg]}"; fi
-    cfg_get_session_into content "$AIRLINE_SESSION" "segment-${active[i]}" || return
-    out+="#[fg=$fg,bg=$bg] $content $(_chev_right "$bg" "$next_bg")"
+    cfg_get_session_into content "$AIRLINE_SESSION" "segment-${AIRLINE_SLOTS_LEFT[i]}" || return
+    [[ -z "$content" ]] || out+="#[fg=$fg,bg=$bg] $content "
+    out+="$(_chev_right "$bg" "$next_bg")"
   done
-  printf '%s' "$out"
+  # Separate the final chevron from the first window on the inner background.
+  printf '%s ' "$out"
 }
 
 # Compose status-right: each block preceded by a chevron from the previous tier
 # (the inner-bg window list before the first).
 _build_status_right () {
-  local fg="${PALETTE[emphasized]}" out="" bg prev_bg="${PALETTE[inner-bg]}" i s content
-  local -a active=(); while IFS= read -r s; do active+=("$s"); done < <(_active_slots right)
-  local n=${#active[@]}
-  for (( i=0; i<n; i++ )); do
-    bg="${PALETTE[${AIRLINE_SLOT_TIER[${active[i]}]}-bg]}"
-    cfg_get_session_into content "$AIRLINE_SESSION" "segment-${active[i]}" || return
-    out+="$(_chev_left "$prev_bg" "$bg")#[fg=$fg,bg=$bg] $content "
+  local fg="${PALETTE[emphasized]}" out="" bg prev_bg="${PALETTE[inner-bg]}" slot content
+  for slot in "${AIRLINE_SLOTS_RIGHT[@]}"; do
+    bg="${PALETTE[${AIRLINE_SLOT_TIER[$slot]}-bg]}"
+    cfg_get_session_into content "$AIRLINE_SESSION" "segment-$slot" || return
+    out+="$(_chev_left "$prev_bg" "$bg")"
+    [[ -z "$content" ]] || out+="#[fg=$fg,bg=$bg] $content "
     prev_bg="$bg"
   done
   printf '%s' "$out"

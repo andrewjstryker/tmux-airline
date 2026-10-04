@@ -427,7 +427,7 @@ _layout_initialize_unlocked () {   # <session>
   fi
   if [[ -n "$seeded" || -z "$(prv_get_session "$session" "$AIRLINE_KEY_DEFAULTS")" ]]; then
     prv_get_session_into selected "$session" layout
-    [[ -n "$selected" ]] || selected=full
+    [[ -n "$selected" ]] || selected=default
     _apply_layout_unlocked "$session" "$selected" || return $?
   fi
   _apply_public_unlocked "$session" || return $?

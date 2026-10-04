@@ -96,6 +96,7 @@ _assert_name_colors() {
 }
 
 @test "new window mode selectors stay live and restore previous emphasis" {
+  airline layout use full
   $TMUX -L "$_bats_socket" new-window -t bats:3 -n mode-window
   $TMUX -L "$_bats_socket" copy-mode -t bats:3
   _assert_name_colors 3:mode-window 234 214
@@ -144,9 +145,11 @@ _assert_status_text() {
 
 @test "fresh TPM install renders a complete status without literal style syntax" {
   _assert_status_text bats
+  _assert_status_text " 0:ordinary"
 }
 
-@test "default layout renders prefix copy sync and custom key-table badges cleanly" {
+@test "full layout renders prefix copy sync and custom key-table badges cleanly" {
+  airline layout use full
   _assert_status_text bats
   $TMUX -L "$_bats_socket" set-window-option -t bats:2 synchronize-panes on
   _assert_status_text '[Sync]'

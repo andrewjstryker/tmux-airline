@@ -263,7 +263,7 @@ write_layout() {   # <path> <configure-body>
   assert_failure
   assert_output --partial "unknown segment slot 'nowhere'"
   run airline layout show name
-  assert_output full
+  assert_output default
   run airline problem show airline airline-layout
   assert_output --partial "layout 'broken' unknown segment slot 'nowhere'"
 

@@ -287,8 +287,8 @@ See [layout inspection and application](docs/layouts.md) for evaluation and vali
 
 | Layout     | What it composes                                                    |
 |------------|---------------------------------------------------------------------|
-| `default`  | The dependency-free standard arrangement                          |
-| `full`     | Init's default — host, session, prefix, date, and available CPU/online/battery/power widgets |
+| `default`  | Init's default — the dependency-free standard arrangement                          |
+| `full`     | Host, session, prefix, date, and available CPU/online/battery/power widgets |
 | `minimal`  | A pared-down bar                                                    |
 
 Switching layouts starts from a clean slate, so a layout owns exactly the arrangement

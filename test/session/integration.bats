@@ -28,9 +28,9 @@ setup() {
   run sopt @airline--palette
   assert_output "default"            # recorded
   run sopt status-left
-  assert_output --partial "#h"       # full gives the host the outer-left segment
+  assert_output --partial "#h"       # default gives the host the outer-left segment
   run sopt @airline--layout
-  assert_output "full"               # recorded, so apply re-applies it
+  assert_output "default"               # recorded, so apply re-applies it
 
   run sopt status-style
   assert_output --partial "bg=colour234"
@@ -40,7 +40,7 @@ setup() {
   run airline session show
   assert_success
   assert_output --partial "layout"      # a top-level record
-  assert_output --partial "full"         # active layout remains named
+  assert_output --partial "default"         # active layout remains named
   assert_output --partial "inner-bg"    # recursed into palette show
   assert_output --partial "left-out"    # recursed into segment show
   assert_output --partial "paths:"      # the search paths
@@ -144,7 +144,7 @@ setup() {
   run airline session show
   assert_success
   assert_output --partial "layout"      # a top-level record
-  assert_output --partial "full"         # active layout remains named
+  assert_output --partial "default"         # active layout remains named
   assert_output --partial "inner-bg"    # recursed into palette show
   assert_output --partial "left-out"    # recursed into segment show
   assert_output --partial "paths:"      # the search paths

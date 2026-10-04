@@ -44,35 +44,35 @@ _seed_palette() {
   assert_output --partial "bg=colour236"   # middle (left-mid)
   assert_output --partial " OUT "
   assert_output --partial " MID "
+  [[ "$output" == *" " ]]
 }
 
-@test "empty slots are skipped, and the last left block chevrons to inner-bg" {
+@test "empty left slots retain their chevrons without content padding" {
   load_render
   _seed_palette
-  cfg_set_session "$AIRLINE_SESSION" segment-left-out ONLY   # left-mid, left-in empty
+  cfg_set_session "$AIRLINE_SESSION" segment-left-out ONLY
   render "$AIRLINE_SESSION"
   run sopt status-left
-  assert_output --partial " ONLY "
-  refute_output --partial "bg=colour236"   # no middle block
-  assert_output --partial "bg=colour234"   # chevron into the inner-bg window list
+  assert_output '#[fg=colour255,bg=colour238] ONLY #[fg=colour238,bg=colour236]#[fg=colour236,bg=colour234]#[fg=colour234,bg=colour234] '
 }
 
-@test "an all-empty left side composes to nothing" {
+@test "all-empty sides retain every chevron and the first-window gap" {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
   run sopt status-left
-  assert_output ""
+  assert_output '#[fg=colour238,bg=colour236]#[fg=colour236,bg=colour234]#[fg=colour234,bg=colour234] '
+  run sopt status-right
+  assert_output '#[fg=colour234,bg=colour234]#[fg=colour236,bg=colour234]#[fg=colour238,bg=colour236]'
 }
 
-@test "right bar composes with a leading chevron from the window list" {
+@test "empty right slots retain their chevrons without content padding" {
   load_render
   _seed_palette
   cfg_set_session "$AIRLINE_SESSION" segment-right-out DATE
   render "$AIRLINE_SESSION"
   run sopt status-right
-  assert_output --partial " DATE "
-  assert_output --partial "bg=colour238"   # outer (right-out)
+  assert_output '#[fg=colour234,bg=colour234]#[fg=colour236,bg=colour234]#[fg=colour238,bg=colour236]#[fg=colour255,bg=colour238] DATE '
 }
 
 @test "suspended dims the outer/middle backgrounds to inner-bg" {
