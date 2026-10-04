@@ -122,6 +122,10 @@ setup() {
 # reduces the ledger. test/widget/integration.bats covers the presentation.
 assert_problem_badge () {   # <session>
   run sopt status-right -t "$1"
+  assert_success
+  assert_output --partial '#{E:@airline--widget-problem}'
+  run sopt @airline--widget-problem -t "$1"
+  assert_success
   assert_output --partial "layouts/widgets/problem"
 }
 
