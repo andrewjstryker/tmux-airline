@@ -37,17 +37,25 @@ Because they're on opposite sides, their colors may overlap without ambiguity.
 
 ## Entry color (airline-owned): tmux modes
 
-The window name's color is airline's alone — no plugin API. It reflects, in
-order, **tmux modes** over the **baseline** (focused / last / normal):
+Window entry colors are airline-owned — no plugin API. The first matching
+state supplies the color:
 
-| State                              | Color     |
-|------------------------------------|-----------|
-| A pane in the window is **zoomed** | `zoom`    |
-| The active pane is in **copy mode**| `copy`    |
-| `monitor-activity` is **on**       | `monitor` |
+| State | Color |
+|-------|-------|
+| Pending monitored **activity** | `monitor` |
+| **Alternate** (previous) window, inactive only | `emphasized` |
+| The active pane is in **copy mode** | `copy` |
+| A pane in the window is **zoomed** | `zoom` |
 
-Precedence is **zoom > copy > monitor**. With no mode, the normal focused, last,
-activity, and bell styling applies.
+Precedence is **activity > alternate > copy > zoom > baseline**. Enabling
+`monitor-activity` alone does not change the color; activity must be pending.
+Visiting a window normally clears its pending activity.
+
+Inactive entries use the selected foreground color over the standard window
+background. With no matching state, native normal and bell styling applies.
+The focused entry uses the same reduction without alternate to choose its
+highlight background, falling back to `active`. Its foreground always uses the
+standard window background color (`inner-bg`) for contrast.
 
 ## Badges (plugin-owned): the `airline` CLI
 

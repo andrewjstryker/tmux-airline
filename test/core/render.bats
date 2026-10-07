@@ -100,35 +100,34 @@ _seed_palette() {
   assert_output --partial "bg=colour234"        # inner-bg
 }
 
-# --- modes: inactive fills the background, active retains contrast ----------
+# --- window state colors ---------------------------------------------------
 
-@test "inactive window fills its background with the mode color" {
+@test "inactive windows keep the standard background" {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
   run wopt window-status-format
-  # bg is a mode selector: zoom→81, copy→75, monitor→109, else inner-bg 234
-  assert_output --partial "bg=#{?#{window_zoomed_flag},colour81"
-  assert_output --partial "monitor-activity,colour109,colour234"   # else flat inner-bg
+  assert_output --partial "#[bg=colour234]"
+  refute_output --partial "bg=#{?"
 }
 
-@test "inactive name knocks out over a filled block, else inherits its native style" {
+@test "inactive names reduce activity alternate copy and zoom in order" {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
   run wopt window-status-format
-  # fg: inner-bg knockout when in any mode, native style when flat
-  assert_output --partial "#[fg=#{?#{window_zoomed_flag},colour234"
-  assert_output --partial "monitor-activity,colour234,default"
+  assert_output --partial '#[fg=#{?#{window_activity_flag},colour109,#{?#{window_last_flag},colour255,#{?#{pane_in_mode},colour75,#{?#{window_zoomed_flag},colour81,default}}}}]'
+  refute_output --partial 'monitor-activity'
 }
 
-@test "active window keeps a constant active-color highlight block" {
+@test "active highlight reduces activity copy and zoom with the active fallback" {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
   run wopt window-status-current-format
-  assert_output --partial "bg=colour214"          # active highlight, not a mode selector
-  refute_output --partial "bg=#{?#{window_zoomed_flag}"  # active bg never varies with mode
+  assert_output --partial 'bg=#{?#{window_activity_flag},colour109,#{?#{pane_in_mode},colour75,#{?#{window_zoomed_flag},colour81,colour214}}}'
+  refute_output --partial 'window_last_flag'
+  refute_output --partial 'monitor-activity'
 }
 
 @test "active window keeps its normal name foreground in every mode" {
@@ -137,9 +136,6 @@ _seed_palette() {
   render "$AIRLINE_SESSION"
   run wopt window-status-current-format
   assert_output --partial "#[fg=colour234]#I:#W"
-  refute_output --partial "window_zoomed_flag"
-  refute_output --partial "pane_in_mode"
-  refute_output --partial "monitor-activity"
 }
 
 # --- badges: status (left) + health (right) ---------------------------------

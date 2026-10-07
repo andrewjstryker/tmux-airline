@@ -68,6 +68,41 @@ _assert_name_colors() {
   _assert_name_colors 1:previous 250 234
 }
 
+@test "focused highlight uses copy before zoom and ignores monitoring without activity" {
+  _assert_name_colors 2:current 234 214
+  $TMUX -L "$_bats_socket" set-window-option -t bats:2 monitor-activity on
+  _assert_name_colors 2:current 234 214
+  $TMUX -L "$_bats_socket" split-window -t bats:2
+  $TMUX -L "$_bats_socket" resize-pane -t bats:2 -Z
+  _assert_name_colors 2:current 234 81
+  $TMUX -L "$_bats_socket" copy-mode -t bats:2
+  _assert_name_colors 2:current 234 75
+  $TMUX -L "$_bats_socket" select-window -t bats:0
+  _assert_name_colors 2:current 255 234
+  _assert_name_colors 0:ordinary 234 214
+  $TMUX -L "$_bats_socket" select-window -t bats:1
+  _assert_name_colors 2:current 75 234
+  $TMUX -L "$_bats_socket" send-keys -t bats:2 -X cancel
+  _assert_name_colors 2:current 81 234
+  $TMUX -L "$_bats_socket" select-window -t bats:2
+  _assert_name_colors 2:current 234 81
+  $TMUX -L "$_bats_socket" resize-pane -t bats:2 -Z
+  _assert_name_colors 2:current 234 214
+}
+
+@test "pending activity overrides alternate and zoom and clears on visiting" {
+  $TMUX -L "$_bats_socket" split-window -t bats:2
+  $TMUX -L "$_bats_socket" resize-pane -t bats:2 -Z
+  $TMUX -L "$_bats_socket" set-window-option -t bats:2 monitor-activity on
+  $TMUX -L "$_bats_socket" select-window -t bats:0
+  $TMUX -L "$_bats_socket" send-keys -t bats:2 'printf "activity\n"' Enter
+  _assert_name_colors 2:current 109 234
+  $TMUX -L "$_bats_socket" select-window -t bats:2
+  _assert_name_colors 2:current 234 81
+  $TMUX -L "$_bats_socket" select-window -t bats:0
+  _assert_name_colors 2:current 255 234
+}
+
 @test "previous window name is emphasized and follows last-window navigation" {
   # This window received airline's format even before the scope regression fix.
   $TMUX -L "$_bats_socket" select-window -t bats:0
@@ -99,12 +134,12 @@ _assert_name_colors() {
   airline layout use full
   $TMUX -L "$_bats_socket" new-window -t bats:3 -n mode-window
   $TMUX -L "$_bats_socket" copy-mode -t bats:3
-  _assert_name_colors 3:mode-window 234 214
+  _assert_name_colors 3:mode-window 234 75
   _assert_status_text '[Copy]'
   $TMUX -L "$_bats_socket" select-window -t bats:0
-  _assert_name_colors 3:mode-window 234 75
+  _assert_name_colors 3:mode-window 255 234
   $TMUX -L "$_bats_socket" select-window -t bats:3
-  _assert_name_colors 3:mode-window 234 214
+  _assert_name_colors 3:mode-window 234 75
   $TMUX -L "$_bats_socket" select-window -t bats:0
   $TMUX -L "$_bats_socket" send-keys -t bats:3 -X cancel
   _assert_name_colors 3:mode-window 255 234
