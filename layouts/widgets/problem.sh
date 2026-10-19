@@ -6,15 +6,13 @@ airline_widget_available() { return 0; }
 airline_widget_format() {
   local fg="$1" bg="$2" value color glyph blink
   value="$(widget_runtime)"
-  color='#{@airline-palette-primary}'
-  color="#{?#{==:$value,warn},#{@airline-palette-alert},$color}"
-  color="#{?#{==:$value,fail},#{@airline-palette-stress},$color}"
+  color="#{?#{==:$value,warn},#{@airline-palette-alert},#{@airline-palette-stress}}"
   local warn=WARN fail=FAIL
   if [[ "${AIRLINE_WIDGET_NERD_FONTS:-off}" == on ]]; then
     warn=$'\uf071'; fail=$'\uf057'
   fi
   glyph="#{?#{==:$value,warn},$warn,$fail}"
   blink="#{?#{==:$value,fail},#[blink],}"
-  printf '#{?%s,#[fg=%s]#[bg=%s]%s%s#[noblink] ,}#[fg=%s,bg=%s]' \
+  printf '#{?%s,#[fg=%s]#[bg=%s]%s%s#[noblink]#[fg=%s#,bg=%s],}' \
     "#{||:#{==:$value,warn},#{==:$value,fail}}" "$color" "$bg" "$blink" "$glyph" "$fg" "$bg"
 }

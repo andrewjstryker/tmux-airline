@@ -3,5 +3,5 @@
 airline_layout_configure () {
   local declare="$1"
   "$declare" segment left-out "#S"
-  "$declare" segment right-out '#{E:@airline--widget-problem}'
+  "$declare" segment left-in '#{E:@airline--widget-problem}'
 }

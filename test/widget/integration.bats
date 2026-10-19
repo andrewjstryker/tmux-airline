@@ -26,7 +26,7 @@ setup() { $TMUX -L "$_bats_socket" -f /dev/null new-session -d -s bats; }
 # The companion reads the ledger through the public CLI, so the reduction it
 # reports is the one `problem show` publishes, not a private option.
 @test "problem companion reduces the ledger and its format presents live values" {
-  local level expected format pane
+  local level expected format pane AIRLINE_WIDGET_NERD_FONTS warn fail width expected_width
   airline session init
   # tmux gives a #() job its server context; the seam supplies it here.
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
@@ -36,9 +36,9 @@ setup() { $TMUX -L "$_bats_socket" -f /dev/null new-session -d -s bats; }
   }
   source "$PROJECT_ROOT/layouts/widgets/problem.sh"
   widget_runtime() { printf '%s' '#{@problem-test-value}'; }
-  format="$(airline_widget_format white black)"
-  # session init publishes the effective palette per session, so pin the two
+  # session init publishes the effective palette per session, so pin the three
   # roles under test at that same scope.
+  $TMUX -L "$_bats_socket" set-option -t bats @airline-palette-primary white
   $TMUX -L "$_bats_socket" set-option -t bats @airline-palette-alert yellow
   $TMUX -L "$_bats_socket" set-option -t bats @airline-palette-stress red
 
@@ -54,16 +54,27 @@ setup() { $TMUX -L "$_bats_socket" -f /dev/null new-session -d -s bats; }
   companion
   assert_output fail
 
-  for level in '' warn fail; do
-    $TMUX -L "$_bats_socket" set-option -g @problem-test-value "$level"
-    case "$level" in
-      '') expected='#[fg=white,bg=black]' ;;
-      warn) expected='#[fg=yellow]#[bg=black]WARN#[noblink] #[fg=white,bg=black]' ;;
-      fail) expected='#[fg=red]#[bg=black]#[blink]FAIL#[noblink] #[fg=white,bg=black]' ;;
-    esac
-    run $TMUX -L "$_bats_socket" display-message -p "$format"
-    assert_success
-    assert_output "$expected"
+  for AIRLINE_WIDGET_NERD_FONTS in off on; do
+    warn=WARN; fail=FAIL; width=4
+    if [[ "$AIRLINE_WIDGET_NERD_FONTS" == on ]]; then
+      warn=$'\uf071'; fail=$'\uf057'; width=1
+    fi
+    format="$(airline_widget_format white black)"
+    for level in '' warn fail ''; do
+      $TMUX -L "$_bats_socket" set-option -g @problem-test-value "$level"
+      expected_width="$width"
+      case "$level" in
+        '') expected=''; expected_width=0 ;;
+        warn) expected="#[fg=yellow]#[bg=black]$warn#[noblink]#[fg=white,bg=black]" ;;
+        fail) expected="#[fg=red]#[bg=black]#[blink]$fail#[noblink]#[fg=white,bg=black]" ;;
+      esac
+      run $TMUX -L "$_bats_socket" display-message -p "$format"
+      assert_success
+      assert_output "$expected"
+      run $TMUX -L "$_bats_socket" display-message -p "#{w:$format}"
+      assert_success
+      assert_output "$expected_width"
+    done
   done
 }
 

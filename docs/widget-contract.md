@@ -125,7 +125,9 @@ formats must not manipulate the default-style stack themselves.
 
 Render establishes the segment baseline once and adds padding, chevrons, and
 separators at the segment boundary. Empty widget expressions contribute no content;
-literal spacing and the containing segment's chrome remain. Repeated placements
+the containing segment's normal padding and chevrons remain. Unconfigured slots
+retain only their chevrons. Widgets need not emit placeholder spaces or reserve
+their active width; content may grow naturally as its state changes. Repeated placements
 share the same expression and widget-owned configuration, with separate lifecycle
 claims for each placement. Parameters come only from tmux options; neither layout
 strings nor `widget describe` accept overrides.

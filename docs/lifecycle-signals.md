@@ -32,7 +32,7 @@ example, because a required executable is unavailable.
 
 | Signal | Meaning | Identity and scope | Values | Retention | Commands |
 |--------|---------|--------------------|--------|-----------|----------|
-| Status | The workflow phase of work whose details are visible in the pane | pane within one window | `active`, `result`, `attention` | Active work and input requests persist until the producer updates them; observed results are deleted | `set`, `clear`, `show` |
+| Status | The workflow phase of work whose details are visible in the pane | pane within one window | `active`, `result`, `attention` | Active work persists; attention clears on window focus; observed results are deleted | `set`, `clear`, `show` |
 | Health | A currently observed domain condition | contributor and claim key owned by one pane | `ok`, `warn`, `fail` | Active or acknowledged until recovery, clear, or pane destruction | `set`, `ack`, `clear`, `show` |
 | Problem | Failure to provide an advertised capability | contributor and problem key globally, with pane or session origins | `ok`, `warn`, `fail` plus lifecycle state | Claims until recovery, close, resolve, or clear; terminal state until a new report or clear | `set`, `close`, `ack`, `resolve`, `clear`, `show` |
 
@@ -50,8 +50,8 @@ claims; Airline validates framing but does not attempt to authenticate ownership
 Status identity is structural and Airline-defined. The targeted pane is the key, so
 there is exactly one workflow phase per pane and a contributor reports only its
 current value. Airline derives the identity from tmux, projects it to the containing
-window, and owns automatic observation of `result`. The producer remains responsible
-for advancing `active` processing and `attention` after input.
+window, and owns automatic observation of `result` and `attention`. The producer
+remains responsible for advancing `active` processing and reporting new phases.
 
 Health and problem claim identity is semantic and contributor-defined. A contributor
 chooses a stable key for each independent condition or capability it owns; this is a
@@ -71,7 +71,7 @@ claiming recovery.
 
 | Signal | Identity owner | Identity | Normal transition authority |
 |--------|----------------|----------|-----------------------------|
-| Status | Airline, from tmux structure | pane | producer for `active` and `attention`; Airline for an observed `result` |
+| Status | Airline, from tmux structure | pane | producer for `active`; Airline for focused `attention` and observed `result` |
 | Health | contributor within a pane origin | pane + contributor + health key | contributor reports condition and recovery; user may acknowledge |
 | Problem | contributor | contributor + problem key globally, with pane or session origins | contributor reports condition and recovery or authoritatively resolves; hooks close origins; user may acknowledge |
 
@@ -90,6 +90,7 @@ stateDiagram-v2
     None --> Attention: set attention
     Active --> Result: producer reports completion
     Active --> Attention: producer requests input
+    Attention --> None: window focused
     Attention --> Active: producer reports input received
     Attention --> Result: producer reports completion
     Result --> Active: producer reports new work
@@ -108,7 +109,12 @@ identity through Airline.
 
 The three values have different transition mechanisms. `active` means processing is
 underway and remains until the producer reports a new phase. `attention` means the
-workflow is waiting for input and remains until the producer observes that input.
+workflow needs focus. It clears for every pane when the window is selected in an
+attached terminal client, or when switching panes within that window. Reporting
+attention in an already displayed window immediately satisfies the request and
+leaves no entry. With multiple terminal clients, visibility in any one is enough;
+detached sessions and control-mode clients do not count. A delayed callback
+rechecks visibility before clearing. Health and problem signals remain unchanged.
 `result` means processing has finished and its output is ready to view; observing the
 window fulfills that signal's purpose. A runner's health claim separately describes
 whether the completed result was `ok`, `warn`, or `fail`.

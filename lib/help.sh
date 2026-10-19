@@ -113,7 +113,7 @@ _help_noun () {   # <noun>
       printf '\nNotes:\n  use loads a bare name from a registered dir; register adds a search directory.\n'
       ;;
     status)
-      printf '\nNotes:\n  Observed status results clear when you focus away from their pane.\n'
+      printf '\nNotes:\n  Attention clears when its window is focused; results clear when you focus away from their pane.\n'
       ;;
     health|problem)
       printf '\nNotes:\n  Reporters supply separate contributor and claim identifiers.\n'

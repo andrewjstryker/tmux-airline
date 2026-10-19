@@ -337,13 +337,15 @@ write_layout() {   # <path> <configure-body>
 
   airline_session "$one" layout use minimal
   airline_session "$other" layout use default
-  # Every shipped layout places the problem widget, so right-out is never bare;
-  # minimal contributes the widget alone and default also carries its clock.
-  run airline_session "$one" segment show right-out
+  # Every shipped layout reserves left-inner for problems; the default clock
+  # remains in right-outer.
+  run airline_session "$one" segment show left-in
   assert_output --partial '#{E:@airline--widget-problem}'
   refute_output --partial "%Y-%m-%d %H:%M"
   run airline_session "$other" segment show right-out
   assert_output --partial "%Y-%m-%d %H:%M"
+  refute_output --partial '#{E:@airline--widget-problem}'
+  run airline_session "$other" segment show left-in
   assert_output --partial '#{E:@airline--widget-problem}'
 
   run sopt @airline-palette-secondary -t "$one"

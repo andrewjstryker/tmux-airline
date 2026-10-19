@@ -28,7 +28,8 @@ jobs. Place widgets through a layout:
 airline_layout_configure() {
   "$1" segment left-out '#S'
   "$1" segment right-mid '#{E:@airline--widget-online} #{E:@airline--widget-cpu} #{E:@airline--widget-power}'
-  "$1" segment right-out '%H:%M #{E:@airline--widget-problem}'
+  "$1" segment left-in '#{E:@airline--widget-problem}'
+  "$1" segment right-out '%H:%M'
 }
 ```
 
@@ -51,7 +52,7 @@ Tmux 3.2 or newer is required for numeric threshold comparisons.
 | `power` | sibling `power` executable reads state and capacity from the first readable Linux system battery | Charge-colored `BAT`, `CHG`, or `AC`; corresponding glyphs in Nerd Font mode |
 | `online` | sibling `online` executable reads NetworkManager connectivity and physical default routes | `LAN`, `WiFi`, or `OFF`; requires `nmcli` and `ip` |
 | `prefix` | Native client and pane state | Prefix, Copy, Sync, or custom key-table badge; no process |
-| `problem` | sibling `problem` executable reports `airline problem show --level` | Alert-colored `WARN`, blinking stress-colored `FAIL`; corresponding glyphs in Nerd Font mode; hidden when clear |
+| `problem` | sibling `problem` executable reports `airline problem show --level` | Alert-colored `WARN`, blinking stress-colored `FAIL`; corresponding glyphs in Nerd Font mode; no content when clear; the containing slot retains its normal padding |
 
 Online uses NetworkManager's existing connectivity observation, without triggering
 a probe. Wired and wireless use primary for full connectivity and alert for limited
@@ -207,7 +208,12 @@ arguments to `@airline-widget-<name>-<option>` tmux options.
 Combine formerly appended fragments into one string per segment. The old adapter
 CLI and catalog are removed; register custom formats in the widget catalog. `prefix` replaces `prefix-highlight`.
 The full layout keeps host/session context on the left, prefix at right-in,
-network/CPU/power together at right-mid, and date/time followed by problems at right-out. Unavailable requested
+network/CPU/power together at right-mid, problems at left-in, and date/time at right-out.
+All shipped layouts place problems at left-in. The widget emits nothing when
+clear and grows naturally to show a warning or failure. The renderer keeps normal
+padding around configured slots even when their widgets are quiet; unconfigured
+slots retain only their chevrons. A problem appearing can shift the window list,
+providing an additional visual cue. Unavailable requested
 widgets report through the problem service.
 
 Published widgets receive `default` for `fg` and `bg`; a native style wrapper

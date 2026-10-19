@@ -10,9 +10,10 @@ airline_layout_configure() {
   local declare="$1"
   "$declare" segment left-out '#h'
   "$declare" segment left-mid '#S'
+  "$declare" segment left-in '#{E:@airline--widget-problem}'
   "$declare" segment right-in '#{E:@airline--widget-prefix}'
   "$declare" segment right-mid '#{E:@airline--widget-online} #{E:@airline--widget-cpu} #{E:@airline--widget-power}'
-  "$declare" segment right-out '%H:%M #{E:@airline--widget-problem}'
+  "$declare" segment right-out '%H:%M'
 }
 ```
 
@@ -49,9 +50,11 @@ through `airline-widget`. Missing widgets, invalid options, and broken widget
 formats publish an empty expression and report a failure. Neighboring segment text
 continues to render. Reloading rechecks widgets and resolves a placement's claim
 when it recovers. Removing a placement closes its claim. There is no background
-retry service. Empty segment slots retain their chevrons without content padding.
-A nonempty segment definition retains its spacing and chrome even
-when a referenced widget is empty.
+retry service. Unconfigured segment slots retain their chevrons without content
+padding. Configured slots retain their normal padding (a space on each side), even
+when their formats expand to no visible content. Active content grows naturally;
+Airline does not reserve its maximum width. An empty segment definition clears
+the slot back to chevrons only.
 
 `layout describe <name>` reports metadata, segment strings, and widget expressions,
 sources and diagnostics without publishing options or claims.

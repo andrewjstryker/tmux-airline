@@ -574,3 +574,44 @@ CASES
   run signal_problem_close --session ''
   assert_failure 2
 }
+
+@test "focusing a window acknowledges all its attention requests but preserves other signals" {
+  signal_status_set -t %1 attention
+  signal_status_set -t %2 attention
+  signal_status_set -t %3 active
+  signal_status_set -t %4 result
+  signal_health_set -t %1 test api fail "service broken"
+  _FAKE_FOCUSED_WINDOWS="$_FAKE_WIN"
+  signal_status_focused_window "$_FAKE_WIN"
+  run signal_status_show
+  refute_output --partial '%1'
+  refute_output --partial '%2'
+  assert_output --partial active
+  assert_output --partial result
+  run signal_health_show -t %1 test api
+  assert_output "$(printf 'fail\tservice broken')"
+  local writes="$_FAKE_WRITES" redraws="$_FAKE_REDRAWS"
+  signal_status_focused_window "$_FAKE_WIN"
+  assert_equal "$_FAKE_WRITES" "$writes"
+  assert_equal "$_FAKE_REDRAWS" "$redraws"
+}
+
+@test "attention reported in a focused window is immediately seen including replacement of an old phase" {
+  signal_status_set -t %1 active
+  _FAKE_FOCUSED_WINDOWS="$_FAKE_WIN"
+  signal_status_set -t %1 attention
+  run signal_status_show
+  assert_output ''
+  run wopt @airline--badge-status
+  assert_output ''
+  signal_status_set -t %2 attention
+  run signal_status_show
+  assert_output ''
+}
+
+@test "a delayed focus callback leaves attention in an unfocused window intact" {
+  signal_status_set -t %1 attention
+  signal_status_focused_window "$_FAKE_WIN"
+  run signal_status_show
+  assert_output --partial attention
+}

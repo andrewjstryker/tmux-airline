@@ -350,9 +350,10 @@ or layout with `use`; each selection applies to the invoking session.
 
 The window name reflects tmux focus and mode state. Zoom, copy, and activity-monitor
 modes use their palette roles, in that priority order. Integrations may add a status
-badge on the left (processing, result ready, or input needed) and a health badge on
-the right (warning or failure). A problem badge at the far right indicates an
-unavailable capability. To inspect an unfamiliar badge:
+badge after the name (processing, result ready, or input needed), followed by a
+health badge (warning or failure). Each window entry has outer spacing to group its
+name and badges. Focusing a window clears its attention requests. A problem badge
+immediately left of the window list indicates an unavailable capability. To inspect an unfamiliar badge:
 
 ```shell
 airline status show

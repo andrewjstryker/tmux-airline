@@ -587,3 +587,23 @@ wait_for_file () {
   run opt_has_session "$session" @foreign-remove
   assert_failure
 }
+
+@test "empty native override replaces an inherited separator and remains idempotent" {
+  load_tmux
+  local win changed
+  win="$(current_window)"
+  tmux set-option -gw window-status-separator '|'
+  tmux set-option -uw -t "$win" window-status-separator
+  empty_separator() {
+    changed=''
+    opt_setif_window changed "$win" window-status-separator ''
+    assert_equal "$changed" 1
+    changed=stale
+    opt_setif_window changed "$win" window-status-separator ''
+    assert_equal "$changed" ''
+  }
+  with_window_transaction "$win" test empty_separator
+  run tmux show-option -wv -t "$win" window-status-separator
+  assert_success
+  assert_output ''
+}

@@ -55,8 +55,8 @@ declare -gA AIRLINE_CONDITION_COLOR=([ok]=ok [warn]=alert [fail]=stress)
 # problem is a server-global projection consumed by the catalog problem widget.
 # Each is reduced from its contributor collection at set/clear time and read live
 # through a token→color selector.
-AIRLINE_KEY_STATUS='badge-status'        # left badge:  reduced app-status level
-AIRLINE_KEY_HEALTH='badge-health'        # right badge: reduced window condition level
+AIRLINE_KEY_STATUS='badge-status'        # first trailing badge: reduced app-status level
+AIRLINE_KEY_HEALTH='badge-health'        # second trailing badge: reduced window condition level
 AIRLINE_KEY_PROBLEM='badge-problem'      # global badge: reduced active problem level
 AIRLINE_KEY_SUSPENDED='suspended'        # private flag: dim palette for nested sessions
 # SC2034: these two are consumed by the `airline` CLI (init), which sources this
@@ -152,7 +152,9 @@ _palette_suspend () {
 # Segment bar — compose status-left / status-right from the fixed slots.
 #-----------------------------------------------------------------------------#
 # A slot's tier (outer/middle/inner) is its background; the powerline chevrons
-# step through every tier. An empty slot contributes only its chevron.
+# step through every tier. An unconfigured slot contributes only its chevron.
+# A configured slot retains its normal padding even if its format expands to
+# nothing. Quiet widgets need no placeholder; active content grows naturally.
 
 # Powerline chevron between two backgrounds. The glyph is structural — its fg is the
 # left block's bg, its bg the right block's, so the separator carries the color
@@ -221,15 +223,15 @@ _window_color () {   # <fallback> <include-alternate>
 }
 
 #-----------------------------------------------------------------------------#
-# Badges — status (left of the name) and health (right of it).
+# Badges — status then health, both after the window name.
 #-----------------------------------------------------------------------------#
-# Two channels flank the window name. Each is a runtime collection reduced to ONE
+# Two channels follow the window name, status then health. Each is a runtime collection reduced to ONE
 # badge and projected to a per-window scalar (render_status_project / render_health_project):
 #   status : keyed app-status entries (ns "status") reduced by the level ladder into
-#            the AIRLINE_KEY_STATUS scalar; the left badge shows one glyph in that
+#            the AIRLINE_KEY_STATUS scalar; the first badge shows one glyph in that
 #            level's color, or nothing when no entry exists.
 #   health : health claims (ns "health") reduced to the worst level into the
-#            AIRLINE_KEY_HEALTH scalar; the right badge shows one glyph in that
+#            AIRLINE_KEY_HEALTH scalar; the second badge shows one glyph in that
 #            level's color, or nothing when healthy.
 # The colors are baked here at compose time; WHICH color shows is a live #{?…}
 # selector tmux re-evaluates per window — the selector leg of the render model.
@@ -345,7 +347,7 @@ render_problem_project () {   # <destination> <server-owner>
 
 #-----------------------------------------------------------------------------#
 # Window formats — the window-list styling, with the status and health badges
-# woven in around the name (status left, health right).
+# grouped after the name (status first, health second).
 #-----------------------------------------------------------------------------#
 # Successful change detection is carried privately so a no-op and a tmux failure
 # cannot share an exit status.
@@ -378,27 +380,27 @@ set_window_formats () {
   status_opt="$(prv_name "$AIRLINE_KEY_STATUS")"
   health_opt="$(prv_name "$AIRLINE_KEY_HEALTH")"
 
-  # Status badge (left of the name): a per-level shape in the level's color, blinking
+  # Status badge (first after the name): a per-level shape in the level's color, blinking
   # while `active` (watchable). #[noblink] closes the attr so it can't leak to the name.
   local status_expr
-  status_expr="#{?$status_opt,#[fg=$(_status_token_expr "$status_opt" "${PALETTE[primary]}")]$(_blink_when "$status_opt" active)$(_glyph_expr "$status_opt" "$AIRLINE_GLYPH_STATUS" AIRLINE_STATUS_GLYPH)#[noblink] ,}"
+  status_expr="#{?$status_opt, #[fg=$(_status_token_expr "$status_opt" "${PALETTE[primary]}")]$(_blink_when "$status_opt" active)$(_glyph_expr "$status_opt" "$AIRLINE_GLYPH_STATUS" AIRLINE_STATUS_GLYPH)#[noblink],}"
 
-  # Health badge (right of the name): a per-level shape in the level's color,
+  # Health badge (second after the name): a per-level shape in the level's color,
   # blinking while `fail`.
   local health_expr
   health_expr="#{?$health_opt, #[fg=$(_condition_token_expr "$health_opt" "${PALETTE[primary]}")]$(_blink_when "$health_opt" fail)$(_glyph_expr "$health_opt" "$AIRLINE_GLYPH_HEALTH" AIRLINE_HEALTH_GLYPH)#[noblink],}"
 
-  _render_window_option window-status-separator " " || return
+  _render_window_option window-status-separator "" || return
   # inactive: reduce the name color, keeping the background flat.
   _render_window_option window-status-format \
-    "#[bg=${bg}]${status_expr}#[fg=${inactive_fg}]${template}${health_expr}" || return
+    "#[bg=${bg}] #[fg=${inactive_fg}]${template}${status_expr}${health_expr} " || return
   _render_window_option window-status-style          "fg=${PALETTE[primary]} bg=$bg" || return
   _render_window_option window-status-last-style     "fg=${PALETTE[emphasized]} bg=$bg" || return
   _render_window_option window-status-activity-style "fg=${PALETTE[monitor]} bg=$bg" || return
   _render_window_option window-status-bell-style     "fg=${PALETTE[stress]} bg=$bg" || return
   # active: mode-colored highlight, with the normal active color as fallback.
   _render_window_option window-status-current-format \
-    "$(_chev_right "$bg" "$active_bg") ${status_expr}#[fg=${bg}]${template}${health_expr} $(_chev_left "$active_bg" "$bg")"
+    "$(_chev_right "$bg" "$active_bg") #[fg=${bg}]${template}${status_expr}${health_expr} $(_chev_left "$active_bg" "$bg")"
 }
 
 set_window_styles () {

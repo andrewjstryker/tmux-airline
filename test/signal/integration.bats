@@ -121,7 +121,7 @@ setup() {
 # the two halves it can: the session carries the companion, and the companion
 # reduces the ledger. test/widget/integration.bats covers the presentation.
 assert_problem_badge () {   # <session>
-  run sopt status-right -t "$1"
+  run sopt status-left -t "$1"
   assert_success
   assert_output --partial '#{E:@airline--widget-problem}'
   run sopt @airline--widget-problem -t "$1"
@@ -302,4 +302,49 @@ assert_problem_badge () {   # <session>
   [[ "$output" != *"session:$session"* ]]
   run airline problem show example curl
   assert_output --partial 'active  fail'
+}
+
+@test "selecting an attached window acknowledges every pane's attention and preserves health and other windows" {
+  local first second target away other other_pane observed clients
+  airline session init
+  first="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
+  target="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{window_id}')"
+  second="$($TMUX -L "$_bats_socket" split-window -dP -F '#{pane_id}' -t "$first")"
+  away="$($TMUX -L "$_bats_socket" new-window -dP -F '#{window_id}' -t bats -n away)"
+  other_pane="$($TMUX -L "$_bats_socket" new-window -dP -F '#{pane_id}' -t bats -n other)"
+  $TMUX -L "$_bats_socket" select-window -t "$away"
+  airline status set -t "$first" attention
+  airline status set -t "$second" attention
+  airline status set -t "$other_pane" attention
+  airline health set -t "$first" test api warn "still degraded"
+  $TMUX -L "$_bats_socket" new-session -d -s screen -x 160 -y 24     "env -u TMUX TERM=xterm-256color $TMUX -L $_bats_socket attach-session -t bats"
+  for _ in {1..100}; do
+    clients="$($TMUX -L "$_bats_socket" list-clients -F '#{window_id}')"
+    [[ "$clients" == "$away" ]] && break
+    sleep 0.02
+  done
+  assert_equal "$clients" "$away"
+  $TMUX -L "$_bats_socket" select-window -t "$target"
+  for _ in {1..100}; do
+    observed="$(airline status show -t "$target")"
+    [[ -z "$observed" ]] && break
+    sleep 0.02
+  done
+  assert_equal "$observed" ''
+  run wopt @airline--badge-status -t "$target"
+  assert_output ''
+  run airline health show -t "$first" test api
+  assert_output "$(printf 'warn\tstill degraded')"
+  run airline status show -t "$other_pane"
+  assert_output --partial attention
+
+  # Any pane in the selected window is already seen, including an inactive pane.
+  airline status set -t "$second" active
+  airline status set -t "$second" attention
+  run airline status show -t "$target"
+  assert_output ''
+  $TMUX -L "$_bats_socket" select-pane -t "$second"
+  $TMUX -L "$_bats_socket" select-window -t "$away"
+  run airline status show -t "$target"
+  assert_output ''
 }
