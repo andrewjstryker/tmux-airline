@@ -9,8 +9,11 @@ airline_widget_format() {
   color='#{@airline-palette-primary}'
   color="#{?#{==:$value,warn},#{@airline-palette-alert},$color}"
   color="#{?#{==:$value,fail},#{@airline-palette-stress},$color}"
-  glyph='▲'
-  glyph="#{?#{==:$value,warn},△,$glyph}"
+  local warn=WARN fail=FAIL
+  if [[ "${AIRLINE_WIDGET_NERD_FONTS:-off}" == on ]]; then
+    warn=$'\uf071'; fail=$'\uf057'
+  fi
+  glyph="#{?#{==:$value,warn},$warn,$fail}"
   blink="#{?#{==:$value,fail},#[blink],}"
   printf '#{?%s,#[fg=%s]#[bg=%s]%s%s#[noblink] ,}#[fg=%s,bg=%s]' \
     "#{||:#{==:$value,warn},#{==:$value,fail}}" "$color" "$bg" "$blink" "$glyph" "$fg" "$bg"

@@ -27,6 +27,16 @@ widget_output_valid () {
   (( clean == bytes ))
 }
 
+# Resolve once per layout evaluation (or standalone widget inspection).
+widget_presentation_options () {
+  pub_get_into AIRLINE_WIDGET_NERD_FONTS nerd-fonts || return
+  AIRLINE_WIDGET_NERD_FONTS="${AIRLINE_WIDGET_NERD_FONTS:-off}"
+  case "$AIRLINE_WIDGET_NERD_FONTS" in
+    on|off) ;;
+    *) printf 'airline: nerd-fonts must be on or off\n' >&2; return 2 ;;
+  esac
+}
+
 widget_format () (   # <session> <instance> <definition> <fg> <bg>
   # These locals are the widget's sourced-file API; definitions read them by name.
   # shellcheck disable=SC2034
@@ -61,7 +71,8 @@ widget_format () (   # <session> <instance> <definition> <fg> <bg>
 
 widget_describe () (
   (( $# == 1 )) || command_die 'widget describe: need exactly one <widget>'
-  local name="$1" session file format rc=0; shift
+  local name="$1" session file format rc=0 AIRLINE_WIDGET_NERD_FONTS; shift
+  widget_presentation_options || return
   session="$(command_current_session)"
   file="$(catalog_describe_resolve "$session" widget "$name")" || return
   format="$(widget_format "$session" inspect "$file" \

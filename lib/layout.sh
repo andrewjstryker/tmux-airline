@@ -273,10 +273,17 @@ _layout_declare () {
 }
 
 _layout_definition_evaluate () {   # <session> <file>
-  local session="$1" file="$2" rc=0 output
+  # Dynamically scoped presentation input shared by all widget constructors.
+  # shellcheck disable=SC2034
+  local session="$1" file="$2" rc=0 output AIRLINE_WIDGET_NERD_FONTS
   output="$(mktemp "${TMPDIR:-/tmp}/airline-layout-contract.XXXXXX")" || return 1
   AIRLINE_LAYOUT_CONFIG_SESSION="$session"
   _layout_contract_reset
+  if ! widget_presentation_options; then
+    _layout_contract_reject "nerd-fonts must be on or off"
+    rm -f "$output"
+    return 2
+  fi
   unset -f airline_layout_configure 2>/dev/null || true
   airline () { _layout_contract_reject "nested airline commands are not layout declarations"; }
   {

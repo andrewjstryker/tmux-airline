@@ -38,7 +38,13 @@ Global palette values seed sessions. An initialized session publishes its effect
 palette, which widgets read through live tmux format references. Palette changes
 render the layout again, so each placement receives the current segment colors.
 
-Widget policy belongs to `@airline-widget-<name>-<option>`. Each widget reads its
+Airline resolves the global `@airline-nerd-fonts` option once per layout evaluation
+and supplies `AIRLINE_WIDGET_NERD_FONTS` (`on` or `off`) as a dynamically scoped
+Bash input during format construction. Standalone widget inspection resolves it
+once as well. Widgets must not re-read that global option; it is never read at
+runtime. Custom widgets may use this input or choose their own presentation.
+
+Additional widget policy belongs to `@airline-widget-<name>-<option>`. Each widget reads its
 own public options directly with `tmux show-option -gqv` while composing the
 expression, applies defaults, and validates values. Airline passes only foreground
 and background arguments. It does not interpret option metadata, fetch widget
@@ -128,6 +134,7 @@ The complete path is:
 
 ```text
 layout use/load
+  → resolve @airline-nerd-fonts once for all widgets
   → source <name>.sh
   → call airline_widget_format default default
   → widget reads and validates its own public tmux options
