@@ -182,7 +182,7 @@ write_layout() {   # <path> <configure-body>
   run airline adapter use cpu
   assert_failure; assert_output --partial 'adapter was removed'
   run airline widget list
-  assert_line battery; assert_line online; assert_line power; assert_line prefix
+  assert_line online; assert_line power; assert_line prefix
   mkdir -p "$BATS_TEST_TMPDIR/widgets"
   write_layout "$BATS_TEST_TMPDIR/widgets/withprefix.sh" '  "$declare" segment left-out "#{E:@airline--widget-prefix}"'
   write_layout "$BATS_TEST_TMPDIR/widgets/bare.sh" '  "$declare" segment left-out "#S"'

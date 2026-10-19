@@ -173,7 +173,7 @@ LAYOUT
     assert_line --index 1 'segment left-mid #{E:@airline--widget-online}'
     assert_line --index 2 'segment right-in #{E:@airline--widget-prefix}'
     assert_line --index 3 'segment right-mid #{E:@airline--widget-cpu}'
-    assert_line --index 4 'segment right-out %Y-%m-%d %H:%M #{E:@airline--widget-battery}#{E:@airline--widget-power} #{E:@airline--widget-problem}'
+    assert_line --index 4 'segment right-out %Y-%m-%d %H:%M #{E:@airline--widget-power} #{E:@airline--widget-problem}'
   done
 }
 

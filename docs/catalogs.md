@@ -10,8 +10,8 @@ Catalog entries use role-specific extensions. Shell definitions use `.sh`; tmux
 configuration files use `.conf`. The logical name omits the extension:
 
 ```text
-widgets/battery.sh       # format definition named battery
-widgets/battery          # optional runtime executable named battery
+widgets/power.sh       # format definition named power
+widgets/power          # optional runtime executable named power
 layouts/full.sh          # layout named full
 palettes/default.conf    # palette named default
 ```

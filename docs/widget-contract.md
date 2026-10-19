@@ -11,8 +11,8 @@ scheduling, caching, locking, timeouts, retries, or runtime supervision.
 ## Catalog shape
 
 ```text
-widgets/battery.sh       # format definition
-widgets/battery          # optional runtime executable
+widgets/power.sh       # format definition
+widgets/power          # optional runtime executable
 ```
 
 Shell catalog definitions use `.sh`; tmux configuration files use `.conf`. The

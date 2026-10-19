@@ -8,15 +8,15 @@ setup() { load_session; catalog_register_builtin s1 widget "$PROJECT_ROOT/layout
 @test "widget catalog resolves format definitions and hides runtime companions" {
   run catalog_list s1 widget
   assert_success
-  assert_line battery
+  refute_output --partial battery
   assert_line cpu
   assert_line online
   assert_line power
   assert_line prefix
   assert_line problem
   refute_output --partial '.sh'
-  run catalog_resolve s1 widget battery
-  assert_output "$PROJECT_ROOT/layouts/widgets/battery.sh"
+  run catalog_resolve s1 widget power
+  assert_output "$PROJECT_ROOT/layouts/widgets/power.sh"
 }
 
 @test "problem format emits a companion job and live palette references" {
@@ -39,39 +39,6 @@ setup() { load_session; catalog_register_builtin s1 widget "$PROJECT_ROOT/layout
   refute_output --partial '#{prefix}'
   assert_output --partial '#{@airline-palette-active}'
   assert_output --partial '#{@airline-palette-emphasized}'
-}
-
-@test "battery and power runtime companions emit focused scalars" {
-  mkdir -p "$BATS_TEST_TMPDIR/power/BAT0"
-  printf 'Battery\n' > "$BATS_TEST_TMPDIR/power/BAT0/type"
-  printf '42\n' > "$BATS_TEST_TMPDIR/power/BAT0/capacity"
-  printf 'Charging\n' > "$BATS_TEST_TMPDIR/power/BAT0/status"
-  run env AIRLINE_POWER_SUPPLY="$BATS_TEST_TMPDIR/power" "$PROJECT_ROOT/layouts/widgets/battery"
-  assert_success
-  assert_output '42'
-  run env AIRLINE_POWER_SUPPLY="$BATS_TEST_TMPDIR/power" "$PROJECT_ROOT/layouts/widgets/power"
-  assert_success
-  assert_output 'connected'
-  printf 'Discharging\n' > "$BATS_TEST_TMPDIR/power/BAT0/status"
-  run env AIRLINE_POWER_SUPPLY="$BATS_TEST_TMPDIR/power" "$PROJECT_ROOT/layouts/widgets/power"
-  assert_success
-  assert_output 'battery'
-}
-
-@test "battery and power formats present their independent observations" {
-  source "$PROJECT_ROOT/layouts/widgets/battery.sh"
-  widget_runtime() { printf '%s' '#(battery-runtime)'; }
-  run airline_widget_format '#{@airline-palette-emphasized}' '#{@airline-palette-inner-bg}'
-  assert_success
-  refute_output --partial '🔋'
-  refute_output --partial '⚡'
-
-  source "$PROJECT_ROOT/layouts/widgets/power.sh"
-  widget_runtime() { printf '%s' '#(power-runtime)'; }
-  run airline_widget_format '#{@airline-palette-emphasized}' '#{@airline-palette-inner-bg}'
-  assert_success
-  assert_output --partial '🔋'
-  assert_output --partial '⚡'
 }
 
 @test "widgets expose capability checks without running runtime companions" {
@@ -124,7 +91,8 @@ setup() { load_session; catalog_register_builtin s1 widget "$PROJECT_ROOT/layout
   assert_success
   assert_output --partial AC
   assert_output --partial '🔋'
-  refute_output --partial '⚡'
+  assert_output --partial '⚡'
+  refute_output --partial '🔌'
 
   pub_set widget-prefix-show-copy off
   pub_set widget-prefix-show-sync off
@@ -152,4 +120,38 @@ setup() { load_session; catalog_register_builtin s1 widget "$PROJECT_ROOT/layout
   assert_failure 3
   assert_output ''
   assert_equal "$(declare -p _FAKE_OPT)" "$before"
+}
+
+@test "power companion distinguishes charging connected and discharging with validated capacity" {
+  local root="$BATS_TEST_TMPDIR/power" state
+  mkdir -p "$root/BAT0"
+  printf 'Battery\n' > "$root/BAT0/type"
+  printf '005\n' > "$root/BAT0/capacity"
+  for state in Charging Discharging Full 'Not charging' Unknown; do
+    printf '%s\n' "$state" > "$root/BAT0/status"
+    run env AIRLINE_POWER_SUPPLY="$root" "$PROJECT_ROOT/layouts/widgets/power"
+    assert_success
+    case "$state" in
+      Charging) assert_output 'charging 5' ;;
+      Discharging) assert_output 'battery 5' ;;
+      Full|'Not charging') assert_output 'connected 5' ;;
+      Unknown) assert_output unknown ;;
+    esac
+  done
+  printf 'Charging\n' > "$root/BAT0/status"
+  for capacity in '' -1 101 nonsense; do
+    printf '%s\n' "$capacity" > "$root/BAT0/capacity"
+    run env AIRLINE_POWER_SUPPLY="$root" "$PROJECT_ROOT/layouts/widgets/power"
+    assert_success
+    assert_output unknown
+  done
+  rm "$root/BAT0/capacity"
+  run env AIRLINE_POWER_SUPPLY="$root" "$PROJECT_ROOT/layouts/widgets/power"
+  assert_output unknown
+  printf 'Not charging\n' > "$root/BAT0/status"
+  run env AIRLINE_POWER_SUPPLY="$root" "$PROJECT_ROOT/layouts/widgets/power"
+  assert_output unknown
+  rm "$root/BAT0/status"
+  run env AIRLINE_POWER_SUPPLY="$root" "$PROJECT_ROOT/layouts/widgets/power"
+  assert_output unknown
 }

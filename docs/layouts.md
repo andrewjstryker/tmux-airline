@@ -11,7 +11,7 @@ airline_layout_configure() {
   "$declare" segment left-out '#h'
   "$declare" segment left-mid '#S #{E:@airline--widget-online}'
   "$declare" segment right-in '#{E:@airline--widget-prefix}'
-  "$declare" segment right-out '%H:%M #{E:@airline--widget-battery}#{E:@airline--widget-power} #{E:@airline--widget-problem}'
+  "$declare" segment right-out '%H:%M #{E:@airline--widget-power} #{E:@airline--widget-problem}'
 }
 ```
 

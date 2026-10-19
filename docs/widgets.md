@@ -28,7 +28,7 @@ jobs. Place widgets through a layout:
 airline_layout_configure() {
   "$1" segment left-out '#S'
   "$1" segment right-mid '#{E:@airline--widget-cpu} | #{E:@airline--widget-online}'
-  "$1" segment right-out '#{E:@airline--widget-battery}#{E:@airline--widget-power}'
+  "$1" segment right-out '#{E:@airline--widget-power}'
 }
 ```
 
@@ -48,18 +48,20 @@ Tmux 3.2 or newer is required for numeric meter comparisons.
 | Name | Observation | Presentation and availability |
 |---|---|---|
 | `cpu` | sibling `cpu` executable reports a current usage snapshot | low, medium, or high level using configurable thresholds |
-| `battery` | sibling `battery` executable reads the first readable Linux system battery | Capacity level `▁`–`█`, colored by charge level |
-| `power` | sibling `power` executable reads the first readable Linux system battery | `🔋` while discharging and `⚡` when charging/full/attached |
+| `power` | sibling `power` executable reads state and capacity from the first readable Linux system battery | One charge-colored icon: `🔋` discharging, `⚡` charging, `🔌` full or connected without charging |
 | `online` | sibling `online` executable performs one fast ICMP check | `●` in primary/stress color for reachable/unreachable; requires `ping` |
 | `prefix` | Native client and pane state | Prefix, Copy, Sync, or custom key-table badge; no process |
 | `problem` | sibling `problem` executable reports `airline problem show --level` | Alert-colored `△` for warn, blinking stress-colored `▲` for fail; hidden when clear |
 
 Online means the chosen host answered ICMP, not that every Internet service works.
-Battery capacity and power source are independent widgets for one device, not an
-aggregate across multiple batteries. Battery levels advance at 6%, 20%, 35%, 50%,
-65%, 80%, and 95%, preserving the adapter's meter. Levels use stress below 20%,
-alert below 50%, emphasized below 80%, and primary otherwise. An unknown capacity
-displays `—`; an unknown power source displays `—`.
+Power represents one device, not an aggregate across multiple batteries. It shows
+no meter or percentage. Discharging uses stress below 20%, alert from 20–49%,
+emphasized from 50–89%, and primary from 90%. Charging and connected without
+charging both use emphasized below 90% and primary from 90%; neither uses alert
+or stress, including when an intentional charge limit holds capacity below 90%.
+A battery reporting discharging uses the battery icon and colors even when attached.
+Unknown status, or missing/invalid capacity, displays
+`—` in primary. Host notifications remain responsible for urgent battery warnings.
 
 Prefix precedence is `Prefix`, pane mode (`Copy`), synchronized panes (`Sync`), then
 a non-root client key-table name. Badges use inner-bg foreground and active, copy, or
@@ -115,8 +117,7 @@ placements and `widget describe` do not accept argument overrides.
 | Widget | Options and built-in defaults |
 |---|---|
 | `cpu` | `medium=60`, `high=85`, `low-icon==`, `medium-icon=≡`, `high-icon=≣` |
-| `battery` | no options |
-| `power` | `battery-icon=🔋`, `connected-icon=⚡` |
+| `power` | `battery-icon=🔋`, `charging-icon=⚡`, `connected-icon=🔌` |
 | `online` | `host=1.1.1.1`, `timeout=1` (integer seconds, 1–8), `online-icon=●`, `offline-icon=●` |
 | `prefix` | `show-copy=on`, `show-sync=on` (each `on` or `off`) |
 
@@ -160,6 +161,11 @@ Airline's responsibility. No `options` or `default-*` metadata is needed.
 
 ## Migration
 
+The `battery` meter has been replaced by the combined `power` widget. Replace
+`#{E:@airline--widget-battery}` (or the old battery/power pair) with
+`#{E:@airline--widget-power}`. `connected-icon` now means plugged in without
+charging; use `charging-icon` to customize the lightning icon.
+
 Replace standalone `widget` / `widget-optional` declarations, `adapter use`, and
 the earlier `{{widget ...}}` placeholders with native
 `#{E:@airline--widget-<name>}` references inside segment strings. Move inline
@@ -167,7 +173,7 @@ arguments to `@airline-widget-<name>-<option>` tmux options.
 Combine formerly appended fragments into one string per segment. The old adapter
 CLI and catalog are removed; register custom formats in the widget catalog. `prefix` replaces `prefix-highlight`.
 The full layout places online at left-mid, prefix at right-in, CPU at right-mid,
-and battery followed by power after the date at right-out. Unavailable requested
+and power after the date at right-out. Unavailable requested
 widgets report through the problem service.
 
 Published widgets receive `default` for `fg` and `bg`; a native style wrapper

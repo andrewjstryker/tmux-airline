@@ -157,3 +157,43 @@ LAYOUT
   run sopt @airline-widget-cpu-medium -g
   assert_output 72
 }
+
+@test "power renders one icon with charge and source colors at each boundary" {
+  local format state capacity color icon
+  source "$PROJECT_ROOT/lib/widget.sh"
+  source "$PROJECT_ROOT/layouts/widgets/power.sh"
+  tmux() { "$TMUX" -L "$_bats_socket" "$@"; }
+  widget_runtime() { printf '%s' '#{@power-test-value}'; }
+  tmux set-option -g @airline-palette-primary white
+  tmux set-option -g @airline-palette-emphasized blue
+  tmux set-option -g @airline-palette-alert yellow
+  tmux set-option -g @airline-palette-stress red
+  format="$(airline_widget_format white black)"
+  for state in battery charging connected; do
+    for capacity in 0 5 19 20 49 50 89 90 100; do
+      color=blue
+      (( capacity < 90 )) || color=white
+      if [[ "$state" == battery ]]; then
+        icon=🔋
+        if (( capacity < 20 )); then color=red
+        elif (( capacity < 50 )); then color=yellow
+        fi
+      elif [[ "$state" == charging ]]; then
+        icon=⚡
+      else
+        icon=🔌
+      fi
+      tmux set-option -g @power-test-value "$state $capacity"
+      run tmux display-message -p "$format"
+      assert_success
+      assert_output "#[fg=$color]$icon#[fg=white,bg=black]"
+    done
+  done
+  for state in unknown ''; do
+    icon=—
+    tmux set-option -g @power-test-value "$state"
+    run tmux display-message -p "$format"
+    assert_success
+    assert_output "#[fg=white]$icon#[fg=white,bg=black]"
+  done
+}
