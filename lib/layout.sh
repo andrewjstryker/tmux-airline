@@ -285,6 +285,8 @@ _layout_definition_evaluate () {   # <session> <file>
     return 2
   fi
   unset -f airline_layout_configure 2>/dev/null || true
+  # Called by sourced layout definitions, including their configure callback.
+  # shellcheck disable=SC2329
   airline () { _layout_contract_reject "nested airline commands are not layout declarations"; }
   {
     # shellcheck source=/dev/null

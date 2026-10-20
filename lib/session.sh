@@ -92,6 +92,7 @@ _session_config () {   # <session> [<file>]
   [[ -n "$pane" ]] || command_die "session config: cannot resolve a pane for '$session'"
   # The config file is a trusted batch of the existing CLI commands. Keep the
   # command name available even when the installable PATH shim is not installed.
+  # shellcheck disable=SC2329 # Invoked by the sourced configuration.
   airline() { TMUX_PANE="$pane" "$AIRLINE_DIR/airline.sh" "$@"; }
   # shellcheck disable=SC1090
   source "$file"

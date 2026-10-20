@@ -127,7 +127,8 @@ CASES
 @test "help notes appear in the relevant command families" {
   run main help status
   assert_success
-  assert_output --partial "Observed status results clear"
+  assert_output --partial "Attention clears when its window is focused"
+  assert_output --partial "results clear when you focus away from their pane"
 
   run main help health
   assert_success
