@@ -6,6 +6,17 @@ see [DESIGN.md](../DESIGN.md). Focused design documents begin with
 in [CHANGELOG.md](../CHANGELOG.md); prospective consolidation work lives in
 [TODO.md](../TODO.md).
 
+Before pushing, run both CI checks locally:
+
+```shell
+make check
+```
+
+This runs lint first, then the full test suite. ShellCheck is required; lint
+fails if it is missing. Use the same ShellCheck version as CI: older versions
+can miss diagnostics that newer versions report. A focused test run does not
+replace this pre-push check.
+
 The full suite exercises real isolated tmux servers. Tests require Bats, tmux,
 Bash, GNU timeout, flock, and `script` (for the attached-client rendering check):
 
