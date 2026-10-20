@@ -1,6 +1,6 @@
 # tmux-airline — installation and developer tasks.
 
-.PHONY: install completions check-completions check-version release test test-fast test-integration test-layout test-session test-signal test-transaction test-runner test-widget lint
+.PHONY: install completions check check-completions check-version release test test-fast test-integration test-layout test-session test-signal test-transaction test-runner test-widget lint
 
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
@@ -44,6 +44,10 @@ check-version:
 release: check-version
 	@scripts/release
 
+check:
+	$(MAKE) lint
+	$(MAKE) test
+
 test: check-version
 	bats $(ALL_TESTS)
 
@@ -75,7 +79,7 @@ lint:
 	@if command -v shellcheck >/dev/null; then \
 	  shellcheck $(SHELLCHECK_SOURCES); \
 	else \
-	  echo "shellcheck not installed; skipping"; \
+	  echo "shellcheck is required for lint" >&2; exit 1; \
 	fi
 	@echo "architecture lint (DESIGN.md §Enforcement):"
 	@test/lint-architecture.sh all
