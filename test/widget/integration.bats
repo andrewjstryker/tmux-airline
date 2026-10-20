@@ -26,7 +26,7 @@ setup() { $TMUX -L "$_bats_socket" -f /dev/null new-session -d -s bats; }
 # The companion reads the ledger through the public CLI, so the reduction it
 # reports is the one `problem show` publishes, not a private option.
 @test "problem companion reduces the ledger and its format presents live values" {
-  local level expected format pane
+  local level expected format pane AIRLINE_WIDGET_NERD_FONTS warn fail width expected_width
   airline session init
   # tmux gives a #() job its server context; the seam supplies it here.
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
@@ -36,9 +36,9 @@ setup() { $TMUX -L "$_bats_socket" -f /dev/null new-session -d -s bats; }
   }
   source "$PROJECT_ROOT/layouts/widgets/problem.sh"
   widget_runtime() { printf '%s' '#{@problem-test-value}'; }
-  format="$(airline_widget_format white black)"
-  # session init publishes the effective palette per session, so pin the two
+  # session init publishes the effective palette per session, so pin the three
   # roles under test at that same scope.
+  $TMUX -L "$_bats_socket" set-option -t bats @airline-palette-primary white
   $TMUX -L "$_bats_socket" set-option -t bats @airline-palette-alert yellow
   $TMUX -L "$_bats_socket" set-option -t bats @airline-palette-stress red
 
@@ -54,16 +54,27 @@ setup() { $TMUX -L "$_bats_socket" -f /dev/null new-session -d -s bats; }
   companion
   assert_output fail
 
-  for level in '' warn fail; do
-    $TMUX -L "$_bats_socket" set-option -g @problem-test-value "$level"
-    case "$level" in
-      '') expected='#[fg=white,bg=black]' ;;
-      warn) expected='#[fg=yellow]#[bg=black]△#[noblink] #[fg=white,bg=black]' ;;
-      fail) expected='#[fg=red]#[bg=black]#[blink]▲#[noblink] #[fg=white,bg=black]' ;;
-    esac
-    run $TMUX -L "$_bats_socket" display-message -p "$format"
-    assert_success
-    assert_output "$expected"
+  for AIRLINE_WIDGET_NERD_FONTS in off on; do
+    warn=WARN; fail=FAIL; width=4
+    if [[ "$AIRLINE_WIDGET_NERD_FONTS" == on ]]; then
+      warn=$'\uf071'; fail=$'\uf057'; width=1
+    fi
+    format="$(airline_widget_format white black)"
+    for level in '' warn fail ''; do
+      $TMUX -L "$_bats_socket" set-option -g @problem-test-value "$level"
+      expected_width="$width"
+      case "$level" in
+        '') expected=''; expected_width=0 ;;
+        warn) expected="#[fg=yellow]#[bg=black]$warn#[noblink]#[fg=white,bg=black]" ;;
+        fail) expected="#[fg=red]#[bg=black]#[blink]$fail#[noblink]#[fg=white,bg=black]" ;;
+      esac
+      run $TMUX -L "$_bats_socket" display-message -p "$format"
+      assert_success
+      assert_output "$expected"
+      run $TMUX -L "$_bats_socket" display-message -p "#{w:$format}"
+      assert_success
+      assert_output "$expected_width"
+    done
   done
 }
 
@@ -156,4 +167,117 @@ LAYOUT
   assert_output --partial resolved
   run sopt @airline-widget-cpu-medium -g
   assert_output 72
+}
+
+@test "power renders one icon with charge and source colors at each boundary" {
+  local format state capacity color icon AIRLINE_WIDGET_NERD_FONTS
+  source "$PROJECT_ROOT/lib/widget.sh"
+  source "$PROJECT_ROOT/layouts/widgets/power.sh"
+  tmux() { "$TMUX" -L "$_bats_socket" "$@"; }
+  widget_runtime() { printf '%s' '#{@power-test-value}'; }
+  tmux set-option -g @airline-palette-primary white
+  tmux set-option -g @airline-palette-emphasized blue
+  tmux set-option -g @airline-palette-alert yellow
+  tmux set-option -g @airline-palette-stress red
+  for AIRLINE_WIDGET_NERD_FONTS in off on; do
+    format="$(airline_widget_format white black)"
+    for state in battery charging connected; do
+      for capacity in 0 5 19 20 49 50 89 90 100; do
+        color=blue
+        (( capacity < 90 )) || color=white
+        if [[ "$state" == battery ]]; then
+          icon=BAT
+          [[ "$AIRLINE_WIDGET_NERD_FONTS" != on ]] || icon=$'\U000f0079'
+          if (( capacity < 20 )); then color=red
+          elif (( capacity < 50 )); then color=yellow
+          fi
+        elif [[ "$state" == charging ]]; then
+          icon=CHG
+          [[ "$AIRLINE_WIDGET_NERD_FONTS" != on ]] || icon=$'\U000f0084'
+        else
+          icon=AC
+          [[ "$AIRLINE_WIDGET_NERD_FONTS" != on ]] || icon=$'\U000f06a5'
+        fi
+        tmux set-option -g @power-test-value "$state $capacity"
+        run tmux display-message -p "$format"
+        assert_success
+        assert_output "#[fg=$color]$icon#[fg=white,bg=black]"
+      done
+    done
+    for state in unknown ''; do
+      icon=—
+      tmux set-option -g @power-test-value "$state"
+      run tmux display-message -p "$format"
+      assert_success
+      assert_output "#[fg=white]$icon#[fg=white,bg=black]"
+    done
+  done
+}
+
+@test "network and CPU retain colors in text and Nerd Font modes" {
+  local AIRLINE_WIDGET_NERD_FONTS value color icon format
+  source "$PROJECT_ROOT/lib/widget.sh"
+  tmux() { "$TMUX" -L "$_bats_socket" "$@"; }
+  widget_runtime() { printf '%s' '#{@widget-test-value}'; }
+  tmux set-option -g @airline-palette-primary white
+  tmux set-option -g @airline-palette-alert yellow
+  tmux set-option -g @airline-palette-stress red
+  for AIRLINE_WIDGET_NERD_FONTS in off on; do
+    source "$PROJECT_ROOT/layouts/widgets/online.sh"
+    format="$(airline_widget_format white black)"
+    for value in 'wired full' 'wireless full' 'wired limited' 'wireless limited' disconnected unknown ''; do
+      color=white
+      case "$value" in
+        *limited) color=yellow ;;
+        disconnected) color=red ;;
+      esac
+      case "$value" in
+        wired*) icon=LAN; [[ "$AIRLINE_WIDGET_NERD_FONTS" != on ]] || icon=$'\U000f0200' ;;
+        wireless*) icon=WiFi; [[ "$AIRLINE_WIDGET_NERD_FONTS" != on ]] || icon=$'\U000f05a9' ;;
+        disconnected) icon=OFF; [[ "$AIRLINE_WIDGET_NERD_FONTS" != on ]] || icon=$'\U000f0319' ;;
+        *) icon=— ;;
+      esac
+      tmux set-option -g @widget-test-value "$value"
+      run tmux display-message -p "$format"
+      assert_success
+      assert_output "#[fg=$color]$icon#[fg=white,bg=black]"
+    done
+    source "$PROJECT_ROOT/layouts/widgets/cpu.sh"
+    format="$(airline_widget_format white black)"
+    icon=CPU
+    [[ "$AIRLINE_WIDGET_NERD_FONTS" != on ]] || icon=$'\uf4bc'
+    for value in 0 59 60 84 85 100; do
+      color=white
+      if (( value >= 85 )); then color=red
+      elif (( value >= 60 )); then color=yellow; fi
+      tmux set-option -g @widget-test-value "$value"
+      run tmux display-message -p "$format"
+      assert_success
+      assert_output "#[fg=$color]$icon#[fg=white,bg=black]"
+    done
+  done
+}
+
+@test "font preference applies on layout reload and invalid values preserve the current layout" {
+  local before
+  airline session init
+  airline layout use full
+  run sopt @airline--widget-cpu
+  assert_output --partial ']CPU'
+  $TMUX -L "$_bats_socket" set-option -g @airline-nerd-fonts on
+  run sopt @airline--widget-cpu
+  assert_output --partial ']CPU'
+  airline layout use full
+  run sopt @airline--widget-cpu
+  assert_output --partial $'\uf4bc'
+  refute_output --partial ']CPU'
+  before="$(sopt @airline--widget-cpu)"
+  $TMUX -L "$_bats_socket" set-option -g @airline-nerd-fonts invalid
+  run airline layout use full
+  assert_failure
+  assert_equal "$(sopt @airline--widget-cpu)" "$before"
+  $TMUX -L "$_bats_socket" set-option -g @airline-nerd-fonts ''
+  airline layout use full
+  run sopt @airline--widget-cpu
+  assert_output --partial ']CPU'
 }

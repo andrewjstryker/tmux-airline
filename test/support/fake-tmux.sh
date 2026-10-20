@@ -45,7 +45,7 @@ declare -gi _FAKE_WRITES=0      # option mutation count (assertable for no-op pa
 # Reset all fake state. Each test re-sources this file (via its loader), which
 # re-declares the arrays empty, so this is only needed to clear mid-test.
 fake_tmux_reset () {
-  _FAKE_OPT=(); _FAKE_HOOK=()
+  _FAKE_OPT=(); _FAKE_HOOK=(); _FAKE_FOCUSED_WINDOWS=""
   _FAKE_WIN='@1'; _FAKE_PANE='%1'; _FAKE_SESSION='s1'; _FAKE_WINDOWS=('@1'); _FAKE_PANES=('%1'); _FAKE_REDRAWS=0; _FAKE_WRITES=0
   _AIRLINE_TRANSACTION_CHANNEL=""
 }
@@ -102,6 +102,7 @@ resolve_session () { printf '%s' "$1"; }
 resolve_session_target () { printf '%s' "$1"; }
 list_sessions () { printf '%s\n' "$_FAKE_SESSION"; }
 list_windows  () { printf '%s\n' "${_FAKE_WINDOWS[@]}"; }
+list_focused_windows () { printf '%s\n' "${_FAKE_FOCUSED_WINDOWS:-}"; }
 list_panes    () { printf '%s\n' "${_FAKE_PANES[@]}"; }
 session_pane () { printf '%s' "$_FAKE_PANE"; }
 list_all_windows () { printf '%s\n' "${_FAKE_WINDOWS[@]}"; }

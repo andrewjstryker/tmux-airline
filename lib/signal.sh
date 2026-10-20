@@ -208,6 +208,27 @@ _signal_ensure_result_hook () {
     "run-shell -b \"if [ -n '#{${revision_option}}' ]; then '$AIRLINE_DIR/airline.sh' status _observed-result '#{pane_id}' '#{${revision_option}}'; fi\""
 }
 
+signal_status_install_hooks () {
+  local hook badge_option
+  badge_option="$(prv_name "$AIRLINE_KEY_STATUS")"
+  opt_set_global focus-events on || return
+  for hook in session-window-changed window-pane-changed pane-focus-in client-session-changed client-attached; do
+    hook_set "${hook}[91]" \
+      "if-shell -F '#{==:#{${badge_option}},attention}' { run-shell -b \"'$AIRLINE_DIR/airline.sh' status _focused-window '#{window_id}'\" }" || return
+  done
+}
+
+_signal_window_focused_into () { # <destination> <window>
+  local -n focused_destination="$1"
+  local windows focused_window
+  focused_destination=""
+  windows="$(list_focused_windows)" || return
+  while IFS= read -r focused_window; do
+    # shellcheck disable=SC2034 # output through caller-selected nameref
+    [[ "$focused_window" != "$2" ]] || focused_destination=1
+  done <<< "$windows"
+}
+
 _signal_status_next_revision () {   # <destination> <pane>
   local -n destination="$1"
   local pane="$2" current changed=""
@@ -220,8 +241,17 @@ _signal_status_next_revision () {   # <destination> <pane>
 _signal_status_set_unlocked () {   # <destination> <window> <pane> <pane-member> <value>
   local -n destination="$1"
   local win="$2" pane="$3" member="$4" value="$5"
-  local tuple current revision has_rc=0
+  local tuple current revision focused has_rc=0
   destination=""
+  if [[ "$value" == attention ]]; then
+    _signal_window_focused_into focused "$win" || return
+    if [[ -n "$focused" ]]; then
+      # A report replaces the pane's previous workflow phase, but its attention
+      # request is already satisfied. Do not leave a stale active/result entry.
+      _signal_status_clear_unlocked "$1" "$win" "$pane" "$member"
+      return
+    fi
+  fi
   coll_get_into tuple window "$win" status "$member" || return
   coll_has window "$win" status "$member" || has_rc=$?
   (( has_rc <= 1 )) || return "$has_rc"
@@ -274,6 +304,7 @@ signal_status_set () {   # [-t <pane-target>] <active|result|attention>
   _signal_status_valid "$value" || command_die "status set: invalid value '$value'"
   _signal_resolve_pane_owner pane win "status set" "$target" || return
   member="${pane#%}"
+  [[ "$value" != attention ]] || signal_status_install_hooks || return
   _signal_apply window "$win" status _signal_status_set_unlocked \
     "$win" "$pane" "$member" "$value" || return
   [[ "$value" != result ]] || _signal_ensure_result_hook
@@ -323,6 +354,34 @@ signal_status_clear () {   # [-t <pane-target>]
   _signal_resolve_pane_owner pane win "status clear" "$target" || return
   member="${pane#%}"
   _signal_apply window "$win" status _signal_status_clear_unlocked "$win" "$pane" "$member"
+}
+
+_signal_status_ack_attention_unlocked () { # <destination> <window>
+  local -n acknowledged="$1"
+  local win="$2" focused members member tuple value revision changed
+  acknowledged=""
+  # Recheck inside the transaction: a queued hook must not acknowledge a window
+  # the user has already left, or a later report made while it is out of focus.
+  _signal_window_focused_into focused "$win" || return
+  [[ -n "$focused" ]] || return 0
+  coll_members_into members window "$win" status || return
+  for member in $members; do
+    coll_get_into tuple window "$win" status "$member" || return
+    IFS=$'\t' read -r value revision <<< "$tuple"
+    [[ "$value" == attention ]] || continue
+    _signal_status_clear_unlocked changed "$win" "%$member" "$member" || return
+    # shellcheck disable=SC2034 # output through caller-selected nameref
+    [[ -z "$changed" ]] || acknowledged=1
+  done
+}
+
+signal_status_focused_window () { # <canonical-window>
+  (( $# == 1 )) && [[ "$1" =~ ^@[0-9]+$ ]] || return 2
+  local win
+  # A window may disappear before its asynchronous focus hook runs.
+  win="$(resolve_window "$1" 2>/dev/null)" || return 0
+  [[ -n "$win" ]] || return 0
+  _signal_apply window "$win" status _signal_status_ack_attention_unlocked "$win"
 }
 
 # A departed pane can no longer be resolved through tmux, but its status tuple is

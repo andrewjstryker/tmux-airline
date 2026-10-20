@@ -138,7 +138,7 @@ _seed_palette() {
   assert_output --partial "#[fg=colour234]#I:#W"
 }
 
-# --- badges: status (left) + health (right) ---------------------------------
+# --- badges: status then health after the name ---------------------------------
 
 @test "status badge renders a selector over the projected status scalar" {
   load_render
@@ -180,12 +180,18 @@ _seed_palette() {
   assert_output --partial "fail},#[blink]"
 }
 
-@test "window-status-format places status left of the name and health right" {
+@test "window entries group status then health after the name with outer spacing" {
   load_render
   _seed_palette
   render "$AIRLINE_SESSION"
   run wopt window-status-format
-  [[ "$output" == *"@airline--badge-status"*"#I:#W"*"@airline--badge-health"* ]]
+  [[ "$output" == *"#I:#W"*"@airline--badge-status"*"@airline--badge-health"* ]]
+  [[ "$output" == *' ' ]]
+  assert_output --partial '#[bg=colour234] '
+  run wopt window-status-current-format
+  [[ "$output" == *"#I:#W"*"@airline--badge-status"*"@airline--badge-health"* ]]
+  run wopt window-status-separator
+  assert_output ""
 }
 
 @test "render_status_project reduces entries to the highest level" {

@@ -14,7 +14,7 @@ Features:
 - Swappable color **palettes** (dark, light, Solarized) — or your own
 - Composable **layouts** that arrange the bar, plus a CLI to drive segments and
   per-window badges
-- Native **widgets** for CPU level, battery capacity, power source, reachability,
+- Native **widgets** for CPU level, power state, network connectivity,
   and prefix state, with
   persistent defaults and colors from the active palette
 - Suspend/resume for nested tmux sessions
@@ -22,10 +22,11 @@ Features:
 ## Installation
 
 This plugin requires **tmux 3.2+** and Bash 4.3+ (for associative arrays and
-namerefs). The online runtime requires `ping`; battery data currently supports
-Linux.
+namerefs). The online runtime requires Linux with NetworkManager (`nmcli`) and `ip`;
+battery data currently supports Linux. Widgets default to short text. Enable
+`set -g @airline-nerd-fonts on` for Nerd Font icons, then reload the layout.
 
-Tmux 3.2 supplies the numeric format comparisons used by CPU and battery meters.
+Tmux 3.2 supplies the numeric format comparisons used by CPU and battery thresholds.
 Older versions cannot render those thresholds correctly.
 
 ### With [Tmux Plugin Manager](https://github.com/tmux-plugins/tpm) (recommended)
@@ -288,7 +289,7 @@ See [layout inspection and application](docs/layouts.md) for evaluation and vali
 | Layout     | What it composes                                                    |
 |------------|---------------------------------------------------------------------|
 | `default`  | Init's default — the dependency-free standard arrangement                          |
-| `full`     | Host, session, prefix, date, and available CPU/online/battery/power widgets |
+| `full`     | Host/session context, grouped network/CPU/power, prefix, date, and problems |
 | `minimal`  | A pared-down bar                                                    |
 
 Switching layouts starts from a clean slate, so a layout owns exactly the arrangement
@@ -328,9 +329,8 @@ normal status refresh; Airline provides no widget scheduler or runtime wrapper.
 | Widget | Source |
 |---|---|
 | `cpu` | current CPU usage reduced to low, medium, or high |
-| `battery` | First Linux system battery's capacity meter |
-| `power` | First Linux system battery's power-source glyph |
-| `online` | ICMP reachability of a chosen host; requires `ping` |
+| `power` | First Linux system battery's charge-colored power state |
+| `online` | Wired/wireless connection and NetworkManager connectivity; requires `nmcli` and `ip` |
 | `prefix` | Native prefix, Copy, Sync, and key-table badges; no subprocess |
 
 Use `airline widget list`, `airline widget describe cpu`, and
@@ -350,9 +350,10 @@ or layout with `use`; each selection applies to the invoking session.
 
 The window name reflects tmux focus and mode state. Zoom, copy, and activity-monitor
 modes use their palette roles, in that priority order. Integrations may add a status
-badge on the left (processing, result ready, or input needed) and a health badge on
-the right (warning or failure). A problem badge at the far right indicates an
-unavailable capability. To inspect an unfamiliar badge:
+badge after the name (processing, result ready, or input needed), followed by a
+health badge (warning or failure). Each window entry has outer spacing to group its
+name and badges. Focusing a window clears its attention requests. A problem badge
+immediately left of the window list indicates an unavailable capability. To inspect an unfamiliar badge:
 
 ```shell
 airline status show

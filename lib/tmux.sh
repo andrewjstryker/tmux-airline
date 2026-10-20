@@ -347,10 +347,16 @@ opt_get_pane   () { _opt_read   pane "$1" "$2"; }
 # redraw gating out of the public exit-status contract.
 _opt_setif () {   # <destination> <global|session|window|pane> <owner> <name> <value>
   local -n destination="$1"
-  local scope="$2" owner="$3" name="$4" value="$5" current
+  local scope="$2" owner="$3" name="$4" value="$5" current present_rc=0
   destination=""
   _opt_read_into current "$scope" "$owner" "$name" || return
-  [[ "$current" != "$value" ]] || return 0
+  if [[ "$current" == "$value" ]]; then
+    # An absent native option may inherit a nonempty default. Explicit empty
+    # overrides (such as window-status-separator) must still be installed.
+    [[ "$name" != @* && -z "$value" ]] || return 0
+    _opt_present "$scope" "$owner" "$name" || present_rc=$?
+    (( present_rc == 1 )) || return "$present_rc"
+  fi
   _opt_store "$scope" "$owner" "$name" "$value" || return
   destination=1
 }
@@ -501,6 +507,10 @@ resolve_session_target () { tmux display-message -p -t "$1:" '#{session_id}'; }
 list_sessions () { tmux list-sessions -F '#{session_id}'; }
 
 list_windows () { tmux list-windows -t "$1:" -F '#{window_id}'; }
+# Selected windows actually displayed by terminal clients (not control clients).
+list_focused_windows () {
+  tmux list-clients -F '#{?client_control_mode,,#{window_id}}'
+}
 list_panes () { tmux list-panes -t "$1" -F '#{pane_id}'; }
 # A session bootstrap may need to run a user command file as that session.  Use a
 # native pane context rather than treating an environment variable as Airline state.

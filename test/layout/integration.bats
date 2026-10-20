@@ -182,7 +182,7 @@ write_layout() {   # <path> <configure-body>
   run airline adapter use cpu
   assert_failure; assert_output --partial 'adapter was removed'
   run airline widget list
-  assert_line battery; assert_line online; assert_line power; assert_line prefix
+  assert_line online; assert_line power; assert_line prefix
   mkdir -p "$BATS_TEST_TMPDIR/widgets"
   write_layout "$BATS_TEST_TMPDIR/widgets/withprefix.sh" '  "$declare" segment left-out "#{E:@airline--widget-prefix}"'
   write_layout "$BATS_TEST_TMPDIR/widgets/bare.sh" '  "$declare" segment left-out "#S"'
@@ -337,13 +337,15 @@ write_layout() {   # <path> <configure-body>
 
   airline_session "$one" layout use minimal
   airline_session "$other" layout use default
-  # Every shipped layout places the problem widget, so right-out is never bare;
-  # minimal contributes the widget alone and default also carries its clock.
-  run airline_session "$one" segment show right-out
+  # Every shipped layout reserves left-inner for problems; the default clock
+  # remains in right-outer.
+  run airline_session "$one" segment show left-in
   assert_output --partial '#{E:@airline--widget-problem}'
   refute_output --partial "%Y-%m-%d %H:%M"
   run airline_session "$other" segment show right-out
   assert_output --partial "%Y-%m-%d %H:%M"
+  refute_output --partial '#{E:@airline--widget-problem}'
+  run airline_session "$other" segment show left-in
   assert_output --partial '#{E:@airline--widget-problem}'
 
   run sopt @airline-palette-secondary -t "$one"

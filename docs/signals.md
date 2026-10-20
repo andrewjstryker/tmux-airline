@@ -24,16 +24,16 @@ Airline maps its state onto tmux's normal scopes:
 
 A window entry has three layers, owned by two parties. **airline** owns the
 entry's *color* (the name itself); **plugins** speak through two *badges* that
-flank the name. They never collide.
+follow the name in a fixed order.
 
 ```
- ○ 1:vim        ● 2:build ▲        ◆ 3:agent
- │   └name      │   └name  └health   │   └name
- └status        └status              └status  (needs you)
+ 1:vim ○  2:build ● ▲  3:agent ◆
 ```
 
-The **status badge** sits *left* of the name; the **health badge** sits *right*.
-Because they're on opposite sides, their colors may overlap without ambiguity.
+The **status badge** follows the name, then the **health badge**. Each window
+entry has one outer space on each side, giving adjacent inactive entries two spaces
+of separation. Badges remain inside their owning window's grouping.
+Distinct glyphs distinguish workflow status from health even when their colors overlap.
 
 ## Entry color (airline-owned): tmux modes
 
@@ -158,18 +158,24 @@ by the reporter: Airline validates their framing but assigns them no meaning. Si
 commands place every option before their contributor, key, or value operands.
 
 Status values are workflow phases with distinct transition mechanisms. `active`
-remains while the producer is processing, and `attention` remains while the producer
-is waiting for input. The producer advances either phase when its work changes.
+remains while the producer is processing. `attention` requests focus: selecting
+its window acknowledges attention from every pane in that window. Switching panes
+within the selected window also acknowledges attention. An attention report made
+while the window is already displayed by an attached terminal client is immediately
+seen and leaves no status entry, replacing any earlier phase from that pane.
+With multiple clients, display in any terminal client is sufficient; detached
+sessions and control-mode clients do not acknowledge attention. Health and problems
+are unaffected. Queued focus callbacks recheck visibility inside the status
+transaction before clearing attention.
 `result` means processing has finished and the pane contains output ready to view.
 Each effective status set or clear increments a counter owned by that pane. Setting
 `result` ensures that Airline's focus hook is installed; contributors do not install
 the hook or handle revision tokens. The hook uses a private revision-guarded callback,
 so leaving a pane deletes only the exact result that was observed while leaving every
-other pane, `active`, `attention`, and any newer result untouched. Merely being
+other pane, `active`, `attention`, and any newer result untouched. For `result`, merely being
 visible in a window is not treated as proof of observation. Plain `status clear`
 explicitly deletes the targeted pane's entry. `status show` includes the current
-revision for general introspection. Producers normally advance active work and input
-requests; an Airline-aware coding agent is the motivating interactive producer for
+revision for general introspection. Producers advance active work and can withdraw input requests; an Airline-aware coding agent is the motivating interactive producer for
 `attention`. Runner health separately communicates whether a completed result was
 `ok`, `warn`, or `fail`.
 

@@ -123,7 +123,7 @@ _assert_name_colors() {
 
 @test "badges do not overwrite current or previous name colors" {
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats:2 '#{pane_id}')"
-  airline status set -t "$pane" attention
+  airline status set -t "$pane" active
   airline health set -t "$pane" test service warn "slow"
   _assert_name_colors 2:current 234 214
   $TMUX -L "$_bats_socket" select-window -t bats:0
@@ -180,7 +180,7 @@ _assert_status_text() {
 
 @test "fresh TPM install renders a complete status without literal style syntax" {
   _assert_status_text bats
-  _assert_status_text " 0:ordinary"
+  _assert_status_text "  0:ordinary"
 }
 
 @test "full layout renders prefix copy sync and custom key-table badges cleanly" {
@@ -233,4 +233,46 @@ LAYOUT
   airline layout use minimal
   run sopt @airline--widget-tint
   assert_output ''
+}
+
+@test "all slots retain chevrons while configured quiet slots keep padding and grow with content" {
+  local value extra
+  mkdir "$BATS_TEST_TMPDIR/spacing"
+  cat > "$BATS_TEST_TMPDIR/spacing/quiet.sh" <<'LAYOUT'
+#| summary: Quiet content in every slot
+airline_layout_configure() {
+  local slot
+  for slot in left-out left-mid left-in right-in right-mid right-out; do
+    "$1" segment "$slot" '#{@slot-test-value}'
+  done
+}
+LAYOUT
+  cat > "$BATS_TEST_TMPDIR/spacing/empty.sh" <<'LAYOUT'
+#| summary: No configured slots
+airline_layout_configure() { :; }
+LAYOUT
+  airline layout register "$BATS_TEST_TMPDIR/spacing"
+  airline layout use empty
+  run $TMUX -L "$_bats_socket" display-message -p -t bats '#{w:#{E:status-left}}:#{w:#{E:status-right}}'
+  assert_output '4:3' # Three chevrons per side, plus the first-window gap.
+
+  airline layout use quiet
+  for value in '' WARN FAIL ''; do
+    $TMUX -L "$_bats_socket" set-option -t bats @slot-test-value "$value"
+    extra=$((3 * ${#value}))
+    run $TMUX -L "$_bats_socket" display-message -p -t bats '#{w:#{E:status-left}}:#{w:#{E:status-right}}'
+    assert_output "$((10 + extra)):$((9 + extra))"
+  done
+  # Removing configuration collapses the content areas, not their chevrons.
+  airline layout use empty
+  run $TMUX -L "$_bats_socket" display-message -p -t bats '#{w:#{E:status-left}}:#{w:#{E:status-right}}'
+  assert_output '4:3'
+}
+
+@test "window badges follow their owner with two spaces between inactive entries" {
+  local owner
+  owner="$($TMUX -L "$_bats_socket" display-message -p -t bats:0 '#{pane_id}')"
+  airline status set -t "$owner" active
+  airline health set -t "$owner" test api warn "slow"
+  _assert_status_text ' 0:ordinary ○ △  1:previous '
 }

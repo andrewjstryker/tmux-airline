@@ -163,17 +163,17 @@ LAYOUT
   done
 }
 
-@test "shipped layouts retain host-session, online, prefix, CPU, and power positions" {
+@test "full layout groups machine status and reserves left-inner for problems" {
   for name in full; do
     source "$PROJECT_ROOT/layouts/definitions/$name.sh"
     declare_part() { printf '%s\n' "$*"; }
     run airline_layout_configure declare_part
     assert_success
     assert_line --index 0 'segment left-out #h:#S'
-    assert_line --index 1 'segment left-mid #{E:@airline--widget-online}'
+    assert_line --index 1 'segment left-in #{E:@airline--widget-problem}'
     assert_line --index 2 'segment right-in #{E:@airline--widget-prefix}'
-    assert_line --index 3 'segment right-mid #{E:@airline--widget-cpu}'
-    assert_line --index 4 'segment right-out %Y-%m-%d %H:%M #{E:@airline--widget-battery}#{E:@airline--widget-power} #{E:@airline--widget-problem}'
+    assert_line --index 3 'segment right-mid #{E:@airline--widget-online} #{E:@airline--widget-cpu} #{E:@airline--widget-power}'
+    assert_line --index 4 'segment right-out %Y-%m-%d %H:%M'
   done
 }
 
@@ -184,7 +184,8 @@ LAYOUT
   assert_success
   assert_line --index 0 'segment left-out #h'
   assert_line --index 1 'segment left-mid #S'
-  assert_line --index 2 'segment right-out %Y-%m-%d %H:%M #{E:@airline--widget-problem}'
+  assert_line --index 2 'segment left-in #{E:@airline--widget-problem}'
+  assert_line --index 3 'segment right-out %Y-%m-%d %H:%M'
 }
 
 @test "segment replacements compile only final content and widgets" {

@@ -27,8 +27,9 @@ jobs. Place widgets through a layout:
 ```bash
 airline_layout_configure() {
   "$1" segment left-out '#S'
-  "$1" segment right-mid '#{E:@airline--widget-cpu} | #{E:@airline--widget-online}'
-  "$1" segment right-out '#{E:@airline--widget-battery}#{E:@airline--widget-power}'
+  "$1" segment right-mid '#{E:@airline--widget-online} #{E:@airline--widget-cpu} #{E:@airline--widget-power}'
+  "$1" segment left-in '#{E:@airline--widget-problem}'
+  "$1" segment right-out '%H:%M'
 }
 ```
 
@@ -43,23 +44,38 @@ applied with `session apply` retires only that slot's widgets.
 
 ## Shipped widgets
 
-Tmux 3.2 or newer is required for numeric meter comparisons.
+Tmux 3.2 or newer is required for numeric threshold comparisons.
 
 | Name | Observation | Presentation and availability |
 |---|---|---|
 | `cpu` | sibling `cpu` executable reports a current usage snapshot | low, medium, or high level using configurable thresholds |
-| `battery` | sibling `battery` executable reads the first readable Linux system battery | Capacity level `▁`–`█`, colored by charge level |
-| `power` | sibling `power` executable reads the first readable Linux system battery | `🔋` while discharging and `⚡` when charging/full/attached |
-| `online` | sibling `online` executable performs one fast ICMP check | `●` in primary/stress color for reachable/unreachable; requires `ping` |
+| `power` | sibling `power` executable reads state and capacity from the first readable Linux system battery | Charge-colored `BAT`, `CHG`, or `AC`; corresponding glyphs in Nerd Font mode |
+| `online` | sibling `online` executable reads NetworkManager connectivity and physical default routes | `LAN`, `WiFi`, or `OFF`; requires `nmcli` and `ip` |
 | `prefix` | Native client and pane state | Prefix, Copy, Sync, or custom key-table badge; no process |
-| `problem` | sibling `problem` executable reports `airline problem show --level` | Alert-colored `△` for warn, blinking stress-colored `▲` for fail; hidden when clear |
+| `problem` | sibling `problem` executable reports `airline problem show --level` | Alert-colored `WARN`, blinking stress-colored `FAIL`; corresponding glyphs in Nerd Font mode; no content when clear; the containing slot retains its normal padding |
 
-Online means the chosen host answered ICMP, not that every Internet service works.
-Battery capacity and power source are independent widgets for one device, not an
-aggregate across multiple batteries. Battery levels advance at 6%, 20%, 35%, 50%,
-65%, 80%, and 95%, preserving the adapter's meter. Levels use stress below 20%,
-alert below 50%, emphasized below 80%, and primary otherwise. An unknown capacity
-displays `—`; an unknown power source displays `—`.
+Online uses NetworkManager's existing connectivity observation, without triggering
+a probe. Wired and wireless use primary for full connectivity and alert for limited
+access or a captive portal. Disconnected uses stress. Unknown observations,
+unsupported connection types, or runtime query failures display `—` in primary.
+This requires a running NetworkManager; connectivity accuracy and freshness depend
+on its configuration. See [nmcli connectivity states](https://networkmanager.dev/docs/api/latest/nmcli.html).
+
+When several physical connections are active, the lowest-metric physical default
+route selects wired or wireless (IPv4 first, then IPv6). VPN/tunnel devices do not
+replace that identity. For limited connectivity without a default route, the first
+connected wired/wireless device is used. Complex bridges, policy routing, and
+non-Ethernet/non-Wi-Fi transports are not resolved by this widget; unrecognized
+routes yield unknown rather than a guessed connection type.
+
+Power represents one device, not an aggregate across multiple batteries. It shows
+no meter or percentage. Discharging uses stress below 20%, alert from 20–49%,
+emphasized from 50–89%, and primary from 90%. Charging and connected without
+charging both use emphasized below 90% and primary from 90%; neither uses alert
+or stress, including when an intentional charge limit holds capacity below 90%.
+A battery reporting discharging uses the battery icon and colors even when attached.
+Unknown status, or missing/invalid capacity, displays
+`—` in primary. Host notifications remain responsible for urgent battery warnings.
 
 Prefix precedence is `Prefix`, pane mode (`Copy`), synchronized panes (`Sync`), then
 a non-root client key-table name. Badges use inner-bg foreground and active, copy, or
@@ -94,6 +110,32 @@ no terminal controls or layout-level alignment/list/range directives. Source-tim
 code must be quiet; format construction must not sample or mutate tmux. Definitions
 are trusted code, so these checks are contract validation, not a security sandbox.
 
+## Icons and text
+
+Built-in widgets use short text by default. To require Nerd Font glyphs, set:
+
+```tmux
+set -g @airline-nerd-fonts on
+```
+
+The option accepts `on` or `off`; unset or empty means `off`. Airline reads it
+once per layout construction and shares the resolved choice with every widget.
+There are no per-widget icon overrides or runtime font checks. Install a Nerd Font
+in the terminal before enabling it, and reload the layout to apply a change.
+Invalid values reject the candidate layout without replacing the active one.
+Standalone `widget describe` resolves the same option once for inspection.
+
+| Subject | Text | Nerd Font icon names |
+|---|---|---|
+| Network | `LAN`, `WiFi`, `OFF` | `nf-md-ethernet`, `nf-md-wifi`, `nf-md-lan_disconnect` |
+| CPU | `CPU` | `nf-oct-cpu` |
+| Power | `BAT`, `CHG`, `AC` | `nf-md-battery`, `nf-md-battery_charging`, `nf-md-power_plug` |
+| Problem | `WARN`, `FAIL` | `nf-fa-warning`, `nf-fa-times_circle` |
+
+Shapes identify the subject or source; colors carry the same meaning in both modes.
+Prefix/mode badges remain text. Unknown readings remain `—`.
+For different symbols or presentation policies, register a custom widget.
+
 ## Configuration through tmux options
 
 Set global tmux options named `@airline-widget-<name>-<option>` in a tmux `.conf` file:
@@ -101,9 +143,6 @@ Set global tmux options named `@airline-widget-<name>-<option>` in a tmux `.conf
 ```tmux
 set -g @airline-widget-cpu-medium 60
 set -g @airline-widget-cpu-high 85
-set -g @airline-widget-online-host example.com
-set -g @airline-widget-online-timeout 3
-set -g @airline-widget-power-connected-icon 'AC'
 set -g @airline-widget-prefix-show-sync on
 ```
 
@@ -114,22 +153,15 @@ placements and `widget describe` do not accept argument overrides.
 
 | Widget | Options and built-in defaults |
 |---|---|
-| `cpu` | `medium=60`, `high=85`, `low-icon==`, `medium-icon=≡`, `high-icon=≣` |
-| `battery` | no options |
-| `power` | `battery-icon=🔋`, `connected-icon=⚡` |
-| `online` | `host=1.1.1.1`, `timeout=1` (integer seconds, 1–8), `online-icon=●`, `offline-icon=●` |
+| `cpu` | `medium=60`, `high=85` |
+| `power` | none |
+| `online` | none |
 | `prefix` | `show-copy=on`, `show-sync=on` (each `on` or `off`) |
 
 CPU thresholds are integers from 0 to 100; medium must not exceed high. Thresholds
-choose the three display levels; they do not create health or problem claims. Icons
-are literal text, not tmux formats.
+choose the three display levels; they do not create health or problem claims.
 
-Online's timeout is the command's own request timeout. A hostname exercises DNS; an
-IP address does not. The runtime executable owns its failure and unavailable-data
-presentation; Airline does not turn runtime stderr into a problem or impose a second
-timeout.
-
-Each widget reads and validates its own public options while constructing its
+Each widget with additional options reads and validates them while constructing its
 expression. It supplies any arguments needed by its runtime companion through
 `widget_runtime`. Airline neither interprets widget option metadata nor translates
 options into arguments. Changing an option requires reloading the layout, for
@@ -160,14 +192,28 @@ Airline's responsibility. No `options` or `default-*` metadata is needed.
 
 ## Migration
 
+The `battery` meter has been replaced by the combined `power` widget. Replace
+`#{E:@airline--widget-battery}` (or the old battery/power pair) with
+`#{E:@airline--widget-power}`.
+
+Built-in per-widget icon options have been removed. Use `@airline-nerd-fonts`
+for the shared text/glyph choice or write a custom widget. The `online` widget
+keeps its catalog name but now uses NetworkManager and `ip`; its former host
+and timeout options have been removed.
+
 Replace standalone `widget` / `widget-optional` declarations, `adapter use`, and
 the earlier `{{widget ...}}` placeholders with native
 `#{E:@airline--widget-<name>}` references inside segment strings. Move inline
 arguments to `@airline-widget-<name>-<option>` tmux options.
 Combine formerly appended fragments into one string per segment. The old adapter
 CLI and catalog are removed; register custom formats in the widget catalog. `prefix` replaces `prefix-highlight`.
-The full layout places online at left-mid, prefix at right-in, CPU at right-mid,
-and battery followed by power after the date at right-out. Unavailable requested
+The full layout keeps host/session context on the left, prefix at right-in,
+network/CPU/power together at right-mid, problems at left-in, and date/time at right-out.
+All shipped layouts place problems at left-in. The widget emits nothing when
+clear and grows naturally to show a warning or failure. The renderer keeps normal
+padding around configured slots even when their widgets are quiet; unconfigured
+slots retain only their chevrons. A problem appearing can shift the window list,
+providing an additional visual cue. Unavailable requested
 widgets report through the problem service.
 
 Published widgets receive `default` for `fg` and `bg`; a native style wrapper

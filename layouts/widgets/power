@@ -9,7 +9,15 @@ done
 status=unknown
 if [[ -r "$device/status" ]]; then read -r status < "$device/status" || status=unknown; fi
 case "$status" in
-  Discharging) printf 'battery\n' ;;
-  Charging|Full|'Not charging') printf 'connected\n' ;;
-  *) printf 'unknown\n' ;;
+  Discharging) state=battery ;;
+  Charging) state=charging ;;
+  Full|'Not charging') state=connected ;;
+  *) printf 'unknown\n'; exit 0 ;;
 esac
+value=''
+if [[ -r "$device/capacity" ]]; then read -r value < "$device/capacity" || value=''; fi
+if [[ "$value" =~ ^[0-9]{1,3}$ ]] && (( 10#$value <= 100 )); then
+  printf '%s %s\n' "$state" "$((10#$value))"
+else
+  printf 'unknown\n'
+fi

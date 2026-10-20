@@ -8,15 +8,15 @@ setup() { load_session; catalog_register_builtin s1 widget "$PROJECT_ROOT/layout
 @test "widget catalog resolves format definitions and hides runtime companions" {
   run catalog_list s1 widget
   assert_success
-  assert_line battery
+  refute_output --partial battery
   assert_line cpu
   assert_line online
   assert_line power
   assert_line prefix
   assert_line problem
   refute_output --partial '.sh'
-  run catalog_resolve s1 widget battery
-  assert_output "$PROJECT_ROOT/layouts/widgets/battery.sh"
+  run catalog_resolve s1 widget power
+  assert_output "$PROJECT_ROOT/layouts/widgets/power.sh"
 }
 
 @test "problem format emits a companion job and live palette references" {
@@ -41,39 +41,6 @@ setup() { load_session; catalog_register_builtin s1 widget "$PROJECT_ROOT/layout
   assert_output --partial '#{@airline-palette-emphasized}'
 }
 
-@test "battery and power runtime companions emit focused scalars" {
-  mkdir -p "$BATS_TEST_TMPDIR/power/BAT0"
-  printf 'Battery\n' > "$BATS_TEST_TMPDIR/power/BAT0/type"
-  printf '42\n' > "$BATS_TEST_TMPDIR/power/BAT0/capacity"
-  printf 'Charging\n' > "$BATS_TEST_TMPDIR/power/BAT0/status"
-  run env AIRLINE_POWER_SUPPLY="$BATS_TEST_TMPDIR/power" "$PROJECT_ROOT/layouts/widgets/battery"
-  assert_success
-  assert_output '42'
-  run env AIRLINE_POWER_SUPPLY="$BATS_TEST_TMPDIR/power" "$PROJECT_ROOT/layouts/widgets/power"
-  assert_success
-  assert_output 'connected'
-  printf 'Discharging\n' > "$BATS_TEST_TMPDIR/power/BAT0/status"
-  run env AIRLINE_POWER_SUPPLY="$BATS_TEST_TMPDIR/power" "$PROJECT_ROOT/layouts/widgets/power"
-  assert_success
-  assert_output 'battery'
-}
-
-@test "battery and power formats present their independent observations" {
-  source "$PROJECT_ROOT/layouts/widgets/battery.sh"
-  widget_runtime() { printf '%s' '#(battery-runtime)'; }
-  run airline_widget_format '#{@airline-palette-emphasized}' '#{@airline-palette-inner-bg}'
-  assert_success
-  refute_output --partial '🔋'
-  refute_output --partial '⚡'
-
-  source "$PROJECT_ROOT/layouts/widgets/power.sh"
-  widget_runtime() { printf '%s' '#(power-runtime)'; }
-  run airline_widget_format '#{@airline-palette-emphasized}' '#{@airline-palette-inner-bg}'
-  assert_success
-  assert_output --partial '🔋'
-  assert_output --partial '⚡'
-}
-
 @test "widgets expose capability checks without running runtime companions" {
   source "$PROJECT_ROOT/layouts/widgets/prefix.sh"
   run airline_widget_available
@@ -81,15 +48,14 @@ setup() { load_session; catalog_register_builtin s1 widget "$PROJECT_ROOT/layout
   refute [ -e "$BATS_TEST_TMPDIR/runtime-ran" ]
 }
 
-@test "CPU owns option defaults validation and literal icons" {
+@test "CPU owns threshold defaults and validation" {
   pub_set widget-cpu-medium 72
   pub_set widget-cpu-high 91
-  pub_set widget-cpu-high-icon 'hot $(touch marker)'
   run widget_describe cpu
   assert_success
   assert_output --partial ',91}'
   assert_output --partial ',72}'
-  assert_output --partial 'hot $(touch marker)'
+  assert_output --partial CPU
   refute_output --partial effective-arguments
 
   pub_set widget-cpu-medium ''
@@ -101,31 +67,7 @@ setup() { load_session; catalog_register_builtin s1 widget "$PROJECT_ROOT/layout
   assert_failure
 }
 
-@test "online embeds its own host and timeout options in its runtime expression" {
-  pub_set widget-online-host example.com
-  pub_set widget-online-timeout 3
-  pub_set widget-online-online-icon UP
-  source "$PROJECT_ROOT/layouts/widgets/online.sh"
-  AIRLINE_WIDGET_RUNTIME="$PROJECT_ROOT/layouts/widgets/online"
-  run airline_widget_format white black
-  assert_success
-  assert_output --partial "'--host' 'example.com' '--timeout' '3'"
-  assert_output --partial UP
-  pub_set widget-online-timeout 0
-  run airline_widget_format white black
-  assert_failure
-}
-
-@test "power and prefix consult their own public namespaces" {
-  pub_set widget-power-connected-icon AC
-  source "$PROJECT_ROOT/layouts/widgets/power.sh"
-  AIRLINE_WIDGET_RUNTIME="$PROJECT_ROOT/layouts/widgets/power"
-  run airline_widget_format white black
-  assert_success
-  assert_output --partial AC
-  assert_output --partial '🔋'
-  refute_output --partial '⚡'
-
+@test "prefix consults its own public namespace" {
   pub_set widget-prefix-show-copy off
   pub_set widget-prefix-show-sync off
   source "$PROJECT_ROOT/layouts/widgets/prefix.sh"
@@ -152,4 +94,77 @@ setup() { load_session; catalog_register_builtin s1 widget "$PROJECT_ROOT/layout
   assert_failure 3
   assert_output ''
   assert_equal "$(declare -p _FAKE_OPT)" "$before"
+}
+
+@test "power companion distinguishes charging connected and discharging with validated capacity" {
+  local root="$BATS_TEST_TMPDIR/power" state
+  mkdir -p "$root/BAT0"
+  printf 'Battery\n' > "$root/BAT0/type"
+  printf '005\n' > "$root/BAT0/capacity"
+  for state in Charging Discharging Full 'Not charging' Unknown; do
+    printf '%s\n' "$state" > "$root/BAT0/status"
+    run env AIRLINE_POWER_SUPPLY="$root" "$PROJECT_ROOT/layouts/widgets/power"
+    assert_success
+    case "$state" in
+      Charging) assert_output 'charging 5' ;;
+      Discharging) assert_output 'battery 5' ;;
+      Full|'Not charging') assert_output 'connected 5' ;;
+      Unknown) assert_output unknown ;;
+    esac
+  done
+  printf 'Charging\n' > "$root/BAT0/status"
+  for capacity in '' -1 101 nonsense; do
+    printf '%s\n' "$capacity" > "$root/BAT0/capacity"
+    run env AIRLINE_POWER_SUPPLY="$root" "$PROJECT_ROOT/layouts/widgets/power"
+    assert_success
+    assert_output unknown
+  done
+  rm "$root/BAT0/capacity"
+  run env AIRLINE_POWER_SUPPLY="$root" "$PROJECT_ROOT/layouts/widgets/power"
+  assert_output unknown
+  printf 'Not charging\n' > "$root/BAT0/status"
+  run env AIRLINE_POWER_SUPPLY="$root" "$PROJECT_ROOT/layouts/widgets/power"
+  assert_output unknown
+  rm "$root/BAT0/status"
+  run env AIRLINE_POWER_SUPPLY="$root" "$PROJECT_ROOT/layouts/widgets/power"
+  assert_output unknown
+}
+
+@test "layout resolves font preference once and shares it across widgets" {
+  eval "$(declare -f pub_get_into | sed '1s/pub_get_into/original_pub_get_into/')"
+  pub_get_into() {
+    [[ "$2" != nerd-fonts ]] || printf 'read\n' >> "$BATS_TEST_TMPDIR/font-reads"
+    original_pub_get_into "$@"
+  }
+  pub_set nerd-fonts on
+  _layout_definition_evaluate s1 "$PROJECT_ROOT/layouts/definitions/full.sh"
+  assert_equal "$(cat "$BATS_TEST_TMPDIR/font-reads")" read
+  [[ "${AIRLINE_LAYOUT_PART_FORMATS[*]}" == *$'\uf4bc'* ]]
+  [[ "${AIRLINE_LAYOUT_PART_FORMATS[*]}" != *CPU* ]]
+  pub_set nerd-fonts invalid
+  run _layout_definition_evaluate s1 "$PROJECT_ROOT/layouts/definitions/full.sh"
+  assert_failure
+  assert_output --partial 'nerd-fonts must be on or off'
+}
+
+@test "widget inspection resolves font preference and defaults to text" {
+  run widget_describe cpu
+  assert_success
+  assert_output --partial CPU
+  pub_set nerd-fonts on
+  run widget_describe cpu
+  assert_success
+  assert_output --partial $'\uf4bc'
+  refute_output --partial ']CPU'
+}
+
+@test "built-in icon selection performs no per-widget option reads" {
+  tmux() { printf 'unexpected option read\n' >&2; return 1; }
+  for widget in power online problem; do
+    source "$PROJECT_ROOT/layouts/widgets/$widget.sh"
+    AIRLINE_WIDGET_RUNTIME="$PROJECT_ROOT/layouts/widgets/$widget"
+    run airline_widget_format white black
+    assert_success
+    refute_output --partial 'unexpected option read'
+  done
 }

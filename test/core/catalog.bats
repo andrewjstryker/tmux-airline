@@ -124,7 +124,7 @@ ELEMENT
 
 @test "metadata reads the shipped side-effecting element kinds" {
   # Adapters and palettes cannot be sourced for inspection: doing so applies them.
-  run catalog_metadata "$PROJECT_ROOT/layouts/widgets/battery.sh" summary
+  run catalog_metadata "$PROJECT_ROOT/layouts/widgets/power.sh" summary
   assert_success
   refute_output ""
 

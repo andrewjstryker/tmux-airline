@@ -11,8 +11,8 @@ scheduling, caching, locking, timeouts, retries, or runtime supervision.
 ## Catalog shape
 
 ```text
-widgets/battery.sh       # format definition
-widgets/battery          # optional runtime executable
+widgets/power.sh       # format definition
+widgets/power          # optional runtime executable
 ```
 
 Shell catalog definitions use `.sh`; tmux configuration files use `.conf`. The
@@ -38,7 +38,13 @@ Global palette values seed sessions. An initialized session publishes its effect
 palette, which widgets read through live tmux format references. Palette changes
 render the layout again, so each placement receives the current segment colors.
 
-Widget policy belongs to `@airline-widget-<name>-<option>`. Each widget reads its
+Airline resolves the global `@airline-nerd-fonts` option once per layout evaluation
+and supplies `AIRLINE_WIDGET_NERD_FONTS` (`on` or `off`) as a dynamically scoped
+Bash input during format construction. Standalone widget inspection resolves it
+once as well. Widgets must not re-read that global option; it is never read at
+runtime. Custom widgets may use this input or choose their own presentation.
+
+Additional widget policy belongs to `@airline-widget-<name>-<option>`. Each widget reads its
 own public options directly with `tmux show-option -gqv` while composing the
 expression, applies defaults, and validates values. Airline passes only foreground
 and background arguments. It does not interpret option metadata, fetch widget
@@ -119,7 +125,9 @@ formats must not manipulate the default-style stack themselves.
 
 Render establishes the segment baseline once and adds padding, chevrons, and
 separators at the segment boundary. Empty widget expressions contribute no content;
-literal spacing and the containing segment's chrome remain. Repeated placements
+the containing segment's normal padding and chevrons remain. Unconfigured slots
+retain only their chevrons. Widgets need not emit placeholder spaces or reserve
+their active width; content may grow naturally as its state changes. Repeated placements
 share the same expression and widget-owned configuration, with separate lifecycle
 claims for each placement. Parameters come only from tmux options; neither layout
 strings nor `widget describe` accept overrides.
@@ -128,6 +136,7 @@ The complete path is:
 
 ```text
 layout use/load
+  → resolve @airline-nerd-fonts once for all widgets
   → source <name>.sh
   → call airline_widget_format default default
   → widget reads and validates its own public tmux options

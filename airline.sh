@@ -83,6 +83,7 @@ cmd_status () {
   local verb="${1:-}"; shift || true
   # Private process-boundary callback used by Airline's pane-focus hook.
   [[ "$verb" != _observed-result ]] || { signal_status_observed_result "$@"; return; }
+  [[ "$verb" != _focused-window ]] || { signal_status_focused_window "$@"; return; }
   [[ "$verb" != _pane-closed ]] || { signal_status_pane_closed "$@"; return; }
   # help:begin status
   case "$verb" in
