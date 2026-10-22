@@ -214,12 +214,13 @@ assert_problem_badge () {   # <session>
   refute_output --partial "pane:$second"
 }
 
-@test "tmux's pane-focus-out hook clears an observed result" {
+@test "tmux's pane-focus-out hook clears an observed result and acknowledges its health" {
   airline session init
   pane="$($TMUX -L "$_bats_socket" display-message -p -t bats '#{pane_id}')"
   win="$($TMUX -L "$_bats_socket" display-message -p '#{window_id}')"
 
   airline status set -t "$pane" result
+  airline health set -t "$pane" test build fail "failed"
   run get_option focus-events
   assert_output "on"
 
@@ -234,6 +235,13 @@ assert_problem_badge () {   # <session>
     sleep 0.01
   done
   [[ "$output" != *"$pane"* ]]
+  run airline health show -t "$pane"
+  assert_success
+  assert_output ""
+  run airline health show -t "$pane" --all test build
+  assert_success
+  assert_output --partial acknowledged
+  assert_output --partial failed
 }
 
 @test "invalid signal argv and unresolved targets fail without mutation" {

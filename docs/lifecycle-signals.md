@@ -126,7 +126,10 @@ revision for general introspection.
 Plain `clear` explicitly deletes the pane entry. Setting `result` also ensures that
 Airline's observation hook is installed. When a pane loses focus, Airline supplies
 the pane and its current revision to a private conditional operation that deletes
-only that exact result revision. Other panes, `active`, `attention`, and any newer
+only that exact result revision and acknowledges all health claims in that pane.
+Their badges clear at every severity; diagnostics remain available through
+`health show --all`. Status and health mutations share a window `signal` transaction
+so completion cleanup cannot race with a new report. Other panes, `active`, `attention`, and any newer
 state remain untouched. This deliberately requires the user to leave the pane before
 its result is cleared; merely being visible is not treated as proof of observation.
 Status has no acknowledged state or retained history after deletion. Contributors

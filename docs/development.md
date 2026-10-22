@@ -57,7 +57,7 @@ airline transaction show
 # scope<TAB>owner<TAB>namespace<TAB>active|stale<TAB>pid<TAB>age-seconds
 
 airline transaction clear global server problem
-airline transaction clear window '@3' status
+airline transaction clear window '@3' signal
 ```
 
 `transaction clear` only releases a stale marker; it refuses to clear one whose
@@ -66,5 +66,5 @@ diagnosing a stuck problem transaction never depends on acquiring that same lock
 
 The operands are positional, in this order: **scope, target, namespace**.
 Use `global server problem` for the global problem transaction, `session <target>
-config` for session configuration, or `window <target> status|health` for a window
+config` for session configuration, or `window <target> signal` for a window
 signal transaction. See `airline help transaction clear` for syntax.
