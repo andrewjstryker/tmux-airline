@@ -88,7 +88,8 @@ _signal_project_and_redraw () {   # <window|global> <owner> <status|health|probl
 _signal_with_transaction () {   # <window|global> <owner> <namespace> <callback> [<arg>...]
   local scope="$1" owner="$2" namespace="$3" callback="$4"; shift 4
   case "$scope" in
-    window) with_window_transaction "$owner" "$namespace" "$callback" "$@" ;;
+    # Completion acknowledgment updates both pane status and health atomically.
+    window) with_window_transaction "$owner" signal "$callback" "$@" ;;
     global) with_global_transaction "$namespace" "$callback" "$@" ;;
   esac
 }
@@ -151,6 +152,23 @@ _signal_health_ack_unlocked () {   # <destination> <pane> <contributor> <key>
   [[ "$state" != acknowledged ]] || return 0
   coll_set pane "$pane" health "$id" none acknowledged "$level" "$message" || return
   destination=1
+}
+
+# A completed pane's conditions have been viewed. Retain their diagnostics using
+# the normal acknowledgment policy, so repeated reports do not revive the badge.
+_signal_health_ack_completed_unlocked () { # <destination> <pane>
+  local -n completed_changed="$1"
+  local pane="$2" members id tuple badge state level message
+  completed_changed=""
+  coll_members_into members pane "$pane" health || return
+  for id in $members; do
+    coll_get_into tuple pane "$pane" health "$id" || return
+    IFS=$'\t' read -r badge state level message <<< "$tuple"
+    [[ "$state" != acknowledged ]] || continue
+    coll_set pane "$pane" health "$id" none acknowledged "$level" "$message" || return
+    # shellcheck disable=SC2034 # returned through the destination nameref
+    completed_changed=1
+  done
 }
 
 _signal_health_show_unlocked () {   # <active-only|all> <pane> [<contributor> [<key>]]
@@ -336,6 +354,9 @@ _signal_status_clear_observed_unlocked () {   # <destination> <window> <pane> <p
   IFS=$'\t' read -r value revision <<< "$tuple"
   [[ "$value" == result && "$revision" =~ ^[0-9]+$ ]] || return 0
   [[ "$revision" == "$observed_revision" ]] || return 0
+  # Status and health share the window transaction, keeping revision validation
+  # and acknowledgment atomic with respect to reports for this window.
+  _signal_health_apply_unlocked "$pane" "$win" _signal_health_ack_completed_unlocked "$pane" || return
   _signal_status_next_revision next_revision "$pane" || return
   coll_unregister window "$win" status "$member" || return
   destination=1

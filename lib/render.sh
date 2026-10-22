@@ -70,8 +70,8 @@ AIRLINE_KEY_DEFAULTS='defaults-done'     # first-run sentinel: seed defaults onc
 # color role. The order is handed to coll_reduce as the ranking (collections stays
 # domain-free) and to the selector as the level→color map: `attention` outranks
 # `result` outranks `active`; a window with no status entry shows no badge.
-# (`active` reusing the active-window highlight color is intentional — a badge only
-# earns its place on inactive windows, which carry no highlight to clash with.)
+# Inactive badges use these semantic colors; focused badges use the label
+# foreground against the highlight, preserving meaning through shape and blink.
 declare -ga AIRLINE_STATUS_LEVELS=(active result attention)
 declare -gA AIRLINE_STATUS_COLOR=([active]=active [result]=ok [attention]=alert)
 
@@ -399,6 +399,9 @@ set_window_formats () {
   _render_window_option window-status-activity-style "fg=${PALETTE[monitor]} bg=$bg" || return
   _render_window_option window-status-bell-style     "fg=${PALETTE[stress]} bg=$bg" || return
   # active: mode-colored highlight, with the normal active color as fallback.
+  # Focused badges share the label contrast; shapes and blink retain their meaning.
+  status_expr="#{?$status_opt, #[fg=${bg}]$(_blink_when "$status_opt" active)$(_glyph_expr "$status_opt" "$AIRLINE_GLYPH_STATUS" AIRLINE_STATUS_GLYPH)#[noblink],}"
+  health_expr="#{?$health_opt, #[fg=${bg}]$(_blink_when "$health_opt" fail)$(_glyph_expr "$health_opt" "$AIRLINE_GLYPH_HEALTH" AIRLINE_HEALTH_GLYPH)#[noblink],}"
   _render_window_option window-status-current-format \
     "$(_chev_right "$bg" "$active_bg") #[fg=${bg}]${template}${status_expr}${health_expr} $(_chev_left "$active_bg" "$bg")"
 }

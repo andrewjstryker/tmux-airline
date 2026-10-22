@@ -126,6 +126,8 @@ _assert_name_colors() {
   airline status set -t "$pane" active
   airline health set -t "$pane" test service warn "slow"
   _assert_name_colors 2:current 234 214
+  _assert_name_colors "○" 234 214
+  _assert_name_colors "△" 234 214
   $TMUX -L "$_bats_socket" select-window -t bats:0
   _assert_name_colors 2:current 255 234
 }

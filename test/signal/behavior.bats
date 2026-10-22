@@ -615,3 +615,39 @@ CASES
   run signal_status_show
   assert_output --partial attention
 }
+
+@test "leaving completed work acknowledges every health severity only in that pane" {
+  signal_status_set -t %1 result
+  signal_status_set -t %2 active
+  signal_health_set -t %1 test warning warn "slow"
+  signal_health_set -t %1 test failure fail "failed"
+  signal_health_set -t %2 test running fail "still running"
+  local revision
+  revision="$(prv_get_pane %1 status-revision)"
+  signal_status_observed_result %1 "$revision"
+  run signal_status_show
+  refute_output --partial "%1"
+  assert_output --partial "%2"
+  run signal_health_show -t %1
+  assert_output ""
+  run signal_health_show -t %1 --all test warning
+  assert_output "$(printf 'acknowledged\twarn\tslow')"
+  run signal_health_show -t %1 --all test failure
+  assert_output "$(printf 'acknowledged\tfail\tfailed')"
+  run signal_health_show -t %2 test running
+  assert_output "$(printf 'fail\tstill running')"
+  signal_status_observed_result %2 "$(prv_get_pane %2 status-revision)"
+  run signal_health_show -t %2 test running
+  assert_output "$(printf 'fail\tstill running')"
+}
+
+@test "stale completion acknowledgment preserves a newer run's health" {
+  signal_status_set -t %1 result
+  local revision
+  revision="$(prv_get_pane %1 status-revision)"
+  signal_status_set -t %1 active
+  signal_health_set -t %1 test build fail "new failure"
+  signal_status_observed_result %1 "$revision"
+  run signal_health_show -t %1 test build
+  assert_output "$(printf 'fail\tnew failure')"
+}

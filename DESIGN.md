@@ -613,7 +613,8 @@ redraw only when presentation changed. The common path does not make their lifec
 policies interchangeable.
 
 Dynamic collection operations run in projection-owner transactions: status and health
-serialize by `(window, namespace)` even though health writes pane-owned state, while problems serialize by the single
+share the `(window, signal)` transaction even though health writes pane-owned state,
+so completion acknowledgment can update both channels atomically. Problems serialize by the single
 `(global, server, problem)` owner. The registry, member tuple, reduction, and
 projected badge therefore form one logical mutation even when background
 evaluations overlap.
@@ -621,7 +622,8 @@ Status revision changes are staged in the same window transaction as the pane's
 collection tuple. Setting `result` installs Airline's observation hook; contributors
 do not handle its tokens. The hook invokes the private `_observed-result` process
 entry point with `(pane, revision)`, which deletes only an exact current result and
-prevents delayed focus cleanup from clearing newer pane state.
+acknowledges that pane's health claims. The revision guard prevents delayed focus
+cleanup from clearing newer pane state.
 `lib/tmux.sh` owns acquisition, an atomic owner-scoped marker, cleanup, stale-owner
 detection, and recovery. Transaction callbacks run in a subshell so transaction-local
 signal traps do not alter caller traps. `airline transaction show` exposes

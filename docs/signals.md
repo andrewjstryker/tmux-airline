@@ -55,7 +55,9 @@ Inactive entries use the selected foreground color over the standard window
 background. With no matching state, native normal and bell styling applies.
 The focused entry uses the same reduction without alternate to choose its
 highlight background, falling back to `active`. Its foreground always uses the
-standard window background color (`inner-bg`) for contrast.
+standard window background color (`inner-bg`) for contrast. Focused status and
+health badges use this same foreground over the highlight; their distinct shapes
+and blink attributes remain. Inactive badges retain their semantic colors.
 
 ## Badges (plugin-owned): the `airline` CLI
 
@@ -171,7 +173,8 @@ transaction before clearing attention.
 Each effective status set or clear increments a counter owned by that pane. Setting
 `result` ensures that Airline's focus hook is installed; contributors do not install
 the hook or handle revision tokens. The hook uses a private revision-guarded callback,
-so leaving a pane deletes only the exact result that was observed while leaving every
+so leaving a pane deletes only the exact result that was observed and acknowledges
+all health claims in that pane, while leaving every
 other pane, `active`, `attention`, and any newer result untouched. For `result`, merely being
 visible in a window is not treated as proof of observation. Plain `status clear`
 explicitly deletes the targeted pane's entry. `status show` includes the current
@@ -179,7 +182,9 @@ revision for general introspection. Producers advance active work and can withdr
 `attention`. Runner health separately communicates whether a completed result was
 `ok`, `warn`, or `fail`.
 
-Health and problem are never consumed by viewing a window. They expose explicit
+Health is acknowledged when leaving a completed pane; its diagnostics remain in
+`health show --all`. Leaving an active pane preserves health. Problems are never
+consumed by viewing a window. They expose explicit
 `ack`, which retains the underlying condition but hides
 its badge and omits it from normal `show`; `show --all` includes acknowledged state.
 A message-only refresh at the same level remains acknowledged. Any `warn` / `fail`
