@@ -84,7 +84,7 @@ session_init () {   # [-t <session-target>] [<config-file>]
 _session_config () {   # <session> [<file>]
   local session="$1" file pane
   shift
-  file="${1:-${AIRLINE_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/airline/config}}"
+  file="${1:-${AIRLINE_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/tmux/airline.conf}}"
   (( $# <= 1 )) || command_die 'session config: takes at most one <file>'
   [[ -f "$file" ]] || return 0
   [[ -r "$file" ]] || command_die "session config: cannot read '$file'"

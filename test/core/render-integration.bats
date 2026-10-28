@@ -182,7 +182,10 @@ _assert_status_text() {
 
 @test "fresh TPM install renders a complete status without literal style syntax" {
   _assert_status_text bats
+  _assert_status_text CPU
   _assert_status_text "  0:ordinary"
+  $TMUX -L "$_bats_socket" set-window-option -t bats:2 synchronize-panes on
+  _assert_status_text '[Sync]'
 }
 
 @test "full layout renders prefix copy sync and custom key-table badges cleanly" {

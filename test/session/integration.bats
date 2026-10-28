@@ -32,6 +32,14 @@ setup() {
   run sopt @airline--layout
   assert_output "default"               # recorded, so apply re-applies it
 
+  run sopt status-right
+  assert_output --partial '#{E:@airline--widget-prefix}'
+  assert_output --partial '#{E:@airline--widget-online}'
+  assert_output --partial '#{E:@airline--widget-cpu}'
+  assert_output --partial '#{E:@airline--widget-power}'
+  run sopt @airline--widget-prefix
+  assert_output --partial 'client_prefix'
+
   run sopt status-style
   assert_output --partial "bg=colour234"
   run sopt window-status-current-format
