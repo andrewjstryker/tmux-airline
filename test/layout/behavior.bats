@@ -177,7 +177,7 @@ LAYOUT
   done
 }
 
-@test "dependency-free default gives host the outer-left segment and session the middle" {
+@test "default combines separate host and session blocks with native widgets" {
   source "$PROJECT_ROOT/layouts/definitions/default.sh"
   declare_part() { printf '%s\n' "$*"; }
   run airline_layout_configure declare_part
@@ -185,7 +185,9 @@ LAYOUT
   assert_line --index 0 'segment left-out #h'
   assert_line --index 1 'segment left-mid #S'
   assert_line --index 2 'segment left-in #{E:@airline--widget-problem}'
-  assert_line --index 3 'segment right-out %Y-%m-%d %H:%M'
+  assert_line --index 3 'segment right-in #{E:@airline--widget-prefix}'
+  assert_line --index 4 'segment right-mid #{E:@airline--widget-online} #{E:@airline--widget-cpu} #{E:@airline--widget-power}'
+  assert_line --index 5 'segment right-out %Y-%m-%d %H:%M'
 }
 
 @test "segment replacements compile only final content and widgets" {
