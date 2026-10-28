@@ -5,6 +5,14 @@ implementation worklists used to reach them.
 
 ## Unreleased — 3.0.0
 
+- Moved the default startup command file to `$XDG_CONFIG_HOME/tmux/airline.conf`
+  (`$HOME/.config/tmux/airline.conf` when unset), alongside tmux's own configuration.
+  `AIRLINE_CONFIG` and the `session init` file argument still override it.
+
+- Enabled network, CPU, power, and prefix widgets in the default layout, keeping
+  separate host and session blocks. Fresh initialization now includes the same
+  native status widgets as `full` without requiring a startup configuration.
+
 - Fixed literal style text in the default status bar and custom key-table badges.
   Set segment length limits to fit the shipped layout on a fresh tmux server.
   Added full status-row checks through the TPM entry point in an attached terminal;
