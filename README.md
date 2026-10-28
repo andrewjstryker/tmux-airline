@@ -89,8 +89,8 @@ Without TPM, add the equivalent bootstrap to `tmux.conf`:
 run-shell -b '/path/to/tmux-airline/airline.sh session init'
 ```
 
-`session init` also loads the user command file, so the manual and TPM paths are
-identical.
+`session init` also loads the [startup configuration](#startup-configuration), so
+the manual and TPM paths are identical.
 
 ## Core concepts
 
@@ -133,9 +133,10 @@ Use `airline help` for the command index, `airline help palette` for subcommands
 and `airline help palette use` for exact options. Bash and Zsh completions follow
 the same grammar.
 
-After initialization, Airline loads a user startup command file. The default path
-is `$XDG_CONFIG_HOME/airline/config`, or `$HOME/.config/airline/config` when
-`XDG_CONFIG_HOME` is unset. The file contains existing Airline commands:
+### Startup configuration
+
+After initialization, Airline loads a startup command file of existing Airline
+commands:
 
 ```shell
 airline palette use dark
@@ -143,7 +144,15 @@ airline layout use full
 airline widget register "$HOME/.config/airline/widgets"
 ```
 
-Set `AIRLINE_CONFIG` to choose another default path.
+`session init` uses the first of these paths:
+
+1. The file argument, as in `airline.sh session init ~/airline-test.conf`
+2. `$AIRLINE_CONFIG`
+3. `$XDG_CONFIG_HOME/tmux/airline.conf`
+4. `$HOME/.config/tmux/airline.conf`, when `XDG_CONFIG_HOME` is unset
+
+A missing file is skipped. The file is sourced as trusted Bash in the session's
+context, and `airline` is available in it even when the CLI is not on your `PATH`.
 
 ## Palettes
 
@@ -288,9 +297,14 @@ See [layout inspection and application](docs/layouts.md) for evaluation and vali
 
 | Layout     | What it composes                                                    |
 |------------|---------------------------------------------------------------------|
-| `default`  | Init's default — the dependency-free standard arrangement                          |
+| `default`  | Separate host/session blocks, network/CPU/power, prefix, date, and problems |
 | `full`     | Host/session context, grouped network/CPU/power, prefix, date, and problems |
 | `minimal`  | A pared-down bar                                                    |
+
+The default layout activates the native widgets on first initialization. Missing
+widget dependencies leave that widget empty and appear in `airline problem show`.
+For an existing session, run `airline layout use default` to load the updated
+arrangement; initialization preserves an already committed layout.
 
 Switching layouts starts from a clean slate, so a layout owns exactly the arrangement
 it declares. A layout is trusted Bash with one required function. The function uses
